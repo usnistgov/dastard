@@ -26,7 +26,6 @@ type Lancero struct {
 	FileEvents      *os.File // FPGA user SOPC/Qsys slaves interrupt status events
 	FileSGDMA       *os.File // FPGA user SOPC/Qsys slave SGDMA read/write
 	validFiles      bool
-	userFilename    string
 	verbosity       int
 	engineStopValue uint32
 }
@@ -40,24 +39,21 @@ func Open(devnum int) (dev *Lancero, err error) {
 	fname := func(name string) string {
 		return fmt.Sprintf("/dev/lancero_%s%d", name, devnum)
 	}
-	dev.userFilename = fname("user")
-	dev.FileUser, err = os.OpenFile(fname("user"), os.O_RDWR, 0666)
-	if err != nil {
+
+	if dev.FileUser, err = os.OpenFile(fname("user"), os.O_RDWR, 0666); err != nil {
 		return nil, err
 	}
-	dev.FileControl, err = os.OpenFile(fname("control"), os.O_RDWR, 0666)
-	if err != nil {
+	if dev.FileControl, err = os.OpenFile(fname("control"), os.O_RDWR, 0666); err != nil {
 		dev.Close()
 		return nil, err
 	}
-	dev.FileEvents, err = os.OpenFile(fname("events"), os.O_RDONLY, 0666)
-	if err != nil {
+	if dev.FileEvents, err = os.OpenFile(fname("events"), os.O_RDONLY, 0666); err != nil {
 		dev.Close()
 		return nil, err
 	}
 
-	dev.FileSGDMA, err = os.OpenFile(fname("sgdma"), os.O_RDWR|syscall.O_NONBLOCK, 0666)
-	if err != nil {
+	if dev.FileSGDMA, err = os.OpenFile(fname("sgdma"),
+		os.O_RDWR|syscall.O_NONBLOCK, 0666); err != nil {
 		dev.Close()
 		return nil, err
 	}
@@ -79,7 +75,7 @@ func (dev *Lancero) Close() (err error) {
 }
 
 func (dev *Lancero) String() string {
-	return fmt.Sprintf("device %s valid: %v", dev.userFilename, dev.validFiles)
+	return fmt.Sprintf("device %s valid status: %v", dev.FileUser.Name(), dev.validFiles)
 }
 
 // Read a Lancero register at the given offset.
@@ -87,7 +83,7 @@ func (dev *Lancero) preadUint32(file *os.File, offset int64) (uint32, error) {
 	result := make([]byte, 4)
 	n, err := file.ReadAt(result, offset)
 	if n < 4 || err != nil {
-		return 0, fmt.Errorf("Could not read %s", dev.userFilename)
+		return 0, fmt.Errorf("Could not read file %s offset: 0x%x", file.Name(), offset)
 	}
 	return binary.LittleEndian.Uint32(result[0:]), nil
 }
@@ -102,6 +98,11 @@ func (dev *Lancero) readControl(offset int64) (uint32, error) {
 	return dev.preadUint32(dev.FileControl, offset)
 }
 
+// Return the value of the ID+Version number register.
+func (dev *Lancero) idVersion() (uint32, error) {
+	return dev.readRegister(colRegisterIDV)
+}
+
 // Read /dev/lancero_events* to know when data might be ready. This
 // function will block until the threshold interrupt event occurs:
 // at least threshold bytes of data are now available.
@@ -109,7 +110,7 @@ func (dev *Lancero) readEvents() (uint32, error) {
 	result := make([]byte, 4)
 	n, err := dev.FileEvents.Read(result)
 	if n < 4 || err != nil {
-		return 0, fmt.Errorf("Could not readEvents")
+		return 0, fmt.Errorf("Lancero: Could not readEvents")
 	}
 	return binary.LittleEndian.Uint32(result[0:]), nil
 }
@@ -120,7 +121,7 @@ func (dev *Lancero) pwriteUint32(file *os.File, offset int64, value uint32) erro
 	binary.LittleEndian.PutUint32(bytes, value)
 	n, err := file.WriteAt(bytes, offset)
 	if n < 4 || err != nil {
-		return fmt.Errorf("Could not write %s", dev.userFilename)
+		return fmt.Errorf("Could not write file %s offset: 0x%x, value: 0x%x", file.Name(), offset, value)
 	}
 	return nil
 }
@@ -128,6 +129,17 @@ func (dev *Lancero) pwriteUint32(file *os.File, offset int64, value uint32) erro
 // Write a uint32 to /dev/lancero_user* register at the given offset.
 func (dev *Lancero) writeRegister(offset int64, value uint32) error {
 	return dev.pwriteUint32(dev.FileUser, offset, value)
+}
+
+// Write a uint32 to /dev/lancero_user* register at the given offset, then ensure write
+// is flushed (by reading the ID+version register).
+func (dev *Lancero) writeRegisterFlush(offset int64, value uint32) error {
+	if err := dev.writeRegister(offset, value); err != nil {
+		return err
+	}
+	// Reading any register will flush the previous write. Choose ID+Version register.
+	_, err := dev.readRegister(colRegisterIDV)
+	return err
 }
 
 // Write a uint32 to /dev/lancero_user* register at the given offset.
