@@ -13,55 +13,53 @@ const (
 	bitsCtrlSim uint32 = 0x2 // collector control register bit for sim mode
 )
 
-// Collector is the interface to the component that combines several optical
+// collector is the interface to the component that combines several optical
 // fibers onto one serial stream. Must be started and stopped; also controls
 // fiber-reading mode vs simulated data mode.
-type Collector struct {
-	lancero   *Lancero
+type collector struct {
+	device    *lanceroDevice
 	simulated bool
 }
 
-// Need some kind of constructor, to assign c.lancero ??
-
-func (c *Collector) configure(linePeriod, dataDelay, channelMask, frameLength uint32) error {
-	if err := c.lancero.writeRegister(colRegisterLP, linePeriod); err != nil {
+func (c *collector) configure(linePeriod, dataDelay, channelMask, frameLength uint32) error {
+	if err := c.device.writeRegister(colRegisterLP, linePeriod); err != nil {
 		return err
 	}
-	if err := c.lancero.writeRegister(colRegisterDD, dataDelay); err != nil {
+	if err := c.device.writeRegister(colRegisterDD, dataDelay); err != nil {
 		return err
 	}
-	if err := c.lancero.writeRegister(colRegisterMask, channelMask); err != nil {
+	if err := c.device.writeRegister(colRegisterMask, channelMask); err != nil {
 		return err
 	}
-	if err := c.lancero.writeRegisterFlush(colRegisterFL, frameLength); err != nil {
+	if err := c.device.writeRegisterFlush(colRegisterFL, frameLength); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *Collector) start(simulate bool) error {
+func (c *collector) start(simulate bool) error {
 	c.simulated = simulate
 	runCmd := bitsCtrlRun
 	if simulate {
 		// Start the simulator
-		if err := c.lancero.writeRegisterFlush(colRegisterCtrl, bitsCtrlSim); err != nil {
+		if err := c.device.writeRegisterFlush(colRegisterCtrl, bitsCtrlSim); err != nil {
 			return err
 		}
 		runCmd |= bitsCtrlSim
 	}
 	// Now enable the clock (with sim still enabled or not)
-	if err := c.lancero.writeRegisterFlush(colRegisterCtrl, runCmd); err != nil {
+	if err := c.device.writeRegisterFlush(colRegisterCtrl, runCmd); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *Collector) stop() error {
+func (c *collector) stop() error {
 	if c.simulated {
-		if err := c.lancero.writeRegisterFlush(colRegisterCtrl, bitsCtrlSim); err != nil {
+		if err := c.device.writeRegisterFlush(colRegisterCtrl, bitsCtrlSim); err != nil {
 			return err
 		}
 	}
 	c.simulated = false
-	return c.lancero.writeRegisterFlush(colRegisterCtrl, 0)
+	return c.device.writeRegisterFlush(colRegisterCtrl, 0)
 }
