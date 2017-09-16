@@ -6,12 +6,9 @@ import (
 )
 
 func main() {
-    dev, err := lancero.Open(0)
-    fmt.Println(dev)
-    fmt.Println(err)
-    if err == nil {
-        err = dev.Close()
-        fmt.Println(dev)
-        fmt.Println(err)
-    }
+  dev, err := lancero.NewLancero(0)
+  defer dev.Close()
+
+  fmt.Println(dev)
+  fmt.Println(err)
 }
