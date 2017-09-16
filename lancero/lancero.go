@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 )
 
 // Lancero is the interface to a Lancero SGDMA engine on an Arria-II dev card.
@@ -132,6 +133,88 @@ func (dev *Lancero) writeRegister(offset int64, value uint32) error {
 // Write a uint32 to /dev/lancero_user* register at the given offset.
 func (dev *Lancero) writeControl(offset int64, value uint32) error {
 	return dev.pwriteUint32(dev.FileControl, offset, value)
+}
+
+// Start a cyclic SGDMA. Wait for the engine to be running as the
+// data sources do not support back pressure; We make sure the SGDMA engines
+// are running and accepting data before enabling the data inputs.
+func (dev *Lancero) cyclicStart(buffer []byte, waitSeconds int) error {
+	verbose := dev.verbosity >= 3
+	n, err := dev.FileSGDMA.Read(buffer)
+	if err != nil {
+		return err
+	}
+	if n < len(buffer) {
+		return fmt.Errorf("cyclicStart(): could not start SGDMA")
+	}
+	value, err := dev.readControl(0x200)
+	if err != nil {
+		return err
+	}
+	if verbose {
+		fmt.Printf("Write engine ID = 0x%08x\n", value)
+		fmt.Println("Polling write engine control, waiting for RUN...")
+	}
+
+	// Wait for something, with a timeout.
+	var RUN uint32 = 1
+	var prevvalue uint32 = 0xdeadbeef
+	abortTimeout := time.After(time.Duration(waitSeconds) * time.Second)
+	for {
+		value, err = dev.readControl(0x208)
+		if err != nil {
+			return err
+		}
+		if verbose && value != prevvalue {
+			if value&RUN == 1 {
+				fmt.Printf("Write engine is RUNNING. (control = 0x%08x)\n", value)
+			} else {
+				fmt.Printf("Write engine is NOT RUNNING. (control = 0x%08x)\n", value)
+			}
+			prevvalue = value
+		}
+		// The engine is now running. Save its control register to know how to stop it.
+		if value&RUN == 1 {
+			dev.engineStopValue = value &^ 1
+			break
+		}
+		tryAgain := time.After(40 * time.Millisecond)
+		select {
+		case <-abortTimeout:
+			return fmt.Errorf("cyclicStart(): failed to reach RUN mode after %d sec", waitSeconds)
+		case <-tryAgain:
+			continue
+		}
+	}
+
+	if verbose {
+		fmt.Printf("Will stop write engine by writing 0x%08x to control later.\n", dev.engineStopValue)
+		fmt.Println("Now polling write engine, waiting for BUSY status...")
+	}
+	var BUSY uint32 = 1
+	prevvalue = 0xdeadbeef
+	for {
+		value, err = dev.readControl(0x204)
+		if err != nil {
+			return err
+		}
+		if verbose && value != prevvalue {
+			if value&BUSY == 1 {
+				fmt.Printf("Write engine is BUSY. (status = 0x%08x)\n", value)
+			} else {
+				fmt.Printf("Write engine is NOT BUSY. (status = 0x%08x)\n", value)
+			}
+			prevvalue = value
+		}
+		if value&BUSY == 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if verbose {
+		fmt.Printf("cyclicStart(): Engine status = 0x%08x.\n", value)
+	}
+	return nil
 }
 
 // Stop the cyclic SGDMA.
