@@ -44,7 +44,7 @@ func (a *adapter) idVersion() (uint32, error) {
 }
 
 // Notify the FPGA that data have been read from the ring buffer and can now be overwritten.
-// The bytesRead = how many bytes can be released.
+// The bytesRead gives how many bytes should now be released.
 func (a *adapter) releaseBytes(bytesRead uint32) {
 	// Update the read index internally, then publish it to the firmware.
 	a.readIndex = (a.readIndex + bytesRead) % a.length
@@ -60,14 +60,10 @@ func (a *adapter) status() (uint32, error) {
 	return status, err
 }
 
-// TODO:
-// available pointers
-// wait
-
 func memalign(length, alignment int) []byte {
 	paddedLength := length + alignment
 	unalignedBuf := make([]byte, paddedLength)
-	// What to do to align here?
+	// TODO: What to do to align here?
 	return unalignedBuf
 }
 
@@ -94,6 +90,32 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 		a.inspect()
 	}
 	return nil
+}
+
+// Find total amount of available data and return a slice with 1 or 2 buffers (byte slices).
+// There will be 2 buffers when the available data cross the ring buffer boundary.
+// Returns the slice containing the buffers, the total # of bytes in the two, and any possible error.
+
+func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err error) {
+	// Ask the hardware for the current write pointer and the bytes available.
+	// Note that "write pointer" is where the DRIVER is about to write to.
+	a.writeIndex, err = a.device.readRegister(adapterRBWI)
+	if err != nil {
+		return
+	}
+
+	// Handle the easier, single-buffer case first.
+	if a.writeIndex > a.readIndex {
+		// There's only one continuous region in the buffer, not crossing the ring boundary
+		buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
+		totalBytes = len(buffers[0])
+		return
+	}
+
+	// The available data cross the ring boundary, so return 2 separate buffers.
+	buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
+	totalBytes = len(buffers[0]) + len(buffers[1])
+	return
 }
 
 // Reads and prints the state of the Avalon ST/MM adapter.
@@ -188,4 +210,22 @@ func (a *adapter) stop() error {
 	// We want to get alarm when ring buffer more than 75% filled.
 	a.device.writeRegister(adapterALRM, (3*a.length)/4)
 	return nil
+}
+
+// Wait until a the threshold amount of data is available.
+func (a *adapter) wait() error {
+	dataAvailable, err := a.available()
+	if err != nil {
+		return err
+	}
+	if dataAvailable >= a.thresholdLevel {
+		return nil
+	}
+	if a.verbosity >= 3 {
+		fmt.Println("adapter.wait(): Waiting for threshold event.")
+	}
+
+	// block until an interrupt event occurs.
+	_, err = a.device.readEvents()
+	return err
 }
