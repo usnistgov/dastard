@@ -45,10 +45,20 @@ func (a *adapter) idVersion() (uint32, error) {
 
 // Notify the FPGA that data have been read from the ring buffer and can now be overwritten.
 // The bytesRead gives how many bytes should now be released.
-func (a *adapter) releaseBytes(bytesRead uint32) {
+func (a *adapter) releaseBytes(bytesRead uint32) error {
 	// Update the read index internally, then publish it to the firmware.
 	a.readIndex = (a.readIndex + bytesRead) % a.length
-	a.device.writeRegister(adapterRBRI, a.readIndex)
+	if err := a.device.writeRegister(adapterRBRI, a.readIndex); err != nil {
+		return err
+	}
+	status, err := a.status()
+	if err != nil {
+		return err
+	}
+	if status&bitsAdapterCtrlIEFull != 0 {
+		return fmt.Errorf("FAILURE: Ring buffer overflow; verify ring buffer size and I/O contention in the system")
+	}
+	return nil
 }
 
 // Reads, optionally prints, and returns the Avalon ST/MM adapter status word.

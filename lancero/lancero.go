@@ -48,3 +48,53 @@ func (lan *Lancero) Close() {
 		lan.device.Close()
 	}
 }
+
+// StartAdapter starts the ring buffer adapter, waiting up to waitSeconds sec for it to work.
+func (lan *Lancero) StartAdapter(waitSeconds int) error {
+	return lan.adapter.start(waitSeconds)
+}
+
+// StopAdapter stops the ring buffer adapter.
+func (lan *Lancero) StopAdapter() error {
+	return lan.adapter.stop()
+}
+
+// CollectorConfigure configures the data serialization component.
+func (lan *Lancero) CollectorConfigure(linePeriod, dataDelay int, channelMask uint64,
+	frameLength int) error {
+	lp := uint32(linePeriod)
+	dd := uint32(dataDelay)
+	cm := uint32(channelMask)
+	fl := uint32(frameLength)
+	return lan.collector.configure(lp, dd, cm, fl)
+}
+
+// StartCollector starts the data serializer.
+func (lan *Lancero) StartCollector(simulate bool) error {
+	return lan.collector.start(simulate)
+}
+
+// StopCollector stops the data serializer.
+func (lan *Lancero) StopCollector() error {
+	return lan.collector.stop()
+}
+
+// Wait blocks until there is data in the ring buffer adapter.
+func (lan *Lancero) Wait() error {
+	return lan.adapter.wait()
+}
+
+// AvailableBuffers returns the ring buffer segment(s) now ready for reading.
+func (lan *Lancero) AvailableBuffers() (buffers [][]byte, totalBytes int, err error) {
+	return lan.adapter.availableBuffers()
+}
+
+// ReleaseBytes instructed the ring buffer adapter to release nBytes bytes for over-writing.
+func (lan *Lancero) ReleaseBytes(nBytes int) error {
+	return lan.adapter.releaseBytes(uint32(nBytes))
+}
+
+// InspectAdapter prints adapter status info and returns the status word.
+func (lan *Lancero) InspectAdapter() uint32 {
+	return lan.adapter.inspect()
+}
