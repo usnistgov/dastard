@@ -38,7 +38,13 @@ func openLanceroDevice(devnum int) (dev *lanceroDevice, err error) {
 	dev = new(lanceroDevice)
 	dev.verbosity = 3
 
+	// Convert device component name to a devfs path. If devnum is negative, omit
+	// it (for compatibility with older driver versions). Otherwise, append it (for
+	// compatibility with the driver that supports multiple PCIe cards per computer).
 	fname := func(name string) string {
+		if devnum < 0 {
+			return fmt.Sprintf("/dev/lancero_%s", name)
+		}
 		return fmt.Sprintf("/dev/lancero_%s%d", name, devnum)
 	}
 

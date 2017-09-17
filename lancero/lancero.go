@@ -6,9 +6,6 @@
 //
 package lancero
 
-import (
-)
-
 // Notes:
 // Want 4 objects:
 // Lancero (high-level, exported). This isn't in the C++ version.
@@ -45,7 +42,9 @@ func NewLancero(devnum int) (*Lancero, error) {
 	return lan, nil
 }
 
-
+// Close the open file descriptors for this lancero device.
 func (lan *Lancero) Close() {
-	lan.device.Close()
+	if lan.device != nil {
+		lan.device.Close()
+	}
 }
