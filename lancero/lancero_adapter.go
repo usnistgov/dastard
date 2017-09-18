@@ -1,4 +1,5 @@
 package lancero
+
 //
 // #include <stdlib.h>
 // #include <stdio.h>
@@ -132,7 +133,7 @@ func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err erro
 	if a.writeIndex > a.readIndex {
 		// There's only one continuous region in the buffer, not crossing the ring boundary
 		// buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
-		length := C.int(a.writeIndex-a.readIndex)
+		length := C.int(a.writeIndex - a.readIndex)
 		buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
 		totalBytes = len(buffers[0])
 		return

@@ -16,7 +16,7 @@ type acquireOptions struct {
 	length, verbosity int
 	threshold         int
 	nSamples          int
-	mask              uint64
+	mask              uint32
 	output            string
 	simulate          bool
 }
@@ -24,16 +24,18 @@ type acquireOptions struct {
 var opt acquireOptions
 
 func parseOptions() error {
+	imask := 0
 	flag.IntVar(&opt.period, "p", 32, "line sync period, in clock cycles")
 	flag.IntVar(&opt.delay, "d", 0, "data delay, in clock cycles")
 	flag.IntVar(&opt.length, "l", 32, "frame length")
 	flag.IntVar(&opt.verbosity, "v", 0, "verbosity level")
 	flag.IntVar(&opt.threshold, "t", 1024, "threshold (in frames), fill level interrupt")
 	flag.IntVar(&opt.nSamples, "n", 0, "number of samples to acquire (<=0 means run indenfinitely)")
-	flag.Uint64Var(&opt.mask, "m", 0xffff, "channel mask for each of 16 channels")
+	flag.IntVar(&imask, "m", 0xffff, "channel mask for each of 16 channels")
 	flag.StringVar(&opt.output, "o", "", "output filename")
 	flag.BoolVar(&opt.simulate, "s", false, "simulate data (if false, read from fibers)")
 	flag.Parse()
+	opt.mask = uint32(imask)
 
 	switch {
 	case opt.period < 16:
@@ -98,7 +100,7 @@ func (v *verifier) checkWord(data uint32) bool {
 	}
 	if errval != v.error {
 		ok = false
-		fmt.Printf("verify(): Saw error val %d, expected %d.\n", errval, v.error)
+		fmt.Printf("verify(): Saw error val 0x%x, expected 0x%x.\n", errval, v.error)
 	}
 
 	// Update: 1 column each time; 1 row each time column wraps; and 1 "error" value
@@ -128,6 +130,9 @@ func (v *verifier) checkBuffer(b []byte) bool {
 }
 
 func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
+	var NROWS uint32 = 32
+	verifier := newVerifier(NROWS, opt.mask)
+
 	// Store output?
 	var fd *os.File
 	output := len(opt.output) > 0
@@ -145,6 +150,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 	// Start the adapter
 	err = lan.StartAdapter(2)
 	if err != nil {
+		fmt.Println("Could not start adapter: ", err)
 		return
 	}
 	defer lan.StopAdapter()
@@ -201,7 +207,14 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			}
 
 			// Verify the simulated data, if simulated.
-
+			if opt.simulate {
+				for _, b := range buffers {
+					if ok := verifier.checkBuffer(b); !ok {
+						fmt.Println("Buffer did not verify.")
+						return
+					}
+				}
+			}
 			lan.ReleaseBytes(totalBytes)
 		}
 	}

@@ -174,7 +174,8 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 	n := uint32(csize)
 	// n, err := dev.FileSGDMA.Read(buffer)
 	// if err != nil {
-	// 	return err
+    //   fmt.Printf("Error reading SGDMA buffer %v of length %v\n", unsafe.Pointer(&buffer), len(buffer))
+	//   return err
 	// }
 	if n < bufferLength {
 		return fmt.Errorf("cyclicStart(): could not start SGDMA")
@@ -294,6 +295,7 @@ func (dev *lanceroDevice) cyclicStop() error {
 		if verbose {
 			fmt.Printf("cyclicStop(): Now polling write engine, waiting for BUSY to clear\n")
 		}
+		time.Sleep(20*time.Millisecond)
 	}
 	if verbose {
 		fmt.Printf("cyclicStop(): Write engine no longer BUSY.\n")
