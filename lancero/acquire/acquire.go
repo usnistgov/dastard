@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"os"
@@ -48,6 +50,81 @@ func parseOptions() error {
 		fmt.Printf("WARNING: Threshold (%d) is recommended to be at least 1024", opt.threshold)
 	}
 	return nil
+}
+
+type verifier struct {
+	nRows, nColumns    uint32
+	row, column, error uint32
+	columns            []uint32
+	mask               uint32
+}
+
+func newVerifier(frameLength uint32, mask uint32) *verifier {
+	v := &verifier{nRows: frameLength, mask: mask}
+	for i := 0; i < 16; i++ {
+		if mask&1 != 0 {
+			v.columns = append(v.columns, uint32(i))
+			v.nColumns++
+		}
+		mask = mask >> 1
+	}
+	return v
+}
+
+func (v *verifier) checkWord(data uint32) bool {
+	ok := true
+	channel := (data >> 28) & 0xf
+	row := (data >> 18) & 0x3ff
+	overRange := data&0x20000 != 0
+	frame := data&0x10000 != 0
+	errval := data & 0xffff
+
+	frameExpected := (v.row == 0)
+	if frame != frameExpected {
+		ok = false
+		fmt.Printf("verify(): The frame bit was %v, expected %v.\n", frame, frameExpected)
+	}
+	if overRange {
+		ok = false
+		fmt.Println("verify(): The over-range bit was 1, expected 0.")
+	}
+	if channel != v.columns[v.column] {
+		ok = false
+		fmt.Printf("verify(): Saw channel %d, expected %d.\n", channel, v.columns[v.column])
+	}
+	if row != v.row {
+		ok = false
+		fmt.Printf("verify(): Saw row %d, expected %d.\n", row, v.row)
+	}
+	if errval != v.error {
+		ok = false
+		fmt.Printf("verify(): Saw error val %d, expected %d.\n", errval, v.error)
+	}
+
+	// Update: 1 column each time; 1 row each time column wraps; and 1 "error" value
+	// each time that the row wraps (i.e., per frame).
+	v.column = (v.column + 1) % v.nColumns
+	if v.column == 0 {
+		v.row = (v.row + 1) % v.nRows
+		if v.row == 0 {
+			v.error = (v.error + 1) % 0x8000
+		}
+	}
+	return ok
+}
+
+func (v *verifier) checkBuffer(b []byte) bool {
+	ok := true
+	buf := bytes.NewReader(b)
+	var val uint32
+	for {
+		err := binary.Read(buf, binary.LittleEndian, &val)
+		if err != nil {
+			break
+		}
+		ok = v.checkWord(val) && ok
+	}
+	return ok
 }
 
 func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
