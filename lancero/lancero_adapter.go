@@ -1,6 +1,20 @@
 package lancero
+//
+// #include <stdlib.h>
+// #include <stdio.h>
+// #include <string.h>
+//
+// char* posixMemAlign(size_t alignment, size_t size) {
+//     void *vout;
+//     posix_memalign(&vout, alignment, size);
+//     return (char *)vout;
+// }
+import "C"
 
-import "fmt"
+import (
+	"fmt"
+	"unsafe"
+)
 
 const (
 	adapterIDV  int64 = 0x00 // Adapter ID and version numbers
@@ -25,7 +39,7 @@ const (
 // The DMA transfers take place into a fixed-length buffer of size
 type adapter struct {
 	device         *lanceroDevice // Object managing open file handles to the device driver.
-	buffer         []byte         // Acquisition buffer: written by FPGA SGDMA, read by CPU
+	buffer         *C.char        // Acquisition buffer: written by FPGA SGDMA, read by CPU
 	length         uint32         // Length (bytes) of the acquisition buffer.
 	readIndex      uint32         // Read index at which the CPU should start next read
 	writeIndex     uint32         // Write index of the FPGA, last time we asked the FPGA
@@ -61,6 +75,12 @@ func (a *adapter) releaseBytes(bytesRead uint32) error {
 	return nil
 }
 
+func (a *adapter) freeBuffer() {
+	if a.buffer != nil {
+		C.free(unsafe.Pointer(a.buffer))
+	}
+}
+
 // Reads, optionally prints, and returns the Avalon ST/MM adapter status word.
 func (a *adapter) status() (uint32, error) {
 	status, err := a.device.readRegister(adapterSTA)
@@ -68,13 +88,6 @@ func (a *adapter) status() (uint32, error) {
 		fmt.Printf("adapter status = 0x%08x\n", status)
 	}
 	return status, err
-}
-
-func memalign(length, alignment int) []byte {
-	paddedLength := length + alignment
-	unalignedBuf := make([]byte, paddedLength)
-	// TODO: What to do to align here?
-	return unalignedBuf
 }
 
 func (a *adapter) allocateRingBuffer(length, threshold int) error {
@@ -93,7 +106,8 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 
 	a.length = uint32(length)
 	a.thresholdLevel = uint32(threshold)
-	a.buffer = memalign(length, 4096)
+	const PAGEALIGN C.size_t = 4096
+	a.buffer = C.posixMemAlign(PAGEALIGN, C.size_t(length))
 
 	a.stop()
 	if a.verbosity >= 3 {
@@ -117,13 +131,18 @@ func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err erro
 	// Handle the easier, single-buffer case first.
 	if a.writeIndex > a.readIndex {
 		// There's only one continuous region in the buffer, not crossing the ring boundary
-		buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
+		// buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
+		length := C.int(a.writeIndex-a.readIndex)
+		buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
 		totalBytes = len(buffers[0])
 		return
 	}
 
 	// The available data cross the ring boundary, so return 2 separate buffers.
-	buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
+	// buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
+	length := C.int(a.length - a.readIndex)
+	buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
+	buffers = append(buffers, C.GoBytes(unsafe.Pointer(a.buffer), C.int(a.writeIndex)))
 	totalBytes = len(buffers[0]) + len(buffers[1])
 	return
 }
@@ -175,7 +194,7 @@ func (a *adapter) start(waitSeconds int) error {
 	if a.verbosity >= 3 {
 		fmt.Printf("start(): lancero_cyclic_start(length = %d).\n", a.length)
 	}
-	return a.device.cyclicStart(a.buffer, waitSeconds)
+	return a.device.cyclicStart(a.buffer, a.length, waitSeconds)
 }
 
 func (a *adapter) stop() error {

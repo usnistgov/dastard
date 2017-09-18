@@ -214,12 +214,13 @@ func main() {
 		return
 	}
 
-	fmt.Println(opt)
 	lan, err := lancero.NewLancero(0)
 	if err != nil {
 		fmt.Println("ERROR: ", err)
 		return
 	}
+	defer lan.Close()
+
 	bytesRead, _ := acquire(lan)
 	fmt.Printf("Read %d bytes.\n", bytesRead)
 }

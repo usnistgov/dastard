@@ -42,10 +42,13 @@ func NewLancero(devnum int) (*Lancero, error) {
 	return lan, nil
 }
 
-// Close the open file descriptors for this lancero device.
+// Release all resources used by this lancero device.
 func (lan *Lancero) Close() {
 	if lan.device != nil {
 		lan.device.Close()
+	}
+	if lan.adapter != nil {
+        lan.adapter.freeBuffer()
 	}
 }
 

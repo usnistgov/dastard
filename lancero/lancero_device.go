@@ -4,12 +4,20 @@
 //
 package lancero
 
+// #include <unistd.h>
+//
+// ssize_t readWrap(int fd, void *buf, size_t nbyte) {
+//     return read(fd, buf, nbyte);
+// }
+import "C"
+
 import (
 	"encoding/binary"
 	"fmt"
 	"os"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 // lanceroDevice is the interface to a Lancero SGDMA engine on an Arria-II dev card.
@@ -158,13 +166,17 @@ func (dev *lanceroDevice) writeControl(offset int64, value uint32) error {
 // Start a cyclic SGDMA. Wait for the engine to be running as the
 // data sources do not support back pressure; We make sure the SGDMA engines
 // are running and accepting data before enabling the data inputs.
-func (dev *lanceroDevice) cyclicStart(buffer []byte, waitSeconds int) error {
+func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitSeconds int) error {
 	verbose := dev.verbosity >= 3
-	n, err := dev.FileSGDMA.Read(buffer)
-	if err != nil {
-		return err
-	}
-	if n < len(buffer) {
+	// Calling a C read operation on the SGDMA file descriptor is (apparently) how
+	// we indicate the address of our DMA ring buffer to the lancero device driver.
+	csize := C.readWrap(C.int(dev.FileSGDMA.Fd()), unsafe.Pointer(buffer), C.size_t(bufferLength))
+	n := uint32(csize)
+	// n, err := dev.FileSGDMA.Read(buffer)
+	// if err != nil {
+	// 	return err
+	// }
+	if n < bufferLength {
 		return fmt.Errorf("cyclicStart(): could not start SGDMA")
 	}
 	value, err := dev.readControl(0x200)
