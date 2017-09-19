@@ -47,6 +47,7 @@ type adapter struct {
 	writeIndex     uint32         // Write index of the FPGA, last time we asked the FPGA
 	thresholdLevel uint32         // Threshold level of the adapter, in bytes.
 	verbosity      int            // log level
+	minBufSize     uint32         // Do not return 2 buffers if 2nd is smaller than this
 	lastThresh     time.Time      // When the previous threshold wait ended
 }
 
@@ -115,6 +116,7 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 
 	a.length = uint32(length)
 	a.thresholdLevel = uint32(threshold)
+	a.minBufSize = a.thresholdLevel / 2
 	const PAGEALIGN C.size_t = 4096
 	a.buffer = C.posixMemAlign(PAGEALIGN, C.size_t(length))
 
@@ -153,8 +155,13 @@ func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err erro
 	// buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
 	length1 := C.int(a.length - a.readIndex)
 	buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1))
-	buffers = append(buffers, C.GoBytes(unsafe.Pointer(a.buffer), C.int(a.writeIndex)))
-	totalBytes = len(buffers[0]) + len(buffers[1])
+	totalBytes = len(buffers[0])
+
+	// We don't want this second buffer now, if it's too short to be worth handling.
+	if a.writeIndex >= a.minBufSize {
+		buffers = append(buffers, C.GoBytes(unsafe.Pointer(a.buffer), C.int(a.writeIndex)))
+		totalBytes += len(buffers[1])
+	}
 	return
 }
 
