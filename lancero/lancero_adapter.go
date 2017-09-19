@@ -14,8 +14,8 @@ import "C"
 
 import (
 	"fmt"
-	"unsafe"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -137,19 +137,21 @@ func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err erro
 	}
 
 	// Handle the easier, single-buffer case first.
-	if a.writeIndex > a.readIndex {
+	if a.writeIndex >= a.readIndex {
 		// There's only one continuous region in the buffer, not crossing the ring boundary
 		// buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
-		length := C.int(a.writeIndex - a.readIndex)
-		buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
-		totalBytes = len(buffers[0])
+		length := C.int(a.writeIndex - a.readIndex) // can equal 0, b/f collector gets going
+		if length > 0 {
+			buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
+			totalBytes = len(buffers[0])
+		}
 		return
 	}
 
 	// The available data cross the ring boundary, so return 2 separate buffers.
 	// buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
-	length := C.int(a.length - a.readIndex)
-	buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
+	length1 := C.int(a.length - a.readIndex)
+	buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1))
 	buffers = append(buffers, C.GoBytes(unsafe.Pointer(a.buffer), C.int(a.writeIndex)))
 	totalBytes = len(buffers[0]) + len(buffers[1])
 	return
