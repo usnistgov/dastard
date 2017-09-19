@@ -59,6 +59,7 @@ type verifier struct {
 	row, column, error uint32
 	columns            []uint32
 	mask               uint32
+	messages           int
 }
 
 func newVerifier(frameLength uint32, mask uint32) *verifier {
@@ -74,7 +75,6 @@ func newVerifier(frameLength uint32, mask uint32) *verifier {
 }
 
 func (v *verifier) checkWord(data uint32) bool {
-	ok := true
 	channel := (data >> 28) & 0xf
 	row := (data >> 18) & 0x3ff
 	overRange := data&0x20000 != 0
@@ -87,27 +87,30 @@ func (v *verifier) checkWord(data uint32) bool {
 	if frameExpected {
 		expected |= 0x10000
 	}
-	fmt.Printf("verify(): saw 0x%08x, expected 0x%08x\n", data, expected)
+	if v.messages < 500 {
+		fmt.Printf("verify(): saw 0x%08x, expected 0x%08x\n", data, expected)
+		v.messages++
+	}
 
-	if frame != frameExpected {
-		ok = false
-		fmt.Printf("verify(): The frame bit was %v, expected %v.\n", frame, frameExpected)
-	}
-	if overRange {
-		ok = false
-		fmt.Println("verify(): The over-range bit was 1, expected 0.")
-	}
-	if channel != v.columns[v.column] {
-		ok = false
-		fmt.Printf("verify(): Saw channel %d, expected %d.\n", channel, v.columns[v.column])
-	}
-	if row != v.row {
-		ok = false
-		fmt.Printf("verify(): Saw row %d, expected %d.\n", row, v.row)
-	}
-	if errval != v.error {
-		ok = false
-		fmt.Printf("verify(): Saw error val 0x%x, expected 0x%x.\n", errval, v.error)
+	ok := (frame == frameExpected) && !overRange &&
+		(channel == v.columns[v.column]) && (row == v.row) && (errval == v.error)
+	if v.messages < 1000 {
+		if frame != frameExpected {
+			fmt.Printf("verify(): The frame bit was %v, expected %v.\n", frame, frameExpected)
+		}
+		if overRange {
+			fmt.Println("verify(): The over-range bit was 1, expected 0.")
+		}
+		if channel != v.columns[v.column] {
+			fmt.Printf("verify(): Saw channel %d, expected %d.\n", channel, v.columns[v.column])
+		}
+		if row != v.row {
+			fmt.Printf("verify(): Saw row %d, expected %d.\n", row, v.row)
+		}
+		if errval != v.error {
+			fmt.Printf("verify(): Saw error val 0x%x, expected 0x%x.\n", errval, v.error)
+		}
+		v.messages++
 	}
 
 	// Update: 1 column each time; 1 row each time column wraps; and 1 "error" value
@@ -137,8 +140,8 @@ func (v *verifier) checkBuffer(b []byte) bool {
 }
 
 func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
-	// var NROWS uint32 = 32
-	// verifier := newVerifier(NROWS, opt.mask)
+	var NROWS uint32 = 32
+	verifier := newVerifier(NROWS, opt.mask)
 
 	// Store output?
 	var fd *os.File
@@ -193,7 +196,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			}
 			fmt.Printf("Found %d buffers with %d total bytes", len(buffers), totalBytes)
 			if len(buffers) > 1 {
-				for _,b := range buffers {
+				for _, b := range buffers {
 					fmt.Printf(" size %d,", len(b))
 				}
 			}
@@ -223,14 +226,14 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			}
 
 			// Verify the simulated data, if simulated.
-			// if opt.simulate {
-			// 	for _, b := range buffers {
-			// 		if ok := verifier.checkBuffer(b); !ok {
-			// 			fmt.Println("Buffer did not verify.")
-			// 			return
-			// 		}
-			// 	}
-			// }
+			if opt.simulate {
+				for _, b := range buffers {
+					if ok := verifier.checkBuffer(b); !ok {
+						fmt.Println("Buffer did not verify.")
+						return
+					}
+				}
+			}
 			lan.ReleaseBytes(totalBytes)
 		}
 	}
