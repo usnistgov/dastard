@@ -19,12 +19,14 @@ type acquireOptions struct {
 	mask              uint32
 	output            string
 	simulate          bool
+	verify            bool
 }
 
 var opt acquireOptions
 
 func parseOptions() error {
 	imask := 0
+	verify := true
 	flag.IntVar(&opt.period, "p", 32, "line sync period, in clock cycles")
 	flag.IntVar(&opt.delay, "d", 0, "data delay, in clock cycles")
 	flag.IntVar(&opt.length, "l", 32, "frame length")
@@ -34,8 +36,10 @@ func parseOptions() error {
 	flag.IntVar(&imask, "m", 0xffff, "channel mask for each of 16 channels")
 	flag.StringVar(&opt.output, "o", "", "output filename")
 	flag.BoolVar(&opt.simulate, "s", false, "simulate data (if false, read from fibers)")
+	flag.BoolVar(&verify, "verify", true, "verify simulated data (set false if using many channels)")
 	flag.Parse()
 	opt.mask = uint32(imask)
+	opt.verify = opt.simulate && verify
 
 	switch {
 	case opt.period < 16:
@@ -226,7 +230,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			}
 
 			// Verify the simulated data, if simulated.
-			if opt.simulate {
+			if opt.simulate && opt.verify {
 				for _, b := range buffers {
 					if ok := verifier.checkBuffer(b); !ok {
 						fmt.Println("Buffer did not verify.")
