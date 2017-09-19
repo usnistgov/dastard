@@ -210,16 +210,17 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			fmt.Println()
 			lan.InspectAdapter()
 
-			bytesRead += totalBytes
-			if opt.nSamples > 0 && opt.nSamples <= bytesRead/4 {
-				return
-			}
-
 			if saveData {
+				bytesWritten := bytesRead
 				for _, b := range buffers {
 					if len(b) > 0 {
 						var n int
-						n, err = fd.Write(b)
+						if len(b)+bytesWritten <= opt.nSamples*4 {
+							n, err = fd.Write(b)
+						} else {
+							nwrite := opt.nSamples*4 - bytesWritten
+							n, err = fd.Write(b[:nwrite])
+						}
 						if err != nil {
 							return
 						}
@@ -229,6 +230,12 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 						}
 					}
 				}
+			}
+
+			// Quit when read enough samples.
+			bytesRead += totalBytes
+			if opt.nSamples > 0 && opt.nSamples <= bytesRead/4 {
+				return
 			}
 
 			// Verify the simulated data, if simulated.
