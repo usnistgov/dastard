@@ -47,6 +47,7 @@ type adapter struct {
 	writeIndex     uint32         // Write index of the FPGA, last time we asked the FPGA
 	thresholdLevel uint32         // Threshold level of the adapter, in bytes.
 	verbosity      int            // log level
+	lastThresh     time.Time      // When the previous threshold wait ended
 }
 
 // Returns from the device the number of bytes available for reading.
@@ -171,7 +172,7 @@ func (a *adapter) inspect() uint32 {
 	fmt.Printf("writeIndex = 0x%08x, readIndex = 0x%08x  available = 0x%08x\n",
 		writeIndex, readIndex, available)
 	fmt.Printf("max filled = 0x%08x, threshold = 0x%08x\n", fill, threshold)
-	fmt.Printf("status = 0x%08x", status)
+	fmt.Printf("inspect status = 0x%08x (these bits signify: ", status)
 	if status&bitsAdapterCtrlIEFlush != 0 {
 		fmt.Printf(" ALARM")
 	}
@@ -184,7 +185,10 @@ func (a *adapter) inspect() uint32 {
 	if status&bitsAdapterCtrlRun != 0 {
 		fmt.Printf(" RUN")
 	}
-	fmt.Printf("\n")
+	if status == 0 {
+		fmt.Printf(" not running")
+	}
+	fmt.Printf(")\n")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -204,7 +208,7 @@ func (a *adapter) start(waitSeconds int) error {
 	if a.verbosity >= 3 {
 		fmt.Printf("start(): lancero_cyclic_start(length = %d).\n", a.length)
 	}
-	// defer a.releaseBytes(a.length)
+	a.lastThresh = time.Now()
 	return a.device.cyclicStart(a.buffer, a.length, waitSeconds)
 }
 
@@ -269,8 +273,12 @@ func (a *adapter) wait() error {
 	// block until an interrupt event occurs.
 	_, err = a.device.readEvents()
 	if a.verbosity >= 3 {
-		elapsed := time.Now().Sub(start)
-		fmt.Printf("adapter.wait(): Waited for %v.\n", elapsed)
+		now := time.Now()
+		waitTime := now.Sub(start)
+		sinceLast := now.Sub(a.lastThresh)
+		a.lastThresh = now
+		fmt.Printf("adapter.wait(): Waited for %v (%v since last thresh).\n",
+			waitTime, sinceLast)
 	}
 	return err
 }

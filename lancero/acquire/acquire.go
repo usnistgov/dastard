@@ -91,7 +91,7 @@ func (v *verifier) checkWord(data uint32) bool {
 	if frameExpected {
 		expected |= 0x10000
 	}
-	if v.messages < 500 {
+	if v.messages < 0 {
 		fmt.Printf("verify(): saw 0x%08x, expected 0x%08x\n", data, expected)
 		v.messages++
 	}
@@ -117,7 +117,8 @@ func (v *verifier) checkWord(data uint32) bool {
 		v.messages++
 	}
 
-	// Update: 1 column each time; 1 row each time column wraps; and 1 "error" value
+	// Update. The simulator firmware proceeds like this:
+	// 1 column per value; 1 row each time column wraps; and 1 "error" value
 	// each time that the row wraps (i.e., per frame).
 	v.column = (v.column + 1) % v.nColumns
 	if v.column == 0 {
@@ -149,8 +150,8 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 
 	// Store output?
 	var fd *os.File
-	output := len(opt.output) > 0
-	if output {
+	saveData := len(opt.output) > 0
+	if saveData {
 		fd, err = os.Create(opt.output)
 		if err != nil {
 			return
@@ -159,7 +160,6 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 	} else {
 		fd = nil
 	}
-	fmt.Println(fd)
 
 	// Start the adapter
 	err = lan.StartAdapter(2)
@@ -183,8 +183,11 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 
 	var buffers [][]byte
 	var totalBytes int
+
+	// Trap interrupts so we can cleanly exit the program
 	interruptCatcher := make(chan os.Signal, 1)
 	signal.Notify(interruptCatcher, os.Interrupt)
+
 	for {
 		select {
 		case <-interruptCatcher:
@@ -206,14 +209,13 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			}
 			fmt.Println()
 			lan.InspectAdapter()
-			fmt.Println()
 
 			bytesRead += totalBytes
 			if opt.nSamples > 0 && opt.nSamples <= bytesRead/4 {
 				return
 			}
 
-			if output {
+			if saveData {
 				for _, b := range buffers {
 					if len(b) > 0 {
 						var n int
@@ -239,6 +241,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 				}
 			}
 			lan.ReleaseBytes(totalBytes)
+			fmt.Println()
 		}
 	}
 }
