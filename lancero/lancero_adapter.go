@@ -7,7 +7,7 @@ package lancero
 //
 // char* posixMemAlign(size_t alignment, size_t size) {
 //     void *vout;
-//     posix_memalign(&vout, alignment, size);
+//    ssize_t _ = posix_memalign(&vout, alignment, size);
 //     return (char *)vout;
 // }
 import "C"
@@ -15,6 +15,7 @@ import "C"
 import (
 	"fmt"
 	"unsafe"
+	"time"
 )
 
 const (
@@ -61,8 +62,14 @@ func (a *adapter) idVersion() (uint32, error) {
 // Notify the FPGA that data have been read from the ring buffer and can now be overwritten.
 // The bytesRead gives how many bytes should now be released.
 func (a *adapter) releaseBytes(bytesRead uint32) error {
+	if a.verbosity >= 3 {
+		fmt.Printf("adapter.releaseBytes(%d): moving read index from 0x%08x to ", bytesRead, a.readIndex)
+	}
 	// Update the read index internally, then publish it to the firmware.
 	a.readIndex = (a.readIndex + bytesRead) % a.length
+	if a.verbosity >= 3 {
+		fmt.Printf("0x%08x\n", a.readIndex)
+	}
 	if err := a.device.writeRegister(adapterRBRI, a.readIndex); err != nil {
 		return err
 	}
@@ -195,6 +202,7 @@ func (a *adapter) start(waitSeconds int) error {
 	if a.verbosity >= 3 {
 		fmt.Printf("start(): lancero_cyclic_start(length = %d).\n", a.length)
 	}
+	// defer a.releaseBytes(a.length)
 	return a.device.cyclicStart(a.buffer, a.length, waitSeconds)
 }
 
@@ -254,8 +262,13 @@ func (a *adapter) wait() error {
 	if a.verbosity >= 3 {
 		fmt.Println("adapter.wait(): Waiting for threshold event.")
 	}
+	start := time.Now()
 
 	// block until an interrupt event occurs.
 	_, err = a.device.readEvents()
+	if a.verbosity >= 3 {
+		elapsed := time.Now().Sub(start)
+		fmt.Printf("adapter.wait(): Waited for %v.\n", elapsed)
+	}
 	return err
 }

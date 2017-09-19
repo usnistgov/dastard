@@ -34,7 +34,7 @@ func NewLancero(devnum int) (*Lancero, error) {
 	lan.collector = &collector{device: dev, simulated: false}
 	lan.adapter = &adapter{device: dev}
 	lan.adapter.verbosity = 3
-	lan.adapter.allocateRingBuffer(2<<25, 2<<24)
+	lan.adapter.allocateRingBuffer(1<<24, 1<<23)
 
 	lan.adapter.status()
 	lan.adapter.inspect()
@@ -63,7 +63,7 @@ func (lan *Lancero) StopAdapter() error {
 }
 
 // CollectorConfigure configures the data serialization component.
-func (lan *Lancero) CollectorConfigure(linePeriod, dataDelay int, channelMask uint64,
+func (lan *Lancero) CollectorConfigure(linePeriod, dataDelay int, channelMask uint32,
 	frameLength int) error {
 	lp := uint32(linePeriod)
 	dd := uint32(dataDelay)

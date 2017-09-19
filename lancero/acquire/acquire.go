@@ -81,7 +81,14 @@ func (v *verifier) checkWord(data uint32) bool {
 	frame := data&0x10000 != 0
 	errval := data & 0xffff
 
+	expected := (v.columns[v.column] << 28) | (v.row << 18) | (v.error)
+
 	frameExpected := (v.row == 0)
+	if frameExpected {
+		expected |= 0x10000
+	}
+	fmt.Printf("verify(): saw 0x%08x, expected 0x%08x\n", data, expected)
+
 	if frame != frameExpected {
 		ok = false
 		fmt.Printf("verify(): The frame bit was %v, expected %v.\n", frame, frameExpected)
@@ -130,8 +137,8 @@ func (v *verifier) checkBuffer(b []byte) bool {
 }
 
 func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
-	var NROWS uint32 = 32
-	verifier := newVerifier(NROWS, opt.mask)
+	// var NROWS uint32 = 32
+	// verifier := newVerifier(NROWS, opt.mask)
 
 	// Store output?
 	var fd *os.File
@@ -184,7 +191,16 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			if err != nil {
 				return
 			}
-			fmt.Printf("Found %d buffers with %d total bytes\n", len(buffers), totalBytes)
+			fmt.Printf("Found %d buffers with %d total bytes", len(buffers), totalBytes)
+			if len(buffers) > 1 {
+				for _,b := range buffers {
+					fmt.Printf(" size %d,", len(b))
+				}
+			}
+			fmt.Println()
+			lan.InspectAdapter()
+			fmt.Println()
+
 			bytesRead += totalBytes
 			if opt.nSamples > 0 && opt.nSamples <= bytesRead/4 {
 				return
@@ -207,14 +223,14 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			}
 
 			// Verify the simulated data, if simulated.
-			if opt.simulate {
-				for _, b := range buffers {
-					if ok := verifier.checkBuffer(b); !ok {
-						fmt.Println("Buffer did not verify.")
-						return
-					}
-				}
-			}
+			// if opt.simulate {
+			// 	for _, b := range buffers {
+			// 		if ok := verifier.checkBuffer(b); !ok {
+			// 			fmt.Println("Buffer did not verify.")
+			// 			return
+			// 		}
+			// 	}
+			// }
 			lan.ReleaseBytes(totalBytes)
 		}
 	}
