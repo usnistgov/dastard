@@ -1,4 +1,4 @@
-// Package lancero provides an interface to all Lancero SGDMA
+// Package lancero provides an interface to all Lancero scatter-gather DMA
 // character devices, read/write from/to registers of SOPC slaves, wait for
 // SOPC component interrupt events and handle the cyclic mode of SGDMA.
 // Exports object Lancero for general use. Internally, that object works with
@@ -43,7 +43,7 @@ func NewLancero(devnum int) (*Lancero, error) {
 	return lan, nil
 }
 
-// Release all resources used by this lancero device.
+// Close releases all resources used by this lancero device.
 func (lan *Lancero) Close() {
 	if lan.device != nil {
 		lan.device.Close()
