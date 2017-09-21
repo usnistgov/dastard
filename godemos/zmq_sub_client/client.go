@@ -14,7 +14,7 @@ import (
 func main() {
 	pubURL := "tcp://localhost:8000"
 	filter := "<"
-	sub, err := czmq.NewSub(pubURL, "subscribe to almost nothing, except this")
+	sub, err := czmq.NewSub(pubURL, "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func main() {
 	for {
 		msg, _, err := sub.RecvFrame()
 		if err == nil {
-			fmt.Printf("message: %s", msg)
+			fmt.Printf("message: %s\n", msg)
 		} else {
 			fmt.Printf("%v\n", err)
 			break

@@ -26,13 +26,16 @@ func main() {
 	}
 	//!+
 	for {
-		msg := fmt.Sprint(time.Now().Format("<15:04:05>\n"))
+		msg := fmt.Sprint(time.Now().Format("<15:04:05>"))
 		_, err := io.WriteString(pub, msg)
 		if err != nil {
 			return // e.g., client disconnected
 		}
-		msg = fmt.Sprint(time.Now().Format("(15:04:05)\n"))
+		msg = fmt.Sprint(time.Now().Format("(15:04:05)"))
 		_, err = io.WriteString(pub, msg)
+		if err != nil {
+			return // e.g., client disconnected
+		}
 		time.Sleep(1 * time.Second)
 	}
 	//!-
