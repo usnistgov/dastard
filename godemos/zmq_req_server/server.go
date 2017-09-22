@@ -33,6 +33,16 @@ func (s *dataProducer) run() {
 	}
 }
 
+func (s *dataProducer) handleCommand(cmd Command) {
+	if cmd.ChanNum == s.channum && cmd.Command == "set" {
+		old := s.fact
+		s.fact = cmd.Value
+		fmt.Printf("Setting channel %d 'fact' from %d to %d\n", s.channum, old, s.fact)
+		msg := fmt.Sprintf("data chan %d: fact set to %d", s.channum, s.fact)
+		s.msgOut <- msg
+	}
+}
+
 func publisher(pub *czmq.Sock, outChan <-chan string, abort <-chan struct{}) {
 	for {
 		select {
@@ -55,20 +65,23 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer pub.Destroy()
 
 	commands, err := czmq.NewRep("tcp://*:8001")
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer commands.Destroy()
 
 	toPublish := make(chan string)
 	abort := make(chan struct{})
 
-	var servers []dataProducer
+	var servers []*dataProducer
 	for i := 0; i < nchan; i++ {
-		s := dataProducer{channum: i, msgOut: toPublish, abort: abort}
+		s := &dataProducer{channum: i, msgOut: toPublish, abort: abort}
 		servers = append(servers, s)
 		go s.run()
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	// Publish any messages that come from the dataProducers.
@@ -86,6 +99,13 @@ func main() {
 		fmt.Printf("Message received with %d frames:\n", len(frames))
 		for i, frame := range frames {
 			fmt.Printf(" frame %d: %v\n", i, string(frame))
+		}
+
+		var cmd Command
+		cmd.Unmarshal(frames[0])
+		fmt.Printf("Received command: %v\n", cmd)
+		if cmd.Command != "" {
+			servers[cmd.ChanNum].handleCommand(cmd)
 		}
 
 		frame := []byte("this is my response")
