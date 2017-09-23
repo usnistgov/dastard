@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 )
 
 // Args holds the arguments to an operation
@@ -15,11 +16,15 @@ type Quotient struct {
 }
 
 // Arith is a type to serve arithmetic requests
-type Arith int
+type Arith struct {
+	ncalls int
+}
 
 // Multiply finds the product of the Args.
 func (t *Arith) Multiply(args *Args, reply *int) error {
 	*reply = args.A * args.B
+	t.ncalls++
+	fmt.Printf("%5d calls\n", t.ncalls)
 	return nil
 }
 
@@ -30,5 +35,7 @@ func (t *Arith) Divide(args *Args, quo *Quotient) error {
 	}
 	quo.Quo = args.A / args.B
 	quo.Rem = args.A % args.B
+	t.ncalls++
+	fmt.Printf("%5d calls\n", t.ncalls)
 	return nil
 }
