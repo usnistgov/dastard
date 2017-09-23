@@ -3,20 +3,27 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/rpc"
+	"net"
+	"net/rpc/jsonrpc"
 )
 
 func main() {
 	serverAddress := "localhost"
-	// client, err := rpc.DialHTTP("tcp", serverAddress+":4234")
-	client, err := rpc.DialHTTPPath("tcp", serverAddress+":4234", "/gorpc")
+
+	// One command to dial AND set up jsonrpc client:
+	//client, err := jsonrpc.Dial("tcp", serverAddress+":4234")
+
+	// Or dial first and then set up the jsonrpc client.
+	httpclient, err := net.Dial("tcp", serverAddress+":4234")
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
+	client := jsonrpc.NewClient(httpclient)
+
 	// Synchronous call
-	args := &Args{9, 17}
+	args := &Args{9, 107}
 	var reply int
-	err = client.Call("Arithmetic.Multiply", args, &reply)
+	err = client.Call("Arith.Multiply", args, &reply)
 	if err != nil {
 		log.Fatal("arith error:", err)
 	}
