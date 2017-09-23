@@ -88,6 +88,12 @@ func main() {
 	go publisher(pub, toPublish, abort)
 	defer func() { close(abort) }()
 
+	// For rpc
+	// modifier := new(ChannelModifier)
+	// modifier.servers = servers
+	// rpc.Register(modifier)
+	// rpcClient := rpc.NewClient()
+
 	// Now serve commands until a QUIT arrives
 	for {
 		// messages, j, err := commands.RecvFrame()
