@@ -23,16 +23,19 @@ func main() {
 	// Synchronous call
 	args := &Args{153, 13}
 	var reply int
-	err = client.Call("Arith.Multiply", args, &reply)
-	if err != nil {
-		log.Fatal("arith error:", err)
+	for b := 10; b < 20; b++ {
+		args.B = b
+		err = client.Call("Arith.Multiply", args, &reply)
+		if err != nil {
+			log.Print("Reply: ", reply)
+			log.Fatal("arith error 1:", err)
+		}
+		fmt.Printf("Arith: %d * %d = %d\n", args.A, args.B, reply)
 	}
-	fmt.Printf("Arith: %d * %d = %d\n", args.A, args.B, reply)
-
 	var replyQ Quotient
 	err = client.Call("Arith.Divide", args, &replyQ)
 	if err != nil {
-		log.Fatal("arith error:", err)
+		log.Fatal("arith error 2:", err)
 	}
-	fmt.Printf("Arith: %d / %d=%d (rem %d)\n", args.A, args.B, replyQ.Quo, replyQ.Rem)
+	fmt.Printf("Arith: %d / %d = %d (rem %d)\n", args.A, args.B, replyQ.Quo, replyQ.Rem)
 }
