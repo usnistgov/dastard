@@ -4,10 +4,18 @@ package ljh
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"strings"
 )
+
+// PulseRecord is the interface for individual pulse records
+type PulseRecord struct {
+	TimeCode int64
+	RowCount int64
+	Pulse    []uint16
+}
 
 // VersionCode enumerates the LJH file version numbers.
 type VersionCode int
@@ -32,6 +40,7 @@ type Reader struct {
 	recordLength int
 	headerLength int
 	file         *os.File
+	buffer       []byte
 }
 
 // OpenReader returns an active LJH file reader, or an error.
@@ -42,7 +51,6 @@ func OpenReader(fileName string) (r *Reader, err error) {
 	}
 
 	r = &Reader{file: f}
-	defer r.Close()
 	err = r.parseHeader()
 	if err != nil {
 		return
@@ -58,12 +66,12 @@ func (r *Reader) Close() error {
 func (r *Reader) setVersionNumber(line string) error {
 	s := strings.TrimPrefix(line, "Save File Format Version: ")
 	parts := strings.Split(s, ".")
-	if len(parts) < 2 {
-		return fmt.Errorf("LJH file '%s': could not parse version number '%s'",
-			r.file.Name(), s)
+	if len(parts) != 3 {
+		return fmt.Errorf("LJH file '%s': could not parse %d-part version number '%s'",
+			r.file.Name(), len(parts), s)
 	}
 	if parts[0] != "2" {
-		return fmt.Errorf("LJH file '%s' version number '%s' was not version 2",
+		return fmt.Errorf("LJH file '%s' version number '%s' was not major version 2",
 			r.file.Name(), s)
 	}
 	if parts[1] == "1" && parts[2] == "1" {
@@ -128,8 +136,11 @@ header:
 
 	// To find the header length is a big pain, because the bufio Reader and Scanner
 	// outsmart us by not reporting the \r and/or \n line delimeters to us. We must
-	// re-find the header-end tag and consume any \r and \n that follow it.
-	b := make([]byte, 1024)
+	// re-find the end-header line, then consume any \r and \n that follow it.
+	// We can start at textLength, though, because that's a lower bound on the number of bytes
+	// in the complete header.
+	b := make([]byte, 1024) // Assume that # of bytes will cover all the missing newline chars.
+	textLength -= len(endHeaderTag)
 	r.file.ReadAt(b, int64(textLength))
 	fmt.Printf("read in %d bytes\n", len(b))
 	idx := strings.Index(string(b), endHeaderTag)
@@ -150,5 +161,22 @@ header:
 
 	fmt.Printf("Parsed %d lines in the header and %d bytes.\n", lnum, textLength)
 	fmt.Printf("%v\n", r)
+	r.buffer = make([]byte, r.recordLength)
 	return nil
+}
+
+// NextPulse returns the next pulse from the open LJH file
+func (r *Reader) NextPulse() (*PulseRecord, error) {
+	pr := new(PulseRecord)
+	pr.Pulse = make([]uint16, r.Samples)
+	if err := binary.Read(r.file, binary.LittleEndian, &pr.RowCount); err != nil {
+		return nil, err
+	}
+	if err := binary.Read(r.file, binary.LittleEndian, &pr.TimeCode); err != nil {
+		return nil, err
+	}
+	if err := binary.Read(r.file, binary.LittleEndian, pr.Pulse); err != nil {
+		return nil, err
+	}
+	return pr, nil
 }
