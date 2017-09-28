@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Args holds the arguments to an operation
@@ -25,6 +26,7 @@ func (t *Arith) Multiply(args *Args, reply *int) error {
 	*reply = args.A * args.B
 	t.ncalls++
 	fmt.Printf("%5d calls\n", t.ncalls)
+	time.Sleep(1 * time.Second)
 	return nil
 }
 
