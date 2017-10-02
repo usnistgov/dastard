@@ -28,16 +28,15 @@ type dataProducer struct {
 	channum int
 	fact    int
 	msgOut  chan<- string
-	abort   <-chan struct{}
 }
 
-func (s *dataProducer) run() {
+func (s *dataProducer) run(abort <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	fmt.Printf("   Starting producer %d\n", s.channum)
 	for {
 		select {
-		case <-s.abort:
+		case <-abort:
 			fmt.Printf("   Stopping producer %d\n", s.channum)
 			return
 		case <-ticker.C:
@@ -56,21 +55,21 @@ type DataChannels struct {
 }
 
 func (dc *DataChannels) addProducer(channum int, msgOut chan string) {
-	p := &dataProducer{channum: channum, msgOut: msgOut, abort: dc.stop}
+	p := &dataProducer{channum: channum, msgOut: msgOut}
 	dc.producers = append(dc.producers, p)
 }
 
 // NewFact is for blah blah.
 type NewFact struct {
-	channum int
-	fact    int
+	Channum int
+	Fact    int
 }
 
 // UpdateFact changes the fact for one channel
 func (dc *DataChannels) UpdateFact(newFact *NewFact, reply *bool) error {
-	p := dc.producers[newFact.channum]
+	p := dc.producers[newFact.Channum]
 	old := p.fact
-	p.fact = newFact.fact
+	p.fact = newFact.Fact
 	fmt.Printf("Setting channel %d 'fact' from %d to %d\n", p.channum, old, p.fact)
 	msg := fmt.Sprintf("data chan %d: fact set to %d", p.channum, p.fact)
 	p.msgOut <- msg
@@ -82,8 +81,9 @@ func (dc *DataChannels) UpdateFact(newFact *NewFact, reply *bool) error {
 func (dc *DataChannels) Start(_ *struct{}, reply *bool) error {
 	fmt.Println("RPC server asked to start the data channels")
 	if !dc.running {
+		dc.stop = make(chan struct{})
 		for _, p := range dc.producers {
-			go p.run()
+			go p.run(dc.stop)
 		}
 	}
 	dc.running = true
@@ -95,15 +95,16 @@ func (dc *DataChannels) Start(_ *struct{}, reply *bool) error {
 func (dc *DataChannels) Stop(_ *struct{}, reply *bool) error {
 	fmt.Println("RPC server asked to stop the data channels")
 	if dc.running {
-		for _ = range dc.producers {
-			dc.stop <- struct{}{}
-		}
+		close(dc.stop)
+		dc.stop = nil
 	}
 	dc.running = false
 	*reply = true
 	return nil
 }
 
+// Accept messages from all dataProducer objects and publish them on a
+// ZMQ PUB socket.
 func publisher(pub *czmq.Sock, outChan <-chan string, abort <-chan struct{}) {
 	for {
 		select {
@@ -135,7 +136,7 @@ func main() {
 	toPublish := make(chan string)
 	abort := make(chan struct{})
 
-	producers := DataChannels{stop: abort}
+	producers := DataChannels{} //{stop: abort}
 	for i := 0; i < nchan; i++ {
 		producers.addProducer(i, toPublish)
 	}

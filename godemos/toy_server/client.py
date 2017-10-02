@@ -37,7 +37,11 @@ class JSONClient(object):
 
         # This will actually have to loop if resp is bigger
         response = self._socket.recv(4096)
-        response = self._codec.loads(response.decode())
+        try:
+            response = self._codec.loads(response.decode())
+        except ValueError as e:
+            print "The decoder raised error: ", e
+            raise e
 
         if response.get('id') != id:
             raise Exception("expected id=%s, received id=%s: %s"
@@ -62,13 +66,12 @@ class MyApp(QtGui.QMainWindow, Ui_MainWindow):
         self.buttonBox.rejected.connect(self.reject)
         self.startButton.clicked.connect(self.start)
         self.stopButton.clicked.connect(self.stop)
-        self.spinBoxes = [self.spinBox, self.spinBox_2, self.spinBox_3]
-
+        self.spinBoxes = [self.spinBox, self.spinBox_2, self.spinBox_3, self.spinBox_4]
+        self.spinBox.valueChanged.connect(self.updatef1)
+        self.spinBox_2.valueChanged.connect(self.updatef2)
+        self.spinBox_3.valueChanged.connect(self.updatef3)
+        self.spinBox_4.valueChanged.connect(self.updatef4)
         self.client = JSONClient(("localhost", 4444))
-        # params = {"A":13,"B":9}
-        # for a in range(25):
-        #     params["A"] = a
-        #     print client.call("Arith.Multiply", params)
 
     def reject(self):
         print("Rejected")
@@ -78,7 +81,7 @@ class MyApp(QtGui.QMainWindow, Ui_MainWindow):
         print("Start")
         print("Spin boxes: %s"%([b.value() for b in self.spinBoxes]))
         for i,b in enumerate(self.spinBoxes):
-            params = {"channum":i, "fact": b.value()}
+            params = {"Channum":i, "Fact": b.value()}
             result = self.client.call("DataChannels.UpdateFact", params)
             print "Result: ", result
 
@@ -91,6 +94,17 @@ class MyApp(QtGui.QMainWindow, Ui_MainWindow):
         params = {}
         result = self.client.call("DataChannels.Stop", params)
         print "Result: ", result
+
+    def update(self, chan, newval):
+        print "Update: ", chan, newval
+        params = {"Channum":chan, "Fact":newval}
+        result = self.client.call("DataChannels.UpdateFact", params)
+        print "Result: ", result
+
+    def updatef1(self, n): self.update(0, n)
+    def updatef2(self, n): self.update(1, n)
+    def updatef3(self, n): self.update(2, n)
+    def updatef4(self, n): self.update(3, n)
 
 
 if __name__ == "__main__":
