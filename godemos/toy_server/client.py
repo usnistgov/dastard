@@ -59,6 +59,7 @@ class JSONClient(object):
 
 class MyApp(QtGui.QMainWindow, Ui_MainWindow):
     def __init__(self):
+        port = 4444
         QtGui.QMainWindow.__init__(self)
         Ui_MainWindow.__init__(self)
         self.setupUi(self)
@@ -71,7 +72,7 @@ class MyApp(QtGui.QMainWindow, Ui_MainWindow):
         self.spinBox_2.valueChanged.connect(self.updatef2)
         self.spinBox_3.valueChanged.connect(self.updatef3)
         self.spinBox_4.valueChanged.connect(self.updatef4)
-        self.client = JSONClient(("localhost", 4444))
+        self.client = JSONClient(("localhost", port))
 
     def reject(self):
         print("Rejected")
