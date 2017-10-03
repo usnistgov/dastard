@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -79,7 +80,7 @@ func (ts *TriangleSource) BlockingRead(abort <-chan struct{}) error {
 		select {
 		case <-abort:
 			fmt.Println("aborted the read")
-			return nil
+			return io.EOF
 		case <-time.After(waittime):
 			ts.lastread = time.Now()
 		}

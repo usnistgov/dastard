@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/usnistgov/dastard"
@@ -14,16 +15,27 @@ func main() {
 	ts := dastard.DataSource(source)
 	ts.Sample()
 	ts.Start()
-	dataChannels := ts.Outputs()
+	allOutputs := ts.Outputs()
 	abort := make(chan struct{})
+
+	// Drain the data produced by the DataSource.
+	for chnum, ch := range allOutputs {
+		dc := &dastard.DataChannel{Abort: abort, Channum: chnum}
+		dc.Decimate = true
+		dc.DecimateLevel = 3
+		dc.DecimateAvgMode = true
+		go dc.ProcessData(ch)
+	}
+
+	// Have the DataSource produce data until graceful stop.
 	go func() {
 		for {
-			ts.BlockingRead(abort)
-
-			// Drain the data.
-			for chnum, ch := range dataChannels {
-				x := <-ch
-				fmt.Printf("Chan %d: found %d values\n", chnum, len(x))
+			if err := ts.BlockingRead(abort); err == io.EOF {
+				fmt.Printf("BlockingRead returns EOF\n")
+				return
+			} else if err != nil {
+				fmt.Printf("BlockingRead returns Error\n")
+				return
 			}
 		}
 	}()
