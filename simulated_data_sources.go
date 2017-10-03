@@ -45,7 +45,7 @@ func (ts *TriangleSource) Configure() error {
 	var i RawType
 	for i = 0; i < nrise; i++ {
 		ts.onecycle[i] = ts.minval + i
-		ts.onecycle[i+nrise] = ts.maxval - i
+		ts.onecycle[int(i)+int(nrise)] = ts.maxval - i
 	}
 	cycleTime := float64(ts.cycleLen) / ts.sampleRate
 	ts.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
@@ -64,15 +64,26 @@ func (ts *TriangleSource) Stop() error {
 	return nil
 }
 
+// Sample pre-samples the hardware data to see what's in it.
+// Does nothing for a TriangleSource.
+func (ts *TriangleSource) Sample() error {
+	return nil
+}
+
 // BlockingRead blocks and then reads data when "enough" is ready.
-func (ts *TriangleSource) BlockingRead() error {
+func (ts *TriangleSource) BlockingRead(abort <-chan struct{}) error {
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
 	if waittime > 0 {
 		fmt.Printf("Waiting %v to read\n", waittime)
-		time.Sleep(waittime)
+		select {
+		case <-abort:
+			fmt.Println("aborted the read")
+			return nil
+		case <-time.After(waittime):
+			ts.lastread = time.Now()
+		}
 	}
-	ts.lastread = time.Now()
 
 	for _, ch := range ts.output {
 		datacopy := make([]RawType, ts.cycleLen)
@@ -83,6 +94,7 @@ func (ts *TriangleSource) BlockingRead() error {
 	return nil
 }
 
+// Outputs returns the slice of channels that carry buffers of data for downstream processing.
 func (ts *TriangleSource) Outputs() []chan []RawType {
 	result := make([]chan []RawType, ts.nchan)
 	copy(result, ts.output)
