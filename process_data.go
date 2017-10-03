@@ -2,13 +2,18 @@ package dastard
 
 import (
 	"fmt"
+	"time"
 )
 
 // DataChannel contains all the state needed to decimate, trigger, write, and publish data.
 type DataChannel struct {
-	Channum int
-	Abort   <-chan struct{}
+	Channum     int
+	Abort       <-chan struct{}
+	NSamples    int
+	NPresamples int
+	SampleRate  float64
 	DecimateState
+	TriggerState
 }
 
 // DecimateState contains all the state needed to decimate data.
@@ -18,19 +23,45 @@ type DecimateState struct {
 	DecimateAvgMode bool
 }
 
+// TriggerState contains all the state that controls trigger logic
+type TriggerState struct {
+	AutoTrigger bool
+	AutoDelay   time.Duration
+	autoSamples int
+	// Also Level, Edge, and Noise info.
+	// Also group source/rx info.
+}
+
+// DataRecord contains a single triggered pulse record.
+type DataRecord struct {
+	data      []RawType
+	trigFrame int64
+	trigTime  time.Time
+
+	// trigger type?
+
+	// Analyzed quantities
+	pretrigMean  float64
+	pulseAverage float64
+	pulseRMS     float64
+	peakValue    float64
+}
+
 // ProcessData drains the data channel and processes whatever is found there.
-func (dc *DataChannel) ProcessData(dataIn <-chan []RawType) {
+func (dc *DataChannel) ProcessData(dataIn <-chan DataSegment) {
 	for {
 		select {
 		case <-dc.Abort:
 			return
-		case data := <-dataIn:
-			fmt.Printf("Chan %d:  found %d values starting with %v\n", dc.Channum, len(data), data[:10])
-			data = dc.DecimateData(data) // in-place
-			fmt.Printf(" after decimate: %d values starting with %v\n", len(data), data[:10])
-			// TriggerData()
-			// WriteData()
-			// PublishDatA()
+		case segment := <-dataIn:
+			data := segment.rawData
+			fmt.Printf("Chan %d:          found %d values starting with %v\n", dc.Channum, len(data), data[:10])
+			data = dc.DecimateData(data)
+			fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dc.Channum, len(data), data[:10])
+			// records := dc.TriggerData(data)
+			// dc.AnalyzeData(records) // add analyzed info in-place
+			// dc.WriteData(records)
+			// dc.PublishData(records)
 		}
 	}
 }

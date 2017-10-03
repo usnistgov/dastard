@@ -39,6 +39,7 @@ func main() {
 			}
 		}
 	}()
+
 	// Take data for 4 seconds
 	time.Sleep(time.Second * 4)
 	fmt.Println("Will quit in 2 seconds")

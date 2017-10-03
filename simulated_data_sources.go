@@ -17,7 +17,7 @@ type TriangleSource struct {
 	maxval     RawType
 	lastread   time.Time
 	timeperbuf time.Duration
-	output     []chan []RawType
+	output     []chan DataSegment
 	onecycle   []RawType
 	cycleLen   int
 }
@@ -35,9 +35,9 @@ func NewTriangleSource(nchan int, rate float64, min, max RawType) *TriangleSourc
 
 // Configure sets up the internal buffers.
 func (ts *TriangleSource) Configure() error {
-	ts.output = make([]chan []RawType, ts.nchan)
+	ts.output = make([]chan DataSegment, ts.nchan)
 	for i := 0; i < ts.nchan; i++ {
-		ts.output[i] = make(chan []RawType, 1)
+		ts.output[i] = make(chan DataSegment, 1)
 	}
 
 	nrise := ts.maxval - ts.minval
@@ -89,15 +89,16 @@ func (ts *TriangleSource) BlockingRead(abort <-chan struct{}) error {
 	for _, ch := range ts.output {
 		datacopy := make([]RawType, ts.cycleLen)
 		copy(datacopy, ts.onecycle)
-		ch <- datacopy
+		seg := DataSegment{rawData: datacopy}
+		ch <- seg
 	}
 
 	return nil
 }
 
 // Outputs returns the slice of channels that carry buffers of data for downstream processing.
-func (ts *TriangleSource) Outputs() []chan []RawType {
-	result := make([]chan []RawType, ts.nchan)
+func (ts *TriangleSource) Outputs() []chan DataSegment {
+	result := make([]chan DataSegment, ts.nchan)
 	copy(result, ts.output)
 	return result
 }
