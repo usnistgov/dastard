@@ -28,6 +28,10 @@ type TriggerState struct {
 	AutoTrigger bool
 	AutoDelay   time.Duration
 	autoSamples int
+
+	LevelTrigger bool
+	LevelRising  bool
+	LevelLevel   RawType
 	// Also Level, Edge, and Noise info.
 	// Also group source/rx info.
 }
@@ -56,9 +60,11 @@ func (dc *DataChannel) ProcessData(dataIn <-chan DataSegment) {
 		case segment := <-dataIn:
 			data := segment.rawData
 			fmt.Printf("Chan %d:          found %d values starting with %v\n", dc.Channum, len(data), data[:10])
-			data = dc.DecimateData(data)
+			dc.DecimateData(&segment)
+			data = segment.rawData
 			fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dc.Channum, len(data), data[:10])
-			// records := dc.TriggerData(data)
+			records := dc.TriggerData(&segment)
+			fmt.Printf("Chan %d Found %d triggered records %v\n", dc.Channum, len(records), records[0].data[:10])
 			// dc.AnalyzeData(records) // add analyzed info in-place
 			// dc.WriteData(records)
 			// dc.PublishData(records)
@@ -67,10 +73,11 @@ func (dc *DataChannel) ProcessData(dataIn <-chan DataSegment) {
 }
 
 // DecimateData decimates data in-place.
-func (dc *DataChannel) DecimateData(data []RawType) []RawType {
+func (dc *DataChannel) DecimateData(segment *DataSegment) {
 	if !dc.Decimate || dc.DecimateLevel <= 1 {
-		return data
+		return
 	}
+	data := segment.rawData
 	Nin := len(data)
 	Nout := (Nin - 1 + dc.DecimateLevel) / dc.DecimateLevel
 	if dc.DecimateAvgMode {
@@ -88,5 +95,30 @@ func (dc *DataChannel) DecimateData(data []RawType) []RawType {
 			data[i] = data[i*dc.DecimateLevel]
 		}
 	}
-	return data[:Nout]
+	segment.rawData = data[:Nout]
+	return
+}
+
+func (dc *DataChannel) triggerAt(segment *DataSegment, i int) DataRecord {
+	data := make([]RawType, dc.NSamples)
+	copy(data, segment.rawData[i-dc.NPresamples:i+dc.NSamples-dc.NPresamples])
+	record := DataRecord{data: data}
+	return record
+}
+
+// TriggerData analyzes a DataSegment to find and generate triggered records
+/* Consider a design where we find all possible triggers of one type, all of the
+next, etc, and then merge all lists giving precedence to earlier over later triggers? */
+func (dc *DataChannel) TriggerData(segment *DataSegment) (records []DataRecord) {
+	nd := len(segment.rawData)
+	raw := segment.rawData
+	if dc.LevelTrigger {
+		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
+			if raw[i] > dc.LevelLevel {
+				records = append(records, dc.triggerAt(segment, i))
+				i += dc.NSamples
+			}
+		}
+	}
+	return
 }

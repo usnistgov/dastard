@@ -15,6 +15,7 @@ type DataSource interface {
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.) raw-physical units, first sample’s frame number and sample time. Not yet triggered.
 type DataSegment struct {
 	rawData       []RawType
+	prevValue     RawType
 	firstFramenum int64
 	firstTime     time.Time
 	// something about raw-physical conversion???
