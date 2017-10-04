@@ -12,6 +12,7 @@ type DataChannel struct {
 	NSamples    int
 	NPresamples int
 	SampleRate  float64
+	stream      DataStream
 	DecimateState
 	TriggerState
 }
@@ -34,21 +35,6 @@ type TriggerState struct {
 	LevelLevel   RawType
 	// Also Level, Edge, and Noise info.
 	// Also group source/rx info.
-}
-
-// DataRecord contains a single triggered pulse record.
-type DataRecord struct {
-	data      []RawType
-	trigFrame int64
-	trigTime  time.Time
-
-	// trigger type?
-
-	// Analyzed quantities
-	pretrigMean  float64
-	pulseAverage float64
-	pulseRMS     float64
-	peakValue    float64
 }
 
 // ProcessData drains the data channel and processes whatever is found there.

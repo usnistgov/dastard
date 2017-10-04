@@ -89,7 +89,7 @@ func (ts *TriangleSource) BlockingRead(abort <-chan struct{}) error {
 	for _, ch := range ts.output {
 		datacopy := make([]RawType, ts.cycleLen)
 		copy(datacopy, ts.onecycle)
-		seg := DataSegment{rawData: datacopy, prevValue: ts.minval + 1}
+		seg := DataSegment{rawData: datacopy}
 		ch <- seg
 	}
 
