@@ -15,10 +15,11 @@ type DataSource interface {
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)
 // raw-physical units, first sample’s frame number and sample time. Not yet triggered.
 type DataSegment struct {
-	rawData       []RawType
-	firstFramenum int64
-	firstTime     time.Time
-	framePeriod   time.Duration // in frames/seconds
+	rawData         []RawType
+	framesPerSample int // Normally 1, but can be larger if decimated
+	firstFramenum   int64
+	firstTime       time.Time
+	framePeriod     time.Duration // in frames/seconds
 	// something about raw-physical conversion???
 	// facts about the data source?
 }
@@ -26,7 +27,18 @@ type DataSegment struct {
 // DataStream models a continuous stream of data, though we have only a finite
 // amount at any time. For now, it's semantically different from a DataSegment,
 // yet they need the same information.
-type DataStream DataSegment
+type DataStream struct {
+	DataSegment
+	samplesSeen int
+}
+
+// NewDataStream generates a pointer to a new DataStream object.
+func NewDataStream(data []RawType, framesPerSample int, firstFrame int64,
+	firstTime time.Time, period time.Duration) *DataStream {
+	ds := DataStream{DataSegment: DataSegment{rawData: data, framesPerSample: framesPerSample,
+		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period}}
+	return &ds
+}
 
 // AppendSegment will append the data in segment to the DataStream.
 // It will update the frame/time counters to be consistent with the appended
@@ -36,6 +48,7 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.firstFramenum = segment.firstFramenum - oldLength
 	stream.firstTime = segment.firstTime.Add(-time.Duration(oldLength) * stream.framePeriod)
+	stream.samplesSeen += len(segment.rawData)
 	// TODO: this doesn't handle decimated data!
 }
 

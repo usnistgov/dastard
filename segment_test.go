@@ -29,7 +29,7 @@ func TestStream(t *testing.T) {
 	}
 
 	for _, n := range []int{0, 1, 10, 100} {
-		strN := &DataStream{rawData: make([]RawType, n)}
+		strN := NewDataStream(make([]RawType, n), 1, 0, time.Now(), time.Microsecond)
 		if len(strN.rawData) != n {
 			t.Errorf("new(DataStream) length = %d, want %d", len(strN.rawData), n)
 		}
@@ -42,7 +42,7 @@ func TestStream(t *testing.T) {
 	dC := append(dA, dB...)
 	tA := time.Now()
 	tB := tA.Add(ftime * time.Duration(len(dA)))
-	strA := &DataStream{rawData: dA, firstFramenum: 0, firstTime: tA, framePeriod: ftime}
+	strA := NewDataStream(dA, 1, 0, tA, ftime)
 	strB := &DataSegment{rawData: dB, firstFramenum: int64(len(dA)), firstTime: tB, framePeriod: ftime}
 
 	strA.AppendSegment(strB)
@@ -104,7 +104,7 @@ func TestStreamGap(t *testing.T) {
 	fB := int64(len(dA)+gap) + fA
 	tA := time.Now()
 	tB := tA.Add(ftime * time.Duration(len(dA)+gap))
-	strA := &DataStream{rawData: dA, firstFramenum: fA, firstTime: tA, framePeriod: ftime}
+	strA := NewDataStream(dA, 1, fA, tA, ftime)
 	strB := &DataSegment{rawData: dB, firstFramenum: fB, firstTime: tB, framePeriod: ftime}
 
 	strA.AppendSegment(strB)
