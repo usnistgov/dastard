@@ -17,6 +17,12 @@ type DataChannel struct {
 	TriggerState
 }
 
+// NewDataChannel creates and initializes a new DataChannel.
+func NewDataChannel(channum int, abort <-chan struct{}) *DataChannel {
+	dc := DataChannel{Channum: channum, Abort: abort}
+	return &dc
+}
+
 // DecimateState contains all the state needed to decimate data.
 type DecimateState struct {
 	DecimateLevel   int
@@ -88,7 +94,9 @@ func (dc *DataChannel) DecimateData(segment *DataSegment) {
 func (dc *DataChannel) triggerAt(segment *DataSegment, i int) DataRecord {
 	data := make([]RawType, dc.NSamples)
 	copy(data, segment.rawData[i-dc.NPresamples:i+dc.NSamples-dc.NPresamples])
-	record := DataRecord{data: data}
+	tf := segment.firstFramenum + int64(i)
+	tt := segment.TimeOf(i)
+	record := DataRecord{data: data, trigFrame: tf, trigTime: tt}
 	return record
 }
 

@@ -32,6 +32,11 @@ func NewDataSegment(data []RawType, framesPerSample int, firstFrame int64,
 	return &seg
 }
 
+// TimeOf returns the absolute time of sample # sampleNum within the segment.
+func (seg *DataSegment) TimeOf(sampleNum int) time.Time {
+	return seg.firstTime.Add(time.Duration(sampleNum*seg.framesPerSample) * seg.framePeriod)
+}
+
 // DataStream models a continuous stream of data, though we have only a finite
 // amount at any time. For now, it's semantically different from a DataSegment,
 // yet they need the same information.
@@ -55,11 +60,11 @@ func NewDataStream(data []RawType, framesPerSample int, firstFrame int64,
 func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	oldFrameCount := int64(len(stream.rawData) * segment.framesPerSample)
 	stream.framesPerSample = segment.framesPerSample
+	stream.framePeriod = segment.framePeriod
 	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.firstFramenum = segment.firstFramenum - oldFrameCount
 	stream.firstTime = segment.firstTime.Add(-time.Duration(oldFrameCount) * stream.framePeriod)
 	stream.samplesSeen += len(segment.rawData)
-	// TODO: this doesn't handle decimated data!
 }
 
 // TrimKeepingN will trim (remove) all but the last N values in the DataStream

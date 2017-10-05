@@ -20,7 +20,7 @@ func main() {
 
 	// Drain the data produced by the DataSource.
 	for chnum, ch := range allOutputs {
-		dc := &dastard.DataChannel{Abort: abort, Channum: chnum}
+		dc := dastard.NewDataChannel(chnum, abort)
 		dc.Decimate = true
 		dc.DecimateLevel = 3
 		dc.DecimateAvgMode = true
