@@ -43,11 +43,14 @@ func TestStream(t *testing.T) {
 	tA := time.Now()
 	tB := tA.Add(ftime * time.Duration(len(dA)))
 	strA := NewDataStream(dA, 1, 0, tA, ftime)
-	strB := &DataSegment{rawData: dB, firstFramenum: int64(len(dA)), firstTime: tB, framePeriod: ftime}
+	strB := NewDataSegment(dB, 1, int64(len(dA)), tB, ftime)
 
 	strA.AppendSegment(strB)
 	if len(strA.rawData) != len(dC) {
 		t.Errorf("DataStream.AppendSegment result was length %d, want %d", len(strA.rawData), len(dC))
+	}
+	if strA.samplesSeen != len(dC) {
+		t.Errorf("DataStream.AppendSegment samplesSeen was length %d, want %d", strA.samplesSeen, len(dC))
 	}
 	if !reflect.DeepEqual(strA.rawData, dC) {
 		t.Errorf("DataStream.AppendSegment result was %v, want %v", strA.rawData, dC)
@@ -73,6 +76,9 @@ func TestStream(t *testing.T) {
 		expectedData := dC[len(dC)-trimmedLength:]
 		if len(strA.rawData) != len(expectedData) {
 			t.Errorf("DataStream.TrimKeepingN result was length %d, want %d", len(strA.rawData), len(expectedData))
+		}
+		if strA.samplesSeen != len(dC) {
+			t.Errorf("DataStream.TrimKeepingN samplesSeen was length %d, want %d", strA.samplesSeen, len(dC))
 		}
 		if !reflect.DeepEqual(strA.rawData, expectedData) {
 			t.Errorf("DataStream.TrimKeepingN result was %v, want %v", strA.rawData, expectedData)
@@ -105,7 +111,7 @@ func TestStreamGap(t *testing.T) {
 	tA := time.Now()
 	tB := tA.Add(ftime * time.Duration(len(dA)+gap))
 	strA := NewDataStream(dA, 1, fA, tA, ftime)
-	strB := &DataSegment{rawData: dB, firstFramenum: fB, firstTime: tB, framePeriod: ftime}
+	strB := NewDataSegment(dB, 1, fB, tB, ftime)
 
 	strA.AppendSegment(strB)
 	if len(strA.rawData) != len(dC) {
@@ -122,5 +128,36 @@ func TestStreamGap(t *testing.T) {
 	expecttA := tA.Add(time.Duration(gap) * ftime)
 	if strA.firstTime != expecttA {
 		t.Errorf("DataStream.AppendSegment firstTime = %v, want %v", strA.firstTime, expecttA)
+	}
+}
+
+func TestStreamDecimated(t *testing.T) {
+	ftime := time.Second
+	dA := []RawType{6, 4, 2, 5, 1, 0}
+	dB := []RawType{10, 7, 8, 9, 10}
+	// dC := append(dA, dB...)
+	fA := int64(100)
+	tA := time.Now()
+
+	decimations := []int{1, 2, 3, 5}
+	for _, decimationA := range decimations {
+		for _, decimationB := range decimations {
+			strA := NewDataStream(dA, decimationA, fA, tA, ftime)
+			fB := int64(len(dA)*decimationA) + fA
+			tB := tA.Add(ftime * time.Duration(len(dA)*decimationA))
+			strB := NewDataSegment(dB, decimationB, fB, tB, ftime)
+
+			strA.AppendSegment(strB)
+			expectf1 := fB - int64(len(dA)*decimationB)
+			if strA.firstFramenum != expectf1 {
+				t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d with dec %d, %d", strA.firstFramenum,
+					expectf1, decimationA, decimationB)
+			}
+			// expecttA := tB.Add(-time.Duration(len(dA) * decimationB))
+			// if strA.firstTime != expecttA {
+			// 	t.Errorf("DataStream.AppendSegment firstTime = %v, want %v", strA.firstTime, expecttA)
+			// }
+		}
+
 	}
 }

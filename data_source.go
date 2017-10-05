@@ -19,9 +19,17 @@ type DataSegment struct {
 	framesPerSample int // Normally 1, but can be larger if decimated
 	firstFramenum   int64
 	firstTime       time.Time
-	framePeriod     time.Duration // in frames/seconds
+	framePeriod     time.Duration
 	// something about raw-physical conversion???
 	// facts about the data source?
+}
+
+// NewDataSegment generates a pointer to a new, initialized DataSegment object.
+func NewDataSegment(data []RawType, framesPerSample int, firstFrame int64,
+	firstTime time.Time, period time.Duration) *DataSegment {
+	seg := DataSegment{rawData: data, framesPerSample: framesPerSample,
+		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period}
+	return &seg
 }
 
 // DataStream models a continuous stream of data, though we have only a finite
@@ -32,11 +40,12 @@ type DataStream struct {
 	samplesSeen int
 }
 
-// NewDataStream generates a pointer to a new DataStream object.
+// NewDataStream generates a pointer to a new, initialized DataStream object.
 func NewDataStream(data []RawType, framesPerSample int, firstFrame int64,
 	firstTime time.Time, period time.Duration) *DataStream {
 	ds := DataStream{DataSegment: DataSegment{rawData: data, framesPerSample: framesPerSample,
-		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period}}
+		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period},
+		samplesSeen: len(data)}
 	return &ds
 }
 
@@ -44,10 +53,11 @@ func NewDataStream(data []RawType, framesPerSample int, firstFrame int64,
 // It will update the frame/time counters to be consistent with the appended
 // segment, not necessarily with the previous values.
 func (stream *DataStream) AppendSegment(segment *DataSegment) {
-	oldLength := int64(len(stream.rawData))
+	oldFrameCount := int64(len(stream.rawData) * segment.framesPerSample)
+	stream.framesPerSample = segment.framesPerSample
 	stream.rawData = append(stream.rawData, segment.rawData...)
-	stream.firstFramenum = segment.firstFramenum - oldLength
-	stream.firstTime = segment.firstTime.Add(-time.Duration(oldLength) * stream.framePeriod)
+	stream.firstFramenum = segment.firstFramenum - oldFrameCount
+	stream.firstTime = segment.firstTime.Add(-time.Duration(oldFrameCount) * stream.framePeriod)
 	stream.samplesSeen += len(segment.rawData)
 	// TODO: this doesn't handle decimated data!
 }
