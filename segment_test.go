@@ -163,3 +163,43 @@ func TestStreamDecimated(t *testing.T) {
 
 	}
 }
+
+func TestDecimation(t *testing.T) {
+	N := 100
+	data := make([]RawType, N)
+	for i := 0; i < N; i++ {
+		data[i] = RawType(i * 2)
+	}
+
+	for _, useAvg := range []bool{true, false} {
+		for _, decimation := range []int{1, 2, 3, 4, 6} {
+			ch := new(DataChannel)
+			ch.DecimateLevel = decimation
+			ch.Decimate = decimation > 1
+			ch.DecimateAvgMode = useAvg
+			dcopy := make([]RawType, N)
+			copy(dcopy, data)
+			seg := &DataSegment{rawData: dcopy, framesPerSample: 1}
+			ch.DecimateData(seg)
+			if seg.framesPerSample != decimation {
+				t.Errorf("DataChannel.DecimateData did not alter framesPerSample = %d, want %d",
+					seg.framesPerSample, decimation)
+			}
+			expect := (len(data) + decimation - 1) / decimation
+			if len(seg.rawData) != expect {
+				t.Errorf("DataChannel.DecimateData data length = %d, want %d",
+					len(seg.rawData), expect)
+			}
+			for i := 0; i < N/decimation; i++ {
+				expect := i * 2 * decimation
+				if useAvg {
+					expect += decimation - 1
+				}
+				if seg.rawData[i] != RawType(expect) {
+					t.Errorf("DataChannel.DecimateData (avg=%v, dec=%d) data[%d] = %d, want %d",
+						useAvg, decimation, i, seg.rawData[i], expect)
+				}
+			}
+		}
+	}
+}

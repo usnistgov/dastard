@@ -81,38 +81,19 @@ func (dc *DataChannel) DecimateData(segment *DataSegment) {
 			}
 			data[i] = RawType(val/float64(level) + 0.5)
 		}
-		data[Nout-1] = data[(Nout-1)*level]
+		val := float64(data[(Nout-1)*level])
+		count := 1.0
+		for j := (Nout-1)*level + 1; j < Nin; j++ {
+			val += float64(data[j])
+			count++
+		}
+		data[Nout-1] = RawType(val/count + 0.5)
 	} else {
 		for i := 0; i < Nout; i++ {
 			data[i] = data[i*dc.DecimateLevel]
 		}
 	}
 	segment.rawData = data[:Nout]
-	return
-}
-
-func (dc *DataChannel) triggerAt(segment *DataSegment, i int) DataRecord {
-	data := make([]RawType, dc.NSamples)
-	copy(data, segment.rawData[i-dc.NPresamples:i+dc.NSamples-dc.NPresamples])
-	tf := segment.firstFramenum + int64(i)
-	tt := segment.TimeOf(i)
-	record := DataRecord{data: data, trigFrame: tf, trigTime: tt}
-	return record
-}
-
-// TriggerData analyzes a DataSegment to find and generate triggered records
-/* Consider a design where we find all possible triggers of one type, all of the
-next, etc, and then merge all lists giving precedence to earlier over later triggers? */
-func (dc *DataChannel) TriggerData(segment *DataSegment) (records []DataRecord) {
-	nd := len(segment.rawData)
-	raw := segment.rawData
-	if dc.LevelTrigger {
-		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
-			if raw[i] > dc.LevelLevel {
-				records = append(records, dc.triggerAt(segment, i))
-				i += dc.NSamples
-			}
-		}
-	}
+	segment.framesPerSample *= dc.DecimateLevel
 	return
 }
