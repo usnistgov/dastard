@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -98,23 +99,32 @@ func (dc *DataChannel) DecimateData(segment *DataSegment) {
 	return
 }
 
-func (dc *DataChannel) AnalyzeData(records []DataRecord) {
+// AnalyzeData computes pulse-analysis values in-place for all elements of a
+// slice of DataRecord values.
+func (dc *DataChannel) AnalyzeData(records []*DataRecord) {
 	for _, rec := range records {
 		var val float64
 		for i := 0; i < dc.NPresamples; i++ {
 			val += float64(rec.data[i])
 		}
-		rec.pretrigMean = val / float64(dc.NPresamples)
+		ptm := val / float64(dc.NPresamples)
 
 		max := rec.data[dc.NPresamples]
-		val = 0
+		var sum, sum2 float64
 		for i := dc.NPresamples; i < dc.NSamples; i++ {
-			val += float64(rec.data[i])
+			val = float64(rec.data[i])
+			sum += val
+			sum2 += val * val
 			if rec.data[i] > max {
 				max = rec.data[i]
 			}
 		}
-		rec.pulseAverage = val/float64(dc.NSamples-dc.NPresamples) - rec.pretrigMean
+		rec.pretrigMean = ptm
 		rec.peakValue = float64(max) - rec.pretrigMean
+
+		N := float64(dc.NSamples - dc.NPresamples)
+		rec.pulseAverage = sum/N - ptm
+		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
+		rec.pulseRMS = math.Sqrt(meanSquare)
 	}
 }

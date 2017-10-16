@@ -1,18 +1,18 @@
 package dastard
 
-func (dc *DataChannel) triggerAt(segment *DataSegment, i int) DataRecord {
+func (dc *DataChannel) triggerAt(segment *DataSegment, i int) *DataRecord {
 	data := make([]RawType, dc.NSamples)
 	copy(data, segment.rawData[i-dc.NPresamples:i+dc.NSamples-dc.NPresamples])
 	tf := segment.firstFramenum + int64(i)
 	tt := segment.TimeOf(i)
-	record := DataRecord{data: data, trigFrame: tf, trigTime: tt}
+	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt}
 	return record
 }
 
 // TriggerData analyzes a DataSegment to find and generate triggered records
 /* Consider a design where we find all possible triggers of one type, all of the
 next, etc, and then merge all lists giving precedence to earlier over later triggers? */
-func (dc *DataChannel) TriggerData(segment *DataSegment) (records []DataRecord) {
+func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord) {
 	nd := len(segment.rawData)
 	raw := segment.rawData
 	if dc.LevelTrigger {
