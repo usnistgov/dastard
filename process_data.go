@@ -57,7 +57,7 @@ func (dc *DataChannel) ProcessData(dataIn <-chan DataSegment) {
 			fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dc.Channum, len(data), data[:10])
 			records := dc.TriggerData(&segment)
 			fmt.Printf("Chan %d Found %d triggered records %v\n", dc.Channum, len(records), records[0].data[:10])
-			// dc.AnalyzeData(records) // add analyzed info in-place
+			dc.AnalyzeData(records) // add analyzed info in-place
 			// dc.WriteData(records)
 			// dc.PublishData(records)
 		}
@@ -96,4 +96,25 @@ func (dc *DataChannel) DecimateData(segment *DataSegment) {
 	segment.rawData = data[:Nout]
 	segment.framesPerSample *= dc.DecimateLevel
 	return
+}
+
+func (dc *DataChannel) AnalyzeData(records []DataRecord) {
+	for _, rec := range records {
+		var val float64
+		for i := 0; i < dc.NPresamples; i++ {
+			val += float64(rec.data[i])
+		}
+		rec.pretrigMean = val / float64(dc.NPresamples)
+
+		max := rec.data[dc.NPresamples]
+		val = 0
+		for i := dc.NPresamples; i < dc.NSamples; i++ {
+			val += float64(rec.data[i])
+			if rec.data[i] > max {
+				max = rec.data[i]
+			}
+		}
+		rec.pulseAverage = val/float64(dc.NSamples-dc.NPresamples) - rec.pretrigMean
+		rec.peakValue = float64(max) - rec.pretrigMean
+	}
 }
