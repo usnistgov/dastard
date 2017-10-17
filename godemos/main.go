@@ -9,8 +9,10 @@ import (
 )
 
 func main() {
-	source := dastard.NewTriangleSource(4, 200000., 0, 65535)
-	source.Configure()
+	// source := dastard.NewTriangleSource(4, 200000., 0, 65535)
+	// source.Configure()
+	source := new(dastard.SimPulseSource)
+	source.Configure(4, 200000.0, 5000.0, 10000.0, 65536)
 
 	ts := dastard.DataSource(source)
 	ts.Sample()
@@ -18,15 +20,15 @@ func main() {
 	allOutputs := ts.Outputs()
 	abort := make(chan struct{})
 
-	// Drain the data produced by the DataSource.
+	// Launch goroutines to drain the data produced by the DataSource.
 	for chnum, ch := range allOutputs {
 		dc := dastard.NewDataChannel(chnum, abort)
-		dc.Decimate = true
+		dc.Decimate = false
 		dc.DecimateLevel = 3
 		dc.DecimateAvgMode = true
 		dc.LevelTrigger = true
-		dc.LevelLevel = 3000
-		dc.NPresamples = 100
+		dc.LevelLevel = 5500
+		dc.NPresamples = 4
 		dc.NSamples = 1000
 		go dc.ProcessData(ch)
 	}
@@ -44,7 +46,7 @@ func main() {
 		}
 	}()
 
-	// Take data for 4 seconds
+	// Take data for 4 seconds, stop, and wait 2 additional seconds.
 	time.Sleep(time.Second * 4)
 	fmt.Println("Will quit in 2 seconds")
 	close(abort)
