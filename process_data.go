@@ -10,6 +10,7 @@ import (
 type DataChannel struct {
 	Channum     int
 	Abort       <-chan struct{}
+	Publisher   chan<- []*DataRecord
 	NSamples    int
 	NPresamples int
 	SampleRate  float64
@@ -19,8 +20,8 @@ type DataChannel struct {
 }
 
 // NewDataChannel creates and initializes a new DataChannel.
-func NewDataChannel(channum int, abort <-chan struct{}) *DataChannel {
-	dc := DataChannel{Channum: channum, Abort: abort}
+func NewDataChannel(channum int, abort <-chan struct{}, publisher chan<- []*DataRecord) *DataChannel {
+	dc := DataChannel{Channum: channum, Abort: abort, Publisher: publisher}
 	return &dc
 }
 
@@ -60,7 +61,7 @@ func (dc *DataChannel) ProcessData(dataIn <-chan DataSegment) {
 			fmt.Printf("Chan %d Found %d triggered records %v\n", dc.Channum, len(records), records[0].data[:10])
 			dc.AnalyzeData(records) // add analyzed info in-place
 			// dc.WriteData(records)
-			// dc.PublishData(records)
+			dc.PublishData(records)
 		}
 	}
 }
@@ -127,4 +128,9 @@ func (dc *DataChannel) AnalyzeData(records []*DataRecord) {
 		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
 		rec.pulseRMS = math.Sqrt(meanSquare)
 	}
+}
+
+// PublishData sends the slice of DataRecords to be published.
+func (dc *DataChannel) PublishData(records []*DataRecord) {
+	dc.Publisher <- records
 }
