@@ -3,7 +3,6 @@ package dastard
 import (
 	// "encoding/binary"
 	"fmt"
-	"io"
 
 	czmq "github.com/zeromq/goczmq"
 )
@@ -18,22 +17,18 @@ func PublishRecords(dataToPub <-chan []*DataRecord, abort <-chan struct{}, portn
 	}
 	defer pubSocket.Destroy()
 
-	// inputname := fmt.Sprintf("inproc://records2publish")
-	// inputSocket, err := czmq.NewPullChanneler(inputname)
-	// defer inputSocket.Destroy()
-
 	for {
 		select {
 		case <-abort:
 			return
 		case records := <-dataToPub:
 			for _, rec := range records {
-				io.WriteString(pubSocket, packet(rec))
+				pubSocket.Write(packet(rec))
 			}
 		}
 	}
 }
 
-func packet(rec *DataRecord) string {
-	return fmt.Sprintf("Packet of size %d", len(rec.data))
+func packet(rec *DataRecord) []byte {
+	return []byte(fmt.Sprintf("Chan %d packet of size %d", rec.channum, len(rec.data)))
 }

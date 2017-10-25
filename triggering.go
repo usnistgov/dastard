@@ -5,7 +5,8 @@ func (dc *DataChannel) triggerAt(segment *DataSegment, i int) *DataRecord {
 	copy(data, segment.rawData[i-dc.NPresamples:i+dc.NSamples-dc.NPresamples])
 	tf := segment.firstFramenum + int64(i)
 	tt := segment.TimeOf(i)
-	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt}
+	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
+		channum: dc.Channum}
 	return record
 }
 

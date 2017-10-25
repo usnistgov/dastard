@@ -84,6 +84,7 @@ type DataRecord struct {
 	data      []RawType
 	trigFrame int64
 	trigTime  time.Time
+	channum   int
 
 	// trigger type?
 
