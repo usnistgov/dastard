@@ -18,7 +18,7 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord)
 	raw := segment.rawData
 	if dc.LevelTrigger {
 		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
-			if raw[i] > dc.LevelLevel {
+			if raw[i] >= dc.LevelLevel && raw[i-1] < dc.LevelLevel {
 				records = append(records, dc.triggerAt(segment, i))
 				i += dc.NSamples
 			}

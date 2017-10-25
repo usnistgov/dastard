@@ -33,7 +33,7 @@ func main() {
 		dc.DecimateAvgMode = true
 		dc.LevelTrigger = true
 		dc.LevelLevel = 5500
-		dc.NPresamples = 4
+		dc.NPresamples = 200
 		dc.NSamples = 1000
 		go dc.ProcessData(ch)
 	}
