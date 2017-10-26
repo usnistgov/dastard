@@ -33,7 +33,7 @@ func PublishRecords(dataToPub <-chan []*DataRecord, abort <-chan struct{}, portn
 }
 
 func packet(rec *DataRecord) ([]byte, []byte) {
-	// Structure of the message header is
+	// Structure of the message header is defined in BINARY_FORMATS.md
 	// 16 bits: channel number
 	//  8 bits: header version number
 	//  8 bits: code for data type (0-1 = 8 bits; 2-3 = 16; 4-5 = 32; 6-7 = 64; odd=uint; even=int)
@@ -52,7 +52,6 @@ func packet(rec *DataRecord) ([]byte, []byte) {
 	nano := rec.trigTime.UnixNano()
 	binary.LittleEndian.PutUint64(header[8:], uint64(nano))
 	binary.LittleEndian.PutUint64(header[16:], uint64(rec.trigFrame))
-	fmt.Printf("% x\n", header)
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, rec.data)

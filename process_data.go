@@ -41,8 +41,8 @@ type TriggerState struct {
 	LevelTrigger bool
 	LevelRising  bool
 	LevelLevel   RawType
-	// Also Level, Edge, and Noise info.
-	// Also group source/rx info.
+	// TODO: Edge and Noise info.
+	// TODO: group source/rx info.
 }
 
 // ProcessData drains the data channel and processes whatever is found there.
