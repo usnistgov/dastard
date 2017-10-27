@@ -29,7 +29,6 @@ func NewTriangleSource(nchan int, rate float64, min, max RawType) *TriangleSourc
 	ts.nchan = nchan
 	ts.minval = min
 	ts.maxval = max
-	fmt.Printf("made a source for %d channels.\n", nchan)
 	return ts
 }
 
@@ -50,7 +49,6 @@ func (ts *TriangleSource) Configure() error {
 	}
 	cycleTime := float64(ts.cycleLen) / ts.sampleRate
 	ts.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
-	fmt.Printf("configured with wait time of %v and cR: %f\n", ts.timeperbuf, cycleTime)
 	return nil
 }
 
