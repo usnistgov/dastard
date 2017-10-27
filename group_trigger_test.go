@@ -43,11 +43,36 @@ func TestConnections(t *testing.T) {
 		}
 	}
 
-	// Make connections that should fail
+	// Try Add/Delete/check on channel numbers that should fail
 	if err := broker.AddConnection(N, 0); err == nil {
 		t.Errorf("TriggerBroker.AddConnection(%d,0) should fail but didn't", N)
 	}
 	if err := broker.DeleteConnection(N, 0); err == nil {
 		t.Errorf("TriggerBroker.DeleteConnection(%d,0) should fail but didn't", N)
+	}
+
+	// Check the Connections method
+	for i := -1; i < 1; i++ {
+		con := broker.Connections(i)
+		if len(con) > 0 {
+			t.Errorf("TriggerBroker.Connections(%d)) has length %d, want 0", i, len(con))
+		}
+	}
+	broker.AddConnection(0, 1)
+	broker.AddConnection(0, 2)
+	broker.AddConnection(0, 3)
+	broker.AddConnection(0, 2)
+	broker.AddConnection(0, 3)
+	con := broker.Connections(0)
+	if len(con) != 3 {
+		t.Errorf("TriggerBroker.Connections(0) has length %d, want 3", len(con))
+	}
+	if con[0] {
+		t.Errorf("TriggerBroker.Connections(0)[0]==true, want false")
+	}
+	for i := 1; i < 4; i++ {
+		if !con[i] {
+			t.Errorf("TriggerBroker.Connections(0)[%d]==false, want true", i)
+		}
 	}
 }

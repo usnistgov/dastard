@@ -50,3 +50,11 @@ func (broker *TriggerBroker) isConnected(source, receiver int) bool {
 	_, ok := broker.receivers[source][receiver]
 	return ok
 }
+
+// Connections returns a set of all receivers for the given source.
+func (broker *TriggerBroker) Connections(source int) map[int]bool {
+	if source < 0 || source >= broker.nchannels {
+		return nil
+	}
+	return broker.receivers[source]
+}
