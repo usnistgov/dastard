@@ -111,7 +111,7 @@ func TestBrokering(t *testing.T) {
 				t.Errorf("TriggerBroker chan %d secondary trig[%d]=%d, want %d", 3, i, t2[i], expected[i])
 			}
 		}
-		if iter == 1 {
+		if iter == 2 {
 			close(abort)
 		}
 	}

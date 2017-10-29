@@ -11,6 +11,7 @@ type DataChannel struct {
 	Channum     int
 	Abort       <-chan struct{}
 	Publisher   chan<- []*DataRecord
+	Broker      *TriggerBroker
 	NSamples    int
 	NPresamples int
 	SampleRate  float64
@@ -20,8 +21,9 @@ type DataChannel struct {
 }
 
 // NewDataChannel creates and initializes a new DataChannel.
-func NewDataChannel(channum int, abort <-chan struct{}, publisher chan<- []*DataRecord) *DataChannel {
-	dc := DataChannel{Channum: channum, Abort: abort, Publisher: publisher}
+func NewDataChannel(channum int, abort <-chan struct{}, publisher chan<- []*DataRecord,
+	broker *TriggerBroker) *DataChannel {
+	dc := DataChannel{Channum: channum, Abort: abort, Publisher: publisher, Broker: broker}
 	return &dc
 }
 
@@ -57,9 +59,10 @@ func (dc *DataChannel) ProcessData(dataIn <-chan DataSegment) {
 			dc.DecimateData(&segment)
 			data = segment.rawData
 			fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dc.Channum, len(data), data[:10])
-			records := dc.TriggerData(&segment)
+			records, secondaries := dc.TriggerData(&segment)
 			fmt.Printf("Chan %d Found %d triggered records %v\n", dc.Channum, len(records), records[0].data[:10])
-			dc.AnalyzeData(records) // add analyzed info in-place
+			fmt.Printf("Chan %d Found %d secondary records\n", dc.Channum, len(secondaries))
+			dc.AnalyzeData(records) // add analysis results to records in-place
 			// dc.WriteData(records)
 			dc.PublishData(records)
 		}

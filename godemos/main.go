@@ -13,8 +13,9 @@ var pubRecPort = 32002
 func main() {
 	// source := dastard.NewTriangleSource(4, 200000., 0, 65535)
 	// source.Configure()
+	NChan := 4
 	source := new(dastard.SimPulseSource)
-	source.Configure(4, 200000.0, 5000.0, 10000.0, 65536)
+	source.Configure(NChan, 200000.0, 5000.0, 10000.0, 65536)
 
 	ts := dastard.DataSource(source)
 	ts.Sample()
@@ -25,9 +26,12 @@ func main() {
 	dataToPub := make(chan []*dastard.DataRecord, 500)
 	go dastard.PublishRecords(dataToPub, abort, pubRecPort)
 
+	broker := dastard.NewTriggerBroker(NChan)
+	go broker.Run(abort)
+
 	// Launch goroutines to drain the data produced by the DataSource.
 	for chnum, ch := range allOutputs {
-		dc := dastard.NewDataChannel(chnum, abort, dataToPub)
+		dc := dastard.NewDataChannel(chnum, abort, dataToPub, broker)
 		dc.Decimate = false
 		dc.DecimateLevel = 3
 		dc.DecimateAvgMode = true

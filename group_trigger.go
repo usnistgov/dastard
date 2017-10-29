@@ -94,13 +94,20 @@ func (p Int64Slice) Len() int           { return len(p) }
 func (p Int64Slice) Less(i, j int) bool { return p[i] < p[j] }
 func (p Int64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-// Run runs in a goroutine to broker trigger frame #s from sources to receivers
+// Run runs in a goroutine to broker trigger frame #s from sources to receivers.
+// It runs in the pattern: get a message from each channel (about their triggered
+// frame numbers), then send a message to each channel (about their secondary triggers).
 func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 	for {
 		// get data from all PrimaryTrigs channels
 		for i := 0; i < broker.nchannels; i++ {
-			tlist := <-broker.PrimaryTrigs
-			broker.latestPrimaries[tlist.channum] = tlist.frames
+			select {
+			case <-abort:
+				fmt.Println("I was told to abort")
+				return
+			case tlist := <-broker.PrimaryTrigs:
+				broker.latestPrimaries[tlist.channum] = tlist.frames
+			}
 		}
 
 		// send reponse to all SecondaryTrigs channels
@@ -117,13 +124,5 @@ func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 			rxchan <- trigs
 		}
 		broker.lock.RUnlock()
-
-		// check whether it's time to quit.
-		select {
-		case <-abort:
-			return
-		default:
-
-		}
 	}
 }
