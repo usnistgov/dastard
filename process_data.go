@@ -43,7 +43,13 @@ type TriggerState struct {
 	LevelTrigger bool
 	LevelRising  bool
 	LevelLevel   RawType
-	// TODO: Edge and Noise info.
+
+	EdgeTrigger bool
+	EdgeRising  bool
+	EdgeFalling bool
+	EdgeLevel   RawType
+
+	// TODO:  Noise info.
 	// TODO: group source/rx info.
 }
 
