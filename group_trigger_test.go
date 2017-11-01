@@ -2,10 +2,11 @@ package dastard
 
 import (
 	"testing"
+	"time"
 )
 
-// TestConnections checks that we can connect/disconnect group triggers.
-func TestConnections(t *testing.T) {
+// TestBrokerConnections checks that we can connect/disconnect group triggers.
+func TestBrokerConnections(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
 
@@ -115,4 +116,41 @@ func TestBrokering(t *testing.T) {
 			close(abort)
 		}
 	}
+}
+
+func TestEdge(t *testing.T) {
+	const nchan = 1
+	abort := make(chan struct{})
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run(abort)
+	dc := NewDataChannel(0, abort, publisher, broker)
+	dc.NPresamples = 100
+	dc.NSamples = 1000
+	dc.EdgeTrigger = true
+	dc.EdgeRising = true
+	dc.EdgeLevel = 100
+
+	raw := make([]RawType, 10000)
+	for i := 1000; i < 1010; i++ {
+		raw[i] = 8000
+	}
+	segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
+	primaries, secondaries := dc.TriggerData(segment)
+	if len(primaries) != 1 {
+		t.Errorf("Edge trigger found %d triggers, want 1", len(primaries))
+	}
+	if len(secondaries) != 0 {
+		t.Errorf("Edge trigger found %d secondary (group) triggers, want 0", len(secondaries))
+	}
+	pt := primaries[0]
+	// Check the last 2 samples in pretrigger and the first 2 after
+	expect := []RawType{0, 0, 8000, 8000}
+	for i, exp := range expect {
+		sampnum := i + dc.NPresamples - 1
+		if pt.data[sampnum] != exp {
+			t.Errorf("Edge trigger found data[%d]=%d, want %d", sampnum, pt.data[sampnum], exp)
+		}
+	}
+	close(abort)
 }
