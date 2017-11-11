@@ -25,7 +25,7 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
 	if dc.EdgeTrigger {
 		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
-			diff := raw[i+1] + raw[i] - (raw[i-1] + raw[i-2])
+			diff := raw[i] + raw[i-1] - (raw[i-2] + raw[i-3])
 			if (dc.EdgeRising && diff >= dc.EdgeLevel) ||
 				(dc.EdgeFalling && diff <= -dc.EdgeLevel) {
 				newRecord := dc.triggerAt(segment, i)

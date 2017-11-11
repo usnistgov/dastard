@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -118,39 +119,62 @@ func TestBrokering(t *testing.T) {
 	}
 }
 
+// TestEdge tests that a single edge trigger happens where expected.
 func TestEdge(t *testing.T) {
 	const nchan = 1
 	abort := make(chan struct{})
+	defer close(abort)
+
 	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run(abort)
 	dc := NewDataChannel(0, abort, publisher, broker)
 	dc.NPresamples = 100
 	dc.NSamples = 1000
+
 	dc.EdgeTrigger = true
 	dc.EdgeRising = true
 	dc.EdgeLevel = 100
+	testSingleTrigger(t, dc, "Edge")
 
+	dc.EdgeTrigger = false
+	dc.LevelTrigger = true
+	dc.LevelRising = true
+	dc.LevelLevel = 100
+	testSingleTrigger(t, dc, "Level")
+}
+
+func testSingleTrigger(t *testing.T, dc *DataChannel, trigname string) {
+	const bigval = 8000
+	const tframe = 1000
 	raw := make([]RawType, 10000)
-	for i := 1000; i < 1010; i++ {
-		raw[i] = 8000
+	for i := tframe; i < tframe+10; i++ {
+		raw[i] = bigval
 	}
 	segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
 	primaries, secondaries := dc.TriggerData(segment)
 	if len(primaries) != 1 {
-		t.Errorf("Edge trigger found %d triggers, want 1", len(primaries))
+		t.Errorf("%s trigger found %d triggers, want 1", trigname, len(primaries))
 	}
 	if len(secondaries) != 0 {
-		t.Errorf("Edge trigger found %d secondary (group) triggers, want 0", len(secondaries))
+		t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
 	}
 	pt := primaries[0]
-	// Check the last 2 samples in pretrigger and the first 2 after
-	expect := []RawType{0, 0, 8000, 8000}
-	for i, exp := range expect {
-		sampnum := i + dc.NPresamples - 1
-		if pt.data[sampnum] != exp {
-			t.Errorf("Edge trigger found data[%d]=%d, want %d", sampnum, pt.data[sampnum], exp)
+	if pt.trigFrame != int64(tframe) {
+		t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, tframe)
+	}
+	fmt.Printf("%s trigger: %v\n", trigname, pt)
+	fmt.Println(pt.trigFrame)
+
+	// Check the data samples
+	for i := 0; i < len(pt.data); i++ {
+		var expect RawType
+		if i >= dc.NPresamples && i < dc.NPresamples+10 {
+			expect = bigval
+		}
+		if pt.data[i] != expect {
+			t.Errorf("%s trigger found data[%d]=%d, want %d", trigname, i,
+				pt.data[i], expect)
 		}
 	}
-	close(abort)
 }
