@@ -25,9 +25,10 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
 	if dc.EdgeTrigger {
 		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
-			diff := raw[i] + raw[i-1] - (raw[i-2] + raw[i-3])
+			diff := int32(raw[i]+raw[i-1]) - int32(raw[i-2]+raw[i-3])
 			if (dc.EdgeRising && diff >= dc.EdgeLevel) ||
 				(dc.EdgeFalling && diff <= -dc.EdgeLevel) {
+				// fmt.Printf("Found edge at %d with diff=%d\n", i, diff)
 				newRecord := dc.triggerAt(segment, i)
 				records = append(records, newRecord)
 				trigList.frames = append(trigList.frames, newRecord.trigFrame)
@@ -36,25 +37,32 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 		}
 	}
 
-	// Step 1b: compute all level triggers on a second pass. Any separation counts at first, but only insert them
+	// Step 1b: compute all level triggers on a second pass. Only insert them
 	// in the list of triggers if they are properly separated from the edge triggers.
 	if dc.LevelTrigger {
-		j := 0
-		nextET := int64(math.MaxInt64)
-		if len(trigList.frames) > j {
-			nextET = trigList.frames[j] - segment.firstFramenum
+		idxET := 0
+		nextEdgeTrig := int64(math.MaxInt64)
+		if len(trigList.frames) > idxET {
+			nextEdgeTrig = trigList.frames[idxET] - segment.firstFramenum
 		}
+		// Normal loop through all samples in triggerable range
 		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
-			if int64(i) > nextET-int64(dc.NSamples) {
-				i = int(nextET) + dc.NSamples - 1
-				j++
-				if len(trigList.frames) > j {
-					nextET = trigList.frames[j] - segment.firstFramenum
+
+			// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
+			// Notice how this works: edge triggers get priority, vetoing 1 record minus 1 sample into the past
+			// and 1 record into the future.
+			if int64(i) > nextEdgeTrig-int64(dc.NSamples) {
+				i = int(nextEdgeTrig) + dc.NSamples - 1
+				idxET++
+				if len(trigList.frames) > idxET {
+					nextEdgeTrig = trigList.frames[idxET] - segment.firstFramenum
 				} else {
-					nextET = math.MaxInt64
+					nextEdgeTrig = math.MaxInt64
 				}
 				continue
 			}
+
+			// If you get here, a level trigger is permissible. Check for it.
 			if (dc.LevelRising && raw[i] >= dc.LevelLevel && raw[i-1] < dc.LevelLevel) ||
 				(!dc.LevelRising && raw[i] <= dc.LevelLevel && raw[i-1] > dc.LevelLevel) {
 				newRecord := dc.triggerAt(segment, i)
@@ -65,6 +73,7 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	}
 
 	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
+
 	// Step 1c: compute all noise triggers, wherever they fit in between edge+level.
 
 	// Step 2: send the primary trigger list to the group trigger broker and await its

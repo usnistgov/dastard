@@ -47,7 +47,7 @@ type TriggerState struct {
 	EdgeTrigger bool
 	EdgeRising  bool
 	EdgeFalling bool
-	EdgeLevel   RawType
+	EdgeLevel   int32
 
 	// TODO:  Noise info.
 	// TODO: group source/rx info.

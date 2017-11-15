@@ -1,17 +1,16 @@
 package dastard
 
 import (
-	"fmt"
 	"testing"
 	"time"
 )
 
-// TestBrokerConnections checks that we can connect/disconnect group triggers.
+// TestBrokerConnections checks that we can connect/disconnect group triggers from the broker.
 func TestBrokerConnections(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
 
-	// First be sure there are no connections
+	// First be sure there are no connections, initially.
 	for i := 0; i < N+1; i++ {
 		for j := 0; j < N+1; j++ {
 			if broker.isConnected(i, j) {
@@ -163,8 +162,6 @@ func testSingleTrigger(t *testing.T, dc *DataChannel, trigname string) {
 	if pt.trigFrame != int64(tframe) {
 		t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, tframe)
 	}
-	fmt.Printf("%s trigger: %v\n", trigname, pt)
-	fmt.Println(pt.trigFrame)
 
 	// Check the data samples
 	for i := 0; i < len(pt.data); i++ {
@@ -178,3 +175,32 @@ func testSingleTrigger(t *testing.T, dc *DataChannel, trigname string) {
 		}
 	}
 }
+
+// TestEdgeLevelInteraction tests that a single edge trigger happens where expected, even if
+// there's also a level trigger.
+func TestEdgeLevelInteraction(t *testing.T) {
+	const nchan = 1
+	abort := make(chan struct{})
+	defer close(abort)
+
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run(abort)
+	dc := NewDataChannel(0, abort, publisher, broker)
+	dc.NPresamples = 100
+	dc.NSamples = 1000
+
+	dc.EdgeTrigger = true
+	dc.EdgeRising = true
+	dc.EdgeLevel = 100
+	dc.LevelTrigger = true
+	dc.LevelRising = true
+	dc.LevelLevel = 100
+	testSingleTrigger(t, dc, "Edge")
+	dc.LevelLevel = 10000
+	testSingleTrigger(t, dc, "Edge")
+	dc.EdgeLevel = 20000
+	dc.LevelLevel = 100
+	testSingleTrigger(t, dc, "Level")
+}
+
