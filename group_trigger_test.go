@@ -204,3 +204,45 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	testSingleTrigger(t, dc, "Level")
 }
 
+// TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
+func TestEdgeVetosLevel(t *testing.T) {
+	const nchan = 1
+	abort := make(chan struct{})
+	defer close(abort)
+
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run(abort)
+	dc := NewDataChannel(0, abort, publisher, broker)
+	dc.NPresamples = 20
+	dc.NSamples = 100
+
+	dc.EdgeTrigger = true
+	dc.EdgeLevel = 290
+	dc.EdgeRising = true
+	dc.LevelTrigger = true
+	dc.LevelRising = true
+	dc.LevelLevel = 99
+
+	levelChangeAt := []int{50, 199, 200, 201, 299, 300, 301, 399, 400, 401, 500}
+	edgeChangeAt := 300
+	const rawLength = 1000
+	expectNT := []int{2, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2}
+	for j, lca := range levelChangeAt {
+		want := expectNT[j]
+
+		raw := make([]RawType, rawLength)
+		for i := lca; i < rawLength; i++ {
+			raw[i] = 100
+		}
+		for i := edgeChangeAt; i < edgeChangeAt+100; i++ {
+			raw[i] = 400
+		}
+
+		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
+		primaries, _ := dc.TriggerData(segment)
+		if len(primaries) != want {
+			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
+		}
+	}
+}

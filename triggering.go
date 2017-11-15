@@ -59,7 +59,6 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 				} else {
 					nextEdgeTrig = math.MaxInt64
 				}
-				continue
 			}
 
 			// If you get here, a level trigger is permissible. Check for it.
