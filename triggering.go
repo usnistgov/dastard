@@ -1,6 +1,9 @@
 package dastard
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 func (dc *DataChannel) triggerAt(segment *DataSegment, i int) *DataRecord {
 	data := make([]RawType, dc.NSamples)
@@ -73,7 +76,10 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 
 	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
 
-	// Step 1c: compute all noise triggers, wherever they fit in between edge+level.
+	// Step 1d: compute all noise triggers, wherever they fit in between edge+level.
+
+	// Step 2: sort all triggers
+	sort.Sort(RecordSlice(records))
 
 	// Step 2: send the primary trigger list to the group trigger broker and await its
 	// answer about when the secondary triggers are.
@@ -84,3 +90,10 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	}
 	return
 }
+
+// RecordSlice attaches the methods of sort.Interface to slices , sorting in increasing order.
+type RecordSlice []*DataRecord
+
+func (p RecordSlice) Len() int           { return len(p) }
+func (p RecordSlice) Less(i, j int) bool { return p[i].trigFrame < p[j].trigFrame }
+func (p RecordSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
