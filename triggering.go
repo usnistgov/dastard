@@ -76,6 +76,7 @@ func (dc *DataChannel) levelTriggerData(segment *DataSegment, records []*DataRec
 			records = append(records, newRecord)
 		}
 	}
+	sort.Sort(RecordSlice(records))
 	return records
 }
 
@@ -97,28 +98,30 @@ func (dc *DataChannel) autoTriggerData(segment *DataSegment, records []*DataReco
 	}
 
 	nextPotentialTrig := dc.LastTrigger - segment.firstFramenum + delaySamples
-	if nextPotentialTrig < 0 {
-		nextPotentialTrig = 0
+	if nextPotentialTrig < npre {
+		nextPotentialTrig = npre
 	}
 
 	// Loop through all potential trigger times.
-	for nextPotentialTrig+nsamp-npre > int64(ndata) {
+	for nextPotentialTrig+nsamp-npre < int64(ndata) {
 		if nextPotentialTrig+nsamp < nextFoundTrig {
 			// auto trigger is allowed
 			newRecord := dc.triggerAt(segment, int(nextPotentialTrig))
 			records = append(records, newRecord)
+			nextPotentialTrig += delaySamples
 
 		} else {
 			// auto trigger not allowed
-			nextPotentialTrig = nsamp + nextFoundTrig
+			nextPotentialTrig = nextFoundTrig + delaySamples
 			idxNextTrig++
-			if nFoundTrigs > 1 {
+			if nFoundTrigs > idxNextTrig {
 				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
 		}
 	}
+	sort.Sort(RecordSlice(records))
 	return records
 }
 
@@ -132,13 +135,10 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 
 	// Step 1b: compute all level triggers on a second pass. Only insert them
 	// in the list of triggers if they are properly separated from the edge triggers.
-	// Before proceeding, sort all triggers found so far (edge and level)
 	records = dc.levelTriggerData(segment, records)
-	sort.Sort(RecordSlice(records))
 
-	// Step 1c: compute all auto triggers, wherever they fit in between edge+level. Sort again.
+	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
 	records = dc.autoTriggerData(segment, records)
-	sort.Sort(RecordSlice(records))
 
 	// TODO Step 1d: compute all noise triggers, wherever they fit in between edge+level.
 	//
@@ -152,7 +152,9 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
 	}
-	dc.LastTrigger = trigList.frames[len(records)-1]
+	if len(records) > 0 {
+		dc.LastTrigger = trigList.frames[len(records)-1]
+	}
 
 	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
 	dc.Broker.PrimaryTrigs <- trigList

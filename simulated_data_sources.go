@@ -74,10 +74,8 @@ func (ts *TriangleSource) BlockingRead(abort <-chan struct{}) error {
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
 	if waittime > 0 {
-		fmt.Printf("Waiting %v to read\n", waittime)
 		select {
 		case <-abort:
-			fmt.Println("aborted the read")
 			return io.EOF
 		case <-time.After(waittime):
 			ts.lastread = time.Now()

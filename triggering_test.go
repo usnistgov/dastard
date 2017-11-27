@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -118,8 +119,8 @@ func TestBrokering(t *testing.T) {
 	}
 }
 
-// TestEdge tests that a single edge trigger happens where expected.
-func TestEdge(t *testing.T) {
+// TestSingles tests that single edge, level, or auto triggers happen where expected.
+func TestSingles(t *testing.T) {
 	const nchan = 1
 	abort := make(chan struct{})
 	defer close(abort)
@@ -130,45 +131,62 @@ func TestEdge(t *testing.T) {
 	dc := NewDataChannel(0, abort, publisher, broker)
 	dc.NPresamples = 100
 	dc.NSamples = 1000
+	dc.SampleRate = 10000.0
 
 	dc.EdgeTrigger = true
 	dc.EdgeRising = true
 	dc.EdgeLevel = 100
-	testSingleTrigger(t, dc, "Edge")
+	testSingleTrigger(t, dc, "Edge", []int64{1000})
 
 	dc.EdgeTrigger = false
 	dc.LevelTrigger = true
 	dc.LevelRising = true
 	dc.LevelLevel = 100
-	testSingleTrigger(t, dc, "Level")
+	testSingleTrigger(t, dc, "Level", []int64{1000})
+
+	dc.LevelTrigger = false
+	dc.AutoTrigger = true
+	dc.AutoDelay = 500 * time.Millisecond
+	testSingleTrigger(t, dc, "Auto", []int64{100, 5100})
+
+	dc.LevelTrigger = true
+	testSingleTrigger(t, dc, "Level+Auto", []int64{1000, 6000})
+
+	dc.AutoDelay = 200 * time.Millisecond
+	testSingleTrigger(t, dc, "Level+Auto", []int64{1000, 3000, 5000, 7000, 9000})
 }
 
-func testSingleTrigger(t *testing.T, dc *DataChannel, trigname string) {
+func testSingleTrigger(t *testing.T, dc *DataChannel, trigname string, expectedFrames []int64) {
 	const bigval = 8000
 	const tframe = 1000
 	raw := make([]RawType, 10000)
 	for i := tframe; i < tframe+10; i++ {
 		raw[i] = bigval
 	}
-	segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
+	dc.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
+	sampleTime := time.Duration(float64(time.Second) / dc.SampleRate)
+	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	primaries, secondaries := dc.TriggerData(segment)
-	if len(primaries) != 1 {
-		t.Errorf("%s trigger found %d triggers, want 1", trigname, len(primaries))
+	if len(primaries) != len(expectedFrames) {
+		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
 	}
 	if len(secondaries) != 0 {
 		t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
 	}
-	pt := primaries[0]
-	if pt.trigFrame != int64(tframe) {
-		t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, tframe)
+	for i, pt := range primaries {
+		if pt.trigFrame != expectedFrames[i] {
+			t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+		}
 	}
 
-	// Check the data samples
+	// Check the data samples for the first trigger
+	if len(primaries) == 0 {
+		return
+	}
+	pt := primaries[0]
+	offset := int(expectedFrames[0]) - dc.NPresamples
 	for i := 0; i < len(pt.data); i++ {
-		var expect RawType
-		if i >= dc.NPresamples && i < dc.NPresamples+10 {
-			expect = bigval
-		}
+		expect := raw[i+offset]
 		if pt.data[i] != expect {
 			t.Errorf("%s trigger found data[%d]=%d, want %d", trigname, i,
 				pt.data[i], expect)
@@ -196,12 +214,12 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	dc.LevelTrigger = true
 	dc.LevelRising = true
 	dc.LevelLevel = 100
-	testSingleTrigger(t, dc, "Edge")
+	testSingleTrigger(t, dc, "Edge", []int64{1000})
 	dc.LevelLevel = 10000
-	testSingleTrigger(t, dc, "Edge")
+	testSingleTrigger(t, dc, "Edge", []int64{1000})
 	dc.EdgeLevel = 20000
 	dc.LevelLevel = 100
-	testSingleTrigger(t, dc, "Level")
+	testSingleTrigger(t, dc, "Level", []int64{1000})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
