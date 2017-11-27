@@ -15,6 +15,6 @@ before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y libsodium-dev libzmq3 libzmq3-dev
   # - sudo apt-get install -y libczmq-dev
-  - echo "deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_14.04/ ./" >> /etc/apt/sources.list
+  - sudo echo "deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_14.04/ ./" >> /etc/apt/sources.list
   - wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_14.04/Release.key -O- | sudo apt-key add
   - sudo apt-get install -y libczmq-dev
