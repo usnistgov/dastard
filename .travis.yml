@@ -11,10 +11,13 @@ go_import_path: github.com/usnistgov/dastard
 
 before_install:
   - sudo add-apt-repository ppa:ondrej/php -y   # for libsodium
-  # - sudo add-apt-repository ppa:kevinkreiser/czmq -y
   - sudo apt-get -qq update
   - sudo apt-get install -y libsodium-dev libzmq3 libzmq3-dev
-  # - sudo apt-get install -y libczmq-dev
-  - sudo echo "deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_14.04/ ./" >> /etc/apt/sources.list
-  - wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_14.04/Release.key -O- | sudo apt-key add
-  - sudo apt-get install -y libczmq-dev
+
+addons:
+  apt:
+    sources:
+    - sourceline: 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_14.04/ ./'
+      key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_14.04/Release.key'
+    packages:
+    - libczmq-dev
