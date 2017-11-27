@@ -1,5 +1,8 @@
 language: go
 
+dist: trusty
+sudo: required
+
 go:
   - 1.8
   - 1.9.x
@@ -8,7 +11,10 @@ go_import_path: github.com/usnistgov/dastard
 
 before_install:
   - sudo add-apt-repository ppa:ondrej/php -y   # for libsodium
-  - sudo add-apt-repository ppa:kevinkreiser/czmq -y
+  # - sudo add-apt-repository ppa:kevinkreiser/czmq -y
   - sudo apt-get -qq update
   - sudo apt-get install -y libsodium-dev libzmq3 libzmq3-dev
+  # - sudo apt-get install -y libczmq-dev
+  - echo "deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_14.04/ ./" >> /etc/apt/sources.list
+  - wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/xUbuntu_14.04/Release.key -O- | sudo apt-key add
   - sudo apt-get install -y libczmq-dev
