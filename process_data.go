@@ -15,6 +15,7 @@ type DataChannel struct {
 	NSamples    int
 	NPresamples int
 	SampleRate  float64
+	LastTrigger int64
 	stream      DataStream
 	DecimateState
 	TriggerState
@@ -24,6 +25,7 @@ type DataChannel struct {
 func NewDataChannel(channum int, abort <-chan struct{}, publisher chan<- []*DataRecord,
 	broker *TriggerBroker) *DataChannel {
 	dc := DataChannel{Channum: channum, Abort: abort, Publisher: publisher, Broker: broker}
+	dc.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	return &dc
 }
 
@@ -38,7 +40,6 @@ type DecimateState struct {
 type TriggerState struct {
 	AutoTrigger bool
 	AutoDelay   time.Duration
-	autoSamples int
 
 	LevelTrigger bool
 	LevelRising  bool

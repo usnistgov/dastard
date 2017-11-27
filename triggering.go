@@ -5,6 +5,11 @@ import (
 	"sort"
 )
 
+type triggerList struct {
+	channum int
+	frames  []int64
+}
+
 func (dc *DataChannel) triggerAt(segment *DataSegment, i int) *DataRecord {
 	data := make([]RawType, dc.NSamples)
 	copy(data, segment.rawData[i-dc.NPresamples:i+dc.NSamples-dc.NPresamples])
@@ -15,11 +20,12 @@ func (dc *DataChannel) triggerAt(segment *DataSegment, i int) *DataRecord {
 	return record
 }
 
-// TriggerData analyzes a DataSegment to find and generate triggered records
-/* Consider a design where we find all possible triggers of one type, all of the
-next, etc, and then merge all lists giving precedence to earlier over later triggers? */
+// TriggerData analyzes a DataSegment to find and generate triggered records.
+// All edge triggers are found, then level triggers, then auto and noise triggers.
 func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord, secondaries []*DataRecord) {
-	nd := len(segment.rawData)
+	ndata := len(segment.rawData)
+	nsamp := int64(dc.NSamples)
+	npre := int64(dc.NPresamples)
 	raw := segment.rawData
 
 	// Step 1: compute where the primary triggers are.
@@ -27,7 +33,7 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
 	if dc.EdgeTrigger {
-		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
+		for i := dc.NPresamples; i < ndata+dc.NPresamples-dc.NSamples; i++ {
 			diff := int32(raw[i]+raw[i-1]) - int32(raw[i-2]+raw[i-3])
 			if (dc.EdgeRising && diff >= dc.EdgeLevel) ||
 				(dc.EdgeFalling && diff <= -dc.EdgeLevel) {
@@ -49,7 +55,7 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 			nextFoundTrig = trigList.frames[idxNextTrig] - segment.firstFramenum
 		}
 		// Normal loop through all samples in triggerable range
-		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
+		for i := dc.NPresamples; i < ndata+dc.NPresamples-dc.NSamples; i++ {
 
 			// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
 			// Notice how this works: edge triggers get priority, vetoing 1 record minus 1 sample into the past
@@ -73,43 +79,42 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 			}
 		}
 	}
-
-	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
-	// First, sort all triggers found so far (edge and level)
+	// Before proceeding, sort all triggers found so far (edge and level)
 	sort.Sort(RecordSlice(records))
 
+	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
 	if dc.AutoTrigger {
+		delaySamples := int64(dc.AutoDelay.Seconds()*dc.SampleRate + 0.5)
 		idxNextTrig := 0
+		nFoundTrigs := len(trigList.frames)
 		nextFoundTrig := int64(math.MaxInt64)
-		if len(trigList.frames) > idxNextTrig {
+		if nFoundTrigs > 1 {
 			nextFoundTrig = trigList.frames[idxNextTrig] - segment.firstFramenum
 		}
-		// sampleDelay := int(dc.AutoDelay.Seconds()*dc.SampleRate + 0.5)
 
-		// Normal loop through all samples in triggerable range
-		for i := dc.NPresamples; i < nd+dc.NPresamples-dc.NSamples; i++ {
+		nextPotentialTrig := dc.LastTrigger - segment.firstFramenum + delaySamples
+		if nextPotentialTrig < 0 {
+			nextPotentialTrig = 0
+		}
 
-			// There's an auto trigger
+		// Loop through all potential trigger times.
+		for nextPotentialTrig+nsamp-npre > int64(ndata) {
+			if nextPotentialTrig+nsamp < nextFoundTrig {
+				// auto trigger is allowed
+				newRecord := dc.triggerAt(segment, int(nextPotentialTrig))
+				records = append(records, newRecord)
+				trigList.frames = append(trigList.frames, newRecord.trigFrame)
 
-			// Now skip over 2 record's worth of samples (minus 1) if an edge or level trigger is too soon in future.
-			// Notice how this works: edge or level triggers get priority, vetoing 1 record minus 1 sample into the
-			// past and 1 record into the future.
-			if int64(i) > nextFoundTrig-int64(dc.NSamples) {
-				i = int(nextFoundTrig) + dc.NSamples - 1
+			} else {
+				// auto trigger not allowed
+				nextPotentialTrig = nsamp + nextFoundTrig
 				idxNextTrig++
-				if len(trigList.frames) > idxNextTrig {
+				if nFoundTrigs > 1 {
 					nextFoundTrig = trigList.frames[idxNextTrig] - segment.firstFramenum
 				} else {
 					nextFoundTrig = math.MaxInt64
 				}
 			}
-
-			// If you get here, a.
-			// if dc.AutoDelay {
-			// 	newRecord := dc.triggerAt(segment, i)
-			// 	records = append(records, newRecord)
-			// 	trigList.frames = append(trigList.frames, newRecord.trigFrame)
-			// }
 		}
 	}
 

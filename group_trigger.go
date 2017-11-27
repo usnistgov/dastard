@@ -8,11 +8,6 @@ import (
 
 // type receiverSet map[int]bool
 
-type triggerList struct {
-	channum int
-	frames  []int64
-}
-
 // TriggerBroker communicates with DataChannel objects to allow them to operate independently
 // yet still share group triggering information.
 type TriggerBroker struct {
