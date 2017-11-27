@@ -5,3 +5,8 @@ go:
   - 1.9.x
 
 go_import_path: github.com/usnistgov/dastard
+
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y libczmq libzmq libsodium
+  
