@@ -28,8 +28,7 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	npre := int64(dc.NPresamples)
 	raw := segment.rawData
 
-	// Step 1: compute where the primary triggers are.
-	trigList := triggerList{channum: dc.Channum}
+	// Step 1: compute where the primary triggers are, one pass per trigger type.
 
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
 	if dc.EdgeTrigger {
@@ -37,10 +36,8 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 			diff := int32(raw[i]+raw[i-1]) - int32(raw[i-2]+raw[i-3])
 			if (dc.EdgeRising && diff >= dc.EdgeLevel) ||
 				(dc.EdgeFalling && diff <= -dc.EdgeLevel) {
-				// fmt.Printf("Found edge at %d with diff=%d\n", i, diff)
 				newRecord := dc.triggerAt(segment, i)
 				records = append(records, newRecord)
-				trigList.frames = append(trigList.frames, newRecord.trigFrame)
 				i += dc.NSamples
 			}
 		}
@@ -50,21 +47,23 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	// in the list of triggers if they are properly separated from the edge triggers.
 	if dc.LevelTrigger {
 		idxNextTrig := 0
+		nFoundTrigs := len(records)
 		nextFoundTrig := int64(math.MaxInt64)
-		if len(trigList.frames) > idxNextTrig {
-			nextFoundTrig = trigList.frames[idxNextTrig] - segment.firstFramenum
+		if nFoundTrigs > 0 {
+			nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 		}
+
 		// Normal loop through all samples in triggerable range
 		for i := dc.NPresamples; i < ndata+dc.NPresamples-dc.NSamples; i++ {
 
 			// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
 			// Notice how this works: edge triggers get priority, vetoing 1 record minus 1 sample into the past
 			// and 1 record into the future.
-			if int64(i) > nextFoundTrig-int64(dc.NSamples) {
+			if int64(i)+nsamp > nextFoundTrig {
 				i = int(nextFoundTrig) + dc.NSamples - 1
 				idxNextTrig++
-				if len(trigList.frames) > idxNextTrig {
-					nextFoundTrig = trigList.frames[idxNextTrig] - segment.firstFramenum
+				if nFoundTrigs > idxNextTrig {
+					nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 				} else {
 					nextFoundTrig = math.MaxInt64
 				}
@@ -75,7 +74,6 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 				(!dc.LevelRising && raw[i] <= dc.LevelLevel && raw[i-1] > dc.LevelLevel) {
 				newRecord := dc.triggerAt(segment, i)
 				records = append(records, newRecord)
-				trigList.frames = append(trigList.frames, newRecord.trigFrame)
 			}
 		}
 	}
@@ -86,10 +84,10 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 	if dc.AutoTrigger {
 		delaySamples := int64(dc.AutoDelay.Seconds()*dc.SampleRate + 0.5)
 		idxNextTrig := 0
-		nFoundTrigs := len(trigList.frames)
+		nFoundTrigs := len(records)
 		nextFoundTrig := int64(math.MaxInt64)
 		if nFoundTrigs > 1 {
-			nextFoundTrig = trigList.frames[idxNextTrig] - segment.firstFramenum
+			nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 		}
 
 		nextPotentialTrig := dc.LastTrigger - segment.firstFramenum + delaySamples
@@ -103,28 +101,35 @@ func (dc *DataChannel) TriggerData(segment *DataSegment) (records []*DataRecord,
 				// auto trigger is allowed
 				newRecord := dc.triggerAt(segment, int(nextPotentialTrig))
 				records = append(records, newRecord)
-				trigList.frames = append(trigList.frames, newRecord.trigFrame)
 
 			} else {
 				// auto trigger not allowed
 				nextPotentialTrig = nsamp + nextFoundTrig
 				idxNextTrig++
 				if nFoundTrigs > 1 {
-					nextFoundTrig = trigList.frames[idxNextTrig] - segment.firstFramenum
+					nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 				} else {
 					nextFoundTrig = math.MaxInt64
 				}
 			}
 		}
 	}
+	sort.Sort(RecordSlice(records))
 
 	// Step 1d: compute all noise triggers, wherever they fit in between edge+level.
 
-	// Step 2: sort all triggers
-	sort.Sort(RecordSlice(records))
-
 	// Step 2: send the primary trigger list to the group trigger broker and await its
 	// answer about when the secondary triggers are.
+
+	// Step 2a: prepare the primary trigger list from the DataRecord list
+	trigList := triggerList{channum: dc.Channum}
+	trigList.frames = make([]int64, len(records))
+	for i, r := range records {
+		trigList.frames[i] = r.trigFrame
+	}
+	dc.LastTrigger = trigList.frames[len(records)-1]
+
+	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
 	dc.Broker.PrimaryTrigs <- trigList
 	secondaryTrigList := <-dc.Broker.SecondaryTrigs[dc.Channum]
 	for _, st := range secondaryTrigList {
