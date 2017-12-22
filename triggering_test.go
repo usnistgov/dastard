@@ -136,27 +136,27 @@ func TestSingles(t *testing.T) {
 	dc.EdgeTrigger = true
 	dc.EdgeRising = true
 	dc.EdgeLevel = 100
-	testSingleTrigger(t, dc, "Edge", []int64{1000})
+	testTriggerSubroutine(t, dc, "Edge", []int64{1000})
 
 	dc.EdgeTrigger = false
 	dc.LevelTrigger = true
 	dc.LevelRising = true
 	dc.LevelLevel = 100
-	testSingleTrigger(t, dc, "Level", []int64{1000})
+	testTriggerSubroutine(t, dc, "Level", []int64{1000})
 
 	dc.LevelTrigger = false
 	dc.AutoTrigger = true
 	dc.AutoDelay = 500 * time.Millisecond
-	testSingleTrigger(t, dc, "Auto", []int64{100, 5100})
+	testTriggerSubroutine(t, dc, "Auto", []int64{100, 5100})
 
 	dc.LevelTrigger = true
-	testSingleTrigger(t, dc, "Level+Auto", []int64{1000, 6000})
+	testTriggerSubroutine(t, dc, "Level+Auto", []int64{1000, 6000})
 
 	dc.AutoDelay = 200 * time.Millisecond
-	testSingleTrigger(t, dc, "Level+Auto", []int64{1000, 3000, 5000, 7000, 9000})
+	testTriggerSubroutine(t, dc, "Level+Auto", []int64{1000, 3000, 5000, 7000, 9000})
 }
 
-func testSingleTrigger(t *testing.T, dc *DataChannel, trigname string, expectedFrames []int64) {
+func testTriggerSubroutine(t *testing.T, dc *DataChannel, trigname string, expectedFrames []int64) {
 	const bigval = 8000
 	const tframe = 1000
 	raw := make([]RawType, 10000)
@@ -214,12 +214,12 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	dc.LevelTrigger = true
 	dc.LevelRising = true
 	dc.LevelLevel = 100
-	testSingleTrigger(t, dc, "Edge", []int64{1000})
+	testTriggerSubroutine(t, dc, "Edge", []int64{1000})
 	dc.LevelLevel = 10000
-	testSingleTrigger(t, dc, "Edge", []int64{1000})
+	testTriggerSubroutine(t, dc, "Edge", []int64{1000})
 	dc.EdgeLevel = 20000
 	dc.LevelLevel = 100
-	testSingleTrigger(t, dc, "Level", []int64{1000})
+	testTriggerSubroutine(t, dc, "Level", []int64{1000})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
