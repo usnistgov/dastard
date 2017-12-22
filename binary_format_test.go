@@ -29,8 +29,21 @@ func TestPublishRecord(t *testing.T) {
 	if err != nil {
 		t.Errorf("binary.Read failed: %v", err)
 	}
-	var rlen int32
+	var npre, rlen int32
+	err = binary.Read(buf, binary.LittleEndian, &npre)
+	if err != nil {
+		t.Errorf("binary.Read failed: %v", err)
+	}
 	err = binary.Read(buf, binary.LittleEndian, &rlen)
+	if err != nil {
+		t.Errorf("binary.Read failed: %v", err)
+	}
+	var period, vperarb float32
+	err = binary.Read(buf, binary.LittleEndian, &period)
+	if err != nil {
+		t.Errorf("binary.Read failed: %v", err)
+	}
+	err = binary.Read(buf, binary.LittleEndian, &vperarb)
 	if err != nil {
 		t.Errorf("binary.Read failed: %v", err)
 	}

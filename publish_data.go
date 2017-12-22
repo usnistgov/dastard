@@ -37,23 +37,30 @@ func packet(rec *DataRecord) ([]byte, []byte) {
 	// 16 bits: channel number
 	//  8 bits: header version number
 	//  8 bits: code for data type (0-1 = 8 bits; 2-3 = 16; 4-5 = 32; 6-7 = 64; odd=uint; even=int)
+	// 32 bits: # of pre-trigger samples
 	// 32 bits: record length (# of samples)
-	// 64 bits: trigger time
+	// 32 bits: sample period, in seconds (float)
+	// 32 bits: volts per arb conversion (float)
+	// 64 bits: trigger time, in ns since epoch 1970
 	// 64 bits: trigger frame #
 
 	const headerVersion = uint8(0)
 	const dataType = uint8(3) // will want to assert about RawType somehow?
 
-	header := make([]byte, 24)
-	binary.LittleEndian.PutUint16(header[0:], uint16(rec.channum))
-	header[2] = headerVersion
-	header[3] = dataType
-	binary.LittleEndian.PutUint32(header[4:], uint32(len(rec.data)))
+	// header := make([]byte, 36)
+	header := new(bytes.Buffer)
+	binary.Write(header, binary.LittleEndian, uint16(rec.channum))
+	binary.Write(header, binary.LittleEndian, headerVersion)
+	binary.Write(header, binary.LittleEndian, dataType)
+	binary.Write(header, binary.LittleEndian, uint32(rec.channum)) // TODO: change to pretrig length
+	binary.Write(header, binary.LittleEndian, uint32(len(rec.data)))
+	binary.Write(header, binary.LittleEndian, float32(rec.peakValue)) // TODO: change to sample period
+	binary.Write(header, binary.LittleEndian, float32(rec.peakValue)) // TODO: change to volts/arb
 	nano := rec.trigTime.UnixNano()
-	binary.LittleEndian.PutUint64(header[8:], uint64(nano))
-	binary.LittleEndian.PutUint64(header[16:], uint64(rec.trigFrame))
+	binary.Write(header, binary.LittleEndian, uint64(nano))
+	binary.Write(header, binary.LittleEndian, uint64(rec.trigFrame))
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, rec.data)
-	return header, buf.Bytes()
+	return header.Bytes(), buf.Bytes()
 }
