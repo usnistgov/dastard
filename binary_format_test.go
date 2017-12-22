@@ -29,12 +29,8 @@ func TestPublishRecord(t *testing.T) {
 	if err != nil {
 		t.Errorf("binary.Read failed: %v", err)
 	}
-	var npre, rlen int32
+	var npre int32
 	err = binary.Read(buf, binary.LittleEndian, &npre)
-	if err != nil {
-		t.Errorf("binary.Read failed: %v", err)
-	}
-	err = binary.Read(buf, binary.LittleEndian, &rlen)
 	if err != nil {
 		t.Errorf("binary.Read failed: %v", err)
 	}
@@ -54,8 +50,5 @@ func TestPublishRecord(t *testing.T) {
 
 	if len(message)/2 != len(data) {
 		t.Errorf("packet generated message of %d samples, want %d", len(message)/2, len(data))
-	}
-	if len(data) != int(rlen) {
-		t.Errorf("packet message header says %d samples, want %d", rlen, len(data))
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/usnistgov/dastard"
 )
 
-var pubRecPort = 32002
+var pubRecPort = 5556
 
 func main() {
 	// source := dastard.NewTriangleSource(4, 200000., 0, 65535)
@@ -56,7 +56,7 @@ func main() {
 	}()
 
 	// Take data for 4 seconds, stop, and wait 2 additional seconds.
-	time.Sleep(time.Second * 4)
+	time.Sleep(time.Second * 44)
 	fmt.Println("Stopping data acquisition. Will quit in 2 seconds")
 	close(abort)
 	time.Sleep(time.Second * 2)
