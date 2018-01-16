@@ -16,7 +16,7 @@ type TriggerBroker struct {
 	PrimaryTrigs    chan triggerList
 	SecondaryTrigs  []chan []int64
 	latestPrimaries [][]int64
-	lock            sync.RWMutex
+	sync.RWMutex
 }
 
 // NewTriggerBroker creates a new TriggerBroker object for nchan channels to share group triggers.
@@ -42,9 +42,9 @@ func (broker *TriggerBroker) AddConnection(source, receiver int) error {
 		return fmt.Errorf("Could not add channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)
 	}
-	broker.lock.Lock()
+	broker.Lock()
 	broker.sources[receiver][source] = true
-	broker.lock.Unlock()
+	broker.Unlock()
 	return nil
 }
 
@@ -54,9 +54,9 @@ func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 		return fmt.Errorf("Could not remove channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)
 	}
-	broker.lock.Lock()
+	broker.Lock()
 	delete(broker.sources[receiver], source)
-	broker.lock.Unlock()
+	broker.Unlock()
 	return nil
 }
 
@@ -65,9 +65,9 @@ func (broker *TriggerBroker) isConnected(source, receiver int) bool {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return false
 	}
-	broker.lock.RLock()
+	broker.RLock()
 	_, ok := broker.sources[receiver][source]
-	broker.lock.RUnlock()
+	broker.RUnlock()
 	return ok
 }
 
@@ -76,9 +76,9 @@ func (broker *TriggerBroker) Connections(receiver int) map[int]bool {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return nil
 	}
-	broker.lock.RLock()
+	broker.RLock()
 	sources := broker.sources[receiver]
-	broker.lock.RUnlock()
+	broker.RUnlock()
 	return sources
 }
 
@@ -98,7 +98,6 @@ func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 		for i := 0; i < broker.nchannels; i++ {
 			select {
 			case <-abort:
-				// fmt.Println("I was told to abort")
 				return
 			case tlist := <-broker.PrimaryTrigs:
 				broker.latestPrimaries[tlist.channum] = tlist.frames
@@ -106,7 +105,7 @@ func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 		}
 
 		// send reponse to all SecondaryTrigs channels
-		broker.lock.RLock()
+		broker.RLock()
 		for idx, rxchan := range broker.SecondaryTrigs {
 			sources := broker.Connections(idx)
 			var trigs []int64
@@ -118,6 +117,6 @@ func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 			}
 			rxchan <- trigs
 		}
-		broker.lock.RUnlock()
+		broker.RUnlock()
 	}
 }
