@@ -173,7 +173,7 @@ func TestDecimation(t *testing.T) {
 
 	for _, useAvg := range []bool{true, false} {
 		for _, decimation := range []int{1, 2, 3, 4, 6} {
-			ch := new(DataChannel)
+			ch := new(DataStreamProcessor)
 			ch.DecimateLevel = decimation
 			ch.Decimate = decimation > 1
 			ch.DecimateAvgMode = useAvg

@@ -57,8 +57,8 @@ func TestAnalyze(t *testing.T) {
 	rec := &DataRecord{data: d}
 	records := []*DataRecord{rec}
 
-	dc := &DataChannel{NPresamples: 4, NSamples: len(d)}
-	dc.AnalyzeData(records)
+	dsp := &DataStreamProcessor{NPresamples: 4, NSamples: len(d)}
+	dsp.AnalyzeData(records)
 
 	expectPTM := 10.0
 	if rec.pretrigMean != expectPTM {
