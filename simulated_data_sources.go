@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-// RawType holds raw signal data.
-type RawType uint16
-
 // TriangleSource is a DataSource that synthesizes triangle waves.
 type TriangleSource struct {
 	sampleRate float64 // samples per second
@@ -101,8 +98,8 @@ func (ts *TriangleSource) Outputs() []chan DataSegment {
 
 // SimPulseSource simulates simple pulsed sources
 type SimPulseSource struct {
-	sampleRate float64 // samples per second
 	nchan      int     // how many channels to provide
+	sampleRate float64 // samples per second
 	lastread   time.Time
 	timeperbuf time.Duration
 	output     []chan DataSegment
@@ -111,6 +108,13 @@ type SimPulseSource struct {
 
 	// regular bool // whether pulses are regular or Poisson-distributed
 
+}
+
+// NewSimPulseSource creates a new SimPulseSource with given size, speed.
+func NewSimPulseSource() *SimPulseSource {
+	ps := new(SimPulseSource)
+	// At this point, no invariants to enforce
+	return ps
 }
 
 // Configure sets up the internal buffers with given size, speed, and pedestal and amplitude.
@@ -144,7 +148,7 @@ func (sps *SimPulseSource) Configure(nchan int, rate, pedestal, amplitude float6
 	cycleTime := float64(sps.cycleLen) / sps.sampleRate
 	sps.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
 	fmt.Printf("made a simulated pulse source for %d channels.\n", nchan)
-	fmt.Printf("configured with wait time of %v and cR: %f\n", sps.timeperbuf, cycleTime)
+	fmt.Printf("configured with wait time of %v\n", sps.timeperbuf)
 	return nil
 }
 
@@ -177,7 +181,7 @@ func (sps *SimPulseSource) BlockingRead(abort <-chan struct{}) error {
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
 	if waittime > 0 {
-		fmt.Printf("Waiting %v to read\n", waittime)
+		// fmt.Printf("Waiting %v to read\n", waittime)
 		select {
 		case <-abort:
 			fmt.Println("aborted the read")

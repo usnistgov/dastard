@@ -2,6 +2,9 @@ package dastard
 
 import "time"
 
+// RawType holds raw signal data.
+type RawType uint16
+
 // FrameIndex is used for counting raw data frames.
 type FrameIndex int64
 

@@ -51,6 +51,59 @@ func TestTriangle(t *testing.T) {
 	}
 }
 
+func TestSimPulse(t *testing.T) {
+	ps := NewSimPulseSource()
+	nchan := 4
+	samplerate := 150000.0
+	pedestal := 1000.0
+	amplitude := 10000.0
+	nsamp := 16000
+	ps.Configure(nchan, samplerate, pedestal, amplitude, nsamp)
+	ds := DataSource(ps)
+
+	abort := make(chan struct{})
+	outputs := ds.Outputs()
+	if len(outputs) != nchan {
+		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
+	}
+	ds.Sample()
+	ds.Start()
+	ds.BlockingRead(abort)
+	for i, ch := range outputs {
+		segment := <-ch
+		data := segment.rawData
+		if len(data) != nsamp {
+			t.Errorf("SimPulseSource output %d is length %d, expect %d", i, len(data), nsamp)
+		}
+		min, max := RawType(65535), RawType(0)
+		for j := 0; j < nsamp; j++ {
+			if data[j] < min {
+				min = data[j]
+			}
+			if data[j] > max {
+				max = data[j]
+			}
+		}
+		if min != RawType(pedestal+0.5) {
+			t.Errorf("SimPulseSource minimum value is %d, expect %d", min, RawType(pedestal+0.5))
+		}
+		if max <= RawType(pedestal+amplitude*0.5) {
+			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(pedestal+amplitude*0.5))
+		}
+	}
+
+	ds.Stop()
+
+	// Now try a blocking read with abort.
+	ds.Start()
+	ds.BlockingRead(abort)
+	close(abort)
+	err := ds.BlockingRead(abort)
+	if err != io.EOF {
+		t.Errorf("SimPulseSource did not return EOF on aborted BlockingRead")
+	}
+}
+
 // TestAnalyze tests the DataChannel.AnalyzeData computations on a very simple "pulse".
 func TestAnalyze(t *testing.T) {
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
