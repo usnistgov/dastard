@@ -43,7 +43,7 @@ func TestStream(t *testing.T) {
 	tA := time.Now()
 	tB := tA.Add(ftime * time.Duration(len(dA)))
 	strA := NewDataStream(dA, 1, 0, tA, ftime)
-	strB := NewDataSegment(dB, 1, int64(len(dA)), tB, ftime)
+	strB := NewDataSegment(dB, 1, FrameIndex(len(dA)), tB, ftime)
 
 	strA.AppendSegment(strB)
 	if len(strA.rawData) != len(dC) {
@@ -55,7 +55,7 @@ func TestStream(t *testing.T) {
 	if !reflect.DeepEqual(strA.rawData, dC) {
 		t.Errorf("DataStream.AppendSegment result was %v, want %v", strA.rawData, dC)
 	}
-	expectf1 := strB.firstFramenum - int64(len(dA))
+	expectf1 := strB.firstFramenum - FrameIndex(len(dA))
 	if strA.firstFramenum != expectf1 {
 		t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d", strA.firstFramenum,
 			expectf1)
@@ -86,7 +86,7 @@ func TestStream(t *testing.T) {
 		if cap(strA.rawData) < len(dC) {
 			t.Errorf("DataStream.TrimKeepingN left cap(rawData)=%d, want at least %d", cap(strA.rawData), len(dC))
 		}
-		expectf1 := int64(len(dC) - len(strA.rawData))
+		expectf1 := FrameIndex(len(dC) - len(strA.rawData))
 		if strA.firstFramenum != expectf1 {
 			t.Errorf("DataStream.TrimKeepingN firstFramenum = %d, want %d", strA.firstFramenum,
 				expectf1)
@@ -106,8 +106,8 @@ func TestStreamGap(t *testing.T) {
 	dB := []RawType{10, 7, 8, 9, 10}
 	dC := append(dA, dB...)
 	gap := 10
-	fA := int64(100)
-	fB := int64(len(dA)+gap) + fA
+	fA := FrameIndex(100)
+	fB := FrameIndex(len(dA)+gap) + fA
 	tA := time.Now()
 	tB := tA.Add(ftime * time.Duration(len(dA)+gap))
 	strA := NewDataStream(dA, 1, fA, tA, ftime)
@@ -120,7 +120,7 @@ func TestStreamGap(t *testing.T) {
 	if !reflect.DeepEqual(strA.rawData, dC) {
 		t.Errorf("DataStream.AppendSegment result was %v, want %v", strA.rawData, dC)
 	}
-	expectf1 := fA + int64(gap)
+	expectf1 := fA + FrameIndex(gap)
 	if strA.firstFramenum != expectf1 {
 		t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d", strA.firstFramenum,
 			expectf1)
@@ -136,7 +136,7 @@ func TestStreamDecimated(t *testing.T) {
 	dA := []RawType{6, 4, 2, 5, 1, 0}
 	dB := []RawType{10, 7, 8, 9, 10}
 	// dC := append(dA, dB...)
-	fA := int64(100)
+	fA := FrameIndex(100)
 	tA := time.Now()
 
 	decimations := []int{1, 2, 3, 5}
@@ -144,12 +144,12 @@ func TestStreamDecimated(t *testing.T) {
 		aframes := len(dA) * decimationA
 		for _, decimationB := range decimations {
 			strA := NewDataStream(dA, decimationA, fA, tA, ftime)
-			fB := fA + int64(aframes)
+			fB := fA + FrameIndex(aframes)
 			tB := tA.Add(ftime * time.Duration(aframes))
 			strB := NewDataSegment(dB, decimationB, fB, tB, ftime)
 
 			strA.AppendSegment(strB)
-			expectf1 := fB - int64(len(dA)*decimationB)
+			expectf1 := fB - FrameIndex(len(dA)*decimationB)
 			if strA.firstFramenum != expectf1 {
 				t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d with dec %d, %d",
 					strA.firstFramenum, expectf1, decimationA, decimationB)

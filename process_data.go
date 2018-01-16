@@ -15,7 +15,7 @@ type DataStreamProcessor struct {
 	NSamples    int
 	NPresamples int
 	SampleRate  float64
-	LastTrigger int64
+	LastTrigger FrameIndex
 	stream      DataStream
 	DecimateState
 	TriggerState

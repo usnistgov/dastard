@@ -7,13 +7,13 @@ import (
 
 type triggerList struct {
 	channum int
-	frames  []int64
+	frames  []FrameIndex
 }
 
 func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataRecord {
 	data := make([]RawType, dsp.NSamples)
 	copy(data, segment.rawData[i-dsp.NPresamples:i+dsp.NSamples-dsp.NPresamples])
-	tf := segment.firstFramenum + int64(i)
+	tf := segment.firstFramenum + FrameIndex(i)
 	tt := segment.TimeOf(i)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
 		channum: dsp.Channum}
@@ -43,12 +43,12 @@ func (dsp *DataStreamProcessor) levelTriggerData(segment *DataSegment, records [
 	}
 
 	ndata := len(segment.rawData)
-	nsamp := int64(dsp.NSamples)
+	nsamp := FrameIndex(dsp.NSamples)
 	raw := segment.rawData
 
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
-	nextFoundTrig := int64(math.MaxInt64)
+	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
 		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 	}
@@ -59,7 +59,7 @@ func (dsp *DataStreamProcessor) levelTriggerData(segment *DataSegment, records [
 		// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
 		// Notice how this works: edge triggers get priority, vetoing 1 record minus 1 sample into the past
 		// and 1 record into the future.
-		if int64(i)+nsamp > nextFoundTrig {
+		if FrameIndex(i)+nsamp > nextFoundTrig {
 			i = int(nextFoundTrig) + dsp.NSamples - 1
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
@@ -86,13 +86,13 @@ func (dsp *DataStreamProcessor) autoTriggerData(segment *DataSegment, records []
 	}
 
 	ndata := len(segment.rawData)
-	nsamp := int64(dsp.NSamples)
-	npre := int64(dsp.NPresamples)
+	nsamp := FrameIndex(dsp.NSamples)
+	npre := FrameIndex(dsp.NPresamples)
 
-	delaySamples := int64(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
+	delaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
-	nextFoundTrig := int64(math.MaxInt64)
+	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
 		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 	}
@@ -103,7 +103,7 @@ func (dsp *DataStreamProcessor) autoTriggerData(segment *DataSegment, records []
 	}
 
 	// Loop through all potential trigger times.
-	for nextPotentialTrig+nsamp-npre < int64(ndata) {
+	for nextPotentialTrig+nsamp-npre < FrameIndex(ndata) {
 		if nextPotentialTrig+nsamp < nextFoundTrig {
 			// auto trigger is allowed
 			newRecord := dsp.triggerAt(segment, int(nextPotentialTrig))
@@ -148,7 +148,7 @@ func (dsp *DataStreamProcessor) TriggerData(segment *DataSegment) (records []*Da
 
 	// Step 2a: prepare the primary trigger list from the DataRecord list
 	trigList := triggerList{channum: dsp.Channum}
-	trigList.frames = make([]int64, len(records))
+	trigList.frames = make([]FrameIndex, len(records))
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
 	}

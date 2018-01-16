@@ -14,8 +14,8 @@ type TriggerBroker struct {
 	nchannels       int
 	sources         []map[int]bool
 	PrimaryTrigs    chan triggerList
-	SecondaryTrigs  []chan []int64
-	latestPrimaries [][]int64
+	SecondaryTrigs  []chan []FrameIndex
+	latestPrimaries [][]FrameIndex
 	sync.RWMutex
 }
 
@@ -28,11 +28,11 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 		broker.sources[i] = make(map[int]bool)
 	}
 	broker.PrimaryTrigs = make(chan triggerList, nchan)
-	broker.SecondaryTrigs = make([]chan []int64, nchan)
+	broker.SecondaryTrigs = make([]chan []FrameIndex, nchan)
 	for i := 0; i < nchan; i++ {
-		broker.SecondaryTrigs[i] = make(chan []int64, 1)
+		broker.SecondaryTrigs[i] = make(chan []FrameIndex, 1)
 	}
-	broker.latestPrimaries = make([][]int64, nchan)
+	broker.latestPrimaries = make([][]FrameIndex, nchan)
 	return broker
 }
 
@@ -82,12 +82,12 @@ func (broker *TriggerBroker) Connections(receiver int) map[int]bool {
 	return sources
 }
 
-// Int64Slice attaches the methods of sort.Interface to []int64, sorting in increasing order.
-type Int64Slice []int64
+// FrameIdxSlice attaches the methods of sort.Interface to []FrameIndex, sorting in increasing order.
+type FrameIdxSlice []FrameIndex
 
-func (p Int64Slice) Len() int           { return len(p) }
-func (p Int64Slice) Less(i, j int) bool { return p[i] < p[j] }
-func (p Int64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p FrameIdxSlice) Len() int           { return len(p) }
+func (p FrameIdxSlice) Less(i, j int) bool { return p[i] < p[j] }
+func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // Run runs in a goroutine to broker trigger frame #s from sources to receivers.
 // It runs in the pattern: get a message from each channel (about their triggered
@@ -108,12 +108,12 @@ func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 		broker.RLock()
 		for idx, rxchan := range broker.SecondaryTrigs {
 			sources := broker.Connections(idx)
-			var trigs []int64
+			var trigs []FrameIndex
 			if len(sources) > 0 {
 				for source := range sources {
 					trigs = append(trigs, broker.latestPrimaries[source]...)
 				}
-				sort.Sort(Int64Slice(trigs))
+				sort.Sort(FrameIdxSlice(trigs))
 			}
 			rxchan <- trigs
 		}

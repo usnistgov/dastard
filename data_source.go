@@ -2,6 +2,9 @@ package dastard
 
 import "time"
 
+// FrameIndex is used for counting raw data frames.
+type FrameIndex int64
+
 // DataSource is the interface for hardware or simulated data sources that
 // produce data.
 type DataSource interface {
@@ -17,7 +20,7 @@ type DataSource interface {
 type DataSegment struct {
 	rawData         []RawType
 	framesPerSample int // Normally 1, but can be larger if decimated
-	firstFramenum   int64
+	firstFramenum   FrameIndex
 	firstTime       time.Time
 	framePeriod     time.Duration
 	// something about raw-physical conversion???
@@ -25,7 +28,7 @@ type DataSegment struct {
 }
 
 // NewDataSegment generates a pointer to a new, initialized DataSegment object.
-func NewDataSegment(data []RawType, framesPerSample int, firstFrame int64,
+func NewDataSegment(data []RawType, framesPerSample int, firstFrame FrameIndex,
 	firstTime time.Time, period time.Duration) *DataSegment {
 	seg := DataSegment{rawData: data, framesPerSample: framesPerSample,
 		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period}
@@ -46,7 +49,7 @@ type DataStream struct {
 }
 
 // NewDataStream generates a pointer to a new, initialized DataStream object.
-func NewDataStream(data []RawType, framesPerSample int, firstFrame int64,
+func NewDataStream(data []RawType, framesPerSample int, firstFrame FrameIndex,
 	firstTime time.Time, period time.Duration) *DataStream {
 	ds := DataStream{DataSegment: DataSegment{rawData: data, framesPerSample: framesPerSample,
 		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period},
@@ -58,7 +61,7 @@ func NewDataStream(data []RawType, framesPerSample int, firstFrame int64,
 // It will update the frame/time counters to be consistent with the appended
 // segment, not necessarily with the previous values.
 func (stream *DataStream) AppendSegment(segment *DataSegment) {
-	oldFrameCount := int64(len(stream.rawData) * segment.framesPerSample)
+	oldFrameCount := FrameIndex(len(stream.rawData) * segment.framesPerSample)
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
 	stream.rawData = append(stream.rawData, segment.rawData...)
@@ -75,14 +78,14 @@ func (stream *DataStream) TrimKeepingN(N int) {
 	}
 	copy(stream.rawData[:N], stream.rawData[L-N:L])
 	stream.rawData = stream.rawData[:N]
-	stream.firstFramenum += int64(L - N)
+	stream.firstFramenum += FrameIndex(L - N)
 	stream.firstTime = stream.firstTime.Add(time.Duration(L-N) * stream.framePeriod)
 }
 
 // DataRecord contains a single triggered pulse record.
 type DataRecord struct {
 	data      []RawType
-	trigFrame int64
+	trigFrame FrameIndex
 	trigTime  time.Time
 	channum   int
 

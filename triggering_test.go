@@ -92,19 +92,19 @@ func TestBrokering(t *testing.T) {
 
 	for iter := 0; iter < 3; iter++ {
 		for i := 0; i < N; i++ {
-			trigs := triggerList{i, []int64{int64(i) + 10, int64(i) + 20, 30}}
+			trigs := triggerList{i, []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
 			broker.PrimaryTrigs <- trigs
 		}
 		t0 := <-broker.SecondaryTrigs[0]
 		t1 := <-broker.SecondaryTrigs[1]
 		t2 := <-broker.SecondaryTrigs[2]
 		t3 := <-broker.SecondaryTrigs[3]
-		for i, tn := range [][]int64{t0, t1, t2} {
+		for i, tn := range [][]FrameIndex{t0, t1, t2} {
 			if len(tn) > 0 {
 				t.Errorf("TriggerBroker chan %d received %d secondary triggers, want 0", i, len(tn))
 			}
 		}
-		expected := []int64{10, 12, 20, 22, 30, 30}
+		expected := []FrameIndex{10, 12, 20, 22, 30, 30}
 		if len(t3) != len(expected) {
 			t.Errorf("TriggerBroker chan %d received %d secondary triggers, want %d", 3, len(t3), len(expected))
 		}
@@ -136,27 +136,27 @@ func TestSingles(t *testing.T) {
 	dsp.EdgeTrigger = true
 	dsp.EdgeRising = true
 	dsp.EdgeLevel = 100
-	testTriggerSubroutine(t, dsp, "Edge", []int64{1000})
+	testTriggerSubroutine(t, dsp, "Edge", []FrameIndex{1000})
 
 	dsp.EdgeTrigger = false
 	dsp.LevelTrigger = true
 	dsp.LevelRising = true
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, dsp, "Level", []int64{1000})
+	testTriggerSubroutine(t, dsp, "Level", []FrameIndex{1000})
 
 	dsp.LevelTrigger = false
 	dsp.AutoTrigger = true
 	dsp.AutoDelay = 500 * time.Millisecond
-	testTriggerSubroutine(t, dsp, "Auto", []int64{100, 5100})
+	testTriggerSubroutine(t, dsp, "Auto", []FrameIndex{100, 5100})
 
 	dsp.LevelTrigger = true
-	testTriggerSubroutine(t, dsp, "Level+Auto", []int64{1000, 6000})
+	testTriggerSubroutine(t, dsp, "Level+Auto", []FrameIndex{1000, 6000})
 
 	dsp.AutoDelay = 200 * time.Millisecond
-	testTriggerSubroutine(t, dsp, "Level+Auto", []int64{1000, 3000, 5000, 7000, 9000})
+	testTriggerSubroutine(t, dsp, "Level+Auto", []FrameIndex{1000, 3000, 5000, 7000, 9000})
 }
 
-func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname string, expectedFrames []int64) {
+func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) {
 	const bigval = 8000
 	const tframe = 1000
 	raw := make([]RawType, 10000)
@@ -214,12 +214,12 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	dsp.LevelTrigger = true
 	dsp.LevelRising = true
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, dsp, "Edge", []int64{1000})
+	testTriggerSubroutine(t, dsp, "Edge", []FrameIndex{1000})
 	dsp.LevelLevel = 10000
-	testTriggerSubroutine(t, dsp, "Edge", []int64{1000})
+	testTriggerSubroutine(t, dsp, "Edge", []FrameIndex{1000})
 	dsp.EdgeLevel = 20000
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, dsp, "Level", []int64{1000})
+	testTriggerSubroutine(t, dsp, "Level", []FrameIndex{1000})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
