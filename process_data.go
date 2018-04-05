@@ -1,4 +1,4 @@
-package dastard
+package main
 
 import (
 	"fmt"

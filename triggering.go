@@ -1,4 +1,4 @@
-package dastard
+package main
 
 import (
 	"math"
@@ -57,7 +57,7 @@ func (dsp *DataStreamProcessor) levelTriggerData(segment *DataSegment, records [
 	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
 
 		// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
-		// Notice how this works: edge triggers get priority, vetoing 1 record minus 1 sample into the past
+		// Notice how this works: edge triggers get priority, vetoing (1 record minus 1 sample) into the past
 		// and 1 record into the future.
 		if FrameIndex(i)+nsamp > nextFoundTrig {
 			i = int(nextFoundTrig) + dsp.NSamples - 1
