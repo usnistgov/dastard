@@ -31,6 +31,15 @@ func main() {
 		arith := new(Arith)
 
 		server := rpc.NewServer()
+
+		// The following lines are silly--they simply answer the question of
+		// how the server handles having TWO registered objects of the same type.
+		// The answer appears to be that the second one registered is ignored.
+		// The net/rpc docs say that it's actually an error to register 2 of a type.
+		// arith2 := new(Arith)
+		// arith2.ncalls = 100
+		// server.Register(arith2)
+
 		server.Register(arith)
 		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 		listener, e := net.Listen("tcp", ":4234")
