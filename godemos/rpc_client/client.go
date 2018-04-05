@@ -14,7 +14,7 @@ func main() {
 	//client, err := jsonrpc.Dial("tcp", serverAddress+":4234")
 
 	// Or dial first and then set up the jsonrpc client.
-	httpclient, err := net.Dial("tcp", serverAddress+":4234")
+	httpclient, err := net.Dial("tcp", serverAddress+":5500")
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
