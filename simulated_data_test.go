@@ -17,7 +17,7 @@ func TestTriangle(t *testing.T) {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
 	}
 
-	ds.Start()
+	ds.Run()
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
@@ -43,7 +43,7 @@ func TestTriangle(t *testing.T) {
 	ds.Stop()
 
 	// Now try a blocking read with abort.
-	ds.Start()
+	ds.Run()
 	ds.BlockingRead()
 	ds.Stop()
 	err := ds.BlockingRead()
@@ -55,7 +55,7 @@ func TestTriangle(t *testing.T) {
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before started.")
 	}
-	ds.Start()
+	ds.Run()
 	if !ds.Running() {
 		t.Errorf("SimPulseSource.Running() says false after started.")
 	}
@@ -78,7 +78,7 @@ func TestSimPulse(t *testing.T) {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
 	}
 
-	ds.Start()
+	ds.Run()
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
@@ -106,11 +106,10 @@ func TestSimPulse(t *testing.T) {
 			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(pedestal+amplitude*0.5))
 		}
 	}
-
 	ds.Stop()
 
 	// Now try a blocking read with abort.
-	ds.Start()
+	ds.Run()
 	ds.BlockingRead()
 	ds.Stop()
 	err := ds.BlockingRead()
@@ -122,7 +121,7 @@ func TestSimPulse(t *testing.T) {
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before started.")
 	}
-	ds.Start()
+	ds.Run()
 	if !ds.Running() {
 		t.Errorf("SimPulseSource.Running() says false after started.")
 	}

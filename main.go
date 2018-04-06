@@ -39,7 +39,11 @@ func (s *SourceControl) Start(sourceName *string, reply *error) error {
 
 	// Should select the activeSource using sourceName and error out if no match.
 	s.activeSource = DataSource(&s.simPulses)
-	s.activeSource.Start()
+	ds := s.activeSource
+
+	ds.Sample()
+	ds.RunNewBroker()
+	ds.Run()
 
 	*reply = nil
 	return nil

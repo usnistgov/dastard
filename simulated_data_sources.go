@@ -47,16 +47,17 @@ func (ts *TriangleSource) Configure() error {
 	return nil
 }
 
-// Start begins the data supply.
-// Question: should this be a method of the SourceControl object, to avoid
-// duplication of code?
-func (ts *TriangleSource) Start() error {
+// Sample determines key data facts by sampling some initial data.
+// It's a no-op for simulated (software) sources
+func (ts *TriangleSource) Sample() error {
+	return nil
+}
+
+// Run begins the data supply.
+func (ts *TriangleSource) Run() error {
 	ts.runMutex.Lock()
 	defer ts.runMutex.Unlock()
 
-	// if err := ts.Sample(); err != nil {
-	// 	return err
-	// }
 	ts.abort = make(chan struct{})
 	ts.lastread = time.Now()
 	return nil
@@ -146,10 +147,14 @@ func (sps *SimPulseSource) Configure(nchan int, rate, pedestal, amplitude float6
 	return nil
 }
 
-// Start begins the data supply.
-// Question: should this be a method of the SourceControl object, to avoid
-// duplication of code?
-func (sps *SimPulseSource) Start() error {
+// Sample determines key data facts by sampling some initial data.
+// It's a no-op for simulated (software) sources
+func (sps *SimPulseSource) Sample() error {
+	return nil
+}
+
+// Run begins the data supply.
+func (sps *SimPulseSource) Run() error {
 	sps.runMutex.Lock()
 	defer sps.runMutex.Unlock()
 

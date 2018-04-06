@@ -14,9 +14,11 @@ type FrameIndex int64
 // DataSource is the interface for hardware or simulated data sources that
 // produce data.
 type DataSource interface {
-	Start() error
+	Sample() error
+	Run() error
 	Stop() error
 	Running() bool
+	RunNewBroker() error
 	BlockingRead() error
 	Outputs() []chan DataSegment
 }
@@ -35,6 +37,7 @@ type AnySource struct {
 func (ds *AnySource) Stop() error {
 	ds.runMutex.Lock()
 	close(ds.abort)
+	ds.nchan = 0
 	ds.runMutex.Unlock()
 	return nil
 }
@@ -52,6 +55,12 @@ func (ds *AnySource) Running() bool {
 	default:
 		return true
 	}
+}
+
+func (ds *AnySource) RunNewBroker() error {
+	broker := NewTriggerBroker(ds.nchan)
+	go broker.Run(ds.abort)
+	return nil
 }
 
 // Outputs returns the slice of channels that carry buffers of data for downstream processing.
