@@ -54,17 +54,11 @@ func (ts *TriangleSource) Start() error {
 	ts.runMutex.Lock()
 	defer ts.runMutex.Unlock()
 
-	if err := ts.Sample(); err != nil {
-		return err
-	}
+	// if err := ts.Sample(); err != nil {
+	// 	return err
+	// }
 	ts.abort = make(chan struct{})
 	ts.lastread = time.Now()
-	return nil
-}
-
-// Sample pre-samples the hardware data to see what's in it.
-// Does nothing for a TriangleSource.
-func (ts *TriangleSource) Sample() error {
 	return nil
 }
 
@@ -159,17 +153,12 @@ func (sps *SimPulseSource) Start() error {
 	sps.runMutex.Lock()
 	defer sps.runMutex.Unlock()
 
-	if err := sps.Sample(); err != nil {
-		return err
-	}
+	// Placeholder for hardware sources. Not needed for simulated sources.
+	// if err := sps.Sample(); err != nil {
+	// 	return err
+	// }
 	sps.abort = make(chan struct{})
 	sps.lastread = time.Now()
-	return nil
-}
-
-// Sample pre-samples the hardware data to see what's in it.
-// Does nothing for a SimPulseSource.
-func (sps *SimPulseSource) Sample() error {
 	return nil
 }
 

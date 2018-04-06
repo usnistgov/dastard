@@ -14,7 +14,6 @@ type FrameIndex int64
 // DataSource is the interface for hardware or simulated data sources that
 // produce data.
 type DataSource interface {
-	Sample() error
 	Start() error
 	Stop() error
 	Running() bool

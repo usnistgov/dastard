@@ -36,12 +36,11 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *error) error {
 	fmt.Println("Starting data source named ", sourceName)
-	// s.abortSource = make(chan struct{})
 
 	// Should select the activeSource using sourceName and error out if no match.
 	s.activeSource = DataSource(&s.simPulses)
-	s.activeSource.Sample()
 	s.activeSource.Start()
+
 	*reply = nil
 	return nil
 }

@@ -17,12 +17,11 @@ func TestTriangle(t *testing.T) {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
 	}
 
+	ds.Start()
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
 	}
-	ds.Sample()
-	ds.Start()
 	ds.BlockingRead()
 	n := max - min
 	for i, ch := range outputs {
@@ -79,12 +78,11 @@ func TestSimPulse(t *testing.T) {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
 	}
 
+	ds.Start()
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
 	}
-	ds.Sample()
-	ds.Start()
 	ds.BlockingRead()
 	for i, ch := range outputs {
 		segment := <-ch
