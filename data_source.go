@@ -14,7 +14,8 @@ type DataSource interface {
 	Sample() error
 	Start() error
 	Stop() error
-	BlockingRead(<-chan struct{}) error
+	Running() bool
+	BlockingRead() error
 	Outputs() []chan DataSegment
 }
 

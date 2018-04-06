@@ -14,14 +14,13 @@ func TestTriangle(t *testing.T) {
 	ts.Configure()
 	ds := DataSource(ts)
 
-	abort := make(chan struct{})
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
 	}
 	ds.Sample()
 	ds.Start()
-	ds.BlockingRead(abort)
+	ds.BlockingRead()
 	n := max - min
 	for i, ch := range outputs {
 		segment := <-ch
@@ -43,9 +42,9 @@ func TestTriangle(t *testing.T) {
 
 	// Now try a blocking read with abort.
 	ds.Start()
-	ds.BlockingRead(abort)
-	close(abort)
-	err := ds.BlockingRead(abort)
+	ds.BlockingRead()
+	ds.Stop()
+	err := ds.BlockingRead()
 	if err != io.EOF {
 		t.Errorf("TriangleSource did not return EOF on aborted BlockingRead")
 	}
@@ -61,14 +60,13 @@ func TestSimPulse(t *testing.T) {
 	ps.Configure(nchan, samplerate, pedestal, amplitude, nsamp)
 	ds := DataSource(ps)
 
-	abort := make(chan struct{})
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
 	}
 	ds.Sample()
 	ds.Start()
-	ds.BlockingRead(abort)
+	ds.BlockingRead()
 	for i, ch := range outputs {
 		segment := <-ch
 		data := segment.rawData
@@ -96,9 +94,9 @@ func TestSimPulse(t *testing.T) {
 
 	// Now try a blocking read with abort.
 	ds.Start()
-	ds.BlockingRead(abort)
-	close(abort)
-	err := ds.BlockingRead(abort)
+	ds.BlockingRead()
+	ds.Stop()
+	err := ds.BlockingRead()
 	if err != io.EOF {
 		t.Errorf("SimPulseSource did not return EOF on aborted BlockingRead")
 	}

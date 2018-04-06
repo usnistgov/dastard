@@ -17,6 +17,7 @@ type TriangleSource struct {
 	output     []chan DataSegment
 	onecycle   []RawType
 	cycleLen   int
+	abort      chan struct{} // Signal all goroutines to stop
 }
 
 // NewTriangleSource creates a new TriangleSource with given size, speed, and min/max.
@@ -51,13 +52,28 @@ func (ts *TriangleSource) Configure() error {
 
 // Start begins the data supply.
 func (ts *TriangleSource) Start() error {
+	ts.abort = make(chan struct{})
 	ts.lastread = time.Now()
 	return nil
 }
 
 // Stop ends the data supply.
 func (ts *TriangleSource) Stop() error {
+	close(ts.abort)
 	return nil
+}
+
+// Running tells whether
+func (ts *TriangleSource) Running() bool {
+	if ts.abort == nil {
+		return false
+	}
+	select {
+	case <-ts.abort:
+		return false
+	default:
+		return true
+	}
 }
 
 // Sample pre-samples the hardware data to see what's in it.
@@ -67,12 +83,12 @@ func (ts *TriangleSource) Sample() error {
 }
 
 // BlockingRead blocks and then reads data when "enough" is ready.
-func (ts *TriangleSource) BlockingRead(abort <-chan struct{}) error {
+func (ts *TriangleSource) BlockingRead() error {
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
 	if waittime > 0 {
 		select {
-		case <-abort:
+		case <-ts.abort:
 			return io.EOF
 		case <-time.After(waittime):
 			ts.lastread = time.Now()
@@ -105,6 +121,7 @@ type SimPulseSource struct {
 	output     []chan DataSegment
 	onecycle   []RawType
 	cycleLen   int
+	abort      chan struct{} // Signal all goroutines to stop
 
 	// regular bool // whether pulses are regular or Poisson-distributed
 
@@ -113,8 +130,16 @@ type SimPulseSource struct {
 // NewSimPulseSource creates a new SimPulseSource with given size, speed.
 func NewSimPulseSource() *SimPulseSource {
 	ps := new(SimPulseSource)
-	// At this point, no invariants to enforce
+
+	// At this point, there are no invariants to enforce
 	return ps
+}
+
+// SimPulseSourceConfig holds the arguments needed to call SimPulseSource.Configure by RPC
+type SimPulseSourceConfig struct {
+	nchan                     int
+	rate, pedestal, amplitude float64
+	nsamp                     int
 }
 
 // Configure sets up the internal buffers with given size, speed, and pedestal and amplitude.
@@ -154,13 +179,28 @@ func (sps *SimPulseSource) Configure(nchan int, rate, pedestal, amplitude float6
 
 // Start begins the data supply.
 func (sps *SimPulseSource) Start() error {
+	sps.abort = make(chan struct{})
 	sps.lastread = time.Now()
 	return nil
 }
 
 // Stop ends the data supply.
 func (sps *SimPulseSource) Stop() error {
+	close(sps.abort)
 	return nil
+}
+
+// Running tells whether
+func (sps *SimPulseSource) Running() bool {
+	if sps.abort == nil {
+		return false
+	}
+	select {
+	case <-sps.abort:
+		return false
+	default:
+		return true
+	}
 }
 
 // Sample pre-samples the hardware data to see what's in it.
@@ -177,13 +217,13 @@ func (sps *SimPulseSource) Outputs() []chan DataSegment {
 }
 
 // BlockingRead blocks and then reads data when "enough" is ready.
-func (sps *SimPulseSource) BlockingRead(abort <-chan struct{}) error {
+func (sps *SimPulseSource) BlockingRead() error {
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
 	if waittime > 0 {
 		// fmt.Printf("Waiting %v to read\n", waittime)
 		select {
-		case <-abort:
+		case <-sps.abort:
 			fmt.Println("aborted the read")
 			return io.EOF
 		case <-time.After(waittime):
