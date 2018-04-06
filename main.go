@@ -8,13 +8,58 @@ import (
 	"net/rpc/jsonrpc"
 )
 
+// SourceControl is the sub-server that handles configuration and operation of
+// the Dastard data sources.
+type SourceControl struct {
+	simPulses    SimPulseSource
+	activeSource DataSource
+}
+
+// FactorArgs holds the arguments to a Multiply operation
+type FactorArgs struct {
+	A, B int
+}
+
+// Multiply is a silly RPC service that multiplies its two arguments.
+func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
+	*reply = args.A * args.B
+	return nil
+}
+
+// ConfigureSimPulseSource configures the source of simulated pulses.
+func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *error) error {
+	s.simPulses.Configure(args.nchan, args.rate, args.pedestal, args.amplitude, args.nsamp)
+	*reply = nil
+	return nil
+}
+
+// Start will identify the source given by sourceName and Sample then Start it.
+func (s *SourceControl) Start(sourceName *string, reply *error) error {
+	fmt.Println("Starting data source named ", sourceName)
+	// s.abortSource = make(chan struct{})
+
+	// Should select the activeSource using sourceName and error out if no match.
+	s.activeSource = DataSource(&s.simPulses)
+	s.activeSource.Sample()
+	s.activeSource.Start()
+	*reply = nil
+	return nil
+}
+
+// Stop stops the running data source, if any
+func (s *SourceControl) Stop(dummy *string, reply *error) error {
+	s.activeSource.Stop()
+	*reply = nil
+	return nil
+}
+
 // Set up and run a permanent JSON-RPC server.
-func rpcServer(portrpc int) {
+func runRPCServer(portrpc int) {
 	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
-	simPulses := new(SimPulseSource)
-	server.RegisterName("Arith", simPulses)
+	sourcecontrol := new(SourceControl)
+	server.RegisterName("Arith", sourcecontrol)
 
 	// Now launch the connection handler and accept connections.
 	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
@@ -36,7 +81,7 @@ func rpcServer(portrpc int) {
 func main() {
 	fmt.Printf("Port %d\n", PortRPC)
 	fmt.Printf("Port %d\n", PortStatus)
-	rpcServer(PortRPC)
+	runRPCServer(PortRPC)
 
 	// NChan := 4
 	// source := new(SimPulseSource)
