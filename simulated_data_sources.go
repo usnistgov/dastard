@@ -9,15 +9,12 @@ import (
 // TriangleSource is a DataSource that synthesizes triangle waves.
 type TriangleSource struct {
 	sampleRate float64 // samples per second
-	nchan      int     // how many channels to provide
 	minval     RawType
 	maxval     RawType
-	lastread   time.Time
 	timeperbuf time.Duration
-	output     []chan DataSegment
 	onecycle   []RawType
 	cycleLen   int
-	abort      chan struct{} // Signal all goroutines to stop
+	AnySource
 }
 
 // NewTriangleSource creates a new TriangleSource with given size, speed, and min/max.
@@ -51,29 +48,18 @@ func (ts *TriangleSource) Configure() error {
 }
 
 // Start begins the data supply.
+// Question: should this be a method of the SourceControl object, to avoid
+// duplication of code?
 func (ts *TriangleSource) Start() error {
+	ts.runMutex.Lock()
+	defer ts.runMutex.Unlock()
+
+	if err := ts.Sample(); err != nil {
+		return err
+	}
 	ts.abort = make(chan struct{})
 	ts.lastread = time.Now()
 	return nil
-}
-
-// Stop ends the data supply.
-func (ts *TriangleSource) Stop() error {
-	close(ts.abort)
-	return nil
-}
-
-// Running tells whether
-func (ts *TriangleSource) Running() bool {
-	if ts.abort == nil {
-		return false
-	}
-	select {
-	case <-ts.abort:
-		return false
-	default:
-		return true
-	}
 }
 
 // Sample pre-samples the hardware data to see what's in it.
@@ -105,26 +91,15 @@ func (ts *TriangleSource) BlockingRead() error {
 	return nil
 }
 
-// Outputs returns the slice of channels that carry buffers of data for downstream processing.
-func (ts *TriangleSource) Outputs() []chan DataSegment {
-	result := make([]chan DataSegment, ts.nchan)
-	copy(result, ts.output)
-	return result
-}
-
 // SimPulseSource simulates simple pulsed sources
 type SimPulseSource struct {
-	nchan      int     // how many channels to provide
 	sampleRate float64 // samples per second
-	lastread   time.Time
 	timeperbuf time.Duration
-	output     []chan DataSegment
 	onecycle   []RawType
 	cycleLen   int
-	abort      chan struct{} // Signal all goroutines to stop
+	AnySource
 
 	// regular bool // whether pulses are regular or Poisson-distributed
-
 }
 
 // NewSimPulseSource creates a new SimPulseSource with given size, speed.
@@ -178,42 +153,24 @@ func (sps *SimPulseSource) Configure(nchan int, rate, pedestal, amplitude float6
 }
 
 // Start begins the data supply.
+// Question: should this be a method of the SourceControl object, to avoid
+// duplication of code?
 func (sps *SimPulseSource) Start() error {
+	sps.runMutex.Lock()
+	defer sps.runMutex.Unlock()
+
+	if err := sps.Sample(); err != nil {
+		return err
+	}
 	sps.abort = make(chan struct{})
 	sps.lastread = time.Now()
 	return nil
-}
-
-// Stop ends the data supply.
-func (sps *SimPulseSource) Stop() error {
-	close(sps.abort)
-	return nil
-}
-
-// Running tells whether
-func (sps *SimPulseSource) Running() bool {
-	if sps.abort == nil {
-		return false
-	}
-	select {
-	case <-sps.abort:
-		return false
-	default:
-		return true
-	}
 }
 
 // Sample pre-samples the hardware data to see what's in it.
 // Does nothing for a SimPulseSource.
 func (sps *SimPulseSource) Sample() error {
 	return nil
-}
-
-// Outputs returns the slice of channels that carry buffers of data for downstream processing.
-func (sps *SimPulseSource) Outputs() []chan DataSegment {
-	result := make([]chan DataSegment, sps.nchan)
-	copy(result, sps.output)
-	return result
 }
 
 // BlockingRead blocks and then reads data when "enough" is ready.

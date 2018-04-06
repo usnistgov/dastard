@@ -13,6 +13,9 @@ func TestTriangle(t *testing.T) {
 	ts := NewTriangleSource(nchan, rate, RawType(min), RawType(max))
 	ts.Configure()
 	ds := DataSource(ts)
+	if ds.Running() {
+		t.Errorf("SimPulseSource.Running() says true before first start.")
+	}
 
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
@@ -48,6 +51,19 @@ func TestTriangle(t *testing.T) {
 	if err != io.EOF {
 		t.Errorf("TriangleSource did not return EOF on aborted BlockingRead")
 	}
+
+	// Check that Running() is correct
+	if ds.Running() {
+		t.Errorf("SimPulseSource.Running() says true before started.")
+	}
+	ds.Start()
+	if !ds.Running() {
+		t.Errorf("SimPulseSource.Running() says false after started.")
+	}
+	ds.Stop()
+	if ds.Running() {
+		t.Errorf("SimPulseSource.Running() says true after stopped.")
+	}
 }
 
 func TestSimPulse(t *testing.T) {
@@ -59,6 +75,9 @@ func TestSimPulse(t *testing.T) {
 	nsamp := 16000
 	ps.Configure(nchan, samplerate, pedestal, amplitude, nsamp)
 	ds := DataSource(ps)
+	if ds.Running() {
+		t.Errorf("SimPulseSource.Running() says true before first start.")
+	}
 
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
@@ -99,6 +118,19 @@ func TestSimPulse(t *testing.T) {
 	err := ds.BlockingRead()
 	if err != io.EOF {
 		t.Errorf("SimPulseSource did not return EOF on aborted BlockingRead")
+	}
+
+	// Check that Running() is correct
+	if ds.Running() {
+		t.Errorf("SimPulseSource.Running() says true before started.")
+	}
+	ds.Start()
+	if !ds.Running() {
+		t.Errorf("SimPulseSource.Running() says false after started.")
+	}
+	ds.Stop()
+	if ds.Running() {
+		t.Errorf("SimPulseSource.Running() says true after stopped.")
 	}
 }
 

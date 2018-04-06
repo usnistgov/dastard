@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // RawType holds raw signal data.
 type RawType uint16
@@ -17,6 +20,46 @@ type DataSource interface {
 	Running() bool
 	BlockingRead() error
 	Outputs() []chan DataSegment
+}
+
+// AnySource implements features common to any object that implements
+// DataSource, including the output channels and the abort channel.
+type AnySource struct {
+	nchan    int // how many channels to provide
+	lastread time.Time
+	output   []chan DataSegment
+	abort    chan struct{} // This can signal all goroutines to stop
+	runMutex sync.Mutex
+}
+
+// Stop ends the data supply.
+func (ds *AnySource) Stop() error {
+	ds.runMutex.Lock()
+	close(ds.abort)
+	ds.runMutex.Unlock()
+	return nil
+}
+
+// Running tells whether the source is actively running
+func (ds *AnySource) Running() bool {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+	if ds.abort == nil {
+		return false
+	}
+	select {
+	case <-ds.abort:
+		return false
+	default:
+		return true
+	}
+}
+
+// Outputs returns the slice of channels that carry buffers of data for downstream processing.
+func (ds *AnySource) Outputs() []chan DataSegment {
+	result := make([]chan DataSegment, ds.nchan)
+	copy(result, ds.output)
+	return result
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)
