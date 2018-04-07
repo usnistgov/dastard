@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -15,10 +16,10 @@ type FrameIndex int64
 // produce data.
 type DataSource interface {
 	Sample() error
+	PrepareRun() error
 	Run() error
 	Stop() error
 	Running() bool
-	RunNewBroker() error
 	BlockingRead() error
 	Outputs() []chan DataSegment
 }
@@ -30,22 +31,23 @@ type AnySource struct {
 	lastread time.Time
 	output   []chan DataSegment
 	abort    chan struct{} // This can signal all goroutines to stop
+	broker   *TriggerBroker
 	runMutex sync.Mutex
 }
 
-// Stop ends the data supply.
-func (ds *AnySource) Stop() error {
-	ds.runMutex.Lock()
-	close(ds.abort)
-	ds.nchan = 0
-	ds.runMutex.Unlock()
-	return nil
+// Start will start the given DataSource, including sampling its data for # channels.
+func Start(ds DataSource) error {
+	if err := ds.Sample(); err != nil {
+		return err
+	}
+	if err := ds.PrepareRun(); err != nil {
+		return err
+	}
+	return ds.Run()
 }
 
 // Running tells whether the source is actively running
 func (ds *AnySource) Running() bool {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
 	if ds.abort == nil {
 		return false
 	}
@@ -57,9 +59,27 @@ func (ds *AnySource) Running() bool {
 	}
 }
 
-func (ds *AnySource) RunNewBroker() error {
-	broker := NewTriggerBroker(ds.nchan)
-	go broker.Run(ds.abort)
+// PrepareRun configures an AnySource by initializing all data that cannot
+// be prepared until we know the number of channels. It's an error for
+// ds.nchan to be less than 1.
+func (ds *AnySource) PrepareRun() error {
+	if ds.nchan <= 0 {
+		return fmt.Errorf("PrepareRun could not run with %d channel (expect > 0)", ds.nchan)
+	}
+	ds.abort = make(chan struct{})
+	ds.broker = NewTriggerBroker(ds.nchan)
+	go ds.broker.Run(ds.abort)
+	return nil
+}
+
+// Stop ends the data supply.
+func (ds *AnySource) Stop() error {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+
+	if ds.Running() {
+		close(ds.abort)
+	}
 	return nil
 }
 

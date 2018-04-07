@@ -28,29 +28,27 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *error) error {
-	s.simPulses.Configure(args.nchan, args.rate, args.pedestal, args.amplitude, args.nsamp)
+	fmt.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.Rate)
+	s.simPulses.Configure(args.Nchan, args.Rate, args.Pedestal, args.Amplitude, args.Nsamp)
+	fmt.Printf("Result is %d chan, rate=%.3f\n", s.simPulses.nchan, s.simPulses.sampleRate)
 	*reply = nil
 	return nil
 }
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *error) error {
-	fmt.Println("Starting data source named ", sourceName)
+	fmt.Printf("Starting data source named %s\n", *sourceName)
 
 	// Should select the activeSource using sourceName and error out if no match.
 	s.activeSource = DataSource(&s.simPulses)
-	ds := s.activeSource
-
-	ds.Sample()
-	ds.RunNewBroker()
-	ds.Run()
-
+	go Start(s.activeSource)
 	*reply = nil
 	return nil
 }
 
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *error) error {
+	fmt.Printf("Stopping data source\n")
 	s.activeSource.Stop()
 	*reply = nil
 	return nil
@@ -62,7 +60,7 @@ func runRPCServer(portrpc int) {
 
 	// Set up objects to handle remote calls
 	sourcecontrol := new(SourceControl)
-	server.RegisterName("Arith", sourcecontrol)
+	server.Register(sourcecontrol)
 
 	// Now launch the connection handler and accept connections.
 	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)

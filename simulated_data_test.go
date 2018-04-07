@@ -14,10 +14,12 @@ func TestTriangle(t *testing.T) {
 	ts.Configure()
 	ds := DataSource(ts)
 	if ds.Running() {
-		t.Errorf("SimPulseSource.Running() says true before first start.")
+		t.Errorf("TriangleSource.Running() says true before first start.")
 	}
 
-	ds.Run()
+	if err := Start(ds); err != nil {
+		t.Fatalf("TriangleSource could not be started")
+	}
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
@@ -43,7 +45,9 @@ func TestTriangle(t *testing.T) {
 	ds.Stop()
 
 	// Now try a blocking read with abort.
-	ds.Run()
+	if err := Start(ds); err != nil {
+		t.Fatalf("TriangleSource could not be started")
+	}
 	ds.BlockingRead()
 	ds.Stop()
 	err := ds.BlockingRead()
@@ -55,7 +59,9 @@ func TestTriangle(t *testing.T) {
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before started.")
 	}
-	ds.Run()
+	if err := Start(ds); err != nil {
+		t.Fatalf("TriangleSource could not be started")
+	}
 	if !ds.Running() {
 		t.Errorf("SimPulseSource.Running() says false after started.")
 	}
@@ -78,7 +84,9 @@ func TestSimPulse(t *testing.T) {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
 	}
 
-	ds.Run()
+	if err := Start(ds); err != nil {
+		t.Fatalf("SimPulseSource could not be started")
+	}
 	outputs := ds.Outputs()
 	if len(outputs) != nchan {
 		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
@@ -109,7 +117,9 @@ func TestSimPulse(t *testing.T) {
 	ds.Stop()
 
 	// Now try a blocking read with abort.
-	ds.Run()
+	if err := Start(ds); err != nil {
+		t.Fatalf("SimPulseSource could not be started")
+	}
 	ds.BlockingRead()
 	ds.Stop()
 	err := ds.BlockingRead()
@@ -121,13 +131,23 @@ func TestSimPulse(t *testing.T) {
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before started.")
 	}
-	ds.Run()
+	if err := Start(ds); err != nil {
+		t.Fatalf("SimPulseSource could not be started")
+	}
 	if !ds.Running() {
 		t.Errorf("SimPulseSource.Running() says false after started.")
 	}
 	ds.Stop()
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true after stopped.")
+	}
+
+	// Now configure a 0-channel source and make sure it fails
+	nchan = 0
+	ps.Configure(nchan, samplerate, pedestal, amplitude, nsamp)
+	ds = DataSource(ps)
+	if err := Start(ds); err == nil {
+		t.Errorf("SimPulseSource starts without error when configured with 0 channels.")
 	}
 }
 

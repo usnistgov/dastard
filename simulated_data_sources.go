@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"time"
 )
@@ -107,9 +106,9 @@ func NewSimPulseSource() *SimPulseSource {
 
 // SimPulseSourceConfig holds the arguments needed to call SimPulseSource.Configure by RPC
 type SimPulseSourceConfig struct {
-	nchan                     int
-	rate, pedestal, amplitude float64
-	nsamp                     int
+	Nchan                     int
+	Rate, Pedestal, Amplitude float64
+	Nsamp                     int
 }
 
 // Configure sets up the internal buffers with given size, speed, and pedestal and amplitude.
@@ -142,8 +141,8 @@ func (sps *SimPulseSource) Configure(nchan int, rate, pedestal, amplitude float6
 
 	cycleTime := float64(sps.cycleLen) / sps.sampleRate
 	sps.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
-	fmt.Printf("made a simulated pulse source for %d channels.\n", nchan)
-	fmt.Printf("configured with wait time of %v\n", sps.timeperbuf)
+	// fmt.Printf("made a simulated pulse source for %d channels.\n", nchan)
+	// fmt.Printf("configured with wait time of %v\n", sps.timeperbuf)
 	return nil
 }
 
@@ -175,7 +174,7 @@ func (sps *SimPulseSource) BlockingRead() error {
 		// fmt.Printf("Waiting %v to read\n", waittime)
 		select {
 		case <-sps.abort:
-			fmt.Println("aborted the read")
+			// fmt.Println("aborted the read")
 			return io.EOF
 		case <-time.After(waittime):
 			sps.lastread = time.Now()
