@@ -27,30 +27,30 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 }
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
-func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *error) error {
+func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
 	fmt.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.Rate)
-	s.simPulses.Configure(args.Nchan, args.Rate, args.Pedestal, args.Amplitude, args.Nsamp)
-	fmt.Printf("Result is %d chan, rate=%.3f\n", s.simPulses.nchan, s.simPulses.sampleRate)
-	*reply = nil
+	err := s.simPulses.Configure(args.Nchan, args.Rate, args.Pedestal, args.Amplitude, args.Nsamp)
+	*reply = (err == nil)
+	fmt.Printf("Result is %t and state: %d chan, rate=%.3f\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return nil
 }
 
 // Start will identify the source given by sourceName and Sample then Start it.
-func (s *SourceControl) Start(sourceName *string, reply *error) error {
+func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	fmt.Printf("Starting data source named %s\n", *sourceName)
 
 	// Should select the activeSource using sourceName and error out if no match.
 	s.activeSource = DataSource(&s.simPulses)
 	go Start(s.activeSource)
-	*reply = nil
+	*reply = true
 	return nil
 }
 
 // Stop stops the running data source, if any
-func (s *SourceControl) Stop(dummy *string, reply *error) error {
+func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	fmt.Printf("Stopping data source\n")
 	s.activeSource.Stop()
-	*reply = nil
+	*reply = true
 	return nil
 }
 
