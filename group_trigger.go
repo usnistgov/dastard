@@ -98,7 +98,6 @@ func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 		for i := 0; i < broker.nchannels; i++ {
 			select {
 			case <-abort:
-				fmt.Println("TriggerBroker.Run(...) is ending")
 				return
 			case tlist := <-broker.PrimaryTrigs:
 				broker.latestPrimaries[tlist.channum] = tlist.frames

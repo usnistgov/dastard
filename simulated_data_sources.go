@@ -58,8 +58,19 @@ func (ts *TriangleSource) Run() error {
 	ts.runMutex.Lock()
 	defer ts.runMutex.Unlock()
 
-	ts.abort = make(chan struct{})
-	ts.lastread = time.Now()
+	// Have the DataSource produce data until graceful stop.
+	go func() {
+		for {
+			if err := ts.BlockingRead(); err == io.EOF {
+				fmt.Printf("BlockingRead returns EOF\n")
+				return
+			} else if err != nil {
+				fmt.Printf("BlockingRead returns Error\n")
+				return
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -181,10 +192,8 @@ func (sps *SimPulseSource) BlockingRead() error {
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
 	if waittime > 0 {
-		fmt.Printf("Waiting %v to read with cycleLen %d\n", waittime, sps.cycleLen)
 		select {
 		case <-sps.abort:
-			fmt.Println("aborted the read")
 			return io.EOF
 		case <-time.After(waittime):
 			sps.lastread = time.Now()

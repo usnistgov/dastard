@@ -41,7 +41,6 @@ func TestTriangle(t *testing.T) {
 			}
 		}
 	}
-
 	ds.Stop()
 
 	// Now try a blocking read with abort.

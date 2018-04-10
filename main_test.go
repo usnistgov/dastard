@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -94,5 +95,7 @@ func TestOne(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
+	flag.Parse()
+	go main()
 	os.Exit(m.Run())
 }
