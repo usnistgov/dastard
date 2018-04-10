@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
 	"testing"
+	"time"
 )
 
 func simpleClient() (*rpc.Client, error) {
@@ -15,11 +17,9 @@ func simpleClient() (*rpc.Client, error) {
 }
 
 func TestOne(t *testing.T) {
-	go main()
-
 	client, err := simpleClient()
 	if err != nil {
-		t.Errorf("Could not connect simpleClient() to RPC server")
+		t.Fatalf("Could not connect simpleClient() to RPC server")
 	}
 
 	// Test the silly multiply feature
@@ -42,7 +42,7 @@ func TestOne(t *testing.T) {
 	// Test a basic start and stop
 	var okay bool
 	simConfig := SimPulseSourceConfig{
-		Nchan: 4, Rate: 1.0, Pedestal: 3000.0,
+		Nchan: 4, SampleRate: 10000.0, Pedestal: 3000.0,
 		Amplitude: 10000., Nsamp: 1000,
 	}
 	err = client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
@@ -53,22 +53,46 @@ func TestOne(t *testing.T) {
 		t.Errorf("Error calling SourceControl.ConfigureSimPulseSource(): %s", err.Error())
 	}
 
-	sourceName := "petunia"
+	// Try to start and stop with a wrong name
+	sourceName := "harrypotter"
 	err = client.Call("SourceControl.Start", &sourceName, &okay)
-	if err != nil {
-		t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
-	}
-	if !okay {
-		t.Errorf("Error on server with SourceControl.Start(%s)", sourceName)
+	if err == nil {
+		t.Errorf("Expected error calling SourceControl.Start(\"%s\") with wrong name, saw none", sourceName)
 	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		fmt.Printf(err.Error())
 		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
 	}
+	if okay {
+		t.Errorf("SourceControl.Stop(\"%s\") returns okay, want !okay", sourceName)
+	}
+
+	// Try to start and stop with a sensible name
+	sourceName = "SimPulseSource"
+	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	if err != nil {
+		t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
+	}
 	if !okay {
-		t.Errorf("Error on server with SourceControl.Stop(%s)", sourceName)
+		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+	}
+	time.Sleep(time.Second * 2)
+	fmt.Println("Calling SourceControl.Stop")
+	err = client.Call("SourceControl.Stop", sourceName, &okay)
+	if err != nil {
+		fmt.Printf(err.Error())
+		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
+	}
+	if !okay {
+		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
 	}
 
 	client.Close()
+	fmt.Println("Done with TestOne")
+}
+
+func TestMain(m *testing.M) {
+	// call flag.Parse() here if TestMain uses flags
+	os.Exit(m.Run())
 }

@@ -67,8 +67,31 @@ func (ds *AnySource) PrepareRun() error {
 		return fmt.Errorf("PrepareRun could not run with %d channel (expect > 0)", ds.nchan)
 	}
 	ds.abort = make(chan struct{})
+
+	// Start a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run(ds.abort)
+
+	// Start a data publishing goroutine
+	const publishChannelDepth = 500
+	dataToPub := make(chan []*DataRecord, publishChannelDepth)
+	go PublishRecords(dataToPub, ds.abort, PortTrigs)
+
+	// Launch goroutines to drain the data produced by this source
+	allOutputs := ds.Outputs()
+	for chnum, ch := range allOutputs {
+		dsp := NewDataStreamProcessor(chnum, ds.abort, dataToPub, ds.broker)
+		// TODO: don't just set these to arbitrary values
+		dsp.Decimate = false
+		dsp.DecimateLevel = 3
+		dsp.DecimateAvgMode = true
+		dsp.LevelTrigger = true
+		dsp.LevelLevel = 4000
+		dsp.NPresamples = 200
+		dsp.NSamples = 1000
+		go dsp.ProcessData(ch)
+	}
+	ds.lastread = time.Now()
 	return nil
 }
 

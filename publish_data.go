@@ -21,6 +21,7 @@ func PublishRecords(dataToPub <-chan []*DataRecord, abort <-chan struct{}, portn
 	for {
 		select {
 		case <-abort:
+			fmt.Println("PublishRecords is ending")
 			return
 		case records := <-dataToPub:
 			for _, rec := range records {

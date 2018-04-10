@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"time"
 )
@@ -106,9 +107,11 @@ func NewSimPulseSource() *SimPulseSource {
 
 // SimPulseSourceConfig holds the arguments needed to call SimPulseSource.Configure by RPC
 type SimPulseSourceConfig struct {
-	Nchan                     int
-	Rate, Pedestal, Amplitude float64
-	Nsamp                     int
+	Nchan      int
+	SampleRate float64
+	Pedestal   float64
+	Amplitude  float64
+	Nsamp      int
 }
 
 // Configure sets up the internal buffers with given size, speed, and pedestal and amplitude.
@@ -122,7 +125,7 @@ func (sps *SimPulseSource) Configure(nchan int, rate, pedestal, amplitude float6
 	}
 
 	sps.cycleLen = nsamp
-	firstIdx := 4096
+	firstIdx := 3
 	// nrise := sps.maxval - sps.minval
 	// sps.cycleLen = 2 * int(nrise)
 	sps.onecycle = make([]RawType, sps.cycleLen)
@@ -157,12 +160,19 @@ func (sps *SimPulseSource) Run() error {
 	sps.runMutex.Lock()
 	defer sps.runMutex.Unlock()
 
-	// Placeholder for hardware sources. Not needed for simulated sources.
-	// if err := sps.Sample(); err != nil {
-	// 	return err
-	// }
-	sps.abort = make(chan struct{})
-	sps.lastread = time.Now()
+	// Have the DataSource produce data until graceful stop.
+	go func() {
+		for {
+			if err := sps.BlockingRead(); err == io.EOF {
+				fmt.Printf("BlockingRead returns EOF\n")
+				return
+			} else if err != nil {
+				fmt.Printf("BlockingRead returns Error\n")
+				return
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -171,10 +181,10 @@ func (sps *SimPulseSource) BlockingRead() error {
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
 	if waittime > 0 {
-		// fmt.Printf("Waiting %v to read\n", waittime)
+		fmt.Printf("Waiting %v to read with cycleLen %d\n", waittime, sps.cycleLen)
 		select {
 		case <-sps.abort:
-			// fmt.Println("aborted the read")
+			fmt.Println("aborted the read")
 			return io.EOF
 		case <-time.After(waittime):
 			sps.lastread = time.Now()

@@ -6,12 +6,14 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"strings"
 )
 
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
 type SourceControl struct {
 	simPulses    SimPulseSource
+	triangle     TriangleSource
 	activeSource DataSource
 }
 
@@ -28,8 +30,8 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
-	fmt.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.Rate)
-	err := s.simPulses.Configure(args.Nchan, args.Rate, args.Pedestal, args.Amplitude, args.Nsamp)
+	fmt.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
+	err := s.simPulses.Configure(args.Nchan, args.SampleRate, args.Pedestal, args.Amplitude, args.Nsamp)
 	*reply = (err == nil)
 	fmt.Printf("Result is %t and state: %d chan, rate=%.3f\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return nil
@@ -37,10 +39,18 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
-	fmt.Printf("Starting data source named %s\n", *sourceName)
+	name := strings.ToUpper(*sourceName)
+	switch name {
+	case "SIMPULSESOURCE":
+		s.activeSource = DataSource(&s.simPulses)
+	// case "TRIANGLESOURCE":
+	// 	s.activeSource = DataSource(&s.triangle)
+	// TODO: Add cases here for LANCERO, ROACH, ABACO, etc.
+	default:
+		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
+	}
 
-	// Should select the activeSource using sourceName and error out if no match.
-	s.activeSource = DataSource(&s.simPulses)
+	fmt.Printf("Starting data source named %s\n", *sourceName)
 	go Start(s.activeSource)
 	*reply = true
 	return nil
@@ -49,8 +59,11 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	fmt.Printf("Stopping data source\n")
-	s.activeSource.Stop()
-	*reply = true
+	if s.activeSource != nil {
+		s.activeSource.Stop()
+		s.activeSource = nil
+		*reply = true
+	}
 	return nil
 }
 
@@ -83,52 +96,4 @@ func main() {
 	fmt.Printf("Port %d\n", PortRPC)
 	fmt.Printf("Port %d\n", PortStatus)
 	runRPCServer(PortRPC)
-
-	// NChan := 4
-	// source := new(SimPulseSource)
-	// source.Configure(NChan, 200000.0, 5000.0, 10000.0, 65536)
-	//
-	// ts := DataSource(source)
-	// ts.Sample()
-	// ts.Start()
-	// allOutputs := ts.Outputs()
-	// abort := make(chan struct{})
-	//
-	// dataToPub := make(chan []*DataRecord, 500)
-	// go PublishRecords(dataToPub, abort, pubRecPort)
-	//
-	// broker := NewTriggerBroker(NChan)
-	// go broker.Run(abort)
-	//
-	// // Launch goroutines to drain the data produced by the DataSource.
-	// for chnum, ch := range allOutputs {
-	// 	dsp := NewDataStreamProcessor(chnum, abort, dataToPub, broker)
-	// 	dsp.Decimate = false
-	// 	dsp.DecimateLevel = 3
-	// 	dsp.DecimateAvgMode = true
-	// 	dsp.LevelTrigger = true
-	// 	dsp.LevelLevel = 5500
-	// 	dsp.NPresamples = 200
-	// 	dsp.NSamples = 1000
-	// 	go dsp.ProcessData(ch)
-	// }
-	//
-	// // Have the DataSource produce data until graceful stop.
-	// go func() {
-	// 	for {
-	// 		if err := ts.BlockingRead(abort); err == io.EOF {
-	// 			fmt.Printf("BlockingRead returns EOF\n")
-	// 			return
-	// 		} else if err != nil {
-	// 			fmt.Printf("BlockingRead returns Error\n")
-	// 			return
-	// 		}
-	// 	}
-	// }()
-	//
-	// // Take data for 4 seconds, stop, and wait 2 additional seconds.
-	// time.Sleep(time.Second * 44)
-	// fmt.Println("Stopping data acquisition. Will quit in 2 seconds")
-	// close(abort)
-	// time.Sleep(time.Second * 2)
 }

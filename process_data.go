@@ -59,6 +59,7 @@ func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
 	for {
 		select {
 		case <-dsp.Abort:
+			fmt.Printf("DataStreamProcessor for chan %d ending\n", dsp.Channum)
 			return
 		case segment := <-dataIn:
 			data := segment.rawData
@@ -67,10 +68,10 @@ func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
 			data = segment.rawData
 			fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dsp.Channum, len(data), data[:10])
 			records, secondaries := dsp.TriggerData(&segment)
-			fmt.Printf("Chan %d Found %d triggered records %v\n", dsp.Channum, len(records), records[0].data[:10])
-			fmt.Printf("Chan %d Found %d secondary records\n", dsp.Channum, len(secondaries))
+			fmt.Printf("Chan %d Found %d triggered records, %d secondary records\n",
+				dsp.Channum, len(records), len(secondaries))
 			dsp.AnalyzeData(records) // add analysis results to records in-place
-			// dsp.WriteData(records)
+			// TODO: dsp.WriteData(records)
 			dsp.PublishData(records)
 		}
 	}
