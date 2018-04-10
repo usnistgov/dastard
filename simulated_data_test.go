@@ -9,9 +9,9 @@ import (
 
 // TestTriangle checks that TriangleSource works as expected
 func TestTriangle(t *testing.T) {
-	nchan, rate, min, max := 4, 10000.0, 10, 15
-	ts := NewTriangleSource(nchan, rate, RawType(min), RawType(max))
-	ts.Configure()
+	ts := NewTriangleSource()
+	nchan, samplerate, min, max := 4, 10000.0, 10, 15
+	ts.Configure(nchan, samplerate, RawType(min), RawType(max))
 	ds := DataSource(ts)
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true before first start.")

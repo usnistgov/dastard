@@ -17,18 +17,19 @@ type TriangleSource struct {
 	AnySource
 }
 
-// NewTriangleSource creates a new TriangleSource with given size, speed, and min/max.
-func NewTriangleSource(nchan int, rate float64, min, max RawType) *TriangleSource {
+// NewTriangleSource creates a new TriangleSource.
+func NewTriangleSource() *TriangleSource {
 	ts := new(TriangleSource)
+	return ts
+}
+
+// Configure sets up the internal buffers with given size, speed, and min/max.
+func (ts *TriangleSource) Configure(nchan int, rate float64, min, max RawType) error {
 	ts.sampleRate = rate
 	ts.nchan = nchan
 	ts.minval = min
 	ts.maxval = max
-	return ts
-}
 
-// Configure sets up the internal buffers.
-func (ts *TriangleSource) Configure() error {
 	ts.output = make([]chan DataSegment, ts.nchan)
 	for i := 0; i < ts.nchan; i++ {
 		ts.output[i] = make(chan DataSegment, 1)
