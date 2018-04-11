@@ -10,8 +10,13 @@ import (
 // TestTriangle checks that TriangleSource works as expected
 func TestTriangle(t *testing.T) {
 	ts := NewTriangleSource()
-	nchan, samplerate, min, max := 4, 10000.0, 10, 15
-	ts.Configure(nchan, samplerate, RawType(min), RawType(max))
+	config := &TriangleSourceConfig{
+		Nchan:      4,
+		SampleRate: 10000.0,
+		Min:        10,
+		Max:        15,
+	}
+	ts.Configure(config)
 	ds := DataSource(ts)
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true before first start.")
@@ -21,11 +26,11 @@ func TestTriangle(t *testing.T) {
 		t.Fatalf("TriangleSource could not be started")
 	}
 	outputs := ds.Outputs()
-	if len(outputs) != nchan {
-		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
+	if len(outputs) != config.Nchan {
+		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}
 	ds.BlockingRead()
-	n := max - min
+	n := int(config.Max - config.Min)
 	for i, ch := range outputs {
 		segment := <-ch
 		data := segment.rawData
@@ -33,11 +38,11 @@ func TestTriangle(t *testing.T) {
 			t.Errorf("TriangleSource output %d is length %d, expect %d", i, len(data), 2*n)
 		}
 		for j := 0; j < n; j++ {
-			if data[j] != RawType(min+j) {
-				t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j, data[j], min+j)
+			if data[j] != config.Min+RawType(j) {
+				t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j, data[j], int(config.Min)+j)
 			}
-			if data[j+n] != RawType(max-j) {
-				t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j+n, data[j+n], max-j)
+			if data[j+n] != config.Max-RawType(j) {
+				t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j+n, data[j+n], int(config.Max)-j)
 			}
 		}
 	}

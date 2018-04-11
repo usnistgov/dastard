@@ -23,12 +23,19 @@ func NewTriangleSource() *TriangleSource {
 	return ts
 }
 
+// TriangleSourceConfig holds the arguments needed to call TriangleSource.Configure by RPC
+type TriangleSourceConfig struct {
+	Nchan      int
+	SampleRate float64
+	Min, Max   RawType
+}
+
 // Configure sets up the internal buffers with given size, speed, and min/max.
-func (ts *TriangleSource) Configure(nchan int, rate float64, min, max RawType) error {
-	ts.sampleRate = rate
-	ts.nchan = nchan
-	ts.minval = min
-	ts.maxval = max
+func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
+	ts.sampleRate = config.SampleRate
+	ts.nchan = config.Nchan
+	ts.minval = config.Min
+	ts.maxval = config.Max
 
 	ts.output = make([]chan DataSegment, ts.nchan)
 	for i := 0; i < ts.nchan; i++ {
