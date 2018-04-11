@@ -78,7 +78,6 @@ func TestOne(t *testing.T) {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
-	fmt.Println("Calling SourceControl.Stop")
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		fmt.Printf(err.Error())
@@ -93,7 +92,7 @@ func TestOne(t *testing.T) {
 		Nchan:      4,
 		SampleRate: 10000.0,
 		Min:        10,
-		Max:        15,
+		Max:        1510,
 	}
 	err = client.Call("SourceControl.ConfigureTriangleSource", &tconfig, &okay)
 	if !okay {

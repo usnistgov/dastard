@@ -22,6 +22,7 @@ type DataSource interface {
 	Running() bool
 	BlockingRead() error
 	Outputs() []chan DataSegment
+	Nchan() int
 }
 
 // AnySource implements features common to any object that implements
