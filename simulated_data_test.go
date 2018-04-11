@@ -22,7 +22,7 @@ func TestTriangle(t *testing.T) {
 		t.Errorf("TriangleSource.Running() says true before first start.")
 	}
 
-	if err := Start(ds); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
 	outputs := ds.Outputs()
@@ -49,7 +49,7 @@ func TestTriangle(t *testing.T) {
 	ds.Stop()
 
 	// Now try a blocking read with abort.
-	if err := Start(ds); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
 	ds.BlockingRead()
@@ -63,7 +63,7 @@ func TestTriangle(t *testing.T) {
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true before started.")
 	}
-	if err := Start(ds); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
 	if !ds.Running() {
@@ -96,7 +96,7 @@ func TestSimPulse(t *testing.T) {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
 	}
 
-	if err := Start(ds); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
 	outputs := ds.Outputs()
@@ -129,7 +129,7 @@ func TestSimPulse(t *testing.T) {
 	ds.Stop()
 
 	// Now try a blocking read with abort.
-	if err := Start(ds); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
 	ds.BlockingRead()
@@ -143,7 +143,7 @@ func TestSimPulse(t *testing.T) {
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before started.")
 	}
-	if err := Start(ds); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
 	if !ds.Running() {

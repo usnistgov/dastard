@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	pubURL := "tcp://localhost:32002"
+	pubURL := "tcp://localhost:5501"
 	filter := ""
 	sub, err := czmq.NewSub(pubURL, "")
 	if err != nil {
@@ -22,16 +22,29 @@ func main() {
 
 	sub.Connect(pubURL)
 	sub.SetSubscribe(filter)
-	i := 0
+	iframe := 0
+	imsg := 0
+	newmsg := true
 	for {
-
-		msg, _, err := sub.RecvFrame()
+		msg, more, err := sub.RecvFrame()
 		if err == nil {
-			fmt.Printf("message %4d: %s\n", i, msg)
+			if newmsg {
+				fmt.Printf("message %d: ", imsg)
+				iframe = 0
+				imsg++
+			}
+			fmt.Printf("frame %4d: [%s]", iframe, msg)
+			if more > 0 {
+				fmt.Printf("...")
+				newmsg = false
+				iframe++
+			} else {
+				newmsg = true
+				fmt.Println()
+			}
 		} else {
 			fmt.Printf("Error: %v\n", err)
 			break
 		}
-		i++
 	}
 }

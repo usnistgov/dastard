@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"strings"
+
+	czmq "github.com/zeromq/goczmq"
 )
 
 // SourceControl is the sub-server that handles configuration and operation of
@@ -16,6 +19,16 @@ type SourceControl struct {
 	triangle  TriangleSource
 	// TODO: Add sources for Lancero, ROACH, Abaco
 	activeSource DataSource
+
+	status         SourceControlStatus
+	statusMessages chan<- StatusMessage
+}
+
+type SourceControlStatus struct {
+	Running    bool
+	SourceName string
+	Nchannels  int
+	// TODO: maybe Ncol, Nrow, bytes/sec data rate...?
 }
 
 // FactorArgs holds the arguments to a Multiply operation
@@ -53,15 +66,20 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	switch name {
 	case "SIMPULSESOURCE":
 		s.activeSource = DataSource(&s.simPulses)
+		s.status.SourceName = "SimPulses"
+
 	case "TRIANGLESOURCE":
 		s.activeSource = DataSource(&s.triangle)
+		s.status.SourceName = "Triangles"
+
 	// TODO: Add cases here for LANCERO, ROACH, ABACO, etc.
+
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
 	}
 
 	fmt.Printf("Starting data source named %s\n", *sourceName)
-	go Start(s.activeSource)
+	go Start(s.activeSource, s)
 	*reply = true
 	return nil
 }
@@ -73,16 +91,52 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		s.activeSource.Stop()
 		s.activeSource = nil
 		*reply = true
+
+		s.status.Running = false
+		s.status.SourceName = ""
+		s.status.Nchannels = 0
 	}
+	s.publishStatus()
 	return nil
 }
 
+func (s *SourceControl) publishStatus() {
+	if payload, err := json.Marshal(s.status); err == nil {
+		s.statusMessages <- StatusMessage{"STATUS", payload}
+	}
+}
+
+// StatusMessage carries the messages to be published on the status port.
+type StatusMessage struct {
+	tag     string
+	message []byte
+}
+
+func runStatusPublisher(messages <-chan StatusMessage, portstatus int) {
+	hostname := fmt.Sprintf("tcp://*:%d", portstatus)
+	pubSocket, err := czmq.NewPub(hostname)
+	if err != nil {
+		return
+	}
+	defer pubSocket.Destroy()
+
+	for {
+		select {
+		case update := <-messages:
+			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
+			pubSocket.SendFrame(update.message, czmq.FlagNone)
+		}
+	}
+
+}
+
 // Set up and run a permanent JSON-RPC server.
-func runRPCServer(portrpc int) {
+func runRPCServer(messageChan chan<- StatusMessage, portrpc int) {
 	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
 	sourcecontrol := new(SourceControl)
+	sourcecontrol.statusMessages = messageChan
 	server.Register(sourcecontrol)
 
 	// Now launch the connection handler and accept connections.
@@ -105,5 +159,7 @@ func runRPCServer(portrpc int) {
 func main() {
 	fmt.Printf("Port %d\n", PortRPC)
 	fmt.Printf("Port %d\n", PortStatus)
-	runRPCServer(PortRPC)
+	messageChan := make(chan StatusMessage)
+	go runStatusPublisher(messageChan, PortStatus)
+	runRPCServer(messageChan, PortRPC)
 }
