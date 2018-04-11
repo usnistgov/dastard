@@ -12,8 +12,9 @@ import (
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
 type SourceControl struct {
-	simPulses    SimPulseSource
-	triangle     TriangleSource
+	simPulses SimPulseSource
+	triangle  TriangleSource
+	// TODO: Add sources for Lancero, ROACH, Abaco
 	activeSource DataSource
 }
 
@@ -31,7 +32,10 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
 	fmt.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
-	err := s.simPulses.Configure(args.Nchan, args.SampleRate, args.Pedestal, args.Amplitude, args.Nsamp)
+	if args.Nchan < 1 {
+		return fmt.Errorf("ConfigureSimPulseSource requests %d channels, needs at least 1", args.Nchan)
+	}
+	err := s.simPulses.Configure(args)
 	*reply = (err == nil)
 	fmt.Printf("Result is %t and state: %d chan, rate=%.3f\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return nil

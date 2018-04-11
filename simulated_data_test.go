@@ -72,12 +72,14 @@ func TestTriangle(t *testing.T) {
 
 func TestSimPulse(t *testing.T) {
 	ps := NewSimPulseSource()
-	nchan := 4
-	samplerate := 150000.0
-	pedestal := 1000.0
-	amplitude := 10000.0
-	nsamp := 16000
-	ps.Configure(nchan, samplerate, pedestal, amplitude, nsamp)
+	config := &SimPulseSourceConfig{
+		Nchan:      4,
+		SampleRate: 150000.0,
+		Pedestal:   1000.0,
+		Amplitude:  10000.0,
+		Nsamp:      16000,
+	}
+	ps.Configure(config)
 	ds := DataSource(ps)
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
@@ -87,18 +89,18 @@ func TestSimPulse(t *testing.T) {
 		t.Fatalf("SimPulseSource could not be started")
 	}
 	outputs := ds.Outputs()
-	if len(outputs) != nchan {
-		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), nchan)
+	if len(outputs) != config.Nchan {
+		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}
 	ds.BlockingRead()
 	for i, ch := range outputs {
 		segment := <-ch
 		data := segment.rawData
-		if len(data) != nsamp {
-			t.Errorf("SimPulseSource output %d is length %d, expect %d", i, len(data), nsamp)
+		if len(data) != config.Nsamp {
+			t.Errorf("SimPulseSource output %d is length %d, expect %d", i, len(data), config.Nsamp)
 		}
 		min, max := RawType(65535), RawType(0)
-		for j := 0; j < nsamp; j++ {
+		for j := 0; j < config.Nsamp; j++ {
 			if data[j] < min {
 				min = data[j]
 			}
@@ -106,11 +108,11 @@ func TestSimPulse(t *testing.T) {
 				max = data[j]
 			}
 		}
-		if min != RawType(pedestal+0.5) {
-			t.Errorf("SimPulseSource minimum value is %d, expect %d", min, RawType(pedestal+0.5))
+		if min != RawType(config.Pedestal+0.5) {
+			t.Errorf("SimPulseSource minimum value is %d, expect %d", min, RawType(config.Pedestal+0.5))
 		}
-		if max <= RawType(pedestal+amplitude*0.5) {
-			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(pedestal+amplitude*0.5))
+		if max <= RawType(config.Pedestal+config.Amplitude*0.5) {
+			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(config.Pedestal+config.Amplitude*0.5))
 		}
 	}
 	ds.Stop()
@@ -142,8 +144,8 @@ func TestSimPulse(t *testing.T) {
 	}
 
 	// Now configure a 0-channel source and make sure it fails
-	nchan = 0
-	ps.Configure(nchan, samplerate, pedestal, amplitude, nsamp)
+	config.Nchan = 0
+	ps.Configure(config)
 	ds = DataSource(ps)
 	if err := Start(ds); err == nil {
 		t.Errorf("SimPulseSource starts without error when configured with 0 channels.")

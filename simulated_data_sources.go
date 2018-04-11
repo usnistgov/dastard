@@ -127,27 +127,25 @@ type SimPulseSourceConfig struct {
 }
 
 // Configure sets up the internal buffers with given size, speed, and pedestal and amplitude.
-func (sps *SimPulseSource) Configure(nchan int, rate, pedestal, amplitude float64, nsamp int) error {
-	sps.sampleRate = rate
-	sps.nchan = nchan
+func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
+	sps.nchan = config.Nchan
+	sps.sampleRate = config.SampleRate
 
 	sps.output = make([]chan DataSegment, sps.nchan)
 	for i := 0; i < sps.nchan; i++ {
 		sps.output[i] = make(chan DataSegment, 1)
 	}
 
-	sps.cycleLen = nsamp
+	sps.cycleLen = config.Nsamp
 	firstIdx := 3
-	// nrise := sps.maxval - sps.minval
-	// sps.cycleLen = 2 * int(nrise)
 	sps.onecycle = make([]RawType, sps.cycleLen)
 
-	ampl := []float64{amplitude, -amplitude}
+	ampl := []float64{config.Amplitude, -config.Amplitude}
 	exprate := []float64{.999, .98}
-	value := pedestal
+	value := config.Pedestal
 	for i := 0; i < sps.cycleLen; i++ {
 		if i >= firstIdx {
-			value = pedestal + ampl[0] + ampl[1]
+			value = config.Pedestal + ampl[0] + ampl[1]
 			ampl[0] *= exprate[0]
 			ampl[1] *= exprate[1]
 		}
