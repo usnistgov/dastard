@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -78,7 +77,7 @@ func TestOne(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Millisecond * 400)
 	fmt.Println("Calling SourceControl.Stop")
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
@@ -89,13 +88,58 @@ func TestOne(t *testing.T) {
 		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
 	}
 
+	// Configure, start, and stop a triangle server
+	tconfig := TriangleSourceConfig{
+		Nchan:      4,
+		SampleRate: 10000.0,
+		Min:        10,
+		Max:        15,
+	}
+	err = client.Call("SourceControl.ConfigureTriangleSource", &tconfig, &okay)
+	if !okay {
+		t.Errorf("Error on server with SourceControl.ConfigureTriangleSource()")
+	}
+	if err != nil {
+		t.Errorf("Error calling SourceControl.ConfigureTriangleSource(): %s", err.Error())
+	}
+
+	sourceName = "TriangleSource"
+	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	if err != nil {
+		t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
+	}
+	if !okay {
+		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+	}
+	time.Sleep(time.Millisecond * 400)
+	fmt.Println("Calling SourceControl.Stop")
+	err = client.Call("SourceControl.Stop", sourceName, &okay)
+	if err != nil {
+		fmt.Printf(err.Error())
+		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
+	}
+	if !okay {
+		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
+	}
+
+	// Make sure Nchan = 0 raises error when we try to configure
+	simConfig.Nchan = 0
+	err = client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
+	if err == nil {
+		t.Errorf("Expected error on server with SourceControl.ConfigureSimPulseSource() when Nchan<1, %t %v", okay, err)
+	}
+	tconfig.Nchan = 0
+	err = client.Call("SourceControl.ConfigureTriangleSource", &tconfig, &okay)
+	if err == nil {
+		t.Errorf("Expected error on server with SourceControl.ConfigureTriangleSource() when Nchan<1")
+	}
+
 	client.Close()
 	fmt.Println("Done with TestOne")
 }
 
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
-	flag.Parse()
 	go main()
 	os.Exit(m.Run())
 }

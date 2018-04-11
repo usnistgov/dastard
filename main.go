@@ -29,16 +29,22 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 	return nil
 }
 
+// ConfigureTriangleSource configures the source of simulated pulses.
+func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
+	fmt.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
+	err := s.triangle.Configure(args)
+	*reply = (err == nil)
+	fmt.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
+	return err
+}
+
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
 	fmt.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
-	if args.Nchan < 1 {
-		return fmt.Errorf("ConfigureSimPulseSource requests %d channels, needs at least 1", args.Nchan)
-	}
 	err := s.simPulses.Configure(args)
 	*reply = (err == nil)
-	fmt.Printf("Result is %t and state: %d chan, rate=%.3f\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
-	return nil
+	fmt.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
+	return err
 }
 
 // Start will identify the source given by sourceName and Sample then Start it.
@@ -47,8 +53,8 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	switch name {
 	case "SIMPULSESOURCE":
 		s.activeSource = DataSource(&s.simPulses)
-	// case "TRIANGLESOURCE":
-	// 	s.activeSource = DataSource(&s.triangle)
+	case "TRIANGLESOURCE":
+		s.activeSource = DataSource(&s.triangle)
 	// TODO: Add cases here for LANCERO, ROACH, ABACO, etc.
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)

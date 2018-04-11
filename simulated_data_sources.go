@@ -32,8 +32,11 @@ type TriangleSourceConfig struct {
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
-	ts.sampleRate = config.SampleRate
+	if config.Nchan < 1 {
+		return fmt.Errorf("TriangleSource.Configure() asked for %d channels, should be > 0", config.Nchan)
+	}
 	ts.nchan = config.Nchan
+	ts.sampleRate = config.SampleRate
 	ts.minval = config.Min
 	ts.maxval = config.Max
 
@@ -135,6 +138,9 @@ type SimPulseSourceConfig struct {
 
 // Configure sets up the internal buffers with given size, speed, and pedestal and amplitude.
 func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
+	if config.Nchan < 1 {
+		return fmt.Errorf("SimPulseSource.Configure() asked for %d channels, should be > 0", config.Nchan)
+	}
 	sps.nchan = config.Nchan
 	sps.sampleRate = config.SampleRate
 

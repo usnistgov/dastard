@@ -61,17 +61,23 @@ func TestTriangle(t *testing.T) {
 
 	// Check that Running() is correct
 	if ds.Running() {
-		t.Errorf("SimPulseSource.Running() says true before started.")
+		t.Errorf("TriangleSource.Running() says true before started.")
 	}
 	if err := Start(ds); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
 	if !ds.Running() {
-		t.Errorf("SimPulseSource.Running() says false after started.")
+		t.Errorf("TriangleSource.Running() says false after started.")
 	}
 	ds.Stop()
 	if ds.Running() {
-		t.Errorf("SimPulseSource.Running() says true after stopped.")
+		t.Errorf("TriangleSource.Running() says true after stopped.")
+	}
+
+	// Now configure a 0-channel source and make sure it fails
+	config.Nchan = 0
+	if err := ts.Configure(config); err == nil {
+		t.Errorf("TriangleSource can be configured with 0 channels.")
 	}
 }
 
@@ -151,9 +157,8 @@ func TestSimPulse(t *testing.T) {
 	// Now configure a 0-channel source and make sure it fails
 	config.Nchan = 0
 	ps.Configure(config)
-	ds = DataSource(ps)
-	if err := Start(ds); err == nil {
-		t.Errorf("SimPulseSource starts without error when configured with 0 channels.")
+	if err := ps.Configure(config); err == nil {
+		t.Errorf("SimPulseSource can be configured with 0 channels.")
 	}
 }
 
