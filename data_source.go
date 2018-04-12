@@ -37,7 +37,7 @@ type AnySource struct {
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
-func Start(ds DataSource, s *SourceControl) error {
+func Start(ds DataSource) error {
 	if err := ds.Sample(); err != nil {
 		return err
 	}
@@ -46,11 +46,6 @@ func Start(ds DataSource, s *SourceControl) error {
 	}
 	if err := ds.Run(); err != nil {
 		return err
-	}
-	if s != nil {
-		s.status.Running = true
-		s.status.Nchannels = s.activeSource.Nchan()
-		s.publishStatus()
 	}
 	return nil
 }

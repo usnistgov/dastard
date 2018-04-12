@@ -8,9 +8,12 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"strings"
-
-	czmq "github.com/zeromq/goczmq"
+	"time"
 )
+
+type ServerComponent interface {
+	broadcastUpdate()
+}
 
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
@@ -20,8 +23,8 @@ type SourceControl struct {
 	// TODO: Add sources for Lancero, ROACH, Abaco
 	activeSource DataSource
 
-	status         SourceControlStatus
-	statusMessages chan<- StatusMessage
+	status        SourceControlStatus
+	clientUpdates chan<- ClientUpdate
 }
 
 type SourceControlStatus struct {
@@ -79,7 +82,14 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	}
 
 	fmt.Printf("Starting data source named %s\n", *sourceName)
-	go Start(s.activeSource, s)
+	go func() {
+		err := Start(s.activeSource)
+		if err == nil {
+			s.status.Running = true
+			s.status.Nchannels = s.activeSource.Nchan()
+			s.broadcastUpdate()
+		}
+	}()
 	*reply = true
 	return nil
 }
@@ -96,48 +106,30 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		s.status.SourceName = ""
 		s.status.Nchannels = 0
 	}
-	s.publishStatus()
+	s.broadcastUpdate()
 	return nil
 }
 
-func (s *SourceControl) publishStatus() {
+func (s *SourceControl) broadcastUpdate() {
 	if payload, err := json.Marshal(s.status); err == nil {
-		s.statusMessages <- StatusMessage{"STATUS", payload}
+		s.clientUpdates <- ClientUpdate{"STATUS", payload}
 	}
-}
-
-// StatusMessage carries the messages to be published on the status port.
-type StatusMessage struct {
-	tag     string
-	message []byte
-}
-
-func runStatusPublisher(messages <-chan StatusMessage, portstatus int) {
-	hostname := fmt.Sprintf("tcp://*:%d", portstatus)
-	pubSocket, err := czmq.NewPub(hostname)
-	if err != nil {
-		return
-	}
-	defer pubSocket.Destroy()
-
-	for {
-		select {
-		case update := <-messages:
-			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
-			pubSocket.SendFrame(update.message, czmq.FlagNone)
-		}
-	}
-
 }
 
 // Set up and run a permanent JSON-RPC server.
-func runRPCServer(messageChan chan<- StatusMessage, portrpc int) {
+func runRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
 	sourcecontrol := new(SourceControl)
-	sourcecontrol.statusMessages = messageChan
+	sourcecontrol.clientUpdates = messageChan
 	server.Register(sourcecontrol)
+	go func() {
+		ticker := time.Tick(2 * time.Second)
+		for _ = range ticker {
+			sourcecontrol.broadcastUpdate()
+		}
+	}()
 
 	// Now launch the connection handler and accept connections.
 	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
@@ -159,7 +151,7 @@ func runRPCServer(messageChan chan<- StatusMessage, portrpc int) {
 func main() {
 	fmt.Printf("Port %d\n", PortRPC)
 	fmt.Printf("Port %d\n", PortStatus)
-	messageChan := make(chan StatusMessage)
-	go runStatusPublisher(messageChan, PortStatus)
+	messageChan := make(chan ClientUpdate)
+	go runClientUpdater(messageChan, PortStatus)
 	runRPCServer(messageChan, PortRPC)
 }
