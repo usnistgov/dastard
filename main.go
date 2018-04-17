@@ -63,9 +63,17 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 	return err
 }
 
-func (s *SourceControl) ConfigurePulseLengths(sizes []int, reply *bool) error {
-	fmt.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes[0], sizes[1])
-	err := s.activeSource.ConfigurePulseLengths(sizes[0], sizes[1])
+type SizeObject struct {
+	Nsamp int
+	Npre  int
+}
+
+func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
+	fmt.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+	err := s.activeSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
 	*reply = (err == nil)
 	fmt.Printf("Result is okay=%t\n", *reply)
 	return err
