@@ -28,12 +28,14 @@ type DataSource interface {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan    int // how many channels to provide
-	lastread time.Time
-	output   []chan DataSegment
-	abort    chan struct{} // This can signal all goroutines to stop
-	broker   *TriggerBroker
-	runMutex sync.Mutex
+	nchan      int // how many channels to provide
+	lastread   time.Time
+	output     []chan DataSegment
+	processors []*DataStreamProcessor
+	abort      chan struct{} // This can signal all goroutines to stop
+	broker     *TriggerBroker
+	runMutex   sync.Mutex
+	runDone    sync.WaitGroup
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -50,6 +52,7 @@ func Start(ds DataSource) error {
 	return nil
 }
 
+// Nchan returns the current number of valid channels in the data source.
 func (ds *AnySource) Nchan() int {
 	return ds.nchan
 }
@@ -86,9 +89,13 @@ func (ds *AnySource) PrepareRun() error {
 	go PublishRecords(dataToPub, ds.abort, PortTrigs)
 
 	// Launch goroutines to drain the data produced by this source
+	ds.processors = make([]*DataStreamProcessor, ds.nchan)
+	ds.runDone.Add(ds.nchan)
 	allOutputs := ds.Outputs()
 	for chnum, ch := range allOutputs {
 		dsp := NewDataStreamProcessor(chnum, ds.abort, dataToPub, ds.broker)
+		ds.processors[chnum] = dsp
+
 		// TODO: don't just set these to arbitrary values
 		dsp.Decimate = false
 		dsp.DecimateLevel = 3
@@ -97,7 +104,11 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.LevelLevel = 4000
 		dsp.NPresamples = 200
 		dsp.NSamples = 1000
-		go dsp.ProcessData(ch)
+		go func(ch <-chan DataSegment) {
+			defer ds.runDone.Done()
+			dsp.ProcessData(ch)
+			fmt.Printf("ProcessData(%d) done\n", dsp.Channum)
+		}(ch)
 	}
 	ds.lastread = time.Now()
 	return nil
@@ -111,6 +122,9 @@ func (ds *AnySource) Stop() error {
 	if ds.Running() {
 		close(ds.abort)
 	}
+	fmt.Printf("Aborted %d channels. Waiting...\n", ds.nchan)
+	// ds.runDone.Wait()
+	fmt.Println("Waiting done.")
 	return nil
 }
 
