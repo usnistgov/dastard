@@ -25,7 +25,7 @@ func TestTriangle(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
-	outputs := ds.Outputs()
+	outputs := ds.GenerateOutputs()
 	if len(outputs) != config.Nchan {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}
@@ -74,6 +74,23 @@ func TestTriangle(t *testing.T) {
 		t.Errorf("TriangleSource.Running() says true after stopped.")
 	}
 
+	// Check that we can alter the record length
+	if err := Start(ds); err != nil {
+		t.Fatalf("TriangleSource could not be started")
+	}
+	ds.BlockingRead()
+	ds.ConfigurePulseLengths(0, 0)
+	nsamp, npre := 500, 250
+	ds.ConfigurePulseLengths(nsamp, npre)
+	ds.BlockingRead()
+	ds.BlockingRead()
+	dsp := ts.processors[0]
+	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
+		t.Errorf("TriangleSource has (nsamp, npre)=(%d,%d), want (%d,%d)",
+			dsp.NSamples, dsp.NPresamples, nsamp, npre)
+	}
+	ds.Stop()
+
 	// Now configure a 0-channel source and make sure it fails
 	config.Nchan = 0
 	if err := ts.Configure(config); err == nil {
@@ -84,7 +101,7 @@ func TestTriangle(t *testing.T) {
 func TestSimPulse(t *testing.T) {
 	ps := NewSimPulseSource()
 	config := &SimPulseSourceConfig{
-		Nchan:      4,
+		Nchan:      5,
 		SampleRate: 150000.0,
 		Pedestal:   1000.0,
 		Amplitude:  10000.0,
@@ -99,7 +116,7 @@ func TestSimPulse(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
-	outputs := ds.Outputs()
+	outputs := ds.GenerateOutputs()
 	if len(outputs) != config.Nchan {
 		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}

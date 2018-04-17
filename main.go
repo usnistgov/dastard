@@ -65,7 +65,7 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 
 func (s *SourceControl) ConfigurePulseLengths(sizes []int, reply *bool) error {
 	fmt.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes[0], sizes[1])
-	err := s.activeSource.ConfigurePulseLengths(sizes)
+	err := s.activeSource.ConfigurePulseLengths(sizes[0], sizes[1])
 	*reply = (err == nil)
 	fmt.Printf("Result is okay=%t\n", *reply)
 	return err

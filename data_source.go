@@ -21,9 +21,9 @@ type DataSource interface {
 	Stop() error
 	Running() bool
 	BlockingRead() error
-	Outputs() []chan DataSegment
+	GenerateOutputs() []chan DataSegment
 	Nchan() int
-	ConfigurePulseLengths([]int) error
+	ConfigurePulseLengths(int, int) error
 }
 
 // AnySource implements features common to any object that implements
@@ -76,7 +76,7 @@ func (ds *AnySource) Running() bool {
 // ds.nchan to be less than 1.
 func (ds *AnySource) PrepareRun() error {
 	if ds.nchan <= 0 {
-		return fmt.Errorf("PrepareRun could not run with %d channel (expect > 0)", ds.nchan)
+		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
 	ds.abort = make(chan struct{})
 
@@ -92,7 +92,7 @@ func (ds *AnySource) PrepareRun() error {
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
-	allOutputs := ds.Outputs()
+	allOutputs := ds.GenerateOutputs()
 	for chnum, ch := range allOutputs {
 		dsp := NewDataStreamProcessor(chnum, ds.abort, dataToPub, ds.broker)
 		ds.processors[chnum] = dsp
@@ -129,25 +129,19 @@ func (ds *AnySource) Stop() error {
 	return nil
 }
 
-// Outputs returns the slice of channels that carry buffers of data for downstream processing.
-func (ds *AnySource) Outputs() []chan DataSegment {
+// GenerateOutputs generates the slice of channels that carry buffers of data for downstream processing.
+func (ds *AnySource) GenerateOutputs() []chan DataSegment {
 	result := make([]chan DataSegment, ds.nchan)
 	copy(result, ds.output)
 	return result
 }
 
-func (ds *AnySource) ConfigurePulseLengths(sizes []int) error {
-	if len(sizes) != 2 {
-		return fmt.Errorf("ConfigurePulseLengths needs length-2 argument")
-	}
-	nsamp := sizes[0]
-	npre := sizes[1]
+func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 	if npre < 0 || nsamp < 1 || nsamp < npre+1 {
 		return fmt.Errorf("ConfigurePulseLengths arguments are invalid")
 	}
 	for _, dsp := range ds.processors {
-		dsp.NSamples = nsamp
-		dsp.NPresamples = npre
+		go dsp.ConfigurePulseLengths(nsamp, npre)
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 )
 
@@ -19,6 +20,7 @@ type DataStreamProcessor struct {
 	stream      DataStream
 	DecimateState
 	TriggerState
+	changeMutex sync.Mutex // Don't change key data without locking this.
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
@@ -54,6 +56,18 @@ type TriggerState struct {
 	// TODO: group source/rx info.
 }
 
+// ConfigurePulseLengths sets this stream's pulse length and # of presamples.
+func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
+	if nsamp <= npre+1 || npre < 0 {
+		return
+	}
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
+
+	dsp.NSamples = nsamp
+	dsp.NPresamples = npre
+}
+
 // ProcessData drains the data channel and processes whatever is found there.
 func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
 	for {
@@ -61,21 +75,28 @@ func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
 		case <-dsp.Abort:
 			return
 		case segment := <-dataIn:
-			data := segment.rawData
-			fmt.Printf("Chan %d:          found %d values starting with %v\n", dsp.Channum, len(data), data[:10])
-			dsp.DecimateData(&segment)
-			data = segment.rawData
-			// fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dsp.Channum, len(data), data[:10])
-			records, secondaries := dsp.TriggerData(&segment)
-			if len(records)+len(secondaries) > 0 {
-				fmt.Printf("Chan %d Found %d triggered records, %d secondary records\n",
-					dsp.Channum, len(records), len(secondaries))
-			}
-			dsp.AnalyzeData(records) // add analysis results to records in-place
-			// TODO: dsp.WriteData(records)
-			dsp.PublishData(records)
+			dsp.processSegment(segment)
 		}
 	}
+}
+
+func (dsp *DataStreamProcessor) processSegment(segment DataSegment) {
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
+
+	data := segment.rawData
+	fmt.Printf("Chan %d:          found %d values starting with %v\n", dsp.Channum, len(data), data[:10])
+	dsp.DecimateData(&segment)
+	data = segment.rawData
+	// fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dsp.Channum, len(data), data[:10])
+	records, secondaries := dsp.TriggerData(&segment)
+	if len(records)+len(secondaries) > 0 {
+		fmt.Printf("Chan %d Found %d triggered records, %d secondary records\n",
+			dsp.Channum, len(records), len(secondaries))
+	}
+	dsp.AnalyzeData(records) // add analysis results to records in-place
+	// TODO: dsp.WriteData(records)
+	dsp.PublishData(records)
 }
 
 // DecimateData decimates data in-place.
