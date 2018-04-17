@@ -63,6 +63,14 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 	return err
 }
 
+func (s *SourceControl) ConfigurePulseLengths(sizes []int, reply *bool) error {
+	fmt.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes[0], sizes[1])
+	err := s.activeSource.ConfigurePulseLengths(sizes)
+	*reply = (err == nil)
+	fmt.Printf("Result is okay=%t\n", *reply)
+	return err
+}
+
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	name := strings.ToUpper(*sourceName)

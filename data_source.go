@@ -23,6 +23,7 @@ type DataSource interface {
 	BlockingRead() error
 	Outputs() []chan DataSegment
 	Nchan() int
+	ConfigurePulseLengths([]int) error
 }
 
 // AnySource implements features common to any object that implements
@@ -133,6 +134,22 @@ func (ds *AnySource) Outputs() []chan DataSegment {
 	result := make([]chan DataSegment, ds.nchan)
 	copy(result, ds.output)
 	return result
+}
+
+func (ds *AnySource) ConfigurePulseLengths(sizes []int) error {
+	if len(sizes) != 2 {
+		return fmt.Errorf("ConfigurePulseLengths needs length-2 argument")
+	}
+	nsamp := sizes[0]
+	npre := sizes[1]
+	if npre < 0 || nsamp < 1 || nsamp < npre+1 {
+		return fmt.Errorf("ConfigurePulseLengths arguments are invalid")
+	}
+	for _, dsp := range ds.processors {
+		dsp.NSamples = nsamp
+		dsp.NPresamples = npre
+	}
+	return nil
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)
