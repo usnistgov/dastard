@@ -52,9 +52,9 @@ func packet(rec *DataRecord) ([]byte, []byte) {
 	binary.Write(header, binary.LittleEndian, uint16(rec.channum))
 	binary.Write(header, binary.LittleEndian, headerVersion)
 	binary.Write(header, binary.LittleEndian, dataType)
-	binary.Write(header, binary.LittleEndian, uint32(len(rec.data))/2) // TODO: change to pretrig length
+	binary.Write(header, binary.LittleEndian, uint32(rec.presamples))
 	binary.Write(header, binary.LittleEndian, uint32(len(rec.data)))
-	binary.Write(header, binary.LittleEndian, float32(rec.peakValue)) // TODO: change to sample period
+	binary.Write(header, binary.LittleEndian, rec.sampPeriod)
 	binary.Write(header, binary.LittleEndian, float32(rec.peakValue)) // TODO: change to volts/arb
 	nano := rec.trigTime.UnixNano()
 	binary.Write(header, binary.LittleEndian, uint64(nano))

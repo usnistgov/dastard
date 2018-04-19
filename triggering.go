@@ -15,8 +15,9 @@ func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataReco
 	copy(data, segment.rawData[i-dsp.NPresamples:i+dsp.NSamples-dsp.NPresamples])
 	tf := segment.firstFramenum + FrameIndex(i)
 	tt := segment.TimeOf(i)
+	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
-		channum: dsp.Channum}
+		channum: dsp.Channum, presamples: dsp.NPresamples, sampPeriod: sampPeriod}
 	return record
 }
 

@@ -8,7 +8,6 @@ import (
 
 // TriangleSource is a DataSource that synthesizes triangle waves.
 type TriangleSource struct {
-	sampleRate float64 // samples per second
 	minval     RawType
 	maxval     RawType
 	timeperbuf time.Duration
@@ -110,7 +109,6 @@ func (ts *TriangleSource) BlockingRead() error {
 
 // SimPulseSource simulates simple pulsed sources
 type SimPulseSource struct {
-	sampleRate float64 // samples per second
 	timeperbuf time.Duration
 	onecycle   []RawType
 	cycleLen   int

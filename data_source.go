@@ -29,7 +29,8 @@ type DataSource interface {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan      int // how many channels to provide
+	nchan      int     // how many channels to provide
+	sampleRate float64 // samples per second
 	lastread   time.Time
 	output     []chan DataSegment
 	processors []*DataStreamProcessor
@@ -95,6 +96,7 @@ func (ds *AnySource) PrepareRun() error {
 	allOutputs := ds.GenerateOutputs()
 	for chnum, ch := range allOutputs {
 		dsp := NewDataStreamProcessor(chnum, ds.abort, dataToPub, ds.broker)
+		dsp.SampleRate = ds.sampleRate
 		ds.processors[chnum] = dsp
 
 		// TODO: don't just set these to arbitrary values
@@ -215,10 +217,12 @@ func (stream *DataStream) TrimKeepingN(N int) {
 
 // DataRecord contains a single triggered pulse record.
 type DataRecord struct {
-	data      []RawType
-	trigFrame FrameIndex
-	trigTime  time.Time
-	channum   int
+	data       []RawType
+	trigFrame  FrameIndex
+	trigTime   time.Time
+	channum    int
+	presamples int
+	sampPeriod float32
 
 	// trigger type?
 
