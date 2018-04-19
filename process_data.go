@@ -91,8 +91,12 @@ func (dsp *DataStreamProcessor) processSegment(segment DataSegment) {
 	// fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dsp.Channum, len(data), data[:10])
 	records, secondaries := dsp.TriggerData(&segment)
 	if len(records)+len(secondaries) > 0 {
-		fmt.Printf("Chan %d Found %d triggered records, %d secondary records\n",
+		fmt.Printf("Chan %d Found %d triggered records, %d secondary records.",
 			dsp.Channum, len(records), len(secondaries))
+		if len(records) > 0 {
+			fmt.Printf("  Record[0] size %d, starting with %v", len(records[0].data), records[0].data[:6])
+		}
+		fmt.Println()
 	}
 	dsp.AnalyzeData(records) // add analysis results to records in-place
 	// TODO: dsp.WriteData(records)

@@ -38,6 +38,7 @@ func packet(rec *DataRecord) ([]byte, []byte) {
 	//  8 bits: header version number
 	//  8 bits: code for data type (0-1 = 8 bits; 2-3 = 16; 4-5 = 32; 6-7 = 64; odd=uint; even=int)
 	// 32 bits: # of pre-trigger samples
+	// 32 bits: # of samples, total
 	// 32 bits: sample period, in seconds (float)
 	// 32 bits: volts per arb conversion (float)
 	// 64 bits: trigger time, in ns since epoch 1970
@@ -51,7 +52,8 @@ func packet(rec *DataRecord) ([]byte, []byte) {
 	binary.Write(header, binary.LittleEndian, uint16(rec.channum))
 	binary.Write(header, binary.LittleEndian, headerVersion)
 	binary.Write(header, binary.LittleEndian, dataType)
-	binary.Write(header, binary.LittleEndian, uint32(rec.channum))    // TODO: change to pretrig length
+	binary.Write(header, binary.LittleEndian, uint32(len(rec.data))/2) // TODO: change to pretrig length
+	binary.Write(header, binary.LittleEndian, uint32(len(rec.data)))
 	binary.Write(header, binary.LittleEndian, float32(rec.peakValue)) // TODO: change to sample period
 	binary.Write(header, binary.LittleEndian, float32(rec.peakValue)) // TODO: change to volts/arb
 	nano := rec.trigTime.UnixNano()
