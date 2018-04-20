@@ -148,7 +148,7 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	}
 
 	sps.cycleLen = config.Nsamp
-	firstIdx := 3
+	firstIdx := 5
 	sps.onecycle = make([]RawType, sps.cycleLen)
 
 	ampl := []float64{config.Amplitude, -config.Amplitude}

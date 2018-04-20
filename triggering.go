@@ -21,7 +21,7 @@ func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataReco
 	return record
 }
 
-func (dsp *DataStreamProcessor) edgeTriggerData(segment *DataSegment, records []*DataRecord) []*DataRecord {
+func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(segment *DataSegment, records []*DataRecord) []*DataRecord {
 	ndata := len(segment.rawData)
 	raw := segment.rawData
 	if dsp.EdgeTrigger {
@@ -38,7 +38,7 @@ func (dsp *DataStreamProcessor) edgeTriggerData(segment *DataSegment, records []
 	return records
 }
 
-func (dsp *DataStreamProcessor) levelTriggerData(segment *DataSegment, records []*DataRecord) []*DataRecord {
+func (dsp *DataStreamProcessor) levelTriggerComputeAppend(segment *DataSegment, records []*DataRecord) []*DataRecord {
 	if !dsp.LevelTrigger {
 		return records
 	}
@@ -81,7 +81,7 @@ func (dsp *DataStreamProcessor) levelTriggerData(segment *DataSegment, records [
 	return records
 }
 
-func (dsp *DataStreamProcessor) autoTriggerData(segment *DataSegment, records []*DataRecord) []*DataRecord {
+func (dsp *DataStreamProcessor) autoTriggerComputeAppend(segment *DataSegment, records []*DataRecord) []*DataRecord {
 	if !dsp.AutoTrigger {
 		return records
 	}
@@ -132,14 +132,14 @@ func (dsp *DataStreamProcessor) TriggerData(segment *DataSegment) (records []*Da
 
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
-	records = dsp.edgeTriggerData(segment, records)
+	records = dsp.edgeTriggerComputeAppend(segment, records)
 
 	// Step 1b: compute all level triggers on a second pass. Only insert them
 	// in the list of triggers if they are properly separated from the edge triggers.
-	records = dsp.levelTriggerData(segment, records)
+	records = dsp.levelTriggerComputeAppend(segment, records)
 
 	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
-	records = dsp.autoTriggerData(segment, records)
+	records = dsp.autoTriggerComputeAppend(segment, records)
 
 	// TODO Step 1d: compute all noise triggers, wherever they fit in between edge+level.
 	//

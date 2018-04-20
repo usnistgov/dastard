@@ -103,10 +103,15 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.Decimate = false
 		dsp.DecimateLevel = 3
 		dsp.DecimateAvgMode = true
-		dsp.LevelTrigger = true
+		dsp.LevelTrigger = false
 		dsp.LevelLevel = 4000
+		dsp.EdgeTrigger = true
+		dsp.EdgeLevel = 100
+		dsp.EdgeRising = true
 		dsp.NPresamples = 200
 		dsp.NSamples = 1000
+
+		// This goroutine will run until the ds.abort channel is closed
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
 			dsp.ProcessData(ch)
