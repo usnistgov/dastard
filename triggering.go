@@ -128,7 +128,8 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(segment *DataSegment, r
 
 // TriggerData analyzes a DataSegment to find and generate triggered records.
 // All edge triggers are found, then level triggers, then auto and noise triggers.
-func (dsp *DataStreamProcessor) TriggerData(segment *DataSegment) (records []*DataRecord, secondaries []*DataRecord) {
+func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondaries []*DataRecord) {
+	segment := &dsp.stream.DataSegment
 
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
@@ -163,6 +164,9 @@ func (dsp *DataStreamProcessor) TriggerData(segment *DataSegment) (records []*Da
 	for _, st := range secondaryTrigList {
 		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
 	}
+
+	Nkeep := dsp.NPresamples + 3 // TODO: make a named variable to replace the magic 3
+	dsp.stream.TrimKeepingN(Nkeep)
 	return
 }
 

@@ -41,6 +41,12 @@ type AnySource struct {
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
+// Steps are:
+// 1. Sample: per-source method that determines the # of channels and other internal
+//    facts that we need to know.
+// 2. PrepareRun: an AnySource method to do the actions that any source needs before
+//    starting the actual acquisition phase.
+// 3. Run: a per-source method that starts the data acquisition.
 func Start(ds DataSource) error {
 	if err := ds.Sample(); err != nil {
 		return err
@@ -72,8 +78,8 @@ func (ds *AnySource) Running() bool {
 	}
 }
 
-// PrepareRun configures an AnySource by initializing all data that cannot
-// be prepared until we know the number of channels. It's an error for
+// PrepareRun configures an AnySource by initializing all data structures that
+// cannot be prepared until we know the number of channels. It's an error for
 // ds.nchan to be less than 1.
 func (ds *AnySource) PrepareRun() error {
 	if ds.nchan <= 0 {
@@ -189,9 +195,8 @@ type DataStream struct {
 // NewDataStream generates a pointer to a new, initialized DataStream object.
 func NewDataStream(data []RawType, framesPerSample int, firstFrame FrameIndex,
 	firstTime time.Time, period time.Duration) *DataStream {
-	ds := DataStream{DataSegment: DataSegment{rawData: data, framesPerSample: framesPerSample,
-		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period},
-		samplesSeen: len(data)}
+	seg := NewDataSegment(data, framesPerSample, firstFrame, firstTime, period)
+	ds := DataStream{DataSegment: *seg, samplesSeen: len(data)}
 	return &ds
 }
 
@@ -199,12 +204,12 @@ func NewDataStream(data []RawType, framesPerSample int, firstFrame FrameIndex,
 // It will update the frame/time counters to be consistent with the appended
 // segment, not necessarily with the previous values.
 func (stream *DataStream) AppendSegment(segment *DataSegment) {
-	oldFrameCount := FrameIndex(len(stream.rawData) * segment.framesPerSample)
+	framesNowInStream := FrameIndex(len(stream.rawData) * segment.framesPerSample)
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
 	stream.rawData = append(stream.rawData, segment.rawData...)
-	stream.firstFramenum = segment.firstFramenum - oldFrameCount
-	stream.firstTime = segment.firstTime.Add(-time.Duration(oldFrameCount) * stream.framePeriod)
+	stream.firstFramenum = segment.firstFramenum - framesNowInStream
+	stream.firstTime = segment.firstTime.Add(-time.Duration(framesNowInStream) * stream.framePeriod)
 	stream.samplesSeen += len(segment.rawData)
 }
 

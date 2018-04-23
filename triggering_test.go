@@ -166,7 +166,8 @@ func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname stri
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
-	primaries, secondaries := dsp.TriggerData(segment)
+	dsp.stream.AppendSegment(segment)
+	primaries, secondaries := dsp.TriggerData()
 	if len(primaries) != len(expectedFrames) {
 		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
 	}
@@ -258,7 +259,8 @@ func TestEdgeVetosLevel(t *testing.T) {
 		}
 
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
-		primaries, _ := dsp.TriggerData(segment)
+		dsp.stream.AppendSegment(segment)
+		primaries, _ := dsp.TriggerData()
 		if len(primaries) != want {
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
