@@ -14,7 +14,8 @@ func TestSegment(t *testing.T) {
 	}
 
 	for _, n := range []int{0, 1, 5, 100} {
-		segN := &DataSegment{rawData: make([]RawType, n)}
+		data := make([]RawType, n)
+		segN := NewDataSegment(data, 1, 0, time.Now(), time.Millisecond)
 		if len(segN.rawData) != n {
 			t.Errorf("new(DataSegment) length = %d, want %d", len(segN.rawData), n)
 		}
@@ -29,7 +30,8 @@ func TestStream(t *testing.T) {
 	}
 
 	for _, n := range []int{0, 1, 10, 100} {
-		strN := NewDataStream(make([]RawType, n), 1, 0, time.Now(), time.Microsecond)
+		data := make([]RawType, n)
+		strN := NewDataStream(data, 1, 0, time.Now(), time.Microsecond)
 		if len(strN.rawData) != n {
 			t.Errorf("new(DataStream) length = %d, want %d", len(strN.rawData), n)
 		}

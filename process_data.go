@@ -95,11 +95,11 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	defer dsp.changeMutex.Unlock()
 
 	data := segment.rawData
-	n := len(data)
-	if n > 10 {
-		n = 10
+	nprint := len(data)
+	if nprint > 10 {
+		nprint = 10
 	}
-	fmt.Printf("Chan %d:          found %d values starting with %v\n", dsp.Channum, len(data), data[:n])
+	fmt.Printf("Chan %d:          found %d values starting with %v\n", dsp.Channum, len(data), data[:nprint])
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
 	records, secondaries := dsp.TriggerData()

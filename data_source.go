@@ -207,22 +207,24 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	framesNowInStream := FrameIndex(len(stream.rawData) * segment.framesPerSample)
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
-	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.firstFramenum = segment.firstFramenum - framesNowInStream
 	stream.firstTime = segment.firstTime.Add(-time.Duration(framesNowInStream) * stream.framePeriod)
+	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.samplesSeen += len(segment.rawData)
 }
 
-// TrimKeepingN will trim (remove) all but the last N values in the DataStream
-func (stream *DataStream) TrimKeepingN(N int) {
+// TrimKeepingN will trim (discard) all but the last N values in the DataStream.
+// Returns the number of values in the stream after trimming (should be <= N).
+func (stream *DataStream) TrimKeepingN(N int) int {
 	L := len(stream.rawData)
 	if N >= L {
-		return
+		return L
 	}
 	copy(stream.rawData[:N], stream.rawData[L-N:L])
 	stream.rawData = stream.rawData[:N]
 	stream.firstFramenum += FrameIndex(L - N)
 	stream.firstTime = stream.firstTime.Add(time.Duration(L-N) * stream.framePeriod)
+	return N
 }
 
 // DataRecord contains a single triggered pulse record.
