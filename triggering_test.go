@@ -193,6 +193,7 @@ func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname stri
 				pt.data[i], expect)
 		}
 	}
+	dsp.stream.TrimKeepingN(0)
 }
 
 // TestEdgeLevelInteraction tests that a single edge trigger happens where expected, even if
