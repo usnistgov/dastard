@@ -1,4 +1,4 @@
-package main
+package dastard
 
 import (
 	"reflect"

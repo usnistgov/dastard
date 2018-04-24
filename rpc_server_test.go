@@ -1,4 +1,4 @@
-package main
+package dastard
 
 import (
 	"fmt"
@@ -139,6 +139,8 @@ func TestOne(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
-	go main()
+	messageChan := make(chan ClientUpdate)
+	go RunClientUpdater(messageChan, PortStatus)
+	go RunRPCServer(messageChan, PortRPC)
 	os.Exit(m.Run())
 }

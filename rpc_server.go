@@ -1,4 +1,4 @@
-package main
+package dastard
 
 import (
 	"encoding/json"
@@ -133,7 +133,7 @@ func (s *SourceControl) broadcastUpdate() {
 }
 
 // Set up and run a permanent JSON-RPC server.
-func runRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
+func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
@@ -162,12 +162,4 @@ func runRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 			go server.ServeCodec(jsonrpc.NewServerCodec(conn))
 		}
 	}
-}
-
-func main() {
-	fmt.Printf("Port %d\n", PortRPC)
-	fmt.Printf("Port %d\n", PortStatus)
-	messageChan := make(chan ClientUpdate)
-	go runClientUpdater(messageChan, PortStatus)
-	runRPCServer(messageChan, PortRPC)
 }

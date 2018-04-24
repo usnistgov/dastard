@@ -1,4 +1,4 @@
-package main
+package dastard
 
 // Contain the ClientUpdater object, which publishes JSON-encoded messages
 // giving the latest DASTARD state.
@@ -15,7 +15,7 @@ type ClientUpdate struct {
 	message []byte
 }
 
-func runClientUpdater(messages <-chan ClientUpdate, portstatus int) {
+func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	hostname := fmt.Sprintf("tcp://*:%d", portstatus)
 	pubSocket, err := czmq.NewPub(hostname)
 	if err != nil {

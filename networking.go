@@ -1,4 +1,4 @@
-package main
+package dastard
 
 // TCP port numbers used by Dastard.
 const (
