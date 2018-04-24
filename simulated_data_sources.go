@@ -89,13 +89,11 @@ func (ts *TriangleSource) Run() error {
 func (ts *TriangleSource) BlockingRead() error {
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
-	if waittime > 0 {
-		select {
-		case <-ts.abort:
-			return io.EOF
-		case <-time.After(waittime):
-			ts.lastread = time.Now()
-		}
+	select {
+	case <-ts.abort:
+		return io.EOF
+	case <-time.After(waittime):
+		ts.lastread = time.Now()
 	}
 
 	for _, ch := range ts.output {
@@ -202,13 +200,11 @@ func (sps *SimPulseSource) Run() error {
 func (sps *SimPulseSource) BlockingRead() error {
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
-	if waittime > 0 {
-		select {
-		case <-sps.abort:
-			return io.EOF
-		case <-time.After(waittime):
-			sps.lastread = time.Now()
-		}
+	select {
+	case <-sps.abort:
+		return io.EOF
+	case <-time.After(waittime):
+		sps.lastread = time.Now()
 	}
 
 	for _, ch := range sps.output {

@@ -121,7 +121,6 @@ func (ds *AnySource) PrepareRun() error {
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
 			dsp.ProcessData(ch)
-			fmt.Printf("ProcessData(%d) done\n", dsp.Channum)
 		}(ch)
 	}
 	ds.lastread = time.Now()
@@ -136,9 +135,7 @@ func (ds *AnySource) Stop() error {
 	if ds.Running() {
 		close(ds.abort)
 	}
-	fmt.Printf("Aborted %d channels. Waiting...\n", ds.nchan)
 	// ds.runDone.Wait()
-	fmt.Println("Waiting done.")
 	return nil
 }
 
