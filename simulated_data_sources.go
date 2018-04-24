@@ -3,6 +3,7 @@ package dastard
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"time"
 )
 
@@ -213,6 +214,9 @@ func (sps *SimPulseSource) BlockingRead() error {
 	for _, ch := range sps.output {
 		datacopy := make([]RawType, sps.cycleLen)
 		copy(datacopy, sps.onecycle)
+		for i := 0; i < sps.cycleLen; i++ {
+			datacopy[i] += RawType(rand.Intn(21) - 10)
+		}
 		seg := DataSegment{rawData: datacopy, framesPerSample: 1}
 		ch <- seg
 	}
