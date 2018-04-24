@@ -26,7 +26,17 @@ type DataStreamProcessor struct {
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
 func NewDataStreamProcessor(channum int, abort <-chan struct{}, publisher chan<- []*DataRecord,
 	broker *TriggerBroker) *DataStreamProcessor {
-	dsp := DataStreamProcessor{Channum: channum, Abort: abort, Publisher: publisher, Broker: broker}
+	data := make([]RawType, 0, 1024)
+	framesPerSample := 1
+	firstFrame := FrameIndex(0)
+	firstTime := time.Now()
+	period := time.Duration(1 * time.Millisecond) // TODO: figure out what this ought to be, or make an argument
+	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
+	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
+	npre := 256   // TODO: figure out what this ought to be, or make an argument
+	dsp := DataStreamProcessor{Channum: channum, Abort: abort, Publisher: publisher, Broker: broker,
+		stream: *stream, NSamples: nsamp, NPresamples: npre,
+	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	return &dsp
 }
@@ -75,24 +85,24 @@ func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
 		case <-dsp.Abort:
 			return
 		case segment := <-dataIn:
-			dsp.processSegment(segment)
+			dsp.processSegment(&segment)
 		}
 	}
 }
 
-func (dsp *DataStreamProcessor) processSegment(segment DataSegment) {
+func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
 
 	data := segment.rawData
-	n := len(data)
-	if n > 10 {
-		n = 10
+	nprint := len(data)
+	if nprint > 10 {
+		nprint = 10
 	}
-	fmt.Printf("Chan %d:          found %d values starting with %v\n", dsp.Channum, len(data), data[:n])
-	dsp.DecimateData(&segment)
-	data = segment.rawData
-	records, secondaries := dsp.TriggerData(&segment)
+	fmt.Printf("Chan %d:          found %d values starting with %v\n", dsp.Channum, len(data), data[:nprint])
+	dsp.DecimateData(segment)
+	dsp.stream.AppendSegment(segment)
+	records, secondaries := dsp.TriggerData()
 	if len(records)+len(secondaries) > 0 {
 		fmt.Printf("Chan %d Found %d triggered records, %d secondary records.",
 			dsp.Channum, len(records), len(secondaries))

@@ -21,31 +21,34 @@ func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataReco
 	return record
 }
 
-func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(segment *DataSegment, records []*DataRecord) []*DataRecord {
-	ndata := len(segment.rawData)
+func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) []*DataRecord {
+	if !dsp.EdgeTrigger {
+		return records
+	}
+	segment := &dsp.stream.DataSegment
 	raw := segment.rawData
-	if dsp.EdgeTrigger {
-		for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
-			diff := int32(raw[i]+raw[i-1]) - int32(raw[i-2]+raw[i-3])
-			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
-				(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
-				newRecord := dsp.triggerAt(segment, i)
-				records = append(records, newRecord)
-				i += dsp.NSamples
-			}
+	ndata := len(raw)
+
+	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
+		diff := int32(raw[i]+raw[i-1]) - int32(raw[i-2]+raw[i-3])
+		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
+			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
+			newRecord := dsp.triggerAt(segment, i)
+			records = append(records, newRecord)
+			i += dsp.NSamples
 		}
 	}
 	return records
 }
 
-func (dsp *DataStreamProcessor) levelTriggerComputeAppend(segment *DataSegment, records []*DataRecord) []*DataRecord {
+func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	if !dsp.LevelTrigger {
 		return records
 	}
-
-	ndata := len(segment.rawData)
-	nsamp := FrameIndex(dsp.NSamples)
+	segment := &dsp.stream.DataSegment
 	raw := segment.rawData
+	ndata := len(raw)
+	nsamp := FrameIndex(dsp.NSamples)
 
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
@@ -81,12 +84,13 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(segment *DataSegment, 
 	return records
 }
 
-func (dsp *DataStreamProcessor) autoTriggerComputeAppend(segment *DataSegment, records []*DataRecord) []*DataRecord {
+func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	if !dsp.AutoTrigger {
 		return records
 	}
-
-	ndata := len(segment.rawData)
+	segment := &dsp.stream.DataSegment
+	raw := segment.rawData
+	ndata := len(raw)
 	nsamp := FrameIndex(dsp.NSamples)
 	npre := FrameIndex(dsp.NPresamples)
 
@@ -128,18 +132,17 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(segment *DataSegment, r
 
 // TriggerData analyzes a DataSegment to find and generate triggered records.
 // All edge triggers are found, then level triggers, then auto and noise triggers.
-func (dsp *DataStreamProcessor) TriggerData(segment *DataSegment) (records []*DataRecord, secondaries []*DataRecord) {
-
+func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondaries []*DataRecord) {
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
-	records = dsp.edgeTriggerComputeAppend(segment, records)
+	records = dsp.edgeTriggerComputeAppend(records)
 
 	// Step 1b: compute all level triggers on a second pass. Only insert them
 	// in the list of triggers if they are properly separated from the edge triggers.
-	records = dsp.levelTriggerComputeAppend(segment, records)
+	records = dsp.levelTriggerComputeAppend(records)
 
 	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
-	records = dsp.autoTriggerComputeAppend(segment, records)
+	records = dsp.autoTriggerComputeAppend(records)
 
 	// TODO Step 1d: compute all noise triggers, wherever they fit in between edge+level.
 	//
@@ -160,9 +163,13 @@ func (dsp *DataStreamProcessor) TriggerData(segment *DataSegment) (records []*Da
 	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
 	dsp.Broker.PrimaryTrigs <- trigList
 	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.Channum]
+	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
 		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
 	}
+
+	Nkeep := dsp.NPresamples + 3 // TODO: make a named variable to replace the magic 3
+	dsp.stream.TrimKeepingN(Nkeep)
 	return
 }
 
