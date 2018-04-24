@@ -82,6 +82,8 @@ func (ds *AnySource) Running() bool {
 // cannot be prepared until we know the number of channels. It's an error for
 // ds.nchan to be less than 1.
 func (ds *AnySource) PrepareRun() error {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
@@ -135,7 +137,7 @@ func (ds *AnySource) Stop() error {
 	if ds.Running() {
 		close(ds.abort)
 	}
-	// ds.runDone.Wait()
+	ds.runDone.Wait()
 	return nil
 }
 

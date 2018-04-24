@@ -94,11 +94,17 @@ func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 // frame numbers), then send a message to each channel (about their secondary triggers).
 func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 	for {
+		// Set all trigger lists to empty, in case abort causes the get-data loop to break
+		var empty []FrameIndex
+		for i := 0; i < broker.nchannels; i++ {
+			broker.latestPrimaries[i] = empty
+		}
+
 		// get data from all PrimaryTrigs channels
 		for i := 0; i < broker.nchannels; i++ {
 			select {
 			case <-abort:
-				return
+				break
 			case tlist := <-broker.PrimaryTrigs:
 				broker.latestPrimaries[tlist.channum] = tlist.frames
 			}
