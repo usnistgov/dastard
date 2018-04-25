@@ -10,7 +10,6 @@ import (
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
 	Channum     int
-	Abort       <-chan struct{}
 	Publisher   chan<- []*DataRecord
 	Broker      *TriggerBroker
 	NSamples    int
@@ -24,7 +23,7 @@ type DataStreamProcessor struct {
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
-func NewDataStreamProcessor(channum int, abort <-chan struct{}, publisher chan<- []*DataRecord,
+func NewDataStreamProcessor(channum int, publisher chan<- []*DataRecord,
 	broker *TriggerBroker) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
 	framesPerSample := 1
@@ -34,7 +33,7 @@ func NewDataStreamProcessor(channum int, abort <-chan struct{}, publisher chan<-
 	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
 	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
 	npre := 256   // TODO: figure out what this ought to be, or make an argument
-	dsp := DataStreamProcessor{Channum: channum, Abort: abort, Publisher: publisher, Broker: broker,
+	dsp := DataStreamProcessor{Channum: channum, Publisher: publisher, Broker: broker,
 		stream: *stream, NSamples: nsamp, NPresamples: npre,
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
@@ -80,13 +79,8 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 
 // ProcessData drains the data channel and processes whatever is found there.
 func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
-	for {
-		select {
-		case <-dsp.Abort:
-			return
-		case segment := <-dataIn:
-			dsp.processSegment(&segment)
-		}
+	for segment := range dataIn {
+		dsp.processSegment(&segment)
 	}
 }
 

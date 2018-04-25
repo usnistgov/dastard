@@ -86,7 +86,8 @@ func TestBrokering(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
 	abort := make(chan struct{})
-	go broker.Run(abort)
+	go broker.Run()
+	defer broker.Stop()
 	broker.AddConnection(0, 3)
 	broker.AddConnection(2, 3)
 
@@ -122,13 +123,12 @@ func TestBrokering(t *testing.T) {
 // TestSingles tests that single edge, level, or auto triggers happen where expected.
 func TestSingles(t *testing.T) {
 	const nchan = 1
-	abort := make(chan struct{})
-	defer close(abort)
 
 	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
-	go broker.Run(abort)
-	dsp := NewDataStreamProcessor(0, abort, publisher, broker)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
 	dsp.NPresamples = 100
 	dsp.NSamples = 1000
 	dsp.SampleRate = 10000.0
@@ -200,13 +200,12 @@ func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname stri
 // there's also a level trigger.
 func TestEdgeLevelInteraction(t *testing.T) {
 	const nchan = 1
-	abort := make(chan struct{})
-	defer close(abort)
 
 	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
-	go broker.Run(abort)
-	dsp := NewDataStreamProcessor(0, abort, publisher, broker)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
 	dsp.NPresamples = 100
 	dsp.NSamples = 1000
 
@@ -227,13 +226,12 @@ func TestEdgeLevelInteraction(t *testing.T) {
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
 func TestEdgeVetosLevel(t *testing.T) {
 	const nchan = 1
-	abort := make(chan struct{})
-	defer close(abort)
 
 	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
-	go broker.Run(abort)
-	dsp := NewDataStreamProcessor(0, abort, publisher, broker)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 

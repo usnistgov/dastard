@@ -72,25 +72,28 @@ func (ts *TriangleSource) Run() error {
 	// Have the DataSource produce data until graceful stop.
 	go func() {
 		for {
-			if err := ts.BlockingRead(); err == io.EOF {
-				fmt.Printf("BlockingRead returns EOF\n")
-				return
+			if err := ts.blockingRead(); err == io.EOF {
+				fmt.Printf("blockingRead returns EOF\n")
+				break
 			} else if err != nil {
-				fmt.Printf("BlockingRead returns Error\n")
-				return
+				fmt.Printf("blockingRead returns Error\n")
+				break
 			}
+		}
+		for _, ch := range ts.output {
+			close(ch)
 		}
 	}()
 
 	return nil
 }
 
-// BlockingRead blocks and then reads data when "enough" is ready.
-func (ts *TriangleSource) BlockingRead() error {
+// blockingRead blocks and then reads data when "enough" is ready.
+func (ts *TriangleSource) blockingRead() error {
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
 	select {
-	case <-ts.abort:
+	case <-ts.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
 		ts.lastread = time.Now()
@@ -183,25 +186,28 @@ func (sps *SimPulseSource) Run() error {
 	// Have the DataSource produce data until graceful stop.
 	go func() {
 		for {
-			if err := sps.BlockingRead(); err == io.EOF {
-				fmt.Printf("BlockingRead returns EOF\n")
-				return
+			if err := sps.blockingRead(); err == io.EOF {
+				fmt.Printf("blockingRead returns EOF\n")
+				break
 			} else if err != nil {
-				fmt.Printf("BlockingRead returns Error\n")
-				return
+				fmt.Printf("blockingRead returns Error\n")
+				break
 			}
+		}
+		for _, ch := range sps.output {
+			close(ch)
 		}
 	}()
 
 	return nil
 }
 
-// BlockingRead blocks and then reads data when "enough" is ready.
-func (sps *SimPulseSource) BlockingRead() error {
+// blockingRead blocks and then reads data when "enough" is ready.
+func (sps *SimPulseSource) blockingRead() error {
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
 	select {
-	case <-sps.abort:
+	case <-sps.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
 		sps.lastread = time.Now()

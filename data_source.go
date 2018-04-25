@@ -20,8 +20,7 @@ type DataSource interface {
 	Run() error
 	Stop() error
 	Running() bool
-	BlockingRead() error
-	GenerateOutputs() []chan DataSegment
+	Outputs() []chan DataSegment
 	Nchan() int
 	ConfigurePulseLengths(int, int) error
 }
@@ -34,7 +33,7 @@ type AnySource struct {
 	lastread   time.Time
 	output     []chan DataSegment
 	processors []*DataStreamProcessor
-	abort      chan struct{} // This can signal all goroutines to stop
+	abortSelf  chan struct{} // This can signal the Run() goroutine to stop
 	broker     *TriggerBroker
 	runMutex   sync.Mutex
 	runDone    sync.WaitGroup
@@ -67,11 +66,11 @@ func (ds *AnySource) Nchan() int {
 
 // Running tells whether the source is actively running
 func (ds *AnySource) Running() bool {
-	if ds.abort == nil {
+	if ds.abortSelf == nil {
 		return false
 	}
 	select {
-	case <-ds.abort:
+	case <-ds.abortSelf:
 		return false
 	default:
 		return true
@@ -87,23 +86,28 @@ func (ds *AnySource) PrepareRun() error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
-	ds.abort = make(chan struct{})
+	ds.abortSelf = make(chan struct{})
 
 	// Start a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
-	go ds.broker.Run(ds.abort)
+	go ds.broker.Run()
 
 	// Start a data publishing goroutine
 	const publishChannelDepth = 500
 	dataToPub := make(chan []*DataRecord, publishChannelDepth)
-	go PublishRecords(dataToPub, ds.abort, PortTrigs)
+	go PublishRecords(dataToPub, ds.abortSelf, PortTrigs)
+
+	// Channels onto which we'll put data produced by this source
+	ds.output = make([]chan DataSegment, ds.nchan)
+	for i := 0; i < ds.nchan; i++ {
+		ds.output[i] = make(chan DataSegment)
+	}
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
-	allOutputs := ds.GenerateOutputs()
-	for chnum, ch := range allOutputs {
-		dsp := NewDataStreamProcessor(chnum, ds.abort, dataToPub, ds.broker)
+	for chnum, ch := range ds.output {
+		dsp := NewDataStreamProcessor(chnum, dataToPub, ds.broker)
 		dsp.SampleRate = ds.sampleRate
 		ds.processors[chnum] = dsp
 
@@ -119,10 +123,11 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.NPresamples = 200
 		dsp.NSamples = 1000
 
-		// This goroutine will run until the ds.abort channel is closed
+		// This goroutine will run until the ch==ds.output[chnum] channel is closed
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
 			dsp.ProcessData(ch)
+			fmt.Printf("Done with ProcessData(%d)\n", dsp.Channum)
 		}(ch)
 	}
 	ds.lastread = time.Now()
@@ -135,17 +140,15 @@ func (ds *AnySource) Stop() error {
 	defer ds.runMutex.Unlock()
 
 	if ds.Running() {
-		close(ds.abort)
+		close(ds.abortSelf)
 	}
 	ds.runDone.Wait()
 	return nil
 }
 
 // GenerateOutputs generates the slice of channels that carry buffers of data for downstream processing.
-func (ds *AnySource) GenerateOutputs() []chan DataSegment {
-	result := make([]chan DataSegment, ds.nchan)
-	copy(result, ds.output)
-	return result
+func (ds *AnySource) Outputs() []chan DataSegment {
+	return ds.output
 }
 
 func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {

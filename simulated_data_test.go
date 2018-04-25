@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"fmt"
-	"io"
 	"math"
 	"testing"
 )
@@ -25,11 +24,10 @@ func TestTriangle(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
-	outputs := ds.GenerateOutputs()
+	outputs := ds.Outputs()
 	if len(outputs) != config.Nchan {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}
-	ds.BlockingRead()
 	n := int(config.Max - config.Min)
 	for i, ch := range outputs {
 		segment := <-ch
@@ -47,17 +45,6 @@ func TestTriangle(t *testing.T) {
 		}
 	}
 	ds.Stop()
-
-	// Now try a blocking read with abort.
-	if err := Start(ds); err != nil {
-		t.Fatalf("TriangleSource could not be started")
-	}
-	ds.BlockingRead()
-	ds.Stop()
-	err := ds.BlockingRead()
-	if err != io.EOF {
-		t.Errorf("TriangleSource did not return EOF on aborted BlockingRead")
-	}
 
 	// Check that Running() is correct
 	if ds.Running() {
@@ -78,12 +65,9 @@ func TestTriangle(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
-	ds.BlockingRead()
 	ds.ConfigurePulseLengths(0, 0)
 	nsamp, npre := 500, 250
 	ds.ConfigurePulseLengths(nsamp, npre)
-	ds.BlockingRead()
-	ds.BlockingRead()
 	dsp := ts.processors[0]
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		t.Errorf("TriangleSource has (nsamp, npre)=(%d,%d), want (%d,%d)",
@@ -116,11 +100,10 @@ func TestSimPulse(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
-	outputs := ds.GenerateOutputs()
+	outputs := ds.Outputs()
 	if len(outputs) != config.Nchan {
 		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}
-	ds.BlockingRead()
 	for i, ch := range outputs {
 		segment := <-ch
 		data := segment.rawData
@@ -144,17 +127,6 @@ func TestSimPulse(t *testing.T) {
 		}
 	}
 	ds.Stop()
-
-	// Now try a blocking read with abort.
-	if err := Start(ds); err != nil {
-		t.Fatalf("SimPulseSource could not be started")
-	}
-	ds.BlockingRead()
-	ds.Stop()
-	err := ds.BlockingRead()
-	if err != io.EOF {
-		t.Errorf("SimPulseSource did not return EOF on aborted BlockingRead")
-	}
 
 	// Check that Running() is correct
 	if ds.Running() {
