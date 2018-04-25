@@ -120,6 +120,46 @@ func TestBrokering(t *testing.T) {
 	}
 }
 
+// TestLongRecords ensures that we can generate triggers longer than 1 unit of
+// data supply.
+func TestLongRecords(t *testing.T) {
+	const nchan = 1
+
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp.NPresamples = 1000
+	dsp.NSamples = 10000
+	dsp.SampleRate = 100000.0
+	expectedFrames := []FrameIndex{1000}
+	trigname := "Long Records auto"
+
+	raw := make([]RawType, 1000)
+	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
+	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
+	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
+	for i := 0; i < dsp.NSamples; i += len(raw) {
+		dsp.stream.AppendSegment(segment)
+	}
+	dsp.AutoTrigger = true
+	dsp.AutoDelay = 500 * time.Millisecond
+	primaries, secondaries := dsp.TriggerData()
+	if len(primaries) != len(expectedFrames) {
+		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
+	}
+	if len(secondaries) != 0 {
+		t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
+	}
+	for i, pt := range primaries {
+		if pt.trigFrame != expectedFrames[i] {
+			t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+		}
+	}
+
+}
+
 // TestSingles tests that single edge, level, or auto triggers happen where expected.
 func TestSingles(t *testing.T) {
 	const nchan = 1
