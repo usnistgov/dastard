@@ -129,35 +129,58 @@ func TestLongRecords(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
-	dsp.NPresamples = 1000
-	dsp.NSamples = 10000
-	dsp.SampleRate = 100000.0
-	expectedFrames := []FrameIndex{1000}
-	trigname := "Long Records auto"
+	var tests = []struct {
+		npre   int
+		nsamp  int
+		nchunk int
+	}{
+		{9600, 10000, 999},
+		{600, 10000, 999},
+		{100, 10000, 999},
+		{100, 10000, 1000},
+		{100, 10000, 1001},
+		{9100, 10000, 999},
+		{9100, 10000, 1000},
+		{9100, 10000, 1001},
+		{1000, 10000, 9999},
+		{1000, 10000, 10000},
+		{1000, 10000, 10001},
+	}
+	for _, test := range tests {
+		dsp := NewDataStreamProcessor(0, publisher, broker)
+		dsp.NPresamples = test.npre
+		dsp.NSamples = test.nsamp
+		dsp.SampleRate = 100000.0
+		dsp.AutoTrigger = true
+		dsp.AutoDelay = 500 * time.Millisecond
+		expectedFrames := []FrameIndex{FrameIndex(dsp.NPresamples)}
+		trigname := "Long Records auto"
 
-	raw := make([]RawType, 1000)
-	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
-	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
-	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
-	for i := 0; i < dsp.NSamples; i += len(raw) {
-		dsp.stream.AppendSegment(segment)
-	}
-	dsp.AutoTrigger = true
-	dsp.AutoDelay = 500 * time.Millisecond
-	primaries, secondaries := dsp.TriggerData()
-	if len(primaries) != len(expectedFrames) {
-		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
-	}
-	if len(secondaries) != 0 {
-		t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
-	}
-	for i, pt := range primaries {
-		if pt.trigFrame != expectedFrames[i] {
-			t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+		raw := make([]RawType, test.nchunk)
+		dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
+		sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
+		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
+		for i := 0; i <= dsp.NSamples; i += test.nchunk {
+			primaries, secondaries := dsp.TriggerData()
+			if (len(primaries) != 0) || (len(secondaries) != 0) {
+				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
+			}
+			dsp.stream.AppendSegment(segment)
+			segment.firstFramenum += FrameIndex(test.nchunk)
+		}
+		primaries, secondaries := dsp.TriggerData()
+		if len(primaries) != len(expectedFrames) {
+			t.Errorf("%s trigger (test=%v) found %d triggers, want %d", trigname, test, len(primaries), len(expectedFrames))
+		}
+		if len(secondaries) != 0 {
+			t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
+		}
+		for i, pt := range primaries {
+			if pt.trigFrame != expectedFrames[i] {
+				t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+			}
 		}
 	}
-
 }
 
 // TestSingles tests that single edge, level, or auto triggers happen where expected.

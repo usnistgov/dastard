@@ -67,7 +67,7 @@ type TriggerState struct {
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
 func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
-	if nsamp <= npre+1 || npre < 0 {
+	if nsamp <= npre+1 || npre < 3 {
 		return
 	}
 	dsp.changeMutex.Lock()

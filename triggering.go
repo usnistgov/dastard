@@ -168,7 +168,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
 	}
 
-	Nkeep := dsp.NPresamples + 3 // TODO: make a named variable to replace the magic 3
+	Nkeep := dsp.NSamples
 	dsp.stream.TrimKeepingN(Nkeep)
 	return
 }
