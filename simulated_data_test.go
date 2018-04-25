@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 )
 
 // TestTriangle checks that TriangleSource works as expected
@@ -68,6 +69,7 @@ func TestTriangle(t *testing.T) {
 	ds.ConfigurePulseLengths(0, 0)
 	nsamp, npre := 500, 250
 	ds.ConfigurePulseLengths(nsamp, npre)
+	time.Sleep(5 * time.Millisecond)
 	dsp := ts.processors[0]
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		t.Errorf("TriangleSource has (nsamp, npre)=(%d,%d), want (%d,%d)",
@@ -78,7 +80,7 @@ func TestTriangle(t *testing.T) {
 	// Now configure a 0-channel source and make sure it fails
 	config.Nchan = 0
 	if err := ts.Configure(config); err == nil {
-		t.Errorf("TriangleSource can be configured with 0 channels.")
+		t.Errorf("TriangleSource can be configured with 0 channels, want error.")
 	}
 }
 

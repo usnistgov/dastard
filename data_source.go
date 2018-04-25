@@ -127,7 +127,6 @@ func (ds *AnySource) PrepareRun() error {
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
 			dsp.ProcessData(ch)
-			fmt.Printf("Done with ProcessData(%d)\n", dsp.Channum)
 		}(ch)
 	}
 	ds.lastread = time.Now()
