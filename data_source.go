@@ -38,7 +38,7 @@ type DataSource interface {
 // 4. Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 func Start(ds DataSource) error {
 	if ds.Running() {
-		return fmt.Errorf("Cannot Start() a source that's already Running().")
+		return fmt.Errorf("cannot Start() a source that's already Running()")
 	}
 	if err := ds.Sample(); err != nil {
 		return err

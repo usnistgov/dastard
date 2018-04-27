@@ -57,6 +57,9 @@ func TestTriangle(t *testing.T) {
 	if !ds.Running() {
 		t.Errorf("TriangleSource.Running() says false after started.")
 	}
+	if err := Start(ds); err == nil {
+		t.Errorf("Start(TriangleSource) was allowed when source was running, want error.")
+	}
 	ds.Stop()
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true after stopped.")
@@ -139,6 +142,9 @@ func TestSimPulse(t *testing.T) {
 	}
 	if !ds.Running() {
 		t.Errorf("SimPulseSource.Running() says false after started.")
+	}
+	if err := Start(ds); err == nil {
+		t.Errorf("Start(SimPulseSource) was allowed when source was running, want error.")
 	}
 	ds.Stop()
 	if ds.Running() {
