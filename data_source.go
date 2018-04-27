@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -17,12 +18,50 @@ type FrameIndex int64
 type DataSource interface {
 	Sample() error
 	PrepareRun() error
-	Run() error
+	StartRun() error
 	Stop() error
 	Running() bool
+	blockingRead() error
 	Outputs() []chan DataSegment
+	CloseOutputs()
 	Nchan() int
 	ConfigurePulseLengths(int, int) error
+}
+
+// Start will start the given DataSource, including sampling its data for # channels.
+// Steps are:
+// 1. Sample: per-source method that determines the # of channels and other internal
+//    facts that we need to know.
+// 2. PrepareRun: an AnySource method to do the actions that any source needs before
+//    starting the actual acquisition phase.
+// 3. StartRun: per-source method to begin data acquisition.
+// 4. Loop over calls to ds.blockingRead(), a per-source method that waits for data.
+func Start(ds DataSource) error {
+	if ds.Running() {
+		return fmt.Errorf("Cannot Start() a source that's already Running().")
+	}
+	if err := ds.Sample(); err != nil {
+		return err
+	}
+	if err := ds.PrepareRun(); err != nil {
+		return err
+	}
+	if err := ds.StartRun(); err != nil {
+		return err
+	}
+	// Have the DataSource produce data until graceful stop.
+	go func() {
+		for {
+			if err := ds.blockingRead(); err == io.EOF {
+				break
+			} else if err != nil {
+				fmt.Printf("blockingRead returns Error\n")
+				break
+			}
+		}
+		ds.CloseOutputs()
+	}()
+	return nil
 }
 
 // AnySource implements features common to any object that implements
@@ -37,26 +76,6 @@ type AnySource struct {
 	broker     *TriggerBroker
 	runMutex   sync.Mutex
 	runDone    sync.WaitGroup
-}
-
-// Start will start the given DataSource, including sampling its data for # channels.
-// Steps are:
-// 1. Sample: per-source method that determines the # of channels and other internal
-//    facts that we need to know.
-// 2. PrepareRun: an AnySource method to do the actions that any source needs before
-//    starting the actual acquisition phase.
-// 3. Run: a per-source method that starts the data acquisition.
-func Start(ds DataSource) error {
-	if err := ds.Sample(); err != nil {
-		return err
-	}
-	if err := ds.PrepareRun(); err != nil {
-		return err
-	}
-	if err := ds.Run(); err != nil {
-		return err
-	}
-	return nil
 }
 
 // Nchan returns the current number of valid channels in the data source.
@@ -145,9 +164,16 @@ func (ds *AnySource) Stop() error {
 	return nil
 }
 
-// GenerateOutputs generates the slice of channels that carry buffers of data for downstream processing.
+// Outputs returns the slice of channels that carry buffers of data for downstream processing.
 func (ds *AnySource) Outputs() []chan DataSegment {
 	return ds.output
+}
+
+// CloseOutputs closes all channels that carry buffers of data for downstream processing.
+func (ds *AnySource) CloseOutputs() {
+	for _, ch := range ds.output {
+		close(ch)
+	}
 }
 
 func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {

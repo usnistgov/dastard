@@ -64,27 +64,9 @@ func (ts *TriangleSource) Sample() error {
 	return nil
 }
 
-// Run begins the data supply.
-func (ts *TriangleSource) Run() error {
-	ts.runMutex.Lock()
-	defer ts.runMutex.Unlock()
-
-	// Have the DataSource produce data until graceful stop.
-	go func() {
-		for {
-			if err := ts.blockingRead(); err == io.EOF {
-				fmt.Printf("blockingRead returns EOF\n")
-				break
-			} else if err != nil {
-				fmt.Printf("blockingRead returns Error\n")
-				break
-			}
-		}
-		for _, ch := range ts.output {
-			close(ch)
-		}
-	}()
-
+// StartRun tells the hardware to switch into data streaming mode.
+// It's a no-op for simulated (software) sources
+func (ts *TriangleSource) StartRun() error {
 	return nil
 }
 
@@ -178,27 +160,9 @@ func (sps *SimPulseSource) Sample() error {
 	return nil
 }
 
-// Run begins the data supply.
-func (sps *SimPulseSource) Run() error {
-	sps.runMutex.Lock()
-	defer sps.runMutex.Unlock()
-
-	// Have the DataSource produce data until graceful stop.
-	go func() {
-		for {
-			if err := sps.blockingRead(); err == io.EOF {
-				fmt.Printf("blockingRead returns EOF\n")
-				break
-			} else if err != nil {
-				fmt.Printf("blockingRead returns Error\n")
-				break
-			}
-		}
-		for _, ch := range sps.output {
-			close(ch)
-		}
-	}()
-
+// StartRun tells the hardware to switch into data streaming mode.
+// It's a no-op for simulated (software) sources
+func (sps *SimPulseSource) StartRun() error {
 	return nil
 }
 
