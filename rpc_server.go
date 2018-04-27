@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-type ServerComponent interface {
-	broadcastUpdate()
-}
-
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
 type SourceControl struct {
@@ -27,6 +23,7 @@ type SourceControl struct {
 	clientUpdates chan<- ClientUpdate
 }
 
+// SourceControlStatus the status that SourceControl reports to clients.
 type SourceControlStatus struct {
 	Running    bool
 	SourceName string
@@ -63,11 +60,13 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 	return err
 }
 
+// SizeObject is the RPC-usable structure for ConfigurePulseLengths to change pulse record sizes.
 type SizeObject struct {
 	Nsamp int
 	Npre  int
 }
 
+// ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
 	fmt.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if s.activeSource == nil {
@@ -132,7 +131,7 @@ func (s *SourceControl) broadcastUpdate() {
 	}
 }
 
-// Set up and run a permanent JSON-RPC server.
+// RunRPCServer sets up and run a permanent JSON-RPC server.
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	server := rpc.NewServer()
 

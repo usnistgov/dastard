@@ -15,6 +15,8 @@ type ClientUpdate struct {
 	message []byte
 }
 
+// RunClientUpdater forwards any message from its input channel to the ZMQ publisher socket
+// to publish any information that clients need to know.
 func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	hostname := fmt.Sprintf("tcp://*:%d", portstatus)
 	pubSocket, err := czmq.NewPub(hostname)
