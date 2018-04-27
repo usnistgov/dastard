@@ -28,6 +28,8 @@ type SourceControlStatus struct {
 	Running    bool
 	SourceName string
 	Nchannels  int
+	Nsamples   int
+	Npresamp   int
 	// TODO: maybe Ncol, Nrow, bytes/sec data rate...?
 }
 
@@ -74,6 +76,8 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	}
 	err := s.activeSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
 	*reply = (err == nil)
+	s.status.Npresamp = sizes.Npre
+	s.status.Nsamples = sizes.Nsamp
 	fmt.Printf("Result is okay=%t\n", *reply)
 	return err
 }
