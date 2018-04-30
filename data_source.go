@@ -25,6 +25,7 @@ type DataSource interface {
 	Outputs() []chan DataSegment
 	CloseOutputs()
 	Nchan() int
+	ComputeFullTriggerState() []FullTriggerState
 	ConfigurePulseLengths(int, int) error
 }
 
@@ -176,6 +177,33 @@ func (ds *AnySource) CloseOutputs() {
 	for _, ch := range ds.output {
 		close(ch)
 	}
+}
+
+type FullTriggerState struct {
+	ChanNumbers []int
+	TriggerState
+}
+
+func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
+
+	// Use a map to collect channels with identical TriggerStates, so they
+	// can be sent all together as one unit.
+	result := make(map[TriggerState][]int)
+	for _, dsp := range ds.processors {
+		chans, ok := result[dsp.TriggerState]
+		if ok {
+			result[dsp.TriggerState] = append(chans, dsp.Channum)
+		} else {
+			result[dsp.TriggerState] = []int{dsp.Channum}
+		}
+	}
+
+	// Now "unroll" that map into a vector of FullTriggerState objects
+	fts := []FullTriggerState{}
+	for k, v := range result {
+		fts = append(fts, FullTriggerState{ChanNumbers: v, TriggerState: k})
+	}
+	return fts
 }
 
 // ConfigurePulseLengths set the pulse record length and pre-samples.

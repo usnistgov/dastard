@@ -107,6 +107,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 			s.status.Running = true
 			s.status.Nchannels = s.activeSource.Nchan()
 			s.broadcastUpdate()
+			s.broadcastTriggerState()
 		}
 	}()
 	*reply = true
@@ -135,6 +136,26 @@ func (s *SourceControl) broadcastUpdate() {
 	}
 }
 
+func (s *SourceControl) broadcastTriggerState() {
+	if s.activeSource != nil && s.status.Running {
+		configs := s.activeSource.ComputeFullTriggerState()
+		fmt.Printf("configs: %v\n", configs)
+		if payload, err := json.Marshal(configs); err == nil {
+			s.clientUpdates <- ClientUpdate{"TRIGGER", payload}
+		} else {
+			fmt.Printf("Error! %v\n", err)
+		}
+	}
+}
+
+func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
+	fmt.Println("A Client has requested to send all status")
+	s.broadcastTriggerState()
+	s.broadcastUpdate()
+	s.broadcastTriggerState()
+	return nil
+}
+
 // RunRPCServer sets up and run a permanent JSON-RPC server.
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	server := rpc.NewServer()
@@ -147,6 +168,8 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 		ticker := time.Tick(2 * time.Second)
 		for _ = range ticker {
 			sourcecontrol.broadcastUpdate()
+			// var ok bool
+			// sourcecontrol.SendAllStatus("dummy", &ok)
 		}
 	}()
 

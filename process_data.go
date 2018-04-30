@@ -77,6 +77,14 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	dsp.NPresamples = npre
 }
 
+// ConfigureTrigger sets this stream's trigger state.
+func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
+
+	dsp.TriggerState = state
+}
+
 // ProcessData drains the data channel and processes whatever is found there.
 func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
 	for segment := range dataIn {
