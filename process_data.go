@@ -3,13 +3,13 @@ package dastard
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 )
 
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
 	Channum     int
-	Abort       <-chan struct{}
 	Publisher   chan<- []*DataRecord
 	Broker      *TriggerBroker
 	NSamples    int
@@ -19,12 +19,23 @@ type DataStreamProcessor struct {
 	stream      DataStream
 	DecimateState
 	TriggerState
+	changeMutex sync.Mutex // Don't change key data without locking this.
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
-func NewDataStreamProcessor(channum int, abort <-chan struct{}, publisher chan<- []*DataRecord,
+func NewDataStreamProcessor(channum int, publisher chan<- []*DataRecord,
 	broker *TriggerBroker) *DataStreamProcessor {
-	dsp := DataStreamProcessor{Channum: channum, Abort: abort, Publisher: publisher, Broker: broker}
+	data := make([]RawType, 0, 1024)
+	framesPerSample := 1
+	firstFrame := FrameIndex(0)
+	firstTime := time.Now()
+	period := time.Duration(1 * time.Millisecond) // TODO: figure out what this ought to be, or make an argument
+	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
+	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
+	npre := 256   // TODO: figure out what this ought to be, or make an argument
+	dsp := DataStreamProcessor{Channum: channum, Publisher: publisher, Broker: broker,
+		stream: *stream, NSamples: nsamp, NPresamples: npre,
+	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	return &dsp
 }
@@ -54,26 +65,47 @@ type TriggerState struct {
 	// TODO: group source/rx info.
 }
 
+// ConfigurePulseLengths sets this stream's pulse length and # of presamples.
+func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
+	if nsamp <= npre+1 || npre < 3 {
+		return
+	}
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
+
+	dsp.NSamples = nsamp
+	dsp.NPresamples = npre
+}
+
+// ConfigureTrigger sets this stream's trigger state.
+func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
+
+	dsp.TriggerState = state
+}
+
 // ProcessData drains the data channel and processes whatever is found there.
 func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
-	for {
-		select {
-		case <-dsp.Abort:
-			return
-		case segment := <-dataIn:
-			data := segment.rawData
-			fmt.Printf("Chan %d:          found %d values starting with %v\n", dsp.Channum, len(data), data[:10])
-			dsp.DecimateData(&segment)
-			data = segment.rawData
-			fmt.Printf("Chan %d after decimate: %d values starting with %v\n", dsp.Channum, len(data), data[:10])
-			records, secondaries := dsp.TriggerData(&segment)
-			fmt.Printf("Chan %d Found %d triggered records %v\n", dsp.Channum, len(records), records[0].data[:10])
-			fmt.Printf("Chan %d Found %d secondary records\n", dsp.Channum, len(secondaries))
-			dsp.AnalyzeData(records) // add analysis results to records in-place
-			// dsp.WriteData(records)
-			dsp.PublishData(records)
-		}
+	for segment := range dataIn {
+		dsp.processSegment(&segment)
 	}
+}
+
+func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
+
+	dsp.DecimateData(segment)
+	dsp.stream.AppendSegment(segment)
+	records, secondaries := dsp.TriggerData()
+	if len(records)+len(secondaries) > 0 {
+		fmt.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
+			dsp.Channum, len(records), len(secondaries))
+	}
+	dsp.AnalyzeData(records) // add analysis results to records in-place
+	// TODO: dsp.WriteData(records)
+	dsp.PublishData(records)
 }
 
 // DecimateData decimates data in-place.

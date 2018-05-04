@@ -3,6 +3,7 @@ package dastard
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"testing"
 	"time"
 )
@@ -15,40 +16,21 @@ func TestPublishRecord(t *testing.T) {
 	header, message := packet(rec)
 
 	buf := bytes.NewReader(header)
-	var channum int16
-	err := binary.Read(buf, binary.LittleEndian, &channum)
-	if err != nil {
-		t.Errorf("binary.Read failed: %v", err)
+	if buf.Len() != len(header) {
+		t.Errorf("bytes.Reader has length %d, want %d", buf.Len(), len(header))
 	}
-	var hver, dtype uint8
-	err = binary.Read(buf, binary.LittleEndian, &hver)
-	if err != nil {
-		t.Errorf("binary.Read failed: %v", err)
+	var b uint8
+	for i := 0; i < len(header); i++ {
+		if err := binary.Read(buf, binary.LittleEndian, &b); err != nil {
+			t.Errorf("binary.Read failed: %v", err)
+		}
 	}
-	err = binary.Read(buf, binary.LittleEndian, &dtype)
-	if err != nil {
-		t.Errorf("binary.Read failed: %v", err)
-	}
-	var npre int32
-	err = binary.Read(buf, binary.LittleEndian, &npre)
-	if err != nil {
-		t.Errorf("binary.Read failed: %v", err)
-	}
-	var period, vperarb float32
-	err = binary.Read(buf, binary.LittleEndian, &period)
-	if err != nil {
-		t.Errorf("binary.Read failed: %v", err)
-	}
-	err = binary.Read(buf, binary.LittleEndian, &vperarb)
-	if err != nil {
-		t.Errorf("binary.Read failed: %v", err)
-	}
-
-	if hver != 0 {
-		t.Errorf("packet generated with version number %d, want %d", hver, 0)
+	if err := binary.Read(buf, binary.LittleEndian, &b); err != io.EOF {
+		t.Errorf("binary.Read should have failed, but did not")
 	}
 
 	if len(message)/2 != len(data) {
 		t.Errorf("packet generated message of %d samples, want %d", len(message)/2, len(data))
 	}
+
 }

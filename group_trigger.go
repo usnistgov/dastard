@@ -16,12 +16,14 @@ type TriggerBroker struct {
 	PrimaryTrigs    chan triggerList
 	SecondaryTrigs  []chan []FrameIndex
 	latestPrimaries [][]FrameIndex
+	abort           chan struct{} // This can signal the Run() goroutine to stop
 	sync.RWMutex
 }
 
 // NewTriggerBroker creates a new TriggerBroker object for nchan channels to share group triggers.
 func NewTriggerBroker(nchan int) *TriggerBroker {
 	broker := new(TriggerBroker)
+	broker.abort = make(chan struct{})
 	broker.nchannels = nchan
 	broker.sources = make([]map[int]bool, nchan)
 	for i := 0; i < nchan; i++ {
@@ -92,12 +94,12 @@ func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 // Run runs in a goroutine to broker trigger frame #s from sources to receivers.
 // It runs in the pattern: get a message from each channel (about their triggered
 // frame numbers), then send a message to each channel (about their secondary triggers).
-func (broker *TriggerBroker) Run(abort <-chan struct{}) {
+func (broker *TriggerBroker) Run() {
 	for {
 		// get data from all PrimaryTrigs channels
 		for i := 0; i < broker.nchannels; i++ {
 			select {
-			case <-abort:
+			case <-broker.abort:
 				return
 			case tlist := <-broker.PrimaryTrigs:
 				broker.latestPrimaries[tlist.channum] = tlist.frames
@@ -119,4 +121,9 @@ func (broker *TriggerBroker) Run(abort <-chan struct{}) {
 		}
 		broker.RUnlock()
 	}
+}
+
+// Stop causes the Run() goroutine to end at the next appropriate moment.
+func (broker *TriggerBroker) Stop() {
+	close(broker.abort)
 }

@@ -20,6 +20,37 @@ import (
 	"unsafe"
 )
 
+// EnumerateLanceroDevices returns a list of lancero device numbers that exist
+// in the devfs. If /dev/lancero_user0 exists, and _control0, _events0, and _sgdma0
+// all exist and are device files, then 0 is added to the list.
+func EnumerateLanceroDevices() (devices []int, err error) {
+	MAXDEVICES := 8
+	names := []string{"user", "control", "events", "sgdma"}
+	for id := 0; id < MAXDEVICES; id++ {
+		good := true
+		for _, name := range names {
+			fullname := fmt.Sprintf("/dev/lancero_%s%d", name, id)
+			info, err := os.Stat(fullname)
+			if err != nil {
+				if os.IsNotExist(err) {
+					good = false
+					break
+				} else {
+					return devices, err
+				}
+			}
+			if (info.Mode() & os.ModeDevice) == 0 {
+				good = false
+				break
+			}
+		}
+		if good {
+			devices = append(devices, id)
+		}
+	}
+	return devices, nil
+}
+
 // lanceroDevice is the interface to a Lancero SGDMA engine on an Arria-II dev card.
 //
 // It uses the IEEE POSIX interface of the four Lancero character devices:
@@ -174,7 +205,7 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 	n := uint32(csize)
 	// n, err := dev.FileSGDMA.Read(buffer)
 	// if err != nil {
-    //   fmt.Printf("Error reading SGDMA buffer %v of length %v\n", unsafe.Pointer(&buffer), len(buffer))
+	//   fmt.Printf("Error reading SGDMA buffer %v of length %v\n", unsafe.Pointer(&buffer), len(buffer))
 	//   return err
 	// }
 	if n < bufferLength {
@@ -295,7 +326,7 @@ func (dev *lanceroDevice) cyclicStop() error {
 		if verbose {
 			fmt.Printf("cyclicStop(): Now polling write engine, waiting for BUSY to clear\n")
 		}
-		time.Sleep(20*time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 	if verbose {
 		fmt.Printf("cyclicStop(): Write engine no longer BUSY.\n")

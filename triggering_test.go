@@ -86,7 +86,8 @@ func TestBrokering(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
 	abort := make(chan struct{})
-	go broker.Run(abort)
+	go broker.Run()
+	defer broker.Stop()
 	broker.AddConnection(0, 3)
 	broker.AddConnection(2, 3)
 
@@ -119,16 +120,78 @@ func TestBrokering(t *testing.T) {
 	}
 }
 
-// TestSingles tests that single edge, level, or auto triggers happen where expected.
-func TestSingles(t *testing.T) {
+// TestLongRecords ensures that we can generate triggers longer than 1 unit of
+// data supply.
+func TestLongRecords(t *testing.T) {
 	const nchan = 1
-	abort := make(chan struct{})
-	defer close(abort)
 
 	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
-	go broker.Run(abort)
-	dsp := NewDataStreamProcessor(0, abort, publisher, broker)
+	go broker.Run()
+	defer broker.Stop()
+	var tests = []struct {
+		npre   int
+		nsamp  int
+		nchunk int
+	}{
+		{9600, 10000, 999},
+		{600, 10000, 999},
+		{100, 10000, 999},
+		{100, 10000, 1000},
+		{100, 10000, 1001},
+		{9100, 10000, 999},
+		{9100, 10000, 1000},
+		{9100, 10000, 1001},
+		{1000, 10000, 9999},
+		{1000, 10000, 10000},
+		{1000, 10000, 10001},
+	}
+	for _, test := range tests {
+		dsp := NewDataStreamProcessor(0, publisher, broker)
+		dsp.NPresamples = test.npre
+		dsp.NSamples = test.nsamp
+		dsp.SampleRate = 100000.0
+		dsp.AutoTrigger = true
+		dsp.AutoDelay = 500 * time.Millisecond
+		expectedFrames := []FrameIndex{FrameIndex(dsp.NPresamples)}
+		trigname := "Long Records auto"
+
+		raw := make([]RawType, test.nchunk)
+		dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
+		sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
+		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
+		for i := 0; i <= dsp.NSamples; i += test.nchunk {
+			primaries, secondaries := dsp.TriggerData()
+			if (len(primaries) != 0) || (len(secondaries) != 0) {
+				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
+			}
+			dsp.stream.AppendSegment(segment)
+			segment.firstFramenum += FrameIndex(test.nchunk)
+		}
+		primaries, secondaries := dsp.TriggerData()
+		if len(primaries) != len(expectedFrames) {
+			t.Errorf("%s trigger (test=%v) found %d triggers, want %d", trigname, test, len(primaries), len(expectedFrames))
+		}
+		if len(secondaries) != 0 {
+			t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
+		}
+		for i, pt := range primaries {
+			if pt.trigFrame != expectedFrames[i] {
+				t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+			}
+		}
+	}
+}
+
+// TestSingles tests that single edge, level, or auto triggers happen where expected.
+func TestSingles(t *testing.T) {
+	const nchan = 1
+
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
 	dsp.NPresamples = 100
 	dsp.NSamples = 1000
 	dsp.SampleRate = 10000.0
@@ -166,7 +229,8 @@ func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname stri
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
-	primaries, secondaries := dsp.TriggerData(segment)
+	dsp.stream.AppendSegment(segment)
+	primaries, secondaries := dsp.TriggerData()
 	if len(primaries) != len(expectedFrames) {
 		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
 	}
@@ -192,19 +256,19 @@ func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname stri
 				pt.data[i], expect)
 		}
 	}
+	dsp.stream.TrimKeepingN(0)
 }
 
 // TestEdgeLevelInteraction tests that a single edge trigger happens where expected, even if
 // there's also a level trigger.
 func TestEdgeLevelInteraction(t *testing.T) {
 	const nchan = 1
-	abort := make(chan struct{})
-	defer close(abort)
 
 	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
-	go broker.Run(abort)
-	dsp := NewDataStreamProcessor(0, abort, publisher, broker)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
 	dsp.NPresamples = 100
 	dsp.NSamples = 1000
 
@@ -225,13 +289,12 @@ func TestEdgeLevelInteraction(t *testing.T) {
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
 func TestEdgeVetosLevel(t *testing.T) {
 	const nchan = 1
-	abort := make(chan struct{})
-	defer close(abort)
 
 	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
-	go broker.Run(abort)
-	dsp := NewDataStreamProcessor(0, abort, publisher, broker)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 
@@ -258,7 +321,8 @@ func TestEdgeVetosLevel(t *testing.T) {
 		}
 
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
-		primaries, _ := dsp.TriggerData(segment)
+		dsp.stream.AppendSegment(segment)
+		primaries, _ := dsp.TriggerData()
 		if len(primaries) != want {
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
