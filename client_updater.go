@@ -5,6 +5,7 @@ package dastard
 
 import (
 	"fmt"
+	"time"
 
 	czmq "github.com/zeromq/goczmq"
 )
@@ -25,11 +26,22 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	}
 	defer pubSocket.Destroy()
 
+	// Save the state to the standard saved-state file this often.
+	savePeriod := time.Second
+	saveStateTicker := time.NewTicker(savePeriod)
+	defer saveStateTicker.Stop()
+
+	// Here, store the last message of each type seen. Use when storing state.
+	lastMessages := make(map[string]string)
+
 	for {
 		select {
 		case update := <-messages:
+			lastMessages[update.tag] = string(update.message)
 			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
 			pubSocket.SendFrame(update.message, czmq.FlagNone)
+		case <-saveStateTicker.C:
+			fmt.Printf("Save state: %v\n", lastMessages)
 		}
 	}
 
