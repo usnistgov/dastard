@@ -72,6 +72,7 @@ func saveState(configDirname string, lastMessages map[string]string) {
 	fname := configDirname + "dastard.cfg"
 	tmpname := configDirname + "dastard.tmp"
 	bakname := configDirname + "dastard.cfg.bak"
+	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
 
 	fp, err := os.Create(tmpname)
 	if err != nil {
