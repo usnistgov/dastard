@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/user"
 	"reflect"
 	"time"
 
@@ -39,6 +40,15 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	// Here, store the last message of each type seen. Use when storing state.
 	lastMessages := make(map[string]string)
 
+	// Where do we store configuration dfiles?
+	u, err := user.Current()
+	configDirname := u.HomeDir + "/.dastard/"
+	err = os.Mkdir(configDirname, os.FileMode(0775))
+	if err != nil && !os.IsExist(err) {
+		log.Println("Could not make ~/.dastard directory: ", err)
+		return
+	}
+
 	for {
 		select {
 		case update := <-messages:
@@ -53,15 +63,15 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
 			pubSocket.SendFrame(message, czmq.FlagNone)
 		case <-saveStateTicker.C:
-			saveState(lastMessages)
+			saveState(configDirname, lastMessages)
 		}
 	}
 }
 
-func saveState(lastMessages map[string]string) {
-	fname := "dastard.cfg"
-	tmpname := "dastard.tmp"
-	bakname := "dastard.cfg.bak"
+func saveState(configDirname string, lastMessages map[string]string) {
+	fname := configDirname + "dastard.cfg"
+	tmpname := configDirname + "dastard.tmp"
+	bakname := configDirname + "dastard.cfg.bak"
 
 	fp, err := os.Create(tmpname)
 	if err != nil {
