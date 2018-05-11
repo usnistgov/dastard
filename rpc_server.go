@@ -1,7 +1,6 @@
 package dastard
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -13,18 +12,19 @@ import (
 
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
+// TODO: consider renaming -> DastardControl (5/11/18)
 type SourceControl struct {
 	simPulses SimPulseSource
 	triangle  TriangleSource
 	// TODO: Add sources for Lancero, ROACH, Abaco
 	activeSource DataSource
 
-	status        SourceControlStatus
+	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
 }
 
-// SourceControlStatus the status that SourceControl reports to clients.
-type SourceControlStatus struct {
+// ServerStatus the status that SourceControl reports to clients.
+type ServerStatus struct {
 	Running    bool
 	SourceName string
 	Nchannels  int
@@ -131,20 +131,14 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastUpdate() {
-	if payload, err := json.Marshal(s.status); err == nil {
-		s.clientUpdates <- ClientUpdate{"STATUS", payload}
-	}
+	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
 func (s *SourceControl) broadcastTriggerState() {
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ComputeFullTriggerState()
 		fmt.Printf("configs: %v\n", configs)
-		if payload, err := json.Marshal(configs); err == nil {
-			s.clientUpdates <- ClientUpdate{"TRIGGER", payload}
-		} else {
-			fmt.Printf("Error! %v\n", err)
-		}
+		s.clientUpdates <- ClientUpdate{"TRIGGER", configs}
 	}
 }
 

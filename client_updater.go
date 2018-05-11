@@ -4,7 +4,11 @@ package dastard
 // giving the latest DASTARD state.
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"reflect"
 	"time"
 
 	czmq "github.com/zeromq/goczmq"
@@ -12,8 +16,8 @@ import (
 
 // ClientUpdate carries the messages to be published on the status port.
 type ClientUpdate struct {
-	tag     string
-	message []byte
+	tag   string
+	state interface{}
 }
 
 // RunClientUpdater forwards any message from its input channel to the ZMQ publisher socket
@@ -27,7 +31,8 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	defer pubSocket.Destroy()
 
 	// Save the state to the standard saved-state file this often.
-	savePeriod := time.Second
+	// TODO: change to time.Minute
+	savePeriod := time.Second * 3
 	saveStateTicker := time.NewTicker(savePeriod)
 	defer saveStateTicker.Stop()
 
@@ -37,12 +42,54 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	for {
 		select {
 		case update := <-messages:
-			lastMessages[update.tag] = string(update.message)
+			message, err := json.Marshal(update.state)
+			if err != nil {
+				continue
+			}
+			topic := reflect.TypeOf(update.state).String()
+			fmt.Printf("Here is message of type %s: %v\n", topic, string(message))
+
+			lastMessages[update.tag] = string(message)
 			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
-			pubSocket.SendFrame(update.message, czmq.FlagNone)
+			pubSocket.SendFrame(message, czmq.FlagNone)
 		case <-saveStateTicker.C:
-			fmt.Printf("Save state: %v\n", lastMessages)
+			saveState(lastMessages)
 		}
 	}
+}
 
+func saveState(lastMessages map[string]string) {
+	fname := "dastard.cfg"
+	tmpname := "dastard.tmp"
+	bakname := "dastard.cfg.bak"
+
+	fp, err := os.Create(tmpname)
+	if err != nil {
+		log.Println("Could not write dastard.cfg file: ", err)
+		return
+	}
+	state, err := json.MarshalIndent(lastMessages, "", "    ")
+	if err != nil {
+		log.Println("Could not write convert dastard.cfg information to JSON: ", err)
+	} else {
+		fmt.Fprint(fp, string(state))
+	}
+	fp.Close()
+
+	// Move old config file to backup and new file to standard config name.
+	err = os.Remove(bakname)
+	if err != nil && !os.IsNotExist(err) {
+		log.Println("Could not remove backup file ", bakname, " even though it exists.")
+		log.Println(err)
+		return
+	}
+	err = os.Rename(fname, bakname)
+	if err != nil && !os.IsNotExist(err) {
+		log.Println("Could not save backup file: ", err)
+		return
+	}
+	err = os.Rename(tmpname, fname)
+	if err != nil {
+		log.Println("Could not update dastard.cfg file")
+	}
 }
