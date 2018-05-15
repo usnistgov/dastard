@@ -3,6 +3,7 @@ package dastard
 import (
 	"fmt"
 	"io"
+	"log"
 	"sync"
 	"time"
 )
@@ -57,7 +58,7 @@ func Start(ds DataSource) error {
 			if err := ds.blockingRead(); err == io.EOF {
 				break
 			} else if err != nil {
-				fmt.Printf("blockingRead returns Error\n")
+				log.Printf("blockingRead returns Error\n")
 				break
 			}
 		}

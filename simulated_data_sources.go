@@ -149,8 +149,8 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 
 	cycleTime := float64(sps.cycleLen) / sps.sampleRate
 	sps.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
-	// fmt.Printf("made a simulated pulse source for %d channels.\n", nchan)
-	// fmt.Printf("configured with wait time of %v\n", sps.timeperbuf)
+	// log.Printf("made a simulated pulse source for %d channels.\n", nchan)
+	// log.Printf("configured with wait time of %v\n", sps.timeperbuf)
 	return nil
 }
 

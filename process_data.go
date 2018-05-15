@@ -1,7 +1,7 @@
 package dastard
 
 import (
-	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -32,21 +32,21 @@ type DataStreamProcessor struct {
 }
 
 func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) {
-	fmt.Println("setting")
+	log.Println("setting")
 	rows, cols := projectors.Dims()
 	nbases := rows
 	if dsp.NSamples != cols {
-		fmt.Println("projectors has wrong size, rows: ", rows, " cols: ", cols)
-		fmt.Println("should have cols: ", dsp.NSamples)
+		log.Println("projectors has wrong size, rows: ", rows, " cols: ", cols)
+		log.Println("should have cols: ", dsp.NSamples)
 		panic("")
 	}
 	brows, bcols := basis.Dims()
 	if bcols != nbases {
-		fmt.Println("basis has wrong size, has cols: ", bcols, "should have cols: ", nbases)
+		log.Println("basis has wrong size, has cols: ", bcols, "should have cols: ", nbases)
 		panic("")
 	}
 	if brows != dsp.NSamples {
-		fmt.Println("basis has wrong size, has rows: ", brows, "should have rows: ", dsp.NSamples)
+		log.Println("basis has wrong size, has rows: ", brows, "should have rows: ", dsp.NSamples)
 		panic("")
 	}
 	dsp.projectors = projectors
@@ -135,7 +135,7 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.stream.AppendSegment(segment)
 	records, secondaries := dsp.TriggerData()
 	if len(records)+len(secondaries) > 0 {
-		// fmt.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
+		// log.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
 		// 	dsp.Channum, len(records), len(secondaries))
 	}
 	dsp.AnalyzeData(records) // add analysis results to records in-place
@@ -208,7 +208,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		} else {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
-			fmt.Println("running analysis", rows, cols)
+			log.Println("running analysis", rows, cols)
 			if cols != len(rec.data) {
 				panic("wrong size")
 			}
@@ -222,8 +222,8 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			residual.Sub(dataMat, &modelFull)
 			mrow, mcol := modelCoefs.Dims()
 			rrow, rcol := residual.Dims()
-			fmt.Println("modelCoefs", mrow, mcol)
-			fmt.Println("residual", rrow, rcol)
+			log.Println("modelCoefs", mrow, mcol)
+			log.Println("residual", rrow, rcol)
 
 			// copy modelCoefs into rec.modelCoefs
 			rec.modelCoefs = make([]float64, nbases)

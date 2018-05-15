@@ -16,3 +16,4 @@ lib*.a
 .glide/
 
 cmd/dastard/dastard
+dastardtestlogfile

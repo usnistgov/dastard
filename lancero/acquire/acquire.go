@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 
@@ -53,7 +54,7 @@ func parseOptions() error {
 	case opt.threshold < 1:
 		return fmt.Errorf("Threshold (%d) must be at least 1", opt.threshold)
 	case opt.threshold < 1024:
-		fmt.Printf("WARNING: Threshold (%d) is recommended to be at least 1024", opt.threshold)
+		log.Printf("WARNING: Threshold (%d) is recommended to be at least 1024", opt.threshold)
 	}
 	return nil
 }
@@ -92,7 +93,7 @@ func (v *verifier) checkWord(data uint32) bool {
 		expected |= 0x10000
 	}
 	if v.messages < 0 {
-		fmt.Printf("verify(): saw 0x%08x, expected 0x%08x\n", data, expected)
+		log.Printf("verify(): saw 0x%08x, expected 0x%08x\n", data, expected)
 		v.messages++
 	}
 
@@ -100,19 +101,19 @@ func (v *verifier) checkWord(data uint32) bool {
 		(channel == v.columns[v.column]) && (row == v.row) && (errval == v.error)
 	if v.messages < 1000 {
 		if frame != frameExpected {
-			fmt.Printf("verify(): The frame bit was %v, expected %v.\n", frame, frameExpected)
+			log.Printf("verify(): The frame bit was %v, expected %v.\n", frame, frameExpected)
 		}
 		if overRange {
-			fmt.Println("verify(): The over-range bit was 1, expected 0.")
+			log.Println("verify(): The over-range bit was 1, expected 0.")
 		}
 		if channel != v.columns[v.column] {
-			fmt.Printf("verify(): Saw channel %d, expected %d.\n", channel, v.columns[v.column])
+			log.Printf("verify(): Saw channel %d, expected %d.\n", channel, v.columns[v.column])
 		}
 		if row != v.row {
-			fmt.Printf("verify(): Saw row %d, expected %d.\n", row, v.row)
+			log.Printf("verify(): Saw row %d, expected %d.\n", row, v.row)
 		}
 		if errval != v.error {
-			fmt.Printf("verify(): Saw error val 0x%x, expected 0x%x.\n", errval, v.error)
+			log.Printf("verify(): Saw error val 0x%x, expected 0x%x.\n", errval, v.error)
 		}
 		v.messages++
 	}
@@ -164,7 +165,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 	// Start the adapter
 	err = lan.StartAdapter(2)
 	if err != nil {
-		fmt.Println("Could not start adapter: ", err)
+		log.Println("Could not start adapter: ", err)
 		return
 	}
 	defer lan.StopAdapter()
@@ -201,13 +202,13 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			if err != nil {
 				return
 			}
-			fmt.Printf("Found %d buffers with %d total bytes", len(buffers), totalBytes)
+			log.Printf("Found %d buffers with %d total bytes", len(buffers), totalBytes)
 			if len(buffers) > 1 {
 				for _, b := range buffers {
-					fmt.Printf(" size %d,", len(b))
+					log.Printf(" size %d,", len(b))
 				}
 			}
-			fmt.Println()
+			log.Println()
 			lan.InspectAdapter()
 
 			if saveData {
@@ -242,13 +243,13 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			if opt.simulate && opt.verify {
 				for _, b := range buffers {
 					if ok := verifier.checkBuffer(b); !ok {
-						fmt.Println("Buffer did not verify.")
+						log.Println("Buffer did not verify.")
 						return
 					}
 				}
 			}
 			lan.ReleaseBytes(totalBytes)
-			fmt.Println()
+			log.Println()
 		}
 	}
 }
@@ -256,17 +257,17 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 func main() {
 	err := parseOptions()
 	if err != nil {
-		fmt.Println("ERROR: ", err)
+		log.Println("ERROR: ", err)
 		return
 	}
 
 	lan, err := lancero.NewLancero(0)
 	if err != nil {
-		fmt.Println("ERROR: ", err)
+		log.Println("ERROR: ", err)
 		return
 	}
 	defer lan.Close()
 
 	bytesRead, _ := acquire(lan)
-	fmt.Printf("Read %d bytes.\n", bytesRead)
+	log.Printf("Read %d bytes.\n", bytesRead)
 }
