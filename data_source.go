@@ -301,4 +301,8 @@ type DataRecord struct {
 	pulseAverage float64
 	pulseRMS     float64
 	peakValue    float64
+
+	// Real time Analysis quantities
+	modelCoefs     []float64
+	residualStdDev float64
 }

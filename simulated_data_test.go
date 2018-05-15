@@ -1,8 +1,6 @@
 package dastard
 
 import (
-	"fmt"
-	"math"
 	"testing"
 	"time"
 )
@@ -156,45 +154,5 @@ func TestSimPulse(t *testing.T) {
 	ps.Configure(config)
 	if err := ps.Configure(config); err == nil {
 		t.Errorf("SimPulseSource can be configured with 0 channels.")
-	}
-}
-
-// TestAnalyze tests the DataChannel.AnalyzeData computations on a very simple "pulse".
-func TestAnalyze(t *testing.T) {
-	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
-	rec := &DataRecord{data: d}
-	records := []*DataRecord{rec}
-
-	dsp := &DataStreamProcessor{NPresamples: 4, NSamples: len(d)}
-	dsp.AnalyzeData(records)
-
-	expectPTM := 10.0
-	if rec.pretrigMean != expectPTM {
-		t.Errorf("Pretrigger mean = %f, want %f", rec.pretrigMean, expectPTM)
-		fmt.Printf("%v\n", rec)
-	}
-
-	expectAvg := 5.0
-	if rec.pulseAverage != expectAvg {
-		t.Errorf("Pulse average = %f, want %f", rec.pulseAverage, expectAvg)
-		fmt.Printf("%v\n", rec)
-	}
-
-	expectMax := 10.0
-	if rec.peakValue != expectMax {
-		t.Errorf("Peak value = %f, want %f", rec.peakValue, expectMax)
-		fmt.Printf("%v\n", rec)
-	}
-
-	expectRMS := 0.0
-	for i := 4; i < len(d); i++ {
-		diff := float64(d[i]) - expectPTM
-		expectRMS += diff * diff
-	}
-	expectRMS /= float64(len(d) - 4)
-	expectRMS = math.Sqrt(expectRMS)
-	if math.Abs(rec.pulseRMS-expectRMS) > 1e-8 {
-		t.Errorf("Pulse RMS = %f, want %f to 8 digits", rec.pulseRMS, expectRMS)
-		fmt.Printf("%v\n", rec)
 	}
 }
