@@ -101,6 +101,7 @@ func TestAnalyzeRealtime(t *testing.T) {
 	dsp.SetProjectorsBasis(*projectors, *basis)
 	dsp.AnalyzeData(records)
 
+	if false {
 	t.Log("projectors")
 	matPrint(&dsp.projectors, t)
 	t.Log(dsp.projectors.Dims())
@@ -109,6 +110,7 @@ func TestAnalyzeRealtime(t *testing.T) {
 	t.Log(dsp.basis.Dims())
 	t.Log("modelCoefs",rec.modelCoefs)
 	t.Log("residualStd",rec.residualStdDev)
+}
 
 	// residual should be [0,0,0,4]
 	// the corrected stdDeviation of this is sqrt(((0-1)^2+(0-1)^2+(0-1)^2+(4-1)^2)/4)
