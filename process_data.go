@@ -253,7 +253,11 @@ func convertSliceRawTypeToFloat64(ar []RawType) []float64 {
 	return newar
 }
 
+// return the uncorrected std deviation of a float slice
 func stdDev(a []float64) float64 {
+	if len(a) == 0 {
+		panic("std deviation of 0 length slice is undefined")
+	}
 	s, s2 := 0.0, 0.0
 	for _, v := range a {
 		s += v
