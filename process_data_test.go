@@ -164,10 +164,8 @@ func TestAnalyzeRealtime(t *testing.T) {
 	}
 }
 
-func BenchmarkRealtime(b *testing.B) {
-	nsamples := 1000
-	npresamples := 100
-	nbases := 3
+func benchmarkAnalyzeData(nsamples int, npresamples int, nbases int, b *testing.B) {
+
 	d := make([]RawType, nsamples)
 	for i, _ := range d {
 		d[i] = RawType(i)
@@ -178,9 +176,30 @@ func BenchmarkRealtime(b *testing.B) {
 	}
 	dsp := &DataStreamProcessor{NPresamples: npresamples, NSamples: nsamples}
 	// assign the projectors and basis
-	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
-	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
-	dsp.SetProjectorsBasis(*projectors, *basis)
+	if nbases > 0 {
+		projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
+		basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
+		dsp.SetProjectorsBasis(*projectors, *basis)
+	}
 	b.ResetTimer()
 	dsp.AnalyzeData(records)
+}
+
+func BenchmarkAnalyzeData1000Samples0Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 0, b)
+}
+func BenchmarkAnalyzeData1000Samples3Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 3, b)
+}
+func BenchmarkAnalyzeData1000Samples6Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 6, b)
+}
+func BenchmarkAnalyzeData100Samples0Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 0, b)
+}
+func BenchmarkAnalyzeData100Samples3Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 3, b)
+}
+func BenchmarkAnalyzeData100Samples6Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 6, b)
 }
