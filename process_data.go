@@ -258,11 +258,3 @@ func stdDev(a []float64) float64 {
 	}
 	return math.Sqrt(s2 / float64(len(a)))
 }
-
-// func modelCoefsToFloat64Slice(src *mat.Dense) []float64 {
-// 	rows,cols := src.Dims()
-// 	newar := make([]float64, rows)
-// 	for i range rows {
-// 		newar[i] = src.get
-// 	}
-// }
