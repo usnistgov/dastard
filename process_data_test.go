@@ -1,9 +1,10 @@
 package dastard
 
 import (
-	"testing"
 	"fmt"
 	"math"
+	"testing"
+
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -14,12 +15,12 @@ func matPrint(X mat.Matrix) {
 
 // TestStdDev checks that DataSegment works as expected
 func TestStdDev(t *testing.T) {
-	s := []float64{1.0,1.0,1.0}
+	s := []float64{1.0, 1.0, 1.0}
 	s_stdDev := stdDev(s)
 	if s_stdDev != 0 {
 		t.Errorf("stdDev returned incorrect result")
 	}
-	z := []float64{-1.0,1.0}
+	z := []float64{-1.0, 1.0}
 	z_stdDev := stdDev(z)
 	if z_stdDev != 1.0 {
 		t.Errorf("stdDev returned incorrect result")
@@ -82,7 +83,7 @@ func TestAnalyze(t *testing.T) {
 
 // TestAnalyzeRealtime tests the DataChannel.AnalyzeData computations on a very simple "pulse".
 func TestAnalyzeRealtime(t *testing.T) {
-	d := []RawType{1,2,3,4}
+	d := []RawType{1, 2, 3, 4}
 	rec := &DataRecord{data: d}
 	records := []*DataRecord{rec}
 
@@ -91,14 +92,14 @@ func TestAnalyzeRealtime(t *testing.T) {
 	// assign the projectors and basis
 	nbases := 3
 	projectors := mat.NewDense(nbases, dsp.NSamples,
-	[]float64{1, 0, 0, 0,
-						0, 1, 0, 0,
-					  0, 0, 1, 0})
+		[]float64{1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 1, 0})
 	basis := mat.NewDense(dsp.NSamples, nbases,
-	[]float64{1, 0, 0,
-						0, 1, 0,
-					  0, 0, 1,
-					  0, 0, 0})
+		[]float64{1, 0, 0,
+			0, 1, 0,
+			0, 0, 1,
+			0, 0, 0})
 	dsp.SetProjectorsBasis(*projectors, *basis)
 	dsp.AnalyzeData(records)
 
@@ -119,16 +120,16 @@ func TestAnalyzeRealtime(t *testing.T) {
 		fmt.Printf("%v\n", rec)
 	}
 
-	expectModelCoefs := []float64{1,2,3}
+	expectModelCoefs := []float64{1, 2, 3}
 	modelCoefsCorrect := true
-	for i,v := range expectModelCoefs {
+	for i, v := range expectModelCoefs {
 		if v != rec.modelCoefs[i] {
 			modelCoefsCorrect = false
 		}
 	}
-	if !modelCoefsCorrect{
-		fmt.Println("rec.modelCoefs",rec.modelCoefs)
-		fmt.Println("should equal expectModelCoefs",expectModelCoefs)
+	if !modelCoefsCorrect {
+		fmt.Println("rec.modelCoefs", rec.modelCoefs)
+		fmt.Println("should equal expectModelCoefs", expectModelCoefs)
 		t.Fail()
 	}
 
@@ -161,4 +162,25 @@ func TestAnalyzeRealtime(t *testing.T) {
 		t.Errorf("Pulse RMS = %f, want %f to 8 digits", rec.pulseRMS, expectRMS)
 		fmt.Printf("%v\n", rec)
 	}
+}
+
+func BenchmarkRealtime(b *testing.B) {
+	nsamples := 1000
+	npresamples := 100
+	nbases := 3
+	d := make([]RawType, nsamples)
+	for i, _ := range d {
+		d[i] = RawType(i)
+	}
+	records := make([]*DataRecord, b.N)
+	for i, _ := range records {
+		records[i] = &DataRecord{data: d}
+	}
+	dsp := &DataStreamProcessor{NPresamples: npresamples, NSamples: nsamples}
+	// assign the projectors and basis
+	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
+	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
+	dsp.SetProjectorsBasis(*projectors, *basis)
+	b.ResetTimer()
+	dsp.AnalyzeData(records)
 }

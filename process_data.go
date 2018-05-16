@@ -32,7 +32,6 @@ type DataStreamProcessor struct {
 }
 
 func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) {
-	fmt.Println("setting")
 	rows, cols := projectors.Dims()
 	nbases := rows
 	if dsp.NSamples != cols {
@@ -208,7 +207,6 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		} else {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
-			fmt.Println("running analysis", rows, cols)
 			if cols != len(rec.data) {
 				panic("wrong size")
 			}
@@ -220,10 +218,6 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			modelCoefs.Product(&dsp.projectors, dataMat)
 			modelFull.Product(&dsp.basis, &modelCoefs)
 			residual.Sub(dataMat, &modelFull)
-			mrow, mcol := modelCoefs.Dims()
-			rrow, rcol := residual.Dims()
-			fmt.Println("modelCoefs", mrow, mcol)
-			fmt.Println("residual", rrow, rcol)
 
 			// copy modelCoefs into rec.modelCoefs
 			rec.modelCoefs = make([]float64, nbases)
