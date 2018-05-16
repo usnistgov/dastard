@@ -1,7 +1,7 @@
 package dastard
 
 import (
-	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -35,17 +35,17 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 	rows, cols := projectors.Dims()
 	nbases := rows
 	if dsp.NSamples != cols {
-		fmt.Println("projectors has wrong size, rows: ", rows, " cols: ", cols)
-		fmt.Println("should have cols: ", dsp.NSamples)
+		log.Println("projectors has wrong size, rows: ", rows, " cols: ", cols)
+		log.Println("should have cols: ", dsp.NSamples)
 		panic("")
 	}
 	brows, bcols := basis.Dims()
 	if bcols != nbases {
-		fmt.Println("basis has wrong size, has cols: ", bcols, "should have cols: ", nbases)
+		log.Println("basis has wrong size, has cols: ", bcols, "should have cols: ", nbases)
 		panic("")
 	}
 	if brows != dsp.NSamples {
-		fmt.Println("basis has wrong size, has rows: ", brows, "should have rows: ", dsp.NSamples)
+		log.Println("basis has wrong size, has rows: ", brows, "should have rows: ", dsp.NSamples)
 		panic("")
 	}
 	dsp.projectors = projectors
@@ -134,7 +134,7 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.stream.AppendSegment(segment)
 	records, secondaries := dsp.TriggerData()
 	if len(records)+len(secondaries) > 0 {
-		// fmt.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
+		// log.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
 		// 	dsp.Channum, len(records), len(secondaries))
 	}
 	dsp.AnalyzeData(records) // add analysis results to records in-place

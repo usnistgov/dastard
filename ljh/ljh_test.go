@@ -77,7 +77,7 @@ func TestBadVersionNumbers(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 	tempFile := filepath.Join(tempDir, "t1.ljh")
-	// fmt.Printf("Temp dir: %s\n", tempFile)
+	// t.Logf("Temp dir: %s\n", tempFile)
 
 	var versiontests = []struct {
 		vnum      string

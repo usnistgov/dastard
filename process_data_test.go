@@ -1,16 +1,15 @@
 package dastard
 
 import (
-	"fmt"
 	"math"
 	"testing"
 
 	"gonum.org/v1/gonum/mat"
 )
 
-func matPrint(X mat.Matrix) {
+func matPrint(X mat.Matrix, t *testing.T) {
 	fa := mat.Formatted(X, mat.Prefix(""), mat.Squeeze())
-	fmt.Printf("%v\n", fa)
+	t.Logf("%v\n", fa)
 }
 
 // TestStdDev checks that DataSegment works as expected
@@ -39,19 +38,19 @@ func TestAnalyze(t *testing.T) {
 	expectPTM := 10.0
 	if rec.pretrigMean != expectPTM {
 		t.Errorf("Pretrigger mean = %f, want %f", rec.pretrigMean, expectPTM)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	expectAvg := 5.0
 	if rec.pulseAverage != expectAvg {
 		t.Errorf("Pulse average = %f, want %f", rec.pulseAverage, expectAvg)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	expectMax := 10.0
 	if rec.peakValue != expectMax {
 		t.Errorf("Peak value = %f, want %f", rec.peakValue, expectMax)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	expectRMS := 0.0
@@ -63,20 +62,20 @@ func TestAnalyze(t *testing.T) {
 	expectRMS = math.Sqrt(expectRMS)
 	if math.Abs(rec.pulseRMS-expectRMS) > 1e-8 {
 		t.Errorf("Pulse RMS = %f, want %f to 8 digits", rec.pulseRMS, expectRMS)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	// the realtime analysis did not run, so we should get the Zero value
 	expectResidualStdDev := 0.0
 	if rec.residualStdDev != expectResidualStdDev {
 		t.Errorf("ResidualStdDev mean = %f, want %f", rec.residualStdDev, expectResidualStdDev)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	// the realtime analysis did not run, so we should get the Zero value
 	if rec.modelCoefs != nil {
-		fmt.Println("rec.modelCoefs should have Zero Value, instead has", rec.modelCoefs)
-		fmt.Printf("%v\n", rec)
+		t.Log("rec.modelCoefs should have Zero Value, instead has", rec.modelCoefs)
+		t.Logf("%v\n", rec)
 		t.Fail()
 	}
 }
@@ -103,21 +102,23 @@ func TestAnalyzeRealtime(t *testing.T) {
 	dsp.SetProjectorsBasis(*projectors, *basis)
 	dsp.AnalyzeData(records)
 
-	// fmt.Println("projectors")
-	// matPrint(&dsp.projectors)
-	// fmt.Println(dsp.projectors.Dims())
-	// fmt.Println("basis")
-	// matPrint(&dsp.basis)
-	// fmt.Println(dsp.basis.Dims())
-	// fmt.Println("modelCoefs",rec.modelCoefs)
-	// fmt.Println("residualStd",rec.residualStdDev)
+	if false {
+		t.Log("projectors")
+		matPrint(&dsp.projectors, t)
+		t.Log(dsp.projectors.Dims())
+		t.Log("basis")
+		matPrint(&dsp.basis, t)
+		t.Log(dsp.basis.Dims())
+		t.Log("modelCoefs", rec.modelCoefs)
+		t.Log("residualStd", rec.residualStdDev)
+	}
 
 	// residual should be [0,0,0,4]
 	// the corrected stdDeviation of this is sqrt(((0-1)^2+(0-1)^2+(0-1)^2+(4-1)^2)/4)
 	expectResidualStdDev := 1.7320508075688772
 	if rec.residualStdDev != expectResidualStdDev {
 		t.Errorf("ResidualStdDev mean = %f, want %f", rec.residualStdDev, expectResidualStdDev)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	expectModelCoefs := []float64{1, 2, 3}
@@ -127,28 +128,29 @@ func TestAnalyzeRealtime(t *testing.T) {
 			modelCoefsCorrect = false
 		}
 	}
+
 	if !modelCoefsCorrect {
-		fmt.Println("rec.modelCoefs", rec.modelCoefs)
-		fmt.Println("should equal expectModelCoefs", expectModelCoefs)
+		t.Log("rec.modelCoefs", rec.modelCoefs)
+		t.Log("should equal expectModelCoefs", expectModelCoefs)
 		t.Fail()
 	}
 
 	expectPTM := 1.0
 	if rec.pretrigMean != expectPTM {
 		t.Errorf("Pretrigger mean = %f, want %f", rec.pretrigMean, expectPTM)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	expectAvg := 2.0
 	if rec.pulseAverage != expectAvg {
 		t.Errorf("Pulse average = %f, want %f", rec.pulseAverage, expectAvg)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	expectMax := 3.0
 	if rec.peakValue != expectMax {
 		t.Errorf("Peak value = %f, want %f", rec.peakValue, expectMax)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 
 	expectRMS := 0.0
@@ -160,7 +162,7 @@ func TestAnalyzeRealtime(t *testing.T) {
 	expectRMS = math.Sqrt(expectRMS)
 	if math.Abs(rec.pulseRMS-expectRMS) > 1e-8 {
 		t.Errorf("Pulse RMS = %f, want %f to 8 digits", rec.pulseRMS, expectRMS)
-		fmt.Printf("%v\n", rec)
+		t.Logf("%v\n", rec)
 	}
 }
 

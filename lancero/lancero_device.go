@@ -14,6 +14,7 @@ import "C"
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"os"
 	"syscall"
 	"time"
@@ -205,7 +206,7 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 	n := uint32(csize)
 	// n, err := dev.FileSGDMA.Read(buffer)
 	// if err != nil {
-	//   fmt.Printf("Error reading SGDMA buffer %v of length %v\n", unsafe.Pointer(&buffer), len(buffer))
+	//   log.Printf("Error reading SGDMA buffer %v of length %v\n", unsafe.Pointer(&buffer), len(buffer))
 	//   return err
 	// }
 	if n < bufferLength {
@@ -216,8 +217,8 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 		return err
 	}
 	if verbose {
-		fmt.Printf("Write engine ID = 0x%08x\n", value)
-		fmt.Println("Polling write engine control, waiting for RUN...")
+		log.Printf("Write engine ID = 0x%08x\n", value)
+		log.Println("Polling write engine control, waiting for RUN...")
 	}
 
 	// Wait for something, with a timeout.
@@ -231,9 +232,9 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 		}
 		if verbose && value != prevvalue {
 			if value&RUN == 1 {
-				fmt.Printf("Write engine is RUNNING. (control = 0x%08x)\n", value)
+				log.Printf("Write engine is RUNNING. (control = 0x%08x)\n", value)
 			} else {
-				fmt.Printf("Write engine is NOT RUNNING. (control = 0x%08x)\n", value)
+				log.Printf("Write engine is NOT RUNNING. (control = 0x%08x)\n", value)
 			}
 			prevvalue = value
 		}
@@ -252,8 +253,8 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 	}
 
 	if verbose {
-		fmt.Printf("Will stop write engine by writing 0x%08x to control later.\n", dev.engineStopValue)
-		fmt.Println("Now polling write engine, waiting for BUSY status...")
+		log.Printf("Will stop write engine by writing 0x%08x to control later.\n", dev.engineStopValue)
+		log.Println("Now polling write engine, waiting for BUSY status...")
 	}
 	var BUSY uint32 = 1
 	prevvalue = 0xdeadbeef
@@ -264,9 +265,9 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 		}
 		if verbose && value != prevvalue {
 			if value&BUSY == 1 {
-				fmt.Printf("Write engine is BUSY. (status = 0x%08x)\n", value)
+				log.Printf("Write engine is BUSY. (status = 0x%08x)\n", value)
 			} else {
-				fmt.Printf("Write engine is NOT BUSY. (status = 0x%08x)\n", value)
+				log.Printf("Write engine is NOT BUSY. (status = 0x%08x)\n", value)
 			}
 			prevvalue = value
 		}
@@ -276,7 +277,7 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 		time.Sleep(20 * time.Millisecond)
 	}
 	if verbose {
-		fmt.Printf("cyclicStart(): Engine status = 0x%08x.\n", value)
+		log.Printf("cyclicStart(): Engine status = 0x%08x.\n", value)
 	}
 	return nil
 }
@@ -292,11 +293,11 @@ func (dev *lanceroDevice) cyclicStop() error {
 		return err
 	}
 	if verbose {
-		fmt.Printf("cyclicStop(): Engine status = 0x%x\n", value)
+		log.Printf("cyclicStop(): Engine status = 0x%x\n", value)
 	}
 	if value&BUSYFLAG == 0 {
 		if verbose {
-			fmt.Println("cyclicStop(): Engine is not BUSY, so no need to stop it.")
+			log.Println("cyclicStop(): Engine is not BUSY, so no need to stop it.")
 		}
 		return nil
 	}
@@ -306,7 +307,7 @@ func (dev *lanceroDevice) cyclicStop() error {
 		return err
 	}
 	if verbose {
-		fmt.Printf("cyclicStop(): Writing 0x%x to engine control 0x208.\n", value)
+		log.Printf("cyclicStop(): Writing 0x%x to engine control 0x208.\n", value)
 	}
 
 	// Read engine status again, repeatedly until it is not BUSY.
@@ -317,20 +318,20 @@ func (dev *lanceroDevice) cyclicStop() error {
 			return err
 		}
 		if verbose && laststatus != value {
-			fmt.Printf("cyclicStop(): Engine status = 0x%x\n", value)
+			log.Printf("cyclicStop(): Engine status = 0x%x\n", value)
 			laststatus = value
 		}
 		if value&BUSYFLAG == 0 {
 			break
 		}
 		if verbose {
-			fmt.Printf("cyclicStop(): Now polling write engine, waiting for BUSY to clear\n")
+			log.Printf("cyclicStop(): Now polling write engine, waiting for BUSY to clear\n")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	if verbose {
-		fmt.Printf("cyclicStop(): Write engine no longer BUSY.\n")
-		fmt.Printf("cyclicStop(): Engine status = 0x%08x.\n", value)
+		log.Printf("cyclicStop(): Write engine no longer BUSY.\n")
+		log.Printf("cyclicStop(): Engine status = 0x%08x.\n", value)
 	}
 	return nil
 }

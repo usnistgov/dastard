@@ -57,7 +57,7 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 				continue
 			}
 			topic := reflect.TypeOf(update.state).String()
-			fmt.Printf("Here is message of type %s: %v\n", topic, string(message))
+			log.Printf("Here is message of type %s: %v\n", topic, string(message))
 
 			lastMessages[update.tag] = string(message)
 			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)

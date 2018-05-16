@@ -142,7 +142,7 @@ header:
 	b := make([]byte, 1024) // Assume that # of bytes will cover all the missing newline chars.
 	textLength -= len(endHeaderTag)
 	r.file.ReadAt(b, int64(textLength))
-	fmt.Printf("read in %d bytes\n", len(b))
+	log.Printf("read in %d bytes\n", len(b))
 	idx := strings.Index(string(b), endHeaderTag)
 	if idx < 0 {
 		return fmt.Errorf("Could not find '%s' in LJH file", endHeaderTag)
@@ -159,8 +159,8 @@ header:
 	r.headerLength = textLength + idx
 	r.file.Seek(int64(r.headerLength), 0) // rewind to end of header
 
-	fmt.Printf("Parsed %d lines in the header and %d bytes.\n", lnum, textLength)
-	fmt.Printf("%v\n", r)
+	log.Printf("Parsed %d lines in the header and %d bytes.\n", lnum, textLength)
+	log.Printf("%v\n", r)
 	r.buffer = make([]byte, r.recordLength)
 	return nil
 }

@@ -14,6 +14,7 @@ import "C"
 
 import (
 	"fmt"
+	"log"
 	"time"
 	"unsafe"
 )
@@ -65,12 +66,12 @@ func (a *adapter) idVersion() (uint32, error) {
 // The bytesRead gives how many bytes should now be released.
 func (a *adapter) releaseBytes(bytesRead uint32) error {
 	if a.verbosity >= 3 {
-		fmt.Printf("adapter.releaseBytes(%d): moving read index from 0x%08x to ", bytesRead, a.readIndex)
+		log.Printf("adapter.releaseBytes(%d): moving read index from 0x%08x to ", bytesRead, a.readIndex)
 	}
 	// Update the read index internally, then publish it to the firmware.
 	a.readIndex = (a.readIndex + bytesRead) % a.length
 	if a.verbosity >= 3 {
-		fmt.Printf("0x%08x\n", a.readIndex)
+		log.Printf("0x%08x\n", a.readIndex)
 	}
 	if err := a.device.writeRegister(adapterRBRI, a.readIndex); err != nil {
 		return err
@@ -95,7 +96,7 @@ func (a *adapter) freeBuffer() {
 func (a *adapter) status() (uint32, error) {
 	status, err := a.device.readRegister(adapterSTA)
 	if a.verbosity >= 3 {
-		fmt.Printf("adapter status = 0x%08x\n", status)
+		log.Printf("adapter status = 0x%08x\n", status)
 	}
 	return status, err
 }
@@ -176,28 +177,28 @@ func (a *adapter) inspect() uint32 {
 	available, _ := a.device.readRegister(adapterRBAD)
 	fill, _ := a.device.readRegister(adapterFILL)
 	threshold, err := a.device.readRegister(adapterRBTH)
-	fmt.Printf("writeIndex = 0x%08x, readIndex = 0x%08x  available = 0x%08x\n",
+	log.Printf("writeIndex = 0x%08x, readIndex = 0x%08x  available = 0x%08x\n",
 		writeIndex, readIndex, available)
-	fmt.Printf("max filled = 0x%08x, threshold = 0x%08x\n", fill, threshold)
-	fmt.Printf("inspect status = 0x%08x (these bits signify: ", status)
+	log.Printf("max filled = 0x%08x, threshold = 0x%08x\n", fill, threshold)
+	log.Printf("inspect status = 0x%08x (these bits signify: ", status)
 	if status&bitsAdapterCtrlIEFlush != 0 {
-		fmt.Printf(" ALARM")
+		log.Printf(" ALARM")
 	}
 	if status&bitsAdapterCtrlIEFull != 0 {
-		fmt.Printf(" FULL")
+		log.Printf(" FULL")
 	}
 	if status&bitsAdapterCtrlIEThresh != 0 {
-		fmt.Printf(" THRESH")
+		log.Printf(" THRESH")
 	}
 	if status&bitsAdapterCtrlRun != 0 {
-		fmt.Printf(" RUN")
+		log.Printf(" RUN")
 	}
 	if status == 0 {
-		fmt.Printf(" not running")
+		log.Printf(" not running")
 	}
-	fmt.Printf(")\n")
+	log.Printf(")\n")
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	return status
 }
@@ -207,13 +208,13 @@ func (a *adapter) start(waitSeconds int) error {
 	a.stop()
 
 	if a.verbosity >= 3 {
-		fmt.Println("start(IE_FULL | IE_THRES | RUN).")
+		log.Println("start(IE_FULL | IE_THRES | RUN).")
 	}
 	value := bitsAdapterCtrlIEFull | bitsAdapterCtrlIEThresh | bitsAdapterCtrlRun
 	a.device.writeRegister(adapterCTRL, value)
 
 	if a.verbosity >= 3 {
-		fmt.Printf("start(): lancero_cyclic_start(length = %d).\n", a.length)
+		log.Printf("start(): lancero_cyclic_start(length = %d).\n", a.length)
 	}
 	a.lastThresh = time.Now()
 	return a.device.cyclicStart(a.buffer, a.length, waitSeconds)
@@ -222,7 +223,7 @@ func (a *adapter) start(waitSeconds int) error {
 func (a *adapter) stop() error {
 	verbose := a.verbosity >= 3
 	if verbose {
-		fmt.Println("adapter.stop(): setting RUN | FLUSH bits.")
+		log.Println("adapter.stop(): setting RUN | FLUSH bits.")
 	}
 	// Enable flush so that adapter completes outstanding Avalon MM read requests;
 	// as there is no abort mechanism in the Avalon fabric, we must complete the
@@ -234,8 +235,8 @@ func (a *adapter) stop() error {
 	}
 
 	if verbose {
-		fmt.Printf("adapter.stop(): ADAP_CTRL = 0x%08x.\n", value)
-		fmt.Printf("adapter.stop(): lancero_cyclic_stop()).\n")
+		log.Printf("adapter.stop(): ADAP_CTRL = 0x%08x.\n", value)
+		log.Printf("adapter.stop(): lancero_cyclic_stop()).\n")
 	}
 	if err = a.device.cyclicStop(); err != nil {
 		return err
@@ -243,7 +244,7 @@ func (a *adapter) stop() error {
 
 	// stop adapter
 	if verbose {
-		fmt.Printf("adapter.stop(): clearing RUN | FLUSH bits.\n")
+		log.Printf("adapter.stop(): clearing RUN | FLUSH bits.\n")
 	}
 	a.device.writeRegister(adapterCTRL, 0)
 	value, err = a.device.readRegister(adapterCTRL)
@@ -273,7 +274,7 @@ func (a *adapter) wait() error {
 		return nil
 	}
 	if a.verbosity >= 3 {
-		fmt.Println("adapter.wait(): Waiting for threshold event.")
+		log.Println("adapter.wait(): Waiting for threshold event.")
 	}
 	start := time.Now()
 
@@ -284,7 +285,7 @@ func (a *adapter) wait() error {
 		waitTime := now.Sub(start)
 		sinceLast := now.Sub(a.lastThresh)
 		a.lastThresh = now
-		fmt.Printf("adapter.wait(): Waited for %v (%v since last thresh).\n",
+		log.Printf("adapter.wait(): Waited for %v (%v since last thresh).\n",
 			waitTime, sinceLast)
 	}
 	return err
