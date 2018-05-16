@@ -167,13 +167,13 @@ func TestAnalyzeRealtime(t *testing.T) {
 }
 
 func benchmarkAnalyzeData(nsamples int, npresamples int, nbases int, b *testing.B) {
-
-	d := make([]RawType, nsamples)
-	for i, _ := range d {
-		d[i] = RawType(i)
-	}
+	var d []RawType
 	records := make([]*DataRecord, b.N)
 	for i, _ := range records {
+		d = make([]RawType, nsamples)
+		for i, _ := range d {
+			d[i] = RawType(i)
+		}
 		records[i] = &DataRecord{data: d}
 	}
 	dsp := &DataStreamProcessor{NPresamples: npresamples, NSamples: nsamples}
@@ -184,14 +184,18 @@ func benchmarkAnalyzeData(nsamples int, npresamples int, nbases int, b *testing.
 		dsp.SetProjectorsBasis(*projectors, *basis)
 	}
 	b.ResetTimer()
+
 	dsp.AnalyzeData(records)
 }
 
 func BenchmarkAnalyzeData1000Samples0Bases(b *testing.B) {
 	benchmarkAnalyzeData(1000, 100, 0, b)
 }
-func BenchmarkAnalyzeData1000Samples3Bases(b *testing.B) {
-	benchmarkAnalyzeData(1000, 100, 3, b)
+func BenchmarkAnalyzeData1000Samples1Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 0, b)
+}
+func BenchmarkAnalyzeData1000Samples2Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 2, b)
 }
 func BenchmarkAnalyzeData1000Samples6Bases(b *testing.B) {
 	benchmarkAnalyzeData(1000, 100, 6, b)
@@ -199,8 +203,11 @@ func BenchmarkAnalyzeData1000Samples6Bases(b *testing.B) {
 func BenchmarkAnalyzeData100Samples0Bases(b *testing.B) {
 	benchmarkAnalyzeData(1000, 100, 0, b)
 }
-func BenchmarkAnalyzeData100Samples3Bases(b *testing.B) {
-	benchmarkAnalyzeData(1000, 100, 3, b)
+func BenchmarkAnalyzeData100Samples1Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 0, b)
+}
+func BenchmarkAnalyzeData100Samples2Bases(b *testing.B) {
+	benchmarkAnalyzeData(1000, 100, 2, b)
 }
 func BenchmarkAnalyzeData100Samples6Bases(b *testing.B) {
 	benchmarkAnalyzeData(1000, 100, 6, b)

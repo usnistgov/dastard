@@ -203,8 +203,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		rec.pulseAverage = sum/N - ptm
 		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
 		rec.pulseRMS = math.Sqrt(meanSquare)
-		if dsp.projectors.IsZero() {
-		} else {
+		if !dsp.projectors.IsZero() {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
 			if cols != len(rec.data) {
