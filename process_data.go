@@ -179,6 +179,13 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 // AnalyzeData computes pulse-analysis values in-place for all elements of a
 // slice of DataRecord values.
 func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
+	var modelCoefs mat.VecDense
+	var modelFull mat.VecDense
+	var residual mat.VecDense
+	var dataVec mat.VecDense
+	if !dsp.projectors.IsZero() {
+		dataVec = *mat.NewVecDense(dsp.NSamples, make([]float64, dsp.NSamples))
+	}
 	for _, rec := range records {
 		var val float64
 		for i := 0; i < dsp.NPresamples; i++ {
@@ -209,14 +216,13 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			if cols != len(rec.data) {
 				panic("wrong size")
 			}
-			var modelCoefs mat.Dense
-			var modelFull mat.Dense
-			var residual mat.Dense
-			data64 := convertSliceRawTypeToFloat64(rec.data)
-			dataMat := mat.NewDense(len(rec.data), 1, data64)
-			modelCoefs.Product(&dsp.projectors, dataMat)
-			modelFull.Product(&dsp.basis, &modelCoefs)
-			residual.Sub(dataMat, &modelFull)
+
+			for i, v := range rec.data {
+				dataVec.SetVec(i, float64(v))
+			}
+			modelCoefs.MulVec(&dsp.projectors, &dataVec)
+			modelFull.MulVec(&dsp.basis, &modelCoefs)
+			residual.SubVec(&dataVec, &modelFull)
 
 			// copy modelCoefs into rec.modelCoefs
 			rec.modelCoefs = make([]float64, nbases)
@@ -234,16 +240,6 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 // PublishData sends the slice of DataRecords to be published.
 func (dsp *DataStreamProcessor) PublishData(records []*DataRecord) {
 	dsp.Publisher <- records
-}
-
-func convertSliceRawTypeToFloat64(ar []RawType) []float64 {
-	newar := make([]float64, len(ar))
-	var v RawType
-	var i int
-	for i, v = range ar {
-		newar[i] = float64(v)
-	}
-	return newar
 }
 
 // return the uncorrected std deviation of a float slice

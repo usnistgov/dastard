@@ -356,4 +356,20 @@ func BenchmarkMatMul(b *testing.B) {
 
 		})
 	}
+	for _, bm := range benchmarks {
+		name := fmt.Sprintf("MulVec(%v,%v)*(%v,%v)", bm.rA, bm.cA, bm.rB, bm.cB)
+		b.Run(name, func(b *testing.B) {
+			if bm.cB != 1 {
+				panic("cB should be 1")
+			}
+			A := mat.NewDense(bm.rA, bm.cA, make([]float64, bm.rA*bm.cA))
+			B := mat.NewVecDense(bm.rB, make([]float64, bm.rB*bm.cB))
+			var result mat.VecDense
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				result.MulVec(A, B)
+			}
+
+		})
+	}
 }
