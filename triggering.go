@@ -55,8 +55,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		r := records[idxNextTrig]
-		nextFoundTrig = r.trigFrame - segment.firstFramenum
+		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 	}
 
 	// Normal loop through all samples in triggerable range
