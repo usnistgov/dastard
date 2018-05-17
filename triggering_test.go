@@ -210,14 +210,31 @@ func TestSingles(t *testing.T) {
 
 	dsp.LevelTrigger = false
 	dsp.AutoTrigger = true
+	dsp.AutoDelay = 0 * time.Millisecond
+	testTriggerSubroutine(t, dsp, "Auto_0Millisecond", []FrameIndex{100, 1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
+
+	dsp.LevelTrigger = false
+	dsp.AutoTrigger = true
 	dsp.AutoDelay = 500 * time.Millisecond
-	testTriggerSubroutine(t, dsp, "Auto", []FrameIndex{100, 5100})
+	// first trigger is a NPreSamples=100, ends at 1099
+	// next viable triger is 1100
+	// AutoDelay corresponds to 5000 samples, so we add that to 1100 to get 6100
+	testTriggerSubroutine(t, dsp, "Auto_500Millisecond", []FrameIndex{100, 6100})
 
 	dsp.LevelTrigger = true
-	testTriggerSubroutine(t, dsp, "Level+Auto", []FrameIndex{1000, 6000})
+	// AutoDelay corresponds to 5000 samples
+	// Level Trigger Occurs at 1000-1999
+	// Next Posible Trigger at 2000
+	// Delay 5000 to get 7000
+	testTriggerSubroutine(t, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 7000})
 
 	dsp.AutoDelay = 200 * time.Millisecond
-	testTriggerSubroutine(t, dsp, "Level+Auto", []FrameIndex{1000, 3000, 5000, 7000, 9000})
+	// AutoDelay corresponds to 2000 samples
+	// Level Trigger Occurs at 1000-1999
+	// Next Posible Trigger at 2000
+	// Delay 2000 to get 4000
+	// Same Logic Takes 4000->7000
+	testTriggerSubroutine(t, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 4000, 7000})
 }
 
 func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) {

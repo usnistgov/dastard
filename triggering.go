@@ -96,7 +96,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	npre := FrameIndex(dsp.NPresamples)
 
 	delaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
-	if delaySamples <= 0 {
+	if delaySamples < 0 {
 		panic(fmt.Sprintf("delay samples=%v", delaySamples))
 	}
 	idxNextTrig := 0
@@ -106,6 +106,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 	}
 
+	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
 	nextPotentialTrig := dsp.LastTrigger - segment.firstFramenum + delaySamples
 	if nextPotentialTrig < npre {
 		nextPotentialTrig = npre
@@ -117,11 +118,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 			// auto trigger is allowed
 			newRecord := dsp.triggerAt(segment, int(nextPotentialTrig))
 			records = append(records, newRecord)
-			nextPotentialTrig += delaySamples
+			nextPotentialTrig += delaySamples + FrameIndex(nsamp)
 
 		} else {
 			// auto trigger not allowed
-			nextPotentialTrig = nextFoundTrig + delaySamples
+			nextPotentialTrig = nextFoundTrig + delaySamples + FrameIndex(nsamp)
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
 				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
@@ -148,6 +149,11 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
 	records = dsp.autoTriggerComputeAppend(records)
 
+	// Step 1.5: note the last trigger for the next invocation of TriggerData
+	if len(records) > 0 {
+		dsp.LastTrigger = records[len(records)-1].trigFrame
+	}
+
 	// TODO Step 1d: compute all noise triggers, wherever they fit in between edge+level.
 	//
 
@@ -160,9 +166,6 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
 	}
-	if len(records) > 0 {
-		dsp.LastTrigger = trigList.frames[len(records)-1]
-	}
 
 	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
 	dsp.Broker.PrimaryTrigs <- trigList
@@ -172,8 +175,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
 	}
 
-	Nkeep := dsp.NSamples
-	dsp.stream.TrimKeepingN(Nkeep)
+	// leave one full possible trigger in the stream
+	// trigger algorithms should not inspect the last NSamples samples
+	dsp.stream.TrimKeepingN(dsp.NSamples)
 	return
 }
 
