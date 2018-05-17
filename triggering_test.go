@@ -211,30 +211,27 @@ func TestSingles(t *testing.T) {
 	dsp.LevelTrigger = false
 	dsp.AutoTrigger = true
 	dsp.AutoDelay = 0 * time.Millisecond
+	// Zero Delay results in records that are spaced by 1000 samples (dsp.NSamples)
+	// starting at 100 (dsp.NPreSamples)
 	testTriggerSubroutine(t, dsp, "Auto_0Millisecond", []FrameIndex{100, 1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
 
 	dsp.LevelTrigger = false
 	dsp.AutoTrigger = true
 	dsp.AutoDelay = 500 * time.Millisecond
-	// first trigger is a NPreSamples=100, ends at 1099
-	// next viable triger is 1100
-	// AutoDelay corresponds to 5000 samples, so we add that to 1100 to get 6100
-	testTriggerSubroutine(t, dsp, "Auto_500Millisecond", []FrameIndex{100, 6100})
+	// first trigger is at NPreSamples=100
+	// AutoDelay corresponds to 5000 samples, so we add that to 1100 to get 5100
+	testTriggerSubroutine(t, dsp, "Auto_500Millisecond", []FrameIndex{100, 5100})
 
 	dsp.LevelTrigger = true
-	// AutoDelay corresponds to 5000 samples
-	// Level Trigger Occurs at 1000-1999
-	// Next Posible Trigger at 2000
-	// Delay 5000 to get 7000
-	testTriggerSubroutine(t, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 7000})
+	testTriggerSubroutine(t, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 6000})
+
+	dsp.LevelLevel = 1
+	dsp.AutoTrigger = false
+	testTriggerSubroutine(t, dsp, "Level_SmallThresh", []FrameIndex{1000, 6000})
 
 	dsp.AutoDelay = 200 * time.Millisecond
-	// AutoDelay corresponds to 2000 samples
-	// Level Trigger Occurs at 1000-1999
-	// Next Posible Trigger at 2000
-	// Delay 2000 to get 4000
-	// Same Logic Takes 4000->7000
-	testTriggerSubroutine(t, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 4000, 7000})
+	dsp.AutoTrigger = true
+	testTriggerSubroutine(t, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 3000, 5000, 6000, 8000})
 }
 
 func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) {
@@ -243,6 +240,11 @@ func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname stri
 	raw := make([]RawType, 10000)
 	for i := tframe; i < tframe+10; i++ {
 		raw[i] = bigval
+	}
+	const smallval = 1
+	const tframe2 = 6000
+	for i := tframe2; i < tframe2+10; i++ {
+		raw[i] = smallval
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
