@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -327,4 +328,97 @@ func TestEdgeVetosLevel(t *testing.T) {
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
 	}
+}
+
+func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
+	const nchan = 1
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp.NPresamples = 20
+	dsp.NSamples = 100
+	dsp.AutoTrigger = true
+	dsp.SampleRate = 10000.0
+	dsp.AutoDelay = 10 * time.Millisecond
+	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
+
+	raw := make([]RawType, (b.N+1)*dsp.NSamples)
+	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
+	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
+	dsp.stream.AppendSegment(segment)
+	b.ResetTimer()
+	primaries, _ := dsp.TriggerData()
+	if len(primaries) != b.N {
+		fmt.Println("wrong number", len(primaries), b.N)
+	}
+}
+
+func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
+	const nchan = 1
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp.NPresamples = 20
+	dsp.NSamples = 100
+
+	dsp.EdgeTrigger = true
+	dsp.EdgeLevel = 290
+	dsp.EdgeRising = true
+	dsp.LevelTrigger = true
+	dsp.LevelRising = true
+	dsp.LevelLevel = 99
+	dsp.AutoTrigger = true
+
+	raw := make([]RawType, b.N)
+	for i := 0; i < b.N; i++ {
+		raw[i] = 0
+	}
+	segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
+	dsp.stream.AppendSegment(segment)
+	records := make([]*DataRecord, 0)
+	b.ResetTimer()
+
+	records = dsp.edgeTriggerComputeAppend(records)
+	if len(records) != 0 {
+		panic("")
+	}
+
+}
+
+func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
+	const nchan = 1
+	publisher := make(chan []*DataRecord)
+	broker := NewTriggerBroker(nchan)
+	go broker.Run()
+	defer broker.Stop()
+	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp.NPresamples = 20
+	dsp.NSamples = 100
+
+	dsp.EdgeTrigger = true
+	dsp.EdgeLevel = 290
+	dsp.EdgeRising = true
+	dsp.LevelTrigger = true
+	dsp.LevelRising = true
+	dsp.LevelLevel = 99
+	dsp.AutoTrigger = true
+
+	raw := make([]RawType, b.N)
+	for i := 0; i < b.N; i++ {
+		raw[i] = 0
+	}
+	segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
+	dsp.stream.AppendSegment(segment)
+	records := make([]*DataRecord, 0)
+	b.ResetTimer()
+
+	records = dsp.levelTriggerComputeAppend(records)
+	if len(records) != 0 {
+		panic("")
+	}
+
 }

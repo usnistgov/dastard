@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"fmt"
 	"math"
 	"sort"
 )
@@ -95,6 +96,9 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	npre := FrameIndex(dsp.NPresamples)
 
 	delaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
+	if delaySamples <= 0 {
+		panic(fmt.Sprintf("delay samples=%v", delaySamples))
+	}
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
