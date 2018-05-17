@@ -55,7 +55,8 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+		r := records[idxNextTrig]
+		nextFoundTrig = r.trigFrame - segment.firstFramenum
 	}
 
 	// Normal loop through all samples in triggerable range
@@ -102,8 +103,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
+	var nextFoundTrigLen int
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+		r := records[idxNextTrig]
+		nextFoundTrig = r.trigFrame - segment.firstFramenum
+		nextFoundTrigLen = len(r.data)
 	}
 
 	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
@@ -122,10 +126,12 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 
 		} else {
 			// auto trigger not allowed
-			nextPotentialTrig = nextFoundTrig + delaySamples + FrameIndex(nsamp)
+			nextPotentialTrig = nextFoundTrig + delaySamples + FrameIndex(nextFoundTrigLen)
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
-				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+				r := records[idxNextTrig]
+				nextFoundTrig = r.trigFrame - segment.firstFramenum
+				nextFoundTrigLen = len(r.data)
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
