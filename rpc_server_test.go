@@ -12,9 +12,20 @@ import (
 
 func simpleClient() (*rpc.Client, error) {
 	serverAddress := fmt.Sprintf("localhost:%d", PortRPC)
-
-	// One command to dial AND set up jsonrpc client:
-	return jsonrpc.Dial("tcp", serverAddress)
+	retries := 5
+	wait := 10 * time.Millisecond
+	tries := 1
+	for {
+		// One command to dial AND set up jsonrpc client:
+		client, err := jsonrpc.Dial("tcp", serverAddress)
+		tries++
+		if err == nil || tries > retries {
+			return client, err
+		} else {
+			time.Sleep(wait)
+			wait = wait * 2
+		}
+	}
 }
 
 func TestOne(t *testing.T) {
