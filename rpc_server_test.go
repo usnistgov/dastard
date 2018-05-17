@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
@@ -11,9 +12,20 @@ import (
 
 func simpleClient() (*rpc.Client, error) {
 	serverAddress := fmt.Sprintf("localhost:%d", PortRPC)
-
-	// One command to dial AND set up jsonrpc client:
-	return jsonrpc.Dial("tcp", serverAddress)
+	retries := 5
+	wait := 10 * time.Millisecond
+	tries := 1
+	for {
+		// One command to dial AND set up jsonrpc client:
+		client, err := jsonrpc.Dial("tcp", serverAddress)
+		tries++
+		if err == nil || tries > retries {
+			return client, err
+		} else {
+			time.Sleep(wait)
+			wait = wait * 2
+		}
+	}
 }
 
 func TestOne(t *testing.T) {
@@ -61,7 +73,7 @@ func TestOne(t *testing.T) {
 	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
-		fmt.Printf(err.Error())
+		t.Logf(err.Error())
 		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
 	}
 	if okay {
@@ -80,7 +92,7 @@ func TestOne(t *testing.T) {
 	time.Sleep(time.Millisecond * 400)
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
-		fmt.Printf(err.Error())
+		t.Logf(err.Error())
 		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
 	}
 	if !okay {
@@ -111,10 +123,10 @@ func TestOne(t *testing.T) {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
-	fmt.Println("Calling SourceControl.Stop")
+	t.Log("Calling SourceControl.Stop")
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
-		fmt.Printf(err.Error())
+		t.Logf(err.Error())
 		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
 	}
 	if !okay {
@@ -134,7 +146,7 @@ func TestOne(t *testing.T) {
 	}
 
 	client.Close()
-	fmt.Println("Done with TestOne")
+	t.Log("Done with TestOne")
 }
 
 func TestMain(m *testing.M) {
@@ -142,5 +154,14 @@ func TestMain(m *testing.M) {
 	messageChan := make(chan ClientUpdate)
 	go RunClientUpdater(messageChan, PortStatus)
 	go RunRPCServer(messageChan, PortRPC)
+	// set log to write to a file
+	f, err := os.Create("dastardtestlogfile")
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+
+	// run tests
 	os.Exit(m.Run())
 }

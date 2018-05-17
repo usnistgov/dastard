@@ -46,19 +46,19 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 
 // ConfigureTriangleSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
-	fmt.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
+	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
 	*reply = (err == nil)
-	fmt.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
+	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
 	return err
 }
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
-	fmt.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
+	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
 	*reply = (err == nil)
-	fmt.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
+	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return err
 }
 
@@ -70,7 +70,7 @@ type SizeObject struct {
 
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
-	fmt.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
+	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -78,7 +78,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	*reply = (err == nil)
 	s.status.Npresamp = sizes.Npre
 	s.status.Nsamples = sizes.Nsamp
-	fmt.Printf("Result is okay=%t\n", *reply)
+	log.Printf("Result is okay=%t\n", *reply)
 	return err
 }
 
@@ -100,7 +100,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
 	}
 
-	fmt.Printf("Starting data source named %s\n", *sourceName)
+	log.Printf("Starting data source named %s\n", *sourceName)
 	go func() {
 		err := Start(s.activeSource)
 		if err == nil {
@@ -116,7 +116,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
-	fmt.Printf("Stopping data source\n")
+	log.Printf("Stopping data source\n")
 	if s.activeSource != nil {
 		s.activeSource.Stop()
 		s.activeSource = nil
@@ -137,13 +137,13 @@ func (s *SourceControl) broadcastUpdate() {
 func (s *SourceControl) broadcastTriggerState() {
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ComputeFullTriggerState()
-		fmt.Printf("configs: %v\n", configs)
+		log.Printf("configs: %v\n", configs)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", configs}
 	}
 }
 
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
-	fmt.Println("A Client has requested to send all status")
+	log.Println("A Client has requested to send all status")
 	s.broadcastTriggerState()
 	s.broadcastUpdate()
 	s.broadcastTriggerState()
