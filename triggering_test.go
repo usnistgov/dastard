@@ -298,12 +298,27 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	dsp.LevelTrigger = true
 	dsp.LevelRising = true
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, dsp, "Edge", []FrameIndex{1000})
+	// should yield a single edge trigger
+	testTriggerSubroutine(t, dsp, "Edge+Level 1", []FrameIndex{1000})
 	dsp.LevelLevel = 10000
-	testTriggerSubroutine(t, dsp, "Edge", []FrameIndex{1000})
+	// should yield a single edge trigger
+	testTriggerSubroutine(t, dsp, "Edge+Level 2", []FrameIndex{1000})
 	dsp.EdgeLevel = 20000
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, dsp, "Level", []FrameIndex{1000})
+	// should yield a single level trigger
+	testTriggerSubroutine(t, dsp, "Edge + Level 3", []FrameIndex{1000})
+	dsp.EdgeLevel = 1
+	// should yield 2 edge triggers
+	testTriggerSubroutine(t, dsp, "Edge + Level 4", []FrameIndex{1000, 6000})
+	dsp.LevelLevel = 1
+	dsp.EdgeLevel = 20000
+	// should yield 2 level triggers
+	testTriggerSubroutine(t, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
+	dsp.LevelLevel = 1
+	dsp.EdgeTrigger = false
+	dsp.EdgeLevel = 1
+	// should yield 2 level triggers
+	testTriggerSubroutine(t, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
