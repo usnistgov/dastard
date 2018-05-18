@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -12,10 +13,14 @@ import (
 // verifyConfigFile checks that path/filename exists, and creates the directory
 // and file if it doesn't.
 func verifyConfigFile(path, filename string) error {
-	path = strings.Replace(path, "$HOME", os.Getenv("HOME"), 1)
+	u, err := user.Current()
+	if err != nil {
+		return err
+	}
+	path = strings.Replace(path, "$HOME", u.HomeDir, 1)
 
 	// Create directory <path>, if needed
-	_, err := os.Stat(path)
+	_, err = os.Stat(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return err
@@ -39,11 +44,13 @@ func verifyConfigFile(path, filename string) error {
 	return nil
 }
 
+// setupViper sets up the viper configuration manager: says where to find config
+// files and the filename and suffix. Sets some defaults.
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
 
-	const path string = "$HOME/.config/dastard"
-	const filename string = "xtestconfig"
+	const path string = "$HOME/.dastard"
+	const filename string = "testconfig"
 	const suffix string = ".yaml"
 	if err := verifyConfigFile(path, filename+suffix); err != nil {
 		return err

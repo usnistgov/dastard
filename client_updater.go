@@ -7,11 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"os/user"
 	"reflect"
 	"time"
 
+	"github.com/spf13/viper"
 	czmq "github.com/zeromq/goczmq"
 )
 
@@ -38,20 +37,12 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	defer saveStateTicker.Stop()
 
 	// Here, store the last message of each type seen. Use when storing state.
-	lastMessages := make(map[string]string)
-
-	// Where do we store configuration dfiles?
-	u, err := user.Current()
-	configDirname := u.HomeDir + "/.dastard/"
-	err = os.Mkdir(configDirname, os.FileMode(0775))
-	if err != nil && !os.IsExist(err) {
-		log.Println("Could not make ~/.dastard directory: ", err)
-		return
-	}
+	lastMessages := make(map[string]interface{})
 
 	for {
 		select {
 		case update := <-messages:
+			lastMessages[update.tag] = update.state
 			message, err := json.Marshal(update.state)
 			if err != nil {
 				continue
@@ -59,48 +50,20 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 			topic := reflect.TypeOf(update.state).String()
 			log.Printf("Here is message of type %s: %v\n", topic, string(message))
 
-			lastMessages[update.tag] = string(message)
 			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
 			pubSocket.SendFrame(message, czmq.FlagNone)
 		case <-saveStateTicker.C:
-			saveState(configDirname, lastMessages)
+			saveState(lastMessages)
 		}
 	}
 }
 
-func saveState(configDirname string, lastMessages map[string]string) {
-	fname := configDirname + "dastard.cfg"
-	tmpname := configDirname + "dastard.tmp"
-	bakname := configDirname + "dastard.cfg.bak"
+// saveState stores server configuration to the standard config file.
+func saveState(lastMessages map[string]interface{}) {
 	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
-
-	fp, err := os.Create(tmpname)
-	if err != nil {
-		log.Println("Could not write dastard.cfg file: ", err)
-		return
+	for k, v := range lastMessages {
+		viper.Set(k, v)
 	}
-	state, err := json.MarshalIndent(lastMessages, "", "    ")
-	if err != nil {
-		log.Println("Could not write convert dastard.cfg information to JSON: ", err)
-	} else {
-		fmt.Fprint(fp, string(state))
-	}
-	fp.Close()
-
-	// Move old config file to backup and new file to standard config name.
-	err = os.Remove(bakname)
-	if err != nil && !os.IsNotExist(err) {
-		log.Println("Could not remove backup file ", bakname, " even though it exists.")
-		log.Println(err)
-		return
-	}
-	err = os.Rename(fname, bakname)
-	if err != nil && !os.IsNotExist(err) {
-		log.Println("Could not save backup file: ", err)
-		return
-	}
-	err = os.Rename(tmpname, fname)
-	if err != nil {
-		log.Println("Could not update dastard.cfg file")
-	}
+	// TODO: save to a new file and then move into place. Perhaps WriteConfigAs(tmpfile)?
+	viper.WriteConfig()
 }
