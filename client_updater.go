@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -64,6 +66,30 @@ func saveState(lastMessages map[string]interface{}) {
 	for k, v := range lastMessages {
 		viper.Set(k, v)
 	}
-	// TODO: save to a new file and then move into place. Perhaps WriteConfigAs(tmpfile)?
-	viper.WriteConfig()
+
+	mainname := viper.ConfigFileUsed()
+	tmpname := strings.Replace(mainname, ".yaml", ".tmp.yaml", 1)
+	bakname := mainname + ".bak"
+	err := viper.WriteConfigAs(tmpname)
+	if err != nil {
+		log.Println("Could not store config file ", tmpname, ": ", err)
+		return
+	}
+
+	// Move old config file to backup and new file to standard config name.
+	err = os.Remove(bakname)
+	if err != nil && !os.IsNotExist(err) {
+		log.Println("Could not remove backup file ", bakname, " even though it exists: ", err)
+		return
+	}
+	err = os.Rename(mainname, bakname)
+	if err != nil && !os.IsNotExist(err) {
+		log.Println("Could not save backup file: ", err)
+		return
+	}
+	err = os.Rename(tmpname, mainname)
+	if err != nil {
+		log.Printf("Could not update dastard config file %s", mainname)
+	}
+
 }
