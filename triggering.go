@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 )
 
 type triggerList struct {
@@ -11,15 +12,117 @@ type triggerList struct {
 	frames  []FrameIndex
 }
 
+// TriggerState contains all the state that controls trigger logic
+type TriggerState struct {
+	AutoTrigger bool
+	AutoDelay   time.Duration
+
+	LevelTrigger bool
+	LevelRising  bool
+	LevelLevel   RawType
+
+	EdgeTrigger bool
+	EdgeRising  bool
+	EdgeFalling bool
+	EdgeLevel   int32
+
+	EdgeMulti                        bool
+	EdgeMultiMakeShortRecords        bool
+	EdgeMultiMakeContaminatedRecords bool
+	EdgeTriggerVerifyNMonotone       int
+
+	// TODO:  Noise info.
+	// TODO: group source/rx info.
+}
+
+// create a record using dsp.NPresamples and dsp.NSamples
 func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataRecord {
-	data := make([]RawType, dsp.NSamples)
-	copy(data, segment.rawData[i-dsp.NPresamples:i+dsp.NSamples-dsp.NPresamples])
+	record := dsp.triggerAtSpecSamples(segment, i, dsp.NPresamples, dsp.NSamples)
+	return record
+}
+
+// create a record with NPresamples and NSamples passed as arguments
+func (dsp *DataStreamProcessor) triggerAtSpecSamples(segment *DataSegment, i int, NPresamples int, NSamples int) *DataRecord {
+	data := make([]RawType, NSamples)
+	copy(data, segment.rawData[i-NPresamples:i+NSamples-NPresamples])
 	tf := segment.firstFramenum + FrameIndex(i)
 	tt := segment.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
-		channum: dsp.Channum, presamples: dsp.NPresamples, sampPeriod: sampPeriod}
+		channum: dsp.Channum, presamples: NPresamples, sampPeriod: sampPeriod}
 	return record
+}
+
+func min(a int, b int) int {
+	if a <= b {
+		return a
+	} else {
+		return b
+	}
+}
+
+func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
+	if !dsp.EdgeTrigger {
+		return records
+	}
+	segment := &dsp.stream.DataSegment
+	raw := segment.rawData
+	ndata := len(raw)
+
+	var triggerInds []int
+	for i := dsp.NPresamples; i < ndata+dsp.NPresamples; i++ {
+		diff := int32(raw[i]) - int32(raw[i-1])
+		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
+			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
+			i_potential := i
+			// now we have a potenial trigger
+			// switch to verification mode
+			// find the next local maximum
+			for int32(raw[i]) > int32(raw[i-1]) {
+				i++
+			}
+			i_local_maximum := i
+			n_monotone := i_local_maximum - i_potential
+			if n_monotone > dsp.EdgeTriggerVerifyNMonotone {
+				triggerInds = append(triggerInds, i_potential)
+			}
+		}
+	}
+	var t, u, v int
+	// t index of last trigger
+	// u index of current trigger
+	// v index of next trigger
+	for i := 0; i < ndata; i++ {
+		v = triggerInds[i]
+		// u = index at which next edge was found
+		if i == len(triggerInds) {
+			u = ndata
+		} else {
+			u = triggerInds[i+1]
+		}
+		if i == 0 {
+			t = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
+		} else {
+			t = triggerInds[i-1]
+		}
+		npre := min(dsp.NPresamples, int(u-t))
+		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
+		if dsp.EdgeMultiMakeShortRecords {
+			newRecord := dsp.triggerAtSpecSamples(segment, v, npre, npre+npost)
+			records = append(records, newRecord)
+		} else if dsp.EdgeMultiMakeContaminatedRecords {
+			newRecord := dsp.triggerAtSpecSamples(segment, v, dsp.NPresamples, dsp.NSamples)
+			records = append(records, newRecord)
+		} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
+			newRecord := dsp.triggerAtSpecSamples(segment, v, dsp.NPresamples, dsp.NSamples)
+			records = append(records, newRecord)
+		}
+
+	}
+	if len(records) > 0 {
+		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
+	}
+	return records
 }
 
 func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) []*DataRecord {
@@ -144,8 +247,12 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondaries []*DataRecord) {
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
-	records = dsp.edgeTriggerComputeAppend(records)
+	if dsp.EdgeMulti {
+		records = dsp.edgeMultiTriggerComputeAppend(records)
+	} else {
+		records = dsp.edgeTriggerComputeAppend(records)
 
+	}
 	// Step 1b: compute all level triggers on a second pass. Only insert them
 	// in the list of triggers if they are properly separated from the edge triggers.
 	records = dsp.levelTriggerComputeAppend(records)

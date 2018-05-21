@@ -11,15 +11,16 @@ import (
 
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
-	Channum     int
-	Publisher   chan<- []*DataRecord
-	Broker      *TriggerBroker
-	NSamples    int
-	NPresamples int
-	SampleRate  float64
-	LastTrigger FrameIndex
-	stream      DataStream
-	projectors  mat.Dense
+	Channum              int
+	Publisher            chan<- []*DataRecord
+	Broker               *TriggerBroker
+	NSamples             int
+	NPresamples          int
+	SampleRate           float64
+	LastTrigger          FrameIndex
+	LastEdgeMultiTrigger FrameIndex
+	stream               DataStream
+	projectors           mat.Dense
 	// realtime analysis is disable if projectors .IsZero
 	// otherwise projectors must be size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
@@ -79,24 +80,6 @@ type DecimateState struct {
 	DecimateLevel   int
 	Decimate        bool
 	DecimateAvgMode bool
-}
-
-// TriggerState contains all the state that controls trigger logic
-type TriggerState struct {
-	AutoTrigger bool
-	AutoDelay   time.Duration
-
-	LevelTrigger bool
-	LevelRising  bool
-	LevelLevel   RawType
-
-	EdgeTrigger bool
-	EdgeRising  bool
-	EdgeFalling bool
-	EdgeLevel   int32
-
-	// TODO:  Noise info.
-	// TODO: group source/rx info.
 }
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
