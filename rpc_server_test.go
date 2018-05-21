@@ -41,12 +41,12 @@ func TestOne(t *testing.T) {
 	var reply int
 	for b := 10; b < 11; b++ {
 		args.B = b
-		err = client.Call("SourceControl.Multiply", args, &reply)
+		err = client.Call("DastardControl.Multiply", args, &reply)
 		if err != nil {
-			t.Errorf("SourceControl.Multiply error on call: %s", err.Error())
+			t.Errorf("DastardControl.Multiply error on call: %s", err.Error())
 		}
 		if reply != args.A*args.B {
-			t.Errorf("SourceControl.Multiply: %d * %d = %d, want %d\n", args.A, args.B, reply, args.A*args.B)
+			t.Errorf("DastardControl.Multiply: %d * %d = %d, want %d\n", args.A, args.B, reply, args.A*args.B)
 		}
 	}
 
@@ -56,59 +56,59 @@ func TestOne(t *testing.T) {
 		Nchan: 4, SampleRate: 10000.0, Pedestal: 3000.0,
 		Amplitude: 10000., Nsamp: 1000,
 	}
-	err = client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
+	err = client.Call("DastardControl.ConfigureSimPulseSource", &simConfig, &okay)
 	if !okay {
-		t.Errorf("Error on server with SourceControl.ConfigureSimPulseSource()")
+		t.Errorf("Error on server with DastardControl.ConfigureSimPulseSource()")
 	}
 	if err != nil {
-		t.Errorf("Error calling SourceControl.ConfigureSimPulseSource(): %s", err.Error())
+		t.Errorf("Error calling DastardControl.ConfigureSimPulseSource(): %s", err.Error())
 	}
 
 	// Try to start and stop with a wrong name
 	sourceName := "harrypotter"
-	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	err = client.Call("DastardControl.Start", &sourceName, &okay)
 	if err == nil {
-		t.Errorf("Expected error calling SourceControl.Start(\"%s\") with wrong name, saw none", sourceName)
+		t.Errorf("Expected error calling DastardControl.Start(\"%s\") with wrong name, saw none", sourceName)
 	}
-	err = client.Call("SourceControl.Stop", sourceName, &okay)
+	err = client.Call("DastardControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
+		t.Errorf("Error calling DastardControl.Stop(%s)", sourceName)
 	}
 	if okay {
-		t.Errorf("SourceControl.Stop(\"%s\") returns okay, want !okay", sourceName)
+		t.Errorf("DastardControl.Stop(\"%s\") returns okay, want !okay", sourceName)
 	}
 
 	// Try to start and stop with a sensible name
 	sourceName = "SimPulseSource"
-	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	err = client.Call("DastardControl.Start", &sourceName, &okay)
 	if err != nil {
-		t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
+		t.Errorf("Error calling DastardControl.Start(%s): %s", sourceName, err.Error())
 	}
 	if !okay {
-		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+		t.Errorf("DastardControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
 	sizes := SizeObject{Nsamp: 800, Npre: 200}
-	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	err = client.Call("DastardControl.ConfigurePulseLengths", &sizes, &okay)
 	if err != nil {
 		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.ConfigurePulseLengths(%v)", sizes)
+		t.Errorf("Error calling DastardControl.ConfigurePulseLengths(%v)", sizes)
 	}
 	if !okay {
-		t.Errorf("SourceControl.ConfigurePulseLengths(%v) returns !okay, want okay", sizes)
+		t.Errorf("DastardControl.ConfigurePulseLengths(%v) returns !okay, want okay", sizes)
 	}
-	err = client.Call("SourceControl.Stop", sourceName, &okay)
+	err = client.Call("DastardControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
+		t.Errorf("Error calling DastardControl.Stop(%s)", sourceName)
 	}
 	if !okay {
-		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
+		t.Errorf("DastardControl.Stop(\"%s\") returns !okay, want okay", sourceName)
 	}
-	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	err = client.Call("DastardControl.ConfigurePulseLengths", &sizes, &okay)
 	if err == nil {
-		t.Errorf("Expected error calling SourceControl.ConfigurePulseLengths(%v) when source stopped, saw none", sizes)
+		t.Errorf("Expected error calling DastardControl.ConfigurePulseLengths(%v) when source stopped, saw none", sizes)
 	}
 
 	// Configure, start, and stop a triangle server
@@ -118,43 +118,43 @@ func TestOne(t *testing.T) {
 		Min:        10,
 		Max:        1510,
 	}
-	err = client.Call("SourceControl.ConfigureTriangleSource", &tconfig, &okay)
+	err = client.Call("DastardControl.ConfigureTriangleSource", &tconfig, &okay)
 	if !okay {
-		t.Errorf("Error on server with SourceControl.ConfigureTriangleSource()")
+		t.Errorf("Error on server with DastardControl.ConfigureTriangleSource()")
 	}
 	if err != nil {
-		t.Errorf("Error calling SourceControl.ConfigureTriangleSource(): %s", err.Error())
+		t.Errorf("Error calling DastardControl.ConfigureTriangleSource(): %s", err.Error())
 	}
 
 	sourceName = "TriangleSource"
-	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	err = client.Call("DastardControl.Start", &sourceName, &okay)
 	if err != nil {
-		t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
+		t.Errorf("Error calling DastardControl.Start(%s): %s", sourceName, err.Error())
 	}
 	if !okay {
-		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+		t.Errorf("DastardControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
-	t.Log("Calling SourceControl.Stop")
-	err = client.Call("SourceControl.Stop", sourceName, &okay)
+	t.Log("Calling DastardControl.Stop")
+	err = client.Call("DastardControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
+		t.Errorf("Error calling DastardControl.Stop(%s)", sourceName)
 	}
 	if !okay {
-		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
+		t.Errorf("DastardControl.Stop(\"%s\") returns !okay, want okay", sourceName)
 	}
 
 	// Make sure Nchan = 0 raises error when we try to configure
 	simConfig.Nchan = 0
-	err = client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
+	err = client.Call("DastardControl.ConfigureSimPulseSource", &simConfig, &okay)
 	if err == nil {
-		t.Errorf("Expected error on server with SourceControl.ConfigureSimPulseSource() when Nchan<1, %t %v", okay, err)
+		t.Errorf("Expected error on server with DastardControl.ConfigureSimPulseSource() when Nchan<1, %t %v", okay, err)
 	}
 	tconfig.Nchan = 0
-	err = client.Call("SourceControl.ConfigureTriangleSource", &tconfig, &okay)
+	err = client.Call("DastardControl.ConfigureTriangleSource", &tconfig, &okay)
 	if err == nil {
-		t.Errorf("Expected error on server with SourceControl.ConfigureTriangleSource() when Nchan<1")
+		t.Errorf("Expected error on server with DastardControl.ConfigureTriangleSource() when Nchan<1")
 	}
 
 	client.Close()
