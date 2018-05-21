@@ -136,6 +136,11 @@ func (s *SourceControl) broadcastUpdate() {
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
+// func (s *SourceControl) broadcastConfigurations() {
+// 	// s.triangle.
+// 	// s.clientUpdates <- ClientUpdate{"STATUS", s.status}
+// }
+//
 func (s *SourceControl) broadcastTriggerState() {
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ComputeFullTriggerState()
@@ -144,32 +149,29 @@ func (s *SourceControl) broadcastTriggerState() {
 	}
 }
 
+// SendAllStatus sends all relevant status messages to
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
-	log.Println("A Client has requested to send all status")
-	s.broadcastTriggerState()
 	s.broadcastUpdate()
-	s.broadcastTriggerState()
+	s.clientUpdates <- ClientUpdate{"SENDALL", 0}
 	return nil
 }
 
 // RunRPCServer sets up and run a permanent JSON-RPC server.
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
-	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
 	sourcecontrol := new(SourceControl)
 	sourcecontrol.clientUpdates = messageChan
-	server.Register(sourcecontrol)
 	go func() {
 		ticker := time.Tick(2 * time.Second)
 		for _ = range ticker {
 			sourcecontrol.broadcastUpdate()
-			// var ok bool
-			// sourcecontrol.SendAllStatus("dummy", &ok)
 		}
 	}()
 
 	// Now launch the connection handler and accept connections.
+	server := rpc.NewServer()
+	server.Register(sourcecontrol)
 	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	port := fmt.Sprintf(":%d", portrpc)
 	listener, err := net.Listen("tcp", port)

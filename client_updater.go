@@ -22,6 +22,18 @@ type ClientUpdate struct {
 	state interface{}
 }
 
+func publish(pubSocket *czmq.Sock, update ClientUpdate) {
+	message, err := json.Marshal(update.state)
+	if err != nil {
+		return
+	}
+	topic := reflect.TypeOf(update.state).String()
+	log.Printf("Here is message of type %s: %v\n", topic, string(message))
+
+	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
+	pubSocket.SendFrame(message, czmq.FlagNone)
+}
+
 // RunClientUpdater forwards any message from its input channel to the ZMQ publisher socket
 // to publish any information that clients need to know.
 func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
@@ -44,16 +56,14 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	for {
 		select {
 		case update := <-messages:
-			lastMessages[update.tag] = update.state
-			message, err := json.Marshal(update.state)
-			if err != nil {
+			if update.tag == "SENDALL" {
+				for k, v := range lastMessages {
+					publish(pubSocket, ClientUpdate{tag: k, state: v})
+				}
 				continue
 			}
-			topic := reflect.TypeOf(update.state).String()
-			log.Printf("Here is message of type %s: %v\n", topic, string(message))
-
-			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
-			pubSocket.SendFrame(message, czmq.FlagNone)
+			lastMessages[update.tag] = update.state
+			publish(pubSocket, update)
 		case <-saveStateTicker.C:
 			saveState(lastMessages)
 		}
