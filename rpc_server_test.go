@@ -21,10 +21,9 @@ func simpleClient() (*rpc.Client, error) {
 		tries++
 		if err == nil || tries > retries {
 			return client, err
-		} else {
-			time.Sleep(wait)
-			wait = wait * 2
 		}
+		time.Sleep(wait)
+		wait = wait * 2
 	}
 }
 
@@ -90,6 +89,15 @@ func TestOne(t *testing.T) {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
+	sizes := SizeObject{Nsamp: 800, Npre: 200}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	if err != nil {
+		t.Logf(err.Error())
+		t.Errorf("Error calling SourceControl.ConfigurePulseLengths(%v)", sizes)
+	}
+	if !okay {
+		t.Errorf("SourceControl.ConfigurePulseLengths(%v) returns !okay, want okay", sizes)
+	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Logf(err.Error())
@@ -97,6 +105,10 @@ func TestOne(t *testing.T) {
 	}
 	if !okay {
 		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
+	}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	if err == nil {
+		t.Errorf("Expected error calling SourceControl.ConfigurePulseLengths(%v) when source stopped, saw none", sizes)
 	}
 
 	// Configure, start, and stop a triangle server
