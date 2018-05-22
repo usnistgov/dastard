@@ -120,6 +120,27 @@ func kinkModelResult(k float64, xdata []float64, ydata []float64) ([]float64, fl
 	return ymodel, a, b, c, X2, err
 }
 
+// return the in ks that results in the lowest X2 when passed to kinkModelResult along with xdata and ydata
+func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, float64, error) {
+	var X2min float64
+	X2min = math.MaxFloat64
+	var kbest float64
+	var return_err error
+	for i := 0; i < len(ks); i++ {
+		k := ks[i]
+		_, _, _, _, X2, err := kinkModelResult(k, xdata, ydata)
+		if X2 < X2min {
+			X2min = X2
+			kbest = k
+		}
+		if err != nil {
+			return_err = err
+		}
+	}
+	return kbest, X2min, return_err
+
+}
+
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	if !dsp.EdgeTrigger {
 		return records
@@ -143,7 +164,22 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			i_local_maximum := i
 			n_monotone := i_local_maximum - i_potential
 			if n_monotone > dsp.EdgeTriggerVerifyNMonotone {
-				triggerInds = append(triggerInds, i_potential)
+				// now attempt to refine the trigger using the kink model
+				xdataf := make([]float64, 10)
+				ydataf := make([]float64, 10)
+				for j := 0; j < 10; j++ {
+					xdataf[i] = float64(j + i_potential - 6) // look at samples from i-3 to i+3
+					ydataf[i] = float64(raw[j+i_potential-6])
+				}
+				ifit := float64(i_potential)
+				kbest, _, err := kinkModelFit(xdataf, ydataf, []float64{ifit - 1, ifit, ifit + 1})
+				var i_trigger int
+				if err != nil {
+					i_trigger = int(math.Ceil(kbest))
+				} else {
+					i_trigger = i_potential
+				}
+				triggerInds = append(triggerInds, i_trigger)
 			}
 		}
 	}
