@@ -456,3 +456,17 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	}
 
 }
+
+func TestKinkModelResult(t *testing.T) {
+	xdata := []float64{0, 1, 2, 3, 4, 5, 6, 7}
+	ydata := []float64{0, 0, 0, 0, 1, 2, 3, 4}
+	ymodel, a, b, c, X2, err := kinkModelResult(3, xdata, ydata)
+	if a != 0 || b != 0 || c != 1 || X2 != 0 || err != nil {
+		t.Errorf("a %v, b %v, c %v, X2 %v, err %v, ymodel %v", a, b, c, X2, err, ymodel)
+	}
+	ymodel, a, b, c, X2, err = kinkModelResult(4, xdata, ydata)
+	if a != 0.6818181818181821 || b != 0.22727272727272738 ||
+		c != 1.1363636363636362 || X2 != 0.45454545454545453 || err != nil {
+		t.Errorf("a %v, b %v, c %v, X2 %v, err %v, ymodel %v", a, b, c, X2, err, ymodel)
+	}
+}

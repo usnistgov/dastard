@@ -5,6 +5,8 @@ import (
 	"math"
 	"sort"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 type triggerList struct {
@@ -59,6 +61,63 @@ func min(a int, b int) int {
 	} else {
 		return b
 	}
+}
+
+func kinkModel(k float64, x float64, a float64, b float64, c float64) float64 {
+	if x < k {
+		return a + b*(x-k)
+	} else {
+		return a + c*(x-k)
+	}
+}
+
+// takes k, an index into xdata and into ydata
+// returns ymodel - the model values evaluaed at the xdata
+// returns a,b,c the model parameters
+// returns X2 the sum of squares of difference between ymodel and ydata
+// kinkModel(x) = a+b(x-k) for x<k and a+c(x-k) for x>=k
+func kinkModelResult(k float64, xdata []float64, ydata []float64) ([]float64, float64, float64, float64, float64, error) {
+	var sdxi, sdxj, sdxi2, sdxj2, sy, syidxi, syjdxj float64
+	// xi - (imaginary) list of xdata values with values less than k
+	// xj - (imaginary) list of xdata values with values greater than or equal to to k
+	// yi - (imaginary) list of ydata values where corresponding xdata value is less than k
+	// yi - (imaginary) list of ydata values where corresponding xdata value is greater than or equal to to k
+	// sdxi - sum of xi, with k subtracted from each value
+	// sdxj - sum of xj, with k subtracted from each value
+	// other variables follow same pattern
+	for i := 0; i < len(xdata); i++ {
+		xd := xdata[i] - k
+		yd := ydata[i]
+		sy += yd
+		if xd < 0 {
+			sdxi += xd
+			sdxi2 += xd * xd
+			syidxi += yd * xd
+		} else {
+			sdxj += xd
+			sdxj2 += xd * xd
+			syjdxj += yd * xd
+		}
+	}
+	A := mat.NewDense(3, 3,
+		[]float64{float64(len(xdata)), sdxi, sdxj,
+			sdxi, sdxi2, 0,
+			sdxj, 0, sdxj2})
+	v := mat.NewVecDense(3, []float64{sy, syidxi, syjdxj})
+	var abc mat.VecDense
+	err := abc.SolveVec(A, v)
+	a := abc.AtVec(0)
+	b := abc.AtVec(1)
+	c := abc.AtVec(2)
+	var ymodel []float64
+	var X2 float64
+	for i := 0; i < len(xdata); i++ {
+		ym := kinkModel(k, xdata[i], a, b, c)
+		d := ydata[i] - ym
+		X2 += d * d
+		ymodel = append(ymodel, ym)
+	}
+	return ymodel, a, b, c, X2, err
 }
 
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
