@@ -28,7 +28,7 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate) {
 		return
 	}
 	topic := reflect.TypeOf(update.state).String()
-	log.Printf("Here is message of type %s: %v\n", topic, string(message))
+	log.Printf("Message of type %s: %v\n", topic, string(message))
 
 	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
 	pubSocket.SendFrame(message, czmq.FlagNone)
