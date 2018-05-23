@@ -193,6 +193,7 @@ func TestSingles(t *testing.T) {
 	go broker.Run()
 	defer broker.Stop()
 	dsp := NewDataStreamProcessor(0, publisher, broker)
+	nRepeat := 1
 
 	const bigval = 8000
 	const tframe = 1000
@@ -213,45 +214,50 @@ func TestSingles(t *testing.T) {
 	dsp.EdgeTrigger = true
 	dsp.EdgeRising = true
 	dsp.EdgeLevel = 100
-	testTriggerSubroutine(t, raw, dsp, "Edge", []FrameIndex{1000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge", []FrameIndex{1000})
 
 	dsp.EdgeTrigger = false
 	dsp.LevelTrigger = true
 	dsp.LevelRising = true
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, raw, dsp, "Level", []FrameIndex{1000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level", []FrameIndex{1000})
 
 	dsp.LevelTrigger = false
 	dsp.AutoTrigger = true
 	dsp.AutoDelay = 0 * time.Millisecond
 	// Zero Delay results in records that are spaced by 1000 samples (dsp.NSamples)
 	// starting at 100 (dsp.NPreSamples)
-	testTriggerSubroutine(t, raw, dsp, "Auto_0Millisecond", []FrameIndex{100, 1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_0Millisecond", []FrameIndex{100, 1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
 
 	dsp.LevelTrigger = false
 	dsp.AutoTrigger = true
 	dsp.AutoDelay = 500 * time.Millisecond
 	// first trigger is at NPreSamples=100
 	// AutoDelay corresponds to 5000 samples, so we add that to 1100 to get 5100
-	testTriggerSubroutine(t, raw, dsp, "Auto_500Millisecond", []FrameIndex{100, 5100})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_500Millisecond", []FrameIndex{100, 5100})
 
 	dsp.LevelTrigger = true
-	testTriggerSubroutine(t, raw, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 6000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 6000})
 
 	dsp.LevelLevel = 1
 	dsp.AutoTrigger = false
-	testTriggerSubroutine(t, raw, dsp, "Level_SmallThresh", []FrameIndex{1000, 6000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level_SmallThresh", []FrameIndex{1000, 6000})
 
 	dsp.AutoDelay = 200 * time.Millisecond
 	dsp.AutoTrigger = true
-	testTriggerSubroutine(t, raw, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 3000, 5000, 6000, 8000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 3000, 5000, 6000, 8000})
 }
 
-func testTriggerSubroutine(t *testing.T, raw []RawType, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) ([]*DataRecord, []*DataRecord) {
+// only returns the last set of records when nRepeat > 1
+func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) ([]*DataRecord, []*DataRecord) {
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
-	dsp.stream.AppendSegment(segment)
+	for i := 0; i < nRepeat; i++ {
+		_, _ = dsp.TriggerData()
+		dsp.stream.AppendSegment(segment)
+		segment.firstFramenum += FrameIndex(len(raw))
+	}
 	primaries, secondaries := dsp.TriggerData()
 	if len(primaries) != len(expectedFrames) {
 		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
@@ -292,6 +298,8 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	go broker.Run()
 	defer broker.Stop()
 	dsp := NewDataStreamProcessor(0, publisher, broker)
+	nRepeat := 1
+
 	const bigval = 8000
 	const tframe = 1000
 	raw := make([]RawType, 10000)
@@ -313,26 +321,26 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	dsp.LevelRising = true
 	dsp.LevelLevel = 100
 	// should yield a single edge trigger
-	testTriggerSubroutine(t, raw, dsp, "Edge+Level 1", []FrameIndex{1000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge+Level 1", []FrameIndex{1000})
 	dsp.LevelLevel = 10000
 	// should yield a single edge trigger
-	testTriggerSubroutine(t, raw, dsp, "Edge+Level 2", []FrameIndex{1000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge+Level 2", []FrameIndex{1000})
 	dsp.EdgeLevel = 20000
 	dsp.LevelLevel = 100
 	// should yield a single level trigger
-	testTriggerSubroutine(t, raw, dsp, "Edge + Level 3", []FrameIndex{1000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge + Level 3", []FrameIndex{1000})
 	dsp.EdgeLevel = 1
 	// should yield 2 edge triggers
-	testTriggerSubroutine(t, raw, dsp, "Edge + Level 4", []FrameIndex{1000, 6000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge + Level 4", []FrameIndex{1000, 6000})
 	dsp.LevelLevel = 1
 	dsp.EdgeLevel = 20000
 	// should yield 2 level triggers
-	testTriggerSubroutine(t, raw, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
 	dsp.LevelLevel = 1
 	dsp.EdgeTrigger = false
 	dsp.EdgeLevel = 1
 	// should yield 2 level triggers
-	testTriggerSubroutine(t, raw, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
 }
 
 func TestEdgeMulti(t *testing.T) {
@@ -343,12 +351,13 @@ func TestEdgeMulti(t *testing.T) {
 	go broker.Run()
 	defer broker.Stop()
 	dsp := NewDataStreamProcessor(0, publisher, broker)
+	nRepeat := 1
+
 	//kink model parameters
 	var a, b, c float64
 	a = 0
 	b = 0
 	c = 10
-
 	raw := make([]RawType, 800)
 	kinkList := []float64{100, 200.1, 300.5, 400.9, 460, 500, 540, 700}
 	kinkListFrameIndex := make([]FrameIndex, len(kinkList))
@@ -356,7 +365,7 @@ func TestEdgeMulti(t *testing.T) {
 		k := kinkList[i]
 		kint := int(math.Ceil(k))
 		for j := kint - 6; j < kint+20; j++ {
-			raw[j] = RawType(math.Round(kinkModel(k, float64(j), a, b, c)))
+			raw[j] = RawType(math.Ceil(kinkModel(k, float64(j), a, b, c)))
 			if j == kint+19 {
 				raw[j] = RawType(kint) // make it easier to figure out which trigger you are looking at if you print raw
 			}
@@ -372,18 +381,18 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.EdgeRising = true
 	dsp.EdgeLevel = 10000
 	// should yield a single edge trigger
-	testTriggerSubroutine(t, raw, dsp, "EdgeMulti A: level too high", []FrameIndex{})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high", []FrameIndex{})
 	dsp.EdgeLevel = 1
 	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
 	// here we will find all triggers in trigInds, but triggers that are too short are not recordized
 	// the kinks that occur at fractional samples will end up the rounded value
 	// ideally 200.1 should trigger at 201, but since we only check k values in 0.5 step increments, we miss it
 	// my tests suggest testing at 0.5 step increments is ok on real data (eg a set of data from the Raven backup array test in 2018)
-	testTriggerSubroutine(t, raw, dsp, "EdgeMulti B", []FrameIndex{100, 200, 301, 401, 700})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti B: make only full length records", []FrameIndex{100, 200, 301, 401, 700})
 	dsp.EdgeMultiMakeContaminatedRecords = true
 	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
 	// here we will find all triggers in trigInds, and contaminated records will be created
-	primaries, _ := testTriggerSubroutine(t, raw, dsp, "EdgeMulti C", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
+	primaries, _ := testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti C: MakeContaminatedRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	for _, record := range primaries {
 		if len(record.data) != dsp.NSamples {
 			t.Errorf("EdgeMulti C record has wrong number of samples %v", record)
@@ -393,7 +402,7 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.EdgeMultiMakeShortRecords = true
 	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
 	// here we will find all triggers in trigInds, and short records will be created
-	primaries, _ = testTriggerSubroutine(t, raw, dsp, "EdgeMulti D", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
+	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti D: MakeShortRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
 	expect_lengths := []int{100, 100, 100, 100, 49, 40, 50, 100}
 	for i, record := range primaries {
@@ -403,6 +412,20 @@ func TestEdgeMulti(t *testing.T) {
 				len(record.data), record.presamples, record.trigFrame, int(record.trigFrame)-record.presamples, int(record.trigFrame)-record.presamples+len(record.data)-1)
 		}
 	}
+
+	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
+	// here we attempt to trigger around a segment boundary
+	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
+	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
+	expect_lengths = []int{100, 100, 100, 100, 49, 40, 50, 100}
+	for i, record := range primaries {
+		if len(record.data) != expect_lengths[i] {
+			//if true {
+			t.Errorf("EdgeMulti E record %v: expect_len %v, len %v, presamples %v, trigFrame %v, %v:%v", i, expect_lengths[i],
+				len(record.data), record.presamples, record.trigFrame, int(record.trigFrame)-record.presamples, int(record.trigFrame)-record.presamples+len(record.data)-1)
+		}
+	}
+
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
