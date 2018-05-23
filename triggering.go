@@ -14,6 +14,13 @@ type triggerList struct {
 	frames  []FrameIndex
 }
 
+type EdgeMultiStateType int
+
+const (
+	SEARCHING EdgeMultiStateType = iota
+	VERIFYING
+)
+
 // TriggerState contains all the state that controls trigger logic
 type TriggerState struct {
 	AutoTrigger bool
@@ -31,7 +38,9 @@ type TriggerState struct {
 	EdgeMulti                        bool
 	EdgeMultiMakeShortRecords        bool
 	EdgeMultiMakeContaminatedRecords bool
-	EdgeTriggerVerifyNMonotone       int
+	EdgeMultiVerifyNMonotone         int
+	EdgeMultiState                   EdgeMultiStateType
+	EdgeMultiIPotential              int
 
 	// TODO:  Noise info.
 	// TODO: group source/rx info.
@@ -128,11 +137,15 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 	var return_err error
 	for i := 0; i < len(ks); i++ {
 		k := ks[i]
+
 		_, _, _, _, X2, err := kinkModelResult(k, xdata, ydata)
 		if X2 < X2min {
 			X2min = X2
 			kbest = k
 		}
+		// if k < 90 {
+		// 	fmt.Println("k", k, "X2", X2, "X2min", X2min, "kbest", kbest, "err", err)
+		// }
 		if err != nil {
 			return_err = err
 		}
@@ -150,66 +163,83 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	ndata := len(raw)
 
 	var triggerInds []int
-	for i := dsp.NPresamples; i < ndata+dsp.NPresamples; i++ {
-		diff := int32(raw[i]) - int32(raw[i-1])
-		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
-			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
-			i_potential := i
-			// now we have a potenial trigger
-			// switch to verification mode
-			// find the next local maximum
-			for int32(raw[i]) > int32(raw[i-1]) {
-				i++
-			}
-			i_local_maximum := i
-			n_monotone := i_local_maximum - i_potential
-			if n_monotone > dsp.EdgeTriggerVerifyNMonotone {
-				// now attempt to refine the trigger using the kink model
-				xdataf := make([]float64, 10)
-				ydataf := make([]float64, 10)
-				for j := 0; j < 10; j++ {
-					xdataf[i] = float64(j + i_potential - 6) // look at samples from i-3 to i+3
-					ydataf[i] = float64(raw[j+i_potential-6])
-				}
-				ifit := float64(i_potential)
-				kbest, _, err := kinkModelFit(xdataf, ydataf, []float64{ifit - 1, ifit, ifit + 1})
-				var i_trigger int
-				if err != nil {
-					i_trigger = int(math.Ceil(kbest))
-				} else {
-					i_trigger = i_potential
-				}
-				triggerInds = append(triggerInds, i_trigger)
-			}
-		}
+	var i_potential int
+	ilast := ndata + dsp.NPresamples - dsp.NSamples
+	if dsp.EdgeMultiVerifyNMonotone+3 > dsp.NSamples-dsp.NPresamples {
+		panic(fmt.Sprintf("%v %v %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
 	}
+	for i := dsp.NPresamples; i < ilast; i++ {
+		switch dsp.EdgeMultiState {
+		case SEARCHING:
+			diff := int32(raw[i]) - int32(raw[i-1])
+			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
+				(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
+				i_potential = i
+				dsp.EdgeMultiState = VERIFYING
+			}
+		case VERIFYING:
+			// now we have a potenial trigger
+			// require following samples to each be greater than the last
+			if raw[i] <= raw[i-1] { // here we observe a decrease
+				n_monotone := i - i_potential
+				if n_monotone >= dsp.EdgeMultiVerifyNMonotone {
+					// now attempt to refine the trigger using the kink model
+					xdataf := make([]float64, 10)
+					ydataf := make([]float64, 10)
+					for j := 0; j < 10; j++ {
+						xdataf[j] = float64(j + i_potential - 6) // look at samples from i-6 to i+3
+						ydataf[j] = float64(raw[j+i_potential-6])
+					}
+					ifit := float64(i_potential)
+					kbest, _, err := kinkModelFit(xdataf, ydataf, []float64{ifit - 1, ifit - 0.5, ifit, ifit + 0.5, ifit + 1})
+					var i_trigger int
+					if err == nil {
+						i_trigger = int(math.Ceil(kbest))
+					} else {
+						i_trigger = i_potential
+					}
+					triggerInds = append(triggerInds, i_trigger)
+				}
+				dsp.EdgeMultiState = SEARCHING
+			}
+
+		}
+
+	}
+
+	fmt.Println("triggerInds", triggerInds)
 	var t, u, v int
 	// t index of last trigger
 	// u index of current trigger
 	// v index of next trigger
-	for i := 0; i < ndata; i++ {
-		v = triggerInds[i]
-		// u = index at which next edge was found
-		if i == len(triggerInds) {
-			u = ndata
+	for i := 0; i < len(triggerInds); i++ {
+		u = triggerInds[i]
+		if i == len(triggerInds)-1 {
+			v = ilast
 		} else {
-			u = triggerInds[i+1]
+			v = triggerInds[i+1]
 		}
 		if i == 0 {
-			t = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
+			if dsp.LastEdgeMultiTrigger > 0 {
+				t = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
+			} else {
+				t = -dsp.NSamples
+			}
 		} else {
 			t = triggerInds[i-1]
 		}
-		npre := min(dsp.NPresamples, int(u-t))
+		last_npost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
+		npre := min(dsp.NPresamples, int(u-t-last_npost))
 		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
+		fmt.Println("i", i, "npre", npre, "npost", npost, "t", t, "u", u, "v", v, "last_npost", last_npost, "firstFramenum", segment.firstFramenum)
 		if dsp.EdgeMultiMakeShortRecords {
-			newRecord := dsp.triggerAtSpecSamples(segment, v, npre, npre+npost)
+			newRecord := dsp.triggerAtSpecSamples(segment, u, npre, npre+npost)
 			records = append(records, newRecord)
 		} else if dsp.EdgeMultiMakeContaminatedRecords {
-			newRecord := dsp.triggerAtSpecSamples(segment, v, dsp.NPresamples, dsp.NSamples)
+			newRecord := dsp.triggerAtSpecSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 			records = append(records, newRecord)
 		} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
-			newRecord := dsp.triggerAtSpecSamples(segment, v, dsp.NPresamples, dsp.NSamples)
+			newRecord := dsp.triggerAtSpecSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 			records = append(records, newRecord)
 		}
 
