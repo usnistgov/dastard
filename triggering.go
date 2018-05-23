@@ -40,7 +40,8 @@ type TriggerState struct {
 	EdgeMultiMakeContaminatedRecords bool
 	EdgeMultiVerifyNMonotone         int
 	EdgeMultiState                   EdgeMultiStateType
-	EdgeMultiIPotential              int
+	EdgeMultiIPotential              FrameIndex
+	EdgeMultiILastInspected          FrameIndex
 
 	// TODO:  Noise info.
 	// TODO: group source/rx info.
@@ -163,51 +164,61 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	ndata := len(raw)
 
 	var triggerInds []int
-	var i_potential int
-	ilast := ndata + dsp.NPresamples - dsp.NSamples
+	var iPotential, iLast, iFirst int
+	iPotential = int(dsp.EdgeMultiIPotential - segment.firstFramenum)
+	iLast = ndata + dsp.NPresamples - dsp.NSamples + 1
+	if dsp.EdgeMultiState == VERIFYING {
+		iFirst = dsp.NPresamples + int(dsp.EdgeMultiILastInspected-segment.firstFramenum)
+	} else {
+		iFirst = dsp.NPresamples
+	}
+	// fmt.Println("segment.firstFramenum", segment.firstFramenum, "dsp.EdgeMultiIPotential", dsp.EdgeMultiIPotential, "dsp.EdgeMultiState", dsp.EdgeMultiState)
+	// fmt.Println("SEARCHING", SEARCHING, "VERIFYING", VERIFYING, "dsp.EdgeMultiILastInspected", dsp.EdgeMultiILastInspected)
+	// fmt.Println("iPotential", iPotential, "iFirst", iFirst, "iLast", iLast, "len(raw)", len(raw))
 	if dsp.EdgeMultiVerifyNMonotone+3 > dsp.NSamples-dsp.NPresamples {
 		panic(fmt.Sprintf("%v %v %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
 	}
-	for i := dsp.NPresamples; i < ilast; i++ {
+	for i := iFirst; i <= iLast; i++ {
 		switch dsp.EdgeMultiState {
 		case SEARCHING:
 			diff := int32(raw[i]) - int32(raw[i-1])
 			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 				(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
-				i_potential = i
+				iPotential = i
 				dsp.EdgeMultiState = VERIFYING
 			}
 		case VERIFYING:
 			// now we have a potenial trigger
 			// require following samples to each be greater than the last
 			if raw[i] <= raw[i-1] { // here we observe a decrease
-				n_monotone := i - i_potential
+				n_monotone := i - iPotential
 				if n_monotone >= dsp.EdgeMultiVerifyNMonotone {
 					// now attempt to refine the trigger using the kink model
 					xdataf := make([]float64, 10)
 					ydataf := make([]float64, 10)
 					for j := 0; j < 10; j++ {
-						xdataf[j] = float64(j + i_potential - 6) // look at samples from i-6 to i+3
-						ydataf[j] = float64(raw[j+i_potential-6])
+						xdataf[j] = float64(j + iPotential - 6) // look at samples from i-6 to i+3
+						ydataf[j] = float64(raw[j+iPotential-6])
 					}
-					ifit := float64(i_potential)
+					ifit := float64(iPotential)
 					kbest, _, err := kinkModelFit(xdataf, ydataf, []float64{ifit - 1, ifit - 0.5, ifit, ifit + 0.5, ifit + 1})
 					var i_trigger int
 					if err == nil {
 						i_trigger = int(math.Ceil(kbest))
 					} else {
-						i_trigger = i_potential
+						i_trigger = iPotential
 					}
 					triggerInds = append(triggerInds, i_trigger)
 				}
 				dsp.EdgeMultiState = SEARCHING
+			} else if i-iPotential >= dsp.NSamples { // if it has been rising for a whole record, that won't be a useful pulse, so just to back to SEARCHING
+				dsp.EdgeMultiState = SEARCHING
 			}
-
 		}
-
 	}
-
-	fmt.Println("triggerInds", triggerInds)
+	dsp.EdgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state VERIFYING
+	dsp.EdgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
+	// fmt.Println("triggerInds", triggerInds)
 	var t, u, v int
 	// t index of last trigger
 	// u index of current trigger
@@ -215,7 +226,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	for i := 0; i < len(triggerInds); i++ {
 		u = triggerInds[i]
 		if i == len(triggerInds)-1 {
-			v = ilast
+			v = iLast
 		} else {
 			v = triggerInds[i+1]
 		}
@@ -231,7 +242,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		last_npost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
 		npre := min(dsp.NPresamples, int(u-t-last_npost))
 		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
-		fmt.Println("i", i, "npre", npre, "npost", npost, "t", t, "u", u, "v", v, "last_npost", last_npost, "firstFramenum", segment.firstFramenum)
+		//fmt.Println("i", i, "npre", npre, "npost", npost, "t", t, "u", u, "v", v, "last_npost", last_npost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 		if dsp.EdgeMultiMakeShortRecords {
 			newRecord := dsp.triggerAtSpecSamples(segment, u, npre, npre+npost)
 			records = append(records, newRecord)
@@ -246,6 +257,12 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	}
 	if len(records) > 0 {
 		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
+	}
+	if dsp.EdgeMultiState == VERIFYING {
+		// fmt.Println("dsp.NPresamples", dsp.NPresamples, "ndata", ndata, "iPotential", iPotential)
+		dsp.stream.TrimKeepingN(dsp.NPresamples + (ndata - iPotential) + 1) // +1 to account for maximum shift from kink model
+	} else {
+		dsp.stream.TrimKeepingN(dsp.NPresamples)
 	}
 	return records
 }
@@ -370,14 +387,15 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 // TriggerData analyzes a DataSegment to find and generate triggered records.
 // All edge triggers are found, then level triggers, then auto and noise triggers.
 func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondaries []*DataRecord) {
+	if dsp.EdgeMulti {
+		// EdgeMulti does not play nice with other triggers!!
+		records = dsp.edgeMultiTriggerComputeAppend(records)
+		return
+	}
+
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
-	if dsp.EdgeMulti {
-		records = dsp.edgeMultiTriggerComputeAppend(records)
-	} else {
-		records = dsp.edgeTriggerComputeAppend(records)
-
-	}
+	records = dsp.edgeTriggerComputeAppend(records)
 	// Step 1b: compute all level triggers on a second pass. Only insert them
 	// in the list of triggers if they are properly separated from the edge triggers.
 	records = dsp.levelTriggerComputeAppend(records)

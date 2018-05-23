@@ -248,17 +248,20 @@ func TestSingles(t *testing.T) {
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 3000, 5000, 6000, 8000})
 }
 
-// only returns the last set of records when nRepeat > 1
 func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) ([]*DataRecord, []*DataRecord) {
+	// fmt.Println(trigname, len(dsp.stream.rawData))
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
+	dsp.stream.samplesSeen = 0
+	var primaries, secondaries []*DataRecord
 	for i := 0; i < nRepeat; i++ {
-		_, _ = dsp.TriggerData()
 		dsp.stream.AppendSegment(segment)
 		segment.firstFramenum += FrameIndex(len(raw))
+		p, s := dsp.TriggerData()
+		primaries = append(primaries, p...)
+		secondaries = append(secondaries, s...)
 	}
-	primaries, secondaries := dsp.TriggerData()
 	if len(primaries) != len(expectedFrames) {
 		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
 	}
@@ -266,22 +269,23 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 		t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
 	}
 	for i, pt := range primaries {
-		if pt.trigFrame != expectedFrames[i] {
-			t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+		if i < len(expectedFrames) {
+			if pt.trigFrame != expectedFrames[i] {
+				t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+			}
 		}
 	}
 
 	// Check the data samples for the first trigger
-	if len(primaries) == 0 {
-		return primaries, secondaries
-	}
-	pt := primaries[0]
-	offset := int(expectedFrames[0]) - dsp.NPresamples
-	for i := 0; i < len(pt.data); i++ {
-		expect := raw[i+offset]
-		if pt.data[i] != expect {
-			t.Errorf("%s trigger found data[%d]=%d, want %d", trigname, i,
-				pt.data[i], expect)
+	if len(primaries) != 0 && len(expectedFrames) != 0 {
+		pt := primaries[0]
+		offset := int(expectedFrames[0]) - dsp.NPresamples
+		for i := 0; i < len(pt.data); i++ {
+			expect := raw[i+offset]
+			if pt.data[i] != expect {
+				t.Errorf("%s trigger found data[%d]=%d, want %d", trigname, i,
+					pt.data[i], expect)
+			}
 		}
 	}
 	dsp.stream.TrimKeepingN(0)
@@ -358,7 +362,7 @@ func TestEdgeMulti(t *testing.T) {
 	a = 0
 	b = 0
 	c = 10
-	raw := make([]RawType, 800)
+	raw := make([]RawType, 1000)
 	kinkList := []float64{100, 200.1, 300.5, 400.9, 460, 500, 540, 700}
 	kinkListFrameIndex := make([]FrameIndex, len(kinkList))
 	for i := 0; i < len(kinkList); i++ {
@@ -372,7 +376,7 @@ func TestEdgeMulti(t *testing.T) {
 		}
 		kinkListFrameIndex[i] = FrameIndex(kint)
 	}
-	fmt.Println(raw)
+	// fmt.Println(raw)
 	dsp.NPresamples = 50
 	dsp.NSamples = 100
 
@@ -380,6 +384,7 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.EdgeMulti = true
 	dsp.EdgeRising = true
 	dsp.EdgeLevel = 10000
+	dsp.EdgeMultiVerifyNMonotone = 5
 	// should yield a single edge trigger
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high", []FrameIndex{})
 	dsp.EdgeLevel = 1
@@ -413,19 +418,34 @@ func TestEdgeMulti(t *testing.T) {
 		}
 	}
 
-	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
-	// here we attempt to trigger around a segment boundary
-	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
-	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
-	expect_lengths = []int{100, 100, 100, 100, 49, 40, 50, 100}
-	for i, record := range primaries {
-		if len(record.data) != expect_lengths[i] {
-			//if true {
-			t.Errorf("EdgeMulti E record %v: expect_len %v, len %v, presamples %v, trigFrame %v, %v:%v", i, expect_lengths[i],
-				len(record.data), record.presamples, record.trigFrame, int(record.trigFrame)-record.presamples, int(record.trigFrame)-record.presamples+len(record.data)-1)
+	// edgeMulti searches within a given segment from dsp.NPresamples to ndata + dsp.NPresamples - dsp.NSamples
+	// for these values that is from 50 to 950
+	// so we want to test triggering on an event that starts before 950, and continues rising past 950
+	rawE := make([]RawType, 1000)
+	kinkListE := []float64{945}
+	kinkListFrameIndexE := make([]FrameIndex, len(kinkListE))
+	for i := 0; i < len(kinkListE); i++ {
+		k := kinkListE[i]
+		kint := int(math.Ceil(k))
+		for j := kint - 6; j < kint+20; j++ {
+			rawE[j] = RawType(math.Ceil(kinkModel(k, float64(j), a, b, c)))
+			if j == kint+19 {
+				rawE[j] = RawType(kint) // make it easier to figure out which trigger you are looking at if you print rawE
+			}
 		}
+		kinkListFrameIndexE[i] = FrameIndex(kint)
 	}
+	// fmt.Println("rawE", rawE)
+	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
+	nRepeatE := 3
+	// here we attempt to trigger around a segment boundary
+	primaries, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
 
+	dsp.NSamples = 15
+	dsp.NPresamples = 6
+	dsp.LastEdgeMultiTrigger = 0   // need to reset this each time
+	dsp.EdgeMultiState = SEARCHING // need to reset this after E
+	primaries, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
