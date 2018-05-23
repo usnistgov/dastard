@@ -8,6 +8,8 @@ import (
 	"net/rpc/jsonrpc"
 	"strings"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 // SourceControl is the sub-server that handles configuration and operation of
@@ -161,6 +163,22 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	// Set up objects to handle remote calls
 	sourceControl := new(SourceControl)
 	sourceControl.clientUpdates = messageChan
+
+	// Load stored settings
+	var okay bool
+	var spc SimPulseSourceConfig
+	fmt.Printf("viper used config file: %s\n", viper.ConfigFileUsed())
+	err := viper.UnmarshalKey("simpulse", &spc)
+	if err == nil {
+		fmt.Printf("SimPulseSourceConfig: Amplitude:%f, Pedestal:%f, Nchan:%d, NSamp:%d\n", spc.Amplitude, spc.Pedestal, spc.Nchan, spc.Nsamp)
+		sourceControl.ConfigureSimPulseSource(&spc, &okay)
+	}
+	var tsc TriangleSourceConfig
+	err = viper.UnmarshalKey("triangle", &tsc)
+	if err == nil {
+		fmt.Printf("TriangleSourceConfig: SampleRate:%f, (Min,Max):(%d,%d), Nchan:%d\n", tsc.SampleRate, tsc.Min, tsc.Max, tsc.Nchan)
+		sourceControl.ConfigureTriangleSource(&tsc, &okay)
+	}
 
 	go func() {
 		ticker := time.Tick(2 * time.Second)
