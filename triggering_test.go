@@ -210,14 +210,28 @@ func TestSingles(t *testing.T) {
 
 	dsp.LevelTrigger = false
 	dsp.AutoTrigger = true
+	dsp.AutoDelay = 0 * time.Millisecond
+	// Zero Delay results in records that are spaced by 1000 samples (dsp.NSamples)
+	// starting at 100 (dsp.NPreSamples)
+	testTriggerSubroutine(t, dsp, "Auto_0Millisecond", []FrameIndex{100, 1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
+
+	dsp.LevelTrigger = false
+	dsp.AutoTrigger = true
 	dsp.AutoDelay = 500 * time.Millisecond
-	testTriggerSubroutine(t, dsp, "Auto", []FrameIndex{100, 5100})
+	// first trigger is at NPreSamples=100
+	// AutoDelay corresponds to 5000 samples, so we add that to 1100 to get 5100
+	testTriggerSubroutine(t, dsp, "Auto_500Millisecond", []FrameIndex{100, 5100})
 
 	dsp.LevelTrigger = true
-	testTriggerSubroutine(t, dsp, "Level+Auto", []FrameIndex{1000, 6000})
+	testTriggerSubroutine(t, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 6000})
+
+	dsp.LevelLevel = 1
+	dsp.AutoTrigger = false
+	testTriggerSubroutine(t, dsp, "Level_SmallThresh", []FrameIndex{1000, 6000})
 
 	dsp.AutoDelay = 200 * time.Millisecond
-	testTriggerSubroutine(t, dsp, "Level+Auto", []FrameIndex{1000, 3000, 5000, 7000, 9000})
+	dsp.AutoTrigger = true
+	testTriggerSubroutine(t, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 3000, 5000, 6000, 8000})
 }
 
 func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) {
@@ -226,6 +240,11 @@ func testTriggerSubroutine(t *testing.T, dsp *DataStreamProcessor, trigname stri
 	raw := make([]RawType, 10000)
 	for i := tframe; i < tframe+10; i++ {
 		raw[i] = bigval
+	}
+	const smallval = 1
+	const tframe2 = 6000
+	for i := tframe2; i < tframe2+10; i++ {
+		raw[i] = smallval
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
@@ -279,12 +298,27 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	dsp.LevelTrigger = true
 	dsp.LevelRising = true
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, dsp, "Edge", []FrameIndex{1000})
+	// should yield a single edge trigger
+	testTriggerSubroutine(t, dsp, "Edge+Level 1", []FrameIndex{1000})
 	dsp.LevelLevel = 10000
-	testTriggerSubroutine(t, dsp, "Edge", []FrameIndex{1000})
+	// should yield a single edge trigger
+	testTriggerSubroutine(t, dsp, "Edge+Level 2", []FrameIndex{1000})
 	dsp.EdgeLevel = 20000
 	dsp.LevelLevel = 100
-	testTriggerSubroutine(t, dsp, "Level", []FrameIndex{1000})
+	// should yield a single level trigger
+	testTriggerSubroutine(t, dsp, "Edge + Level 3", []FrameIndex{1000})
+	dsp.EdgeLevel = 1
+	// should yield 2 edge triggers
+	testTriggerSubroutine(t, dsp, "Edge + Level 4", []FrameIndex{1000, 6000})
+	dsp.LevelLevel = 1
+	dsp.EdgeLevel = 20000
+	// should yield 2 level triggers
+	testTriggerSubroutine(t, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
+	dsp.LevelLevel = 1
+	dsp.EdgeTrigger = false
+	dsp.EdgeLevel = 1
+	// should yield 2 level triggers
+	testTriggerSubroutine(t, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
