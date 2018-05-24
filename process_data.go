@@ -165,20 +165,16 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 	var modelCoefs mat.VecDense
 	var modelFull mat.VecDense
 	var residual mat.VecDense
-	var dataVec mat.VecDense
-	if !dsp.projectors.IsZero() {
-		dataVec = *mat.NewVecDense(dsp.NSamples, make([]float64, dsp.NSamples))
-	}
 	for _, rec := range records {
 		var val float64
-		for i := 0; i < dsp.NPresamples; i++ {
+		for i := 0; i < rec.presamples; i++ {
 			val += float64(rec.data[i])
 		}
-		ptm := val / float64(dsp.NPresamples)
+		ptm := val / float64(rec.presamples)
 
-		max := rec.data[dsp.NPresamples]
+		max := rec.data[rec.presamples]
 		var sum, sum2 float64
-		for i := dsp.NPresamples; i < dsp.NSamples; i++ {
+		for i := rec.presamples; i < len(rec.data); i++ {
 			val = float64(rec.data[i])
 			sum += val
 			sum2 += val * val
@@ -189,22 +185,29 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		rec.pretrigMean = ptm
 		rec.peakValue = float64(max) - rec.pretrigMean
 
-		N := float64(dsp.NSamples - dsp.NPresamples)
+		N := float64(len(rec.data) - rec.presamples)
 		rec.pulseAverage = sum/N - ptm
 		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
 		rec.pulseRMS = math.Sqrt(meanSquare)
 		if !dsp.projectors.IsZero() {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
-			if cols != len(rec.data) {
-				panic("wrong size")
-			}
+			// to support variable length records, we have to truncate projectors and basis
+			truncFront := dsp.NPresamples - rec.presamples
+			truncBack := dsp.NSamples - len(rec.data) - truncFront
+			i := 0
+			k := nbases
+			j := truncFront
+			l := cols - truncBack
+			projectors := dsp.projectors.Slice(i, k, j, l)
+			basis := dsp.basis.Slice(j, l, i, k)
 
+			dataVec := *mat.NewVecDense(len(rec.data), make([]float64, len(rec.data)))
 			for i, v := range rec.data {
 				dataVec.SetVec(i, float64(v))
 			}
-			modelCoefs.MulVec(&dsp.projectors, &dataVec)
-			modelFull.MulVec(&dsp.basis, &modelCoefs)
+			modelCoefs.MulVec(projectors, &dataVec)
+			modelFull.MulVec(basis, &modelCoefs)
 			residual.SubVec(&dataVec, &modelFull)
 
 			// copy modelCoefs into rec.modelCoefs
