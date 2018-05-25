@@ -32,6 +32,13 @@ type DataStreamProcessor struct {
 	changeMutex sync.Mutex // Don't change key data without locking this.
 }
 
+// RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
+func (dsp *DataStreamProcessor) RemoveProjectorsBasis() {
+	dsp.projectors.Reset()
+	dsp.basis.Reset()
+}
+
+// SetProjectorsBasis sets .projectors and .basis to the arguments, panics if the sizes are not right
 func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) {
 	rows, cols := projectors.Dims()
 	nbases := rows
@@ -192,15 +199,11 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		if !dsp.projectors.IsZero() {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
-			// to support variable length records, we have to truncate projectors and basis
-			truncFront := dsp.NPresamples - rec.presamples
-			truncBack := dsp.NSamples - len(rec.data) - truncFront
-			i := 0
-			k := nbases
-			j := truncFront
-			l := cols - truncBack
-			projectors := dsp.projectors.Slice(i, k, j, l)
-			basis := dsp.basis.Slice(j, l, i, k)
+			if cols != len(rec.data) {
+				panic("projections for variable length records not implemented")
+			}
+			projectors := &dsp.projectors
+			basis := &dsp.basis
 
 			dataVec := *mat.NewVecDense(len(rec.data), make([]float64, len(rec.data)))
 			for i, v := range rec.data {

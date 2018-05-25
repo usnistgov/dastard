@@ -103,24 +103,22 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 1}
 	records = []*DataRecord{rec}
-	dsp.SetProjectorsBasis(*projectors3, *basis3)
+	dsp.RemoveProjectorsBasis()
 	dsp.AnalyzeData(records)
 	expect = RTExpect{
 		ResidualStdDev: 0,
-		ModelCoefs:     []float64{1, 2, 3},
+		ModelCoefs:     nil,
 		PTM:            1.0, Avg: 1.5, Max: 2.0, RMS: 1.5811388300841898}
 	testAnalyzeCheck(t, rec, expect, "Realtime C: 3 Bases, record truncated at end")
 
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 0}
 	records = []*DataRecord{rec}
-	dsp.SetProjectorsBasis(*projectors3, *basis3)
+	dsp.RemoveProjectorsBasis()
 	dsp.AnalyzeData(records)
-	// residual should be [0,0,3]
-	// the uncorrected stdDeviation of this is sqrt(((0-1)^2+(0-1)^2+(3-1)^2)/3)
 	expect = RTExpect{
-		ResidualStdDev: 1.4142135623730951,
-		ModelCoefs:     []float64{0, 1, 2},
+		ResidualStdDev: 0,
+		ModelCoefs:     nil,
 		PTM:            math.NaN(), Avg: math.NaN(), Max: math.NaN(), RMS: math.NaN()}
 	testAnalyzeCheck(t, rec, expect, "Realtime D: 3 Bases, record truncated at front")
 

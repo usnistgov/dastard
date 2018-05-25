@@ -73,6 +73,7 @@ func min(a int, b int) int {
 	}
 }
 
+// kinkModel returns a+b(x-k) for x<k and a+c(x-k) for x>=k
 func kinkModel(k float64, x float64, a float64, b float64, c float64) float64 {
 	if x < k {
 		return a + b*(x-k)
@@ -81,11 +82,13 @@ func kinkModel(k float64, x float64, a float64, b float64, c float64) float64 {
 	}
 }
 
+// kinkModelResult given k, xdata and ydata does a X2 fit for parameters a,b,c
 // takes k, an index into xdata and into ydata
 // returns ymodel - the model values evaluaed at the xdata
 // returns a,b,c the model parameters
 // returns X2 the sum of squares of difference between ymodel and ydata
 // kinkModel(x) = a+b(x-k) for x<k and a+c(x-k) for x>=k
+// err is the error from SolveVec, which is used for the fitting
 func kinkModelResult(k float64, xdata []float64, ydata []float64) ([]float64, float64, float64, float64, float64, error) {
 	var sdxi, sdxj, sdxi2, sdxj2, sy, syidxi, syjdxj float64
 	// xi - (imaginary) list of xdata values with values less than k
@@ -130,7 +133,8 @@ func kinkModelResult(k float64, xdata []float64, ydata []float64) ([]float64, fl
 	return ymodel, a, b, c, X2, err
 }
 
-// return the in ks that results in the lowest X2 when passed to kinkModelResult along with xdata and ydata
+// kinkModelFit return the k in ks that results in the lowest X2 when passed to kinkModelResult along with xdata and ydata
+// also returns X2min. Immediatley returns with the error from kinkModelResult if kinkModelResult returns a non-nil error
 func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, float64, error) {
 	var X2min float64
 	X2min = math.MaxFloat64
@@ -219,10 +223,15 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	dsp.EdgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state VERIFYING
 	dsp.EdgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
 	// fmt.Println("triggerInds", triggerInds)
-	var t, u, v int
-	// t index of last trigger
+	var t, u, v, tFirst int
+	// t index of previous trigger
 	// u index of current trigger
 	// v index of next trigger
+	if dsp.LastEdgeMultiTrigger > 0 {
+		tFirst = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
+	} else {
+		tFirst = -dsp.NSamples
+	}
 	for i := 0; i < len(triggerInds); i++ {
 		u = triggerInds[i]
 		if i == len(triggerInds)-1 {
@@ -231,18 +240,15 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			v = triggerInds[i+1]
 		}
 		if i == 0 {
-			if dsp.LastEdgeMultiTrigger > 0 {
-				t = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
-			} else {
-				t = -dsp.NSamples
-			}
+			t = tFirst
+
 		} else {
 			t = triggerInds[i-1]
 		}
-		last_npost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
-		npre := min(dsp.NPresamples, int(u-t-last_npost))
+		lastNPost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
+		npre := min(dsp.NPresamples, int(u-t-lastNPost))
 		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
-		//fmt.Println("i", i, "npre", npre, "npost", npost, "t", t, "u", u, "v", v, "last_npost", last_npost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
+		//fmt.Println("i", i, "npre", npre, "npost", npost, "t", t, "u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 		if dsp.EdgeMultiMakeShortRecords {
 			newRecord := dsp.triggerAtSpecSamples(segment, u, npre, npre+npost)
 			records = append(records, newRecord)
@@ -255,6 +261,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		}
 
 	}
+
 	if len(records) > 0 {
 		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
 	}
