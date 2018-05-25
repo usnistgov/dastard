@@ -11,15 +11,16 @@ import (
 
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
-	Channum     int
-	Publisher   chan<- []*DataRecord
-	Broker      *TriggerBroker
-	NSamples    int
-	NPresamples int
-	SampleRate  float64
-	LastTrigger FrameIndex
-	stream      DataStream
-	projectors  mat.Dense
+	Channum              int
+	Publisher            chan<- []*DataRecord
+	Broker               *TriggerBroker
+	NSamples             int
+	NPresamples          int
+	SampleRate           float64
+	LastTrigger          FrameIndex
+	LastEdgeMultiTrigger FrameIndex
+	stream               DataStream
+	projectors           mat.Dense
 	// realtime analysis is disable if projectors .IsZero
 	// otherwise projectors must be size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
@@ -31,6 +32,13 @@ type DataStreamProcessor struct {
 	changeMutex sync.Mutex // Don't change key data without locking this.
 }
 
+// RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
+func (dsp *DataStreamProcessor) RemoveProjectorsBasis() {
+	dsp.projectors.Reset()
+	dsp.basis.Reset()
+}
+
+// SetProjectorsBasis sets .projectors and .basis to the arguments, panics if the sizes are not right
 func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) {
 	rows, cols := projectors.Dims()
 	nbases := rows
@@ -79,24 +87,6 @@ type DecimateState struct {
 	DecimateLevel   int
 	Decimate        bool
 	DecimateAvgMode bool
-}
-
-// TriggerState contains all the state that controls trigger logic
-type TriggerState struct {
-	AutoTrigger bool
-	AutoDelay   time.Duration
-
-	LevelTrigger bool
-	LevelRising  bool
-	LevelLevel   RawType
-
-	EdgeTrigger bool
-	EdgeRising  bool
-	EdgeFalling bool
-	EdgeLevel   int32
-
-	// TODO:  Noise info.
-	// TODO: group source/rx info.
 }
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
@@ -182,20 +172,16 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 	var modelCoefs mat.VecDense
 	var modelFull mat.VecDense
 	var residual mat.VecDense
-	var dataVec mat.VecDense
-	if !dsp.projectors.IsZero() {
-		dataVec = *mat.NewVecDense(dsp.NSamples, make([]float64, dsp.NSamples))
-	}
 	for _, rec := range records {
 		var val float64
-		for i := 0; i < dsp.NPresamples; i++ {
+		for i := 0; i < rec.presamples; i++ {
 			val += float64(rec.data[i])
 		}
-		ptm := val / float64(dsp.NPresamples)
+		ptm := val / float64(rec.presamples)
 
-		max := rec.data[dsp.NPresamples]
+		max := rec.data[rec.presamples]
 		var sum, sum2 float64
-		for i := dsp.NPresamples; i < dsp.NSamples; i++ {
+		for i := rec.presamples; i < len(rec.data); i++ {
 			val = float64(rec.data[i])
 			sum += val
 			sum2 += val * val
@@ -206,7 +192,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		rec.pretrigMean = ptm
 		rec.peakValue = float64(max) - rec.pretrigMean
 
-		N := float64(dsp.NSamples - dsp.NPresamples)
+		N := float64(len(rec.data) - rec.presamples)
 		rec.pulseAverage = sum/N - ptm
 		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
 		rec.pulseRMS = math.Sqrt(meanSquare)
@@ -214,14 +200,17 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
 			if cols != len(rec.data) {
-				panic("wrong size")
+				panic("projections for variable length records not implemented")
 			}
+			projectors := &dsp.projectors
+			basis := &dsp.basis
 
+			dataVec := *mat.NewVecDense(len(rec.data), make([]float64, len(rec.data)))
 			for i, v := range rec.data {
 				dataVec.SetVec(i, float64(v))
 			}
-			modelCoefs.MulVec(&dsp.projectors, &dataVec)
-			modelFull.MulVec(&dsp.basis, &modelCoefs)
+			modelCoefs.MulVec(projectors, &dataVec)
+			modelFull.MulVec(basis, &modelCoefs)
 			residual.SubVec(&dataVec, &modelFull)
 
 			// copy modelCoefs into rec.modelCoefs

@@ -30,221 +30,129 @@ func TestStdDev(t *testing.T) {
 // TestAnalyze tests the DataChannel.AnalyzeData computations on a very simple "pulse".
 func TestAnalyze(t *testing.T) {
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
-	rec := &DataRecord{data: d}
+	rec := &DataRecord{data: d, presamples: 4}
 	records := []*DataRecord{rec}
 
 	dsp := &DataStreamProcessor{NPresamples: 4, NSamples: len(d)}
 	dsp.AnalyzeData(records)
 
-	expectPTM := 10.0
-	if rec.pretrigMean != expectPTM {
-		t.Errorf("Pretrigger mean = %f, want %f", rec.pretrigMean, expectPTM)
-		t.Logf("%v\n", rec)
-	}
+	expect := RTExpect{
+		ResidualStdDev: 0,
+		ModelCoefs:     nil,
+		PTM:            10.0, Avg: 5.0, Max: 10.0, RMS: 5.84522597225006}
+	testAnalyzeCheck(t, rec, expect, "Analyze A")
+}
 
-	expectAvg := 5.0
-	if rec.pulseAverage != expectAvg {
-		t.Errorf("Pulse average = %f, want %f", rec.pulseAverage, expectAvg)
-		t.Logf("%v\n", rec)
-	}
-
-	expectMax := 10.0
-	if rec.peakValue != expectMax {
-		t.Errorf("Peak value = %f, want %f", rec.peakValue, expectMax)
-		t.Logf("%v\n", rec)
-	}
-
-	expectRMS := 0.0
-	for i := 4; i < len(d); i++ {
-		diff := float64(d[i]) - expectPTM
-		expectRMS += diff * diff
-	}
-	expectRMS /= float64(len(d) - 4)
-	expectRMS = math.Sqrt(expectRMS)
-	if math.Abs(rec.pulseRMS-expectRMS) > 1e-8 {
-		t.Errorf("Pulse RMS = %f, want %f to 8 digits", rec.pulseRMS, expectRMS)
-		t.Logf("%v\n", rec)
-	}
-
-	// the realtime analysis did not run, so we should get the Zero value
-	expectResidualStdDev := 0.0
-	if rec.residualStdDev != expectResidualStdDev {
-		t.Errorf("ResidualStdDev mean = %f, want %f", rec.residualStdDev, expectResidualStdDev)
-		t.Logf("%v\n", rec)
-	}
-
-	// the realtime analysis did not run, so we should get the Zero value
-	if rec.modelCoefs != nil {
-		t.Log("rec.modelCoefs should have Zero Value, instead has", rec.modelCoefs)
-		t.Logf("%v\n", rec)
-		t.Fail()
-	}
+type RTExpect struct {
+	Max            float64
+	RMS            float64
+	Avg            float64
+	PTM            float64
+	ModelCoefs     []float64
+	ResidualStdDev float64
 }
 
 //TestAnalyzeRealtime tests the DataChannel.AnalyzeData computations on a very simple "pulse".
-func TestAnalyzeRealtimeBases3(t *testing.T) {
+func TestAnalyzeRealtimeBases(t *testing.T) {
 	d := []RawType{1, 2, 3, 4}
-	rec := &DataRecord{data: d}
+	rec := &DataRecord{data: d, presamples: 1}
 	records := []*DataRecord{rec}
 
 	dsp := &DataStreamProcessor{NPresamples: 1, NSamples: len(d)}
 
 	// assign the projectors and basis
 	nbases := 3
-	projectors := mat.NewDense(nbases, dsp.NSamples,
+	projectors3 := mat.NewDense(nbases, dsp.NSamples,
 		[]float64{1, 0, 0, 0,
 			0, 1, 0, 0,
 			0, 0, 1, 0})
-	basis := mat.NewDense(dsp.NSamples, nbases,
+	basis3 := mat.NewDense(dsp.NSamples, nbases,
 		[]float64{1, 0, 0,
 			0, 1, 0,
 			0, 0, 1,
 			0, 0, 0})
-	dsp.SetProjectorsBasis(*projectors, *basis)
+	dsp.SetProjectorsBasis(*projectors3, *basis3)
 	dsp.AnalyzeData(records)
-
-	if false {
-		t.Log("projectors")
-		matPrint(&dsp.projectors, t)
-		t.Log(dsp.projectors.Dims())
-		t.Log("basis")
-		matPrint(&dsp.basis, t)
-		t.Log(dsp.basis.Dims())
-		t.Log("modelCoefs", rec.modelCoefs)
-		t.Log("residualStd", rec.residualStdDev)
-	}
 
 	// residual should be [0,0,0,4]
 	// the uncorrected stdDeviation of this is sqrt(((0-1)^2+(0-1)^2+(0-1)^2+(4-1)^2)/4)
-	expectResidualStdDev := 1.7320508075688772
-	if rec.residualStdDev != expectResidualStdDev {
-		t.Errorf("ResidualStdDev mean = %f, want %f", rec.residualStdDev, expectResidualStdDev)
-		t.Logf("%v\n", rec)
-	}
-
-	expectModelCoefs := []float64{1, 2, 3}
-	modelCoefsCorrect := true
-	for i, v := range expectModelCoefs {
-		if v != rec.modelCoefs[i] {
-			modelCoefsCorrect = false
-		}
-	}
-
-	if !modelCoefsCorrect {
-		t.Log("rec.modelCoefs", rec.modelCoefs)
-		t.Log("should equal expectModelCoefs", expectModelCoefs)
-		t.Fail()
-	}
-
-	expectPTM := 1.0
-	if rec.pretrigMean != expectPTM {
-		t.Errorf("Pretrigger mean = %f, want %f", rec.pretrigMean, expectPTM)
-		t.Logf("%v\n", rec)
-	}
-
-	expectAvg := 2.0
-	if rec.pulseAverage != expectAvg {
-		t.Errorf("Pulse average = %f, want %f", rec.pulseAverage, expectAvg)
-		t.Logf("%v\n", rec)
-	}
-
-	expectMax := 3.0
-	if rec.peakValue != expectMax {
-		t.Errorf("Peak value = %f, want %f", rec.peakValue, expectMax)
-		t.Logf("%v\n", rec)
-	}
-
-	expectRMS := 0.0
-	for i := 4; i < len(d); i++ {
-		diff := float64(d[i]) - expectPTM
-		expectRMS += diff * diff
-	}
-	expectRMS /= float64(len(d) - 4)
-	expectRMS = math.Sqrt(expectRMS)
-	if math.Abs(rec.pulseRMS-expectRMS) > 1e-8 {
-		t.Errorf("Pulse RMS = %f, want %f to 8 digits", rec.pulseRMS, expectRMS)
-		t.Logf("%v\n", rec)
-	}
-}
-
-func TestAnalyzeRealtimeBases1(t *testing.T) {
-	d := []RawType{1, 2, 3, 4}
-	rec := &DataRecord{data: d}
-	records := []*DataRecord{rec}
-
-	dsp := &DataStreamProcessor{NPresamples: 1, NSamples: len(d)}
+	expect := RTExpect{
+		ResidualStdDev: 1.7320508075688772,
+		ModelCoefs:     []float64{1, 2, 3},
+		PTM:            1.0, Avg: 2.0, Max: 3.0, RMS: 2.1602468994692865}
+	testAnalyzeCheck(t, rec, expect, "Realtime A: 3 Bases, no Trunc")
 
 	// assign the projectors and basis
-	nbases := 1
-	projectors := mat.NewDense(nbases, dsp.NSamples,
+	nbases = 1
+	projectors1 := mat.NewDense(nbases, dsp.NSamples,
 		[]float64{1, 0, 0, 0})
-	basis := mat.NewDense(dsp.NSamples, nbases,
+	basis1 := mat.NewDense(dsp.NSamples, nbases,
 		[]float64{1,
 			0,
 			0,
 			0})
-	dsp.SetProjectorsBasis(*projectors, *basis)
+	dsp.SetProjectorsBasis(*projectors1, *basis1)
 	dsp.AnalyzeData(records)
-
-	if false {
-		t.Log("projectors")
-		matPrint(&dsp.projectors, t)
-		t.Log(dsp.projectors.Dims())
-		t.Log("basis")
-		matPrint(&dsp.basis, t)
-		t.Log(dsp.basis.Dims())
-		t.Log("modelCoefs", rec.modelCoefs)
-		t.Log("residualStd", rec.residualStdDev)
-	}
-
 	// residual should be [0,2,3,4]
-	expectResidualStdDev := 1.479019945774904
-	if rec.residualStdDev != expectResidualStdDev {
-		t.Errorf("ResidualStdDev = %f, want %f", rec.residualStdDev, expectResidualStdDev)
+	expect = RTExpect{
+		ResidualStdDev: 1.479019945774904,
+		ModelCoefs:     []float64{1},
+		PTM:            1.0, Avg: 2.0, Max: 3.0, RMS: 2.1602468994692865}
+	testAnalyzeCheck(t, rec, expect, "Realtime B: 1 Bases, no Trunc")
+
+	d = []RawType{1, 2, 3}
+	rec = &DataRecord{data: d, presamples: 1}
+	records = []*DataRecord{rec}
+	dsp.RemoveProjectorsBasis()
+	dsp.AnalyzeData(records)
+	expect = RTExpect{
+		ResidualStdDev: 0,
+		ModelCoefs:     nil,
+		PTM:            1.0, Avg: 1.5, Max: 2.0, RMS: 1.5811388300841898}
+	testAnalyzeCheck(t, rec, expect, "Realtime C: 3 Bases, record truncated at end")
+
+	d = []RawType{1, 2, 3}
+	rec = &DataRecord{data: d, presamples: 0}
+	records = []*DataRecord{rec}
+	dsp.RemoveProjectorsBasis()
+	dsp.AnalyzeData(records)
+	expect = RTExpect{
+		ResidualStdDev: 0,
+		ModelCoefs:     nil,
+		PTM:            math.NaN(), Avg: math.NaN(), Max: math.NaN(), RMS: math.NaN()}
+	testAnalyzeCheck(t, rec, expect, "Realtime D: 3 Bases, record truncated at front")
+
+}
+
+func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name string) {
+	if rec.residualStdDev != expect.ResidualStdDev {
+		t.Errorf("%v: ResidualStdDev = %v, want %v", name, rec.residualStdDev, expect.ResidualStdDev)
 		t.Logf("%v\n", rec)
 	}
-
-	expectModelCoefs := []float64{1}
 	modelCoefsCorrect := true
-	for i, v := range expectModelCoefs {
-		if v != rec.modelCoefs[i] {
+	for i, v := range expect.ModelCoefs {
+		if i >= len(rec.modelCoefs) || v != rec.modelCoefs[i] {
 			modelCoefsCorrect = false
 		}
 	}
-
 	if !modelCoefsCorrect {
-		t.Log("rec.modelCoefs", rec.modelCoefs)
-		t.Log("should equal expectModelCoefs", expectModelCoefs)
-		t.Fail()
+		t.Log(name, "\nrec.modelCoefs", rec.modelCoefs)
+		t.Error("should equal expectModelCoefs", expect.ModelCoefs)
 	}
-
-	expectPTM := 1.0
-	if rec.pretrigMean != expectPTM {
-		t.Errorf("Pretrigger mean = %f, want %f", rec.pretrigMean, expectPTM)
+	if rec.pretrigMean != expect.PTM && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.PTM)) {
+		t.Errorf("Pretrigger mean = %v, want %v", rec.pretrigMean, expect.PTM)
 		t.Logf("%v\n", rec)
 	}
-
-	expectAvg := 2.0
-	if rec.pulseAverage != expectAvg {
-		t.Errorf("Pulse average = %f, want %f", rec.pulseAverage, expectAvg)
+	if rec.pulseAverage != expect.Avg && !(math.IsNaN(rec.pulseAverage) && math.IsNaN(expect.Avg)) {
+		t.Errorf("%v, Pulse average = %v, want %v", name, rec.pulseAverage, expect.Avg)
 		t.Logf("%v\n", rec)
 	}
-
-	expectMax := 3.0
-	if rec.peakValue != expectMax {
-		t.Errorf("Peak value = %f, want %f", rec.peakValue, expectMax)
+	if rec.peakValue != expect.Max && !(math.IsNaN(rec.peakValue) && math.IsNaN(expect.Max)) {
+		t.Errorf("%v, Peak value = %v, want %v", name, rec.peakValue, expect.Max)
 		t.Logf("%v\n", rec)
 	}
-
-	expectRMS := 0.0
-	for i := 4; i < len(d); i++ {
-		diff := float64(d[i]) - expectPTM
-		expectRMS += diff * diff
-	}
-	expectRMS /= float64(len(d) - 4)
-	expectRMS = math.Sqrt(expectRMS)
-	if math.Abs(rec.pulseRMS-expectRMS) > 1e-8 {
-		t.Errorf("Pulse RMS = %f, want %f to 8 digits", rec.pulseRMS, expectRMS)
+	if rec.pulseRMS != expect.RMS && !(math.IsNaN(rec.pulseRMS) && math.IsNaN(expect.RMS)) {
+		t.Errorf("%v, Pulse RMS = %v, want %v", name, rec.pulseRMS, expect.RMS)
 		t.Logf("%v\n", rec)
 	}
 }
