@@ -50,7 +50,7 @@ func setupViper() error {
 	viper.SetDefault("Verbose", false)
 
 	const path string = "$HOME/.dastard"
-	const filename string = "testconfig"
+	const filename string = "config"
 	const suffix string = ".yaml"
 	if err := verifyConfigFile(path, filename+suffix); err != nil {
 		return err
