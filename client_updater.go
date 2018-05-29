@@ -22,11 +22,7 @@ type ClientUpdate struct {
 	state interface{}
 }
 
-func publish(pubSocket *czmq.Sock, update ClientUpdate) {
-	message, err := json.Marshal(update.state)
-	if err != nil {
-		return
-	}
+func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	topic := reflect.TypeOf(update.state).String()
 	log.Printf("Message of type %s: %v\n", topic, string(message))
 
@@ -45,26 +41,50 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	defer pubSocket.Destroy()
 
 	// Save the state to the standard saved-state file this often.
-	// TODO: change to time.Minute
-	savePeriod := time.Second * 3
-	saveStateTicker := time.NewTicker(savePeriod)
-	defer saveStateTicker.Stop()
+	savePeriod := time.Minute
+	saveStateRegularlyTicker := time.NewTicker(savePeriod)
+	defer saveStateRegularlyTicker.Stop()
+
+	// And also save state every time it's changed, but after a delay of this long.
+	saveDelayAfterChange := time.Second * 2
+	saveStateOnceTimer := time.NewTimer(saveDelayAfterChange)
 
 	// Here, store the last message of each type seen. Use when storing state.
 	lastMessages := make(map[string]interface{})
+	lastMessageStrings := make(map[string]string)
 
 	for {
 		select {
 		case update := <-messages:
 			if update.tag == "SENDALL" {
 				for k, v := range lastMessages {
-					publish(pubSocket, ClientUpdate{tag: k, state: v})
+					publish(pubSocket, ClientUpdate{tag: k, state: v}, []byte(lastMessageStrings[k]))
 				}
 				continue
 			}
-			lastMessages[update.tag] = update.state
-			publish(pubSocket, update)
-		case <-saveStateTicker.C:
+
+			// Send state to clients now.
+			message, err := json.Marshal(update.state)
+			if err == nil {
+				publish(pubSocket, update, message)
+			}
+
+			// Check if state has changed; if so, save it after a delay.
+			// The delay allows us to accumulate many near-simultaneous changes then
+			// save only once.
+			updateString := string(message)
+			if lastMessageStrings[update.tag] != updateString {
+				lastMessages[update.tag] = update.state
+				lastMessageStrings[update.tag] = updateString
+
+				saveStateOnceTimer.Stop()
+				saveStateOnceTimer = time.NewTimer(saveDelayAfterChange)
+			}
+
+		case <-saveStateRegularlyTicker.C:
+			saveState(lastMessages)
+
+		case <-saveStateOnceTimer.C:
 			saveState(lastMessages)
 		}
 	}
