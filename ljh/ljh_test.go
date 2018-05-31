@@ -103,3 +103,52 @@ func TestBadVersionNumbers(t *testing.T) {
 	}
 
 }
+
+func TestWriter(t *testing.T) {
+	f, err := os.Create("writertest.ljh")
+	w := Writer{file: f,
+		Samples:    100,
+		Presamples: 50}
+	if err != nil {
+		t.Errorf("file creation error: %v", err)
+	}
+	err = w.WriteHeader()
+	if err != nil {
+		t.Errorf("WriteHeader Error: %v", err)
+	}
+	data := make([]uint16, 100)
+	stat, _ := os.Stat("writertest.ljh")
+	sizeHeader := stat.Size()
+	err = w.WriteRecord(8888888, 127, data)
+	if err != nil {
+		t.Errorf("WriteRecord Error: %v", err)
+	}
+	stat, _ = os.Stat("writertest.ljh")
+	sizeRecord := stat.Size()
+	expectSize := sizeHeader + 8 + 8 + 2*int64(w.Samples)
+	if sizeRecord != expectSize {
+		t.Errorf("ljh file wrong size after writing record, want %v, have %v", expectSize, sizeRecord)
+	}
+	// write a record of incorrect size, check for error
+	wrongData := make([]uint16, 101)
+	err = w.WriteRecord(0, 0, wrongData)
+	if err == nil {
+		t.Errorf("WriterTest: should have non-nil Error")
+	}
+	w.Close()
+	r, err := OpenReader("writertest.ljh")
+	if err != nil {
+		t.Errorf("WriterTest, OpenReader Error: %v", err)
+	}
+	record, err := r.NextPulse()
+	if err != nil {
+		t.Errorf("WriterTest, NextPulse Error: %v", err)
+	}
+	if record.TimeCode != 127 {
+		t.Errorf("WriterTest, TimeCode Wrong, have %v, wand %v", record.TimeCode, 127)
+	}
+	if record.RowCount != 8888888 {
+		t.Errorf("WriterTest, RowCount Wrong, have %v, want %v", record.RowCount, 8888888)
+	}
+
+}
