@@ -105,14 +105,23 @@ func TestBadVersionNumbers(t *testing.T) {
 }
 
 func TestWriter(t *testing.T) {
-	f, err := os.Create("writertest.ljh")
-	w := Writer{file: f,
+	w := Writer{FileName: "writertest.ljh",
 		Samples:    100,
 		Presamples: 50}
+	err := w.CreateFile()
 	if err != nil {
 		t.Errorf("file creation error: %v", err)
 	}
+	if w.RecordsWritten != 0 {
+		t.Error("RecordsWritten want 0, have", w.RecordsWritten)
+	}
+	if w.HeaderWritten {
+		t.Error("TestWriter: header written should be false")
+	}
 	err = w.WriteHeader()
+	if !w.HeaderWritten {
+		t.Error("TestWriter: header written should be true")
+	}
 	if err != nil {
 		t.Errorf("WriteHeader Error: %v", err)
 	}
@@ -122,6 +131,9 @@ func TestWriter(t *testing.T) {
 	err = w.WriteRecord(8888888, 127, data)
 	if err != nil {
 		t.Errorf("WriteRecord Error: %v", err)
+	}
+	if w.RecordsWritten != 1 {
+		t.Error("RecordsWritten want 1, have", w.RecordsWritten)
 	}
 	stat, _ = os.Stat("writertest.ljh")
 	sizeRecord := stat.Size()

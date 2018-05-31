@@ -3,33 +3,74 @@ package dastard
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+
+	"github.com/usnistgov/dastard/ljh"
 
 	czmq "github.com/zeromq/goczmq"
 )
 
-// PublishRecords publishes one data packet per DataRecord received on its input to
-// a ZMQ PUB socket. It terminates when abort channel is closed.
-func PublishRecords(dataToPub <-chan []*DataRecord, abort <-chan struct{}, portnum int) {
-	hostname := fmt.Sprintf("tcp://*:%d", portnum)
-	pubSocket, err := czmq.NewPub(hostname)
-	if err != nil {
-		return
-	}
-	defer pubSocket.Destroy()
+// DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
+// in each call to PublishData
+type DataPublisher struct {
+	pubSocket *czmq.Sock
+	LJH22     *ljh.Writer
+}
 
-	for {
-		select {
-		case <-abort:
-			return
-		case records := <-dataToPub:
-			for _, rec := range records {
-				header, signal := packet(rec)
-				pubSocket.SendFrame(header, czmq.FlagMore)
-				pubSocket.SendFrame(signal, czmq.FlagNone)
+// SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
+func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, Timebase float64, TimestampOffset float64,
+	NumberOfRows int, NumberOfColumns int, FileName string) {
+	w := ljh.Writer{ChanNum: ChanNum,
+		Presamples:      Presamples,
+		Samples:         Samples,
+		Timebase:        Timebase,
+		TimestampOffset: TimestampOffset,
+		NumberOfRows:    NumberOfRows,
+		NumberOfColumns: NumberOfColumns,
+		FileName:        FileName}
+	dp.LJH22 = &w
+}
+
+// HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
+func (dp *DataPublisher) HasLJH22() bool {
+	return dp.LJH22 != nil
+}
+func (dp *DataPublisher) RemoveLJH22() {
+	dp.LJH22.Close()
+	dp.LJH22 = nil
+}
+
+// PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
+func (dp DataPublisher) PublishData(records []*DataRecord) error {
+	for _, record := range records {
+		if dp.pubSocket != nil {
+			header, signal := packet(record)
+			err := dp.pubSocket.SendFrame(header, czmq.FlagMore)
+			if err != nil {
+				panic("zmq send error")
+			}
+			err = dp.pubSocket.SendFrame(signal, czmq.FlagNone)
+			if err != nil {
+				panic("zmq send error")
 			}
 		}
+		if dp.HasLJH22() {
+			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
+				// if the file doesn't exists yet, create it and write header
+				err := dp.LJH22.CreateFile()
+				if err != nil {
+					return err
+				}
+				dp.LJH22.WriteHeader()
+			}
+			nano := record.trigTime.UnixNano()
+			data := make([]uint16, len(record.data))
+			for i, v := range record.data {
+				data[i] = uint16(v)
+			}
+			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, data)
+		}
 	}
+	return nil
 }
 
 func packet(rec *DataRecord) ([]byte, []byte) {

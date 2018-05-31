@@ -115,11 +115,6 @@ func (ds *AnySource) PrepareRun() error {
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run()
 
-	// Start a data publishing goroutine
-	const publishChannelDepth = 500
-	dataToPub := make(chan []*DataRecord, publishChannelDepth)
-	go PublishRecords(dataToPub, ds.abortSelf, PortTrigs)
-
 	// Channels onto which we'll put data produced by this source
 	ds.output = make([]chan DataSegment, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
@@ -130,7 +125,7 @@ func (ds *AnySource) PrepareRun() error {
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
 	for chnum, ch := range ds.output {
-		dsp := NewDataStreamProcessor(chnum, dataToPub, ds.broker)
+		dsp := NewDataStreamProcessor(chnum, ds.broker)
 		dsp.SampleRate = ds.sampleRate
 		ds.processors[chnum] = dsp
 
