@@ -28,5 +28,17 @@ func TestPublishData(t *testing.T) {
 	if dp.HasLJH22() {
 		t.Error("HasLJH22 want false, have", dp.HasLJH22())
 	}
+	if dp.HasPubFeederChan() {
+		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
+	}
+	dp.SetPubFeederChan()
+	if !dp.HasPubFeederChan() {
+		t.Error("HasPubFeederChan want true, have", dp.HasPubFeederChan())
+	}
+	dp.PublishData(records)
+	dp.RemovePubFeederChan()
+	if dp.HasPubFeederChan() {
+		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
+	}
 
 }

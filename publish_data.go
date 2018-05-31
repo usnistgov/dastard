@@ -3,6 +3,7 @@ package dastard
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/usnistgov/dastard/ljh"
 
@@ -12,8 +13,8 @@ import (
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
 // in each call to PublishData
 type DataPublisher struct {
-	pubSocket *czmq.Sock
-	LJH22     *ljh.Writer
+	PubFeederChan chan []*DataRecord
+	LJH22         *ljh.Writer
 }
 
 // SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -38,21 +39,54 @@ func (dp *DataPublisher) RemoveLJH22() {
 	dp.LJH22.Close()
 	dp.LJH22 = nil
 }
+func (dp *DataPublisher) HasPubFeederChan() bool {
+	return dp.PubFeederChan != nil
+}
+
+func (dp *DataPublisher) SetPubFeederChan() {
+	dp.PubFeederChan = PubFeederChan
+}
+func (dp *DataPublisher) RemovePubFeederChan() {
+	dp.PubFeederChan = nil
+}
+
+var PubFeederChan chan []*DataRecord
+
+func configurePubSocket() error {
+	const publishChannelDepth = 500
+	PubFeederChan = make(chan []*DataRecord, publishChannelDepth)
+	hostname := fmt.Sprintf("tcp://*:%d", PortTrigs)
+	pubSocket, err := czmq.NewPub(hostname)
+	if err != nil {
+		return err
+	}
+	go func() {
+		defer pubSocket.Destroy()
+		for {
+			records := <-PubFeederChan
+			for _, record := range records {
+				header, signal := packet(record)
+				err := pubSocket.SendFrame(header, czmq.FlagMore)
+				if err != nil {
+					panic("zmq send error")
+				}
+				err = pubSocket.SendFrame(signal, czmq.FlagNone)
+				if err != nil {
+					panic("zmq send error")
+				}
+			}
+		}
+
+	}()
+	return nil
+}
 
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
 func (dp DataPublisher) PublishData(records []*DataRecord) error {
+	if dp.HasPubFeederChan() {
+		dp.PubFeederChan <- records
+	}
 	for _, record := range records {
-		if dp.pubSocket != nil {
-			header, signal := packet(record)
-			err := dp.pubSocket.SendFrame(header, czmq.FlagMore)
-			if err != nil {
-				panic("zmq send error")
-			}
-			err = dp.pubSocket.SendFrame(signal, czmq.FlagNone)
-			if err != nil {
-				panic("zmq send error")
-			}
-		}
 		if dp.HasLJH22() {
 			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
