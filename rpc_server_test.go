@@ -159,7 +159,6 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
-	configurePubSocket()
 	defer f.Close()
 	log.SetOutput(f)
 

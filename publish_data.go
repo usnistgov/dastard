@@ -44,6 +44,9 @@ func (dp *DataPublisher) HasPubFeederChan() bool {
 }
 
 func (dp *DataPublisher) SetPubFeederChan() {
+	if PubFeederChan == nil {
+		panic("run configurePubSocket before SetPubFeederChan")
+	}
 	dp.PubFeederChan = PubFeederChan
 }
 func (dp *DataPublisher) RemovePubFeederChan() {
@@ -52,8 +55,15 @@ func (dp *DataPublisher) RemovePubFeederChan() {
 
 var PubFeederChan chan []*DataRecord
 
+// configurePubSocket should be run exactly one time
+// it initializes PubFeederChan and launches a goroutine (with no way to stop it at the moment)
+// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs
 func configurePubSocket() error {
+	if PubFeederChan != nil {
+		panic("run configurePubSocket only one time")
+	}
 	const publishChannelDepth = 500
+	// I think this could be a PubChanneler
 	PubFeederChan = make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", PortTrigs)
 	pubSocket, err := czmq.NewPub(hostname)
@@ -138,4 +148,12 @@ func packet(rec *DataRecord) ([]byte, []byte) {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, rec.data)
 	return header.Bytes(), buf.Bytes()
+}
+
+// this is run on package initialization
+func init() {
+	err := configurePubSocket()
+	if err != nil {
+		panic(fmt.Sprint("configurePubSocket error:", err))
+	}
 }

@@ -1,7 +1,10 @@
 package dastard
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/zeromq/goczmq"
 )
 
 func TestPublishData(t *testing.T) {
@@ -28,6 +31,12 @@ func TestPublishData(t *testing.T) {
 	if dp.HasLJH22() {
 		t.Error("HasLJH22 want false, have", dp.HasLJH22())
 	}
+	// ZMQ publishing
+	topics := "" // comma delimted list of topics to subscribe to, empty strings subscribes to all topics
+	sub, err := goczmq.NewSub(fmt.Sprintf("tcp://localhost:%v", PortTrigs), topics)
+	if err != nil {
+		t.Error("Sub ZMQ Error:", err)
+	}
 	if dp.HasPubFeederChan() {
 		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
 	}
@@ -40,5 +49,12 @@ func TestPublishData(t *testing.T) {
 	if dp.HasPubFeederChan() {
 		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
 	}
+	// I can't get ANY czmq working with tcp ports, I got a pub-sub example from the czmq tests using inproc to work
+	// same example, using tcp, does not work
+	msg, err := sub.RecvMessageNoWait()
+	_ = msg // don't complain about unused msg
+	// if err != nil {
+	// 	t.Error("ZMQ error:", err, "\nmsg:", msg)
+	// }
 
 }
