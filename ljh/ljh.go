@@ -5,6 +5,7 @@ package ljh
 import (
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -171,6 +172,100 @@ func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) err
 		return err
 	}
 	w.RecordsWritten += 1
+	return nil
+}
+
+// Writer writes LJH3.0 files
+type Writer3 struct {
+	ChanNum         int
+	Timebase        float64
+	NumberOfRows    int
+	NumberOfColumns int
+	Row             int
+	Column          int
+	HeaderWritten   bool
+	FileName        string
+	RecordsWritten  int
+
+	file *os.File
+}
+
+type HeaderTDM struct {
+	NumberOfRows    int
+	NumberOfColumns int
+	Row             int
+	Column          int
+}
+
+type Header struct {
+	Frameperiod   float64   `json:"frameperiod"`
+	Format        string    `json:"File Format"`
+	FormatVersion string    `json:"File Format Version"`
+	TDM           HeaderTDM `json:"TDM"`
+}
+
+func (w *Writer3) WriteHeader() error {
+	if w.HeaderWritten {
+		return errors.New("header already written")
+	}
+	h := Header{Frameperiod: w.Timebase, Format: "LJH3", FormatVersion: "3.0.0",
+		TDM: HeaderTDM{NumberOfRows: w.NumberOfRows, NumberOfColumns: w.NumberOfColumns,
+			Row: w.Row, Column: w.Column}}
+	s, err := json.MarshalIndent(h, "", "    ")
+	if err != nil {
+		panic("MarshallIndent error")
+	}
+	_, err = w.file.Write(s)
+	if err != nil {
+		return err
+	}
+	_, err = w.file.WriteString("\n")
+	if err != nil {
+		return err
+	}
+	w.HeaderWritten = true
+	return nil
+}
+
+func (w *Writer3) WriteRecord(firstRisingSample int, rowcount int64, timestamp int64, data []uint16) error {
+	err := binary.Write(w.file, binary.LittleEndian, int32(len(data)))
+	if err != nil {
+		return err
+	}
+	err = binary.Write(w.file, binary.LittleEndian, int32(firstRisingSample))
+	if err != nil {
+		return err
+	}
+	err = binary.Write(w.file, binary.LittleEndian, rowcount)
+	if err != nil {
+		return err
+	}
+	err = binary.Write(w.file, binary.LittleEndian, timestamp)
+	if err != nil {
+		return err
+	}
+	err = binary.Write(w.file, binary.LittleEndian, data)
+	if err != nil {
+		return err
+	}
+	w.RecordsWritten += 1
+	return nil
+}
+
+func (w Writer3) Close() {
+	w.file.Close()
+}
+
+func (w *Writer3) CreateFile() error {
+	if w.file == nil {
+		file, err := os.Create(w.FileName)
+		if err != nil {
+			return err
+		}
+		w.file = file
+	} else {
+		return errors.New("file already exists")
+	}
 	return nil
 }
 

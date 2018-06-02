@@ -164,3 +164,53 @@ func TestWriter(t *testing.T) {
 	}
 
 }
+
+func TestWriter3(t *testing.T) {
+	w := Writer3{FileName: "writertest.ljh3"}
+	err := w.CreateFile()
+	if err != nil {
+		t.Errorf("file creation error: %v", err)
+	}
+	if w.RecordsWritten != 0 {
+		t.Error("RecordsWritten want 0, have", w.RecordsWritten)
+	}
+	if w.HeaderWritten {
+		t.Error("TestWriter: header written should be false")
+	}
+	err = w.WriteHeader()
+	if !w.HeaderWritten {
+		t.Error("TestWriter: header written should be true")
+	}
+	if err != nil {
+		t.Errorf("WriteHeader Error: %v", err)
+	}
+	data := make([]uint16, 100)
+	stat, _ := os.Stat("writertest.ljh3")
+	sizeHeader := stat.Size()
+	err = w.WriteRecord(0, 0, 0, data)
+	if err != nil {
+		t.Errorf("WriteRecord Error: %v", err)
+	}
+	if w.RecordsWritten != 1 {
+		t.Error("RecordsWritten want 1, have", w.RecordsWritten)
+	}
+	stat, _ = os.Stat("writertest.ljh3")
+	sizeRecord := stat.Size()
+	expectSize := sizeHeader + 4 + 4 + 8 + 8 + 2*int64(len(data))
+	if sizeRecord != expectSize {
+		t.Errorf("ljh file wrong size after writing record, want %v, have %v", expectSize, sizeRecord)
+	}
+	// write a record of different length, should work
+	otherLengthData := make([]uint16, 101)
+	err = w.WriteRecord(0, 0, 0, otherLengthData)
+	if err != nil {
+		t.Errorf("WriterTest: couldn't write other size")
+	}
+	stat, _ = os.Stat("writertest.ljh3")
+	sizeRecord = stat.Size()
+	expectSize += 4 + 4 + 8 + 8 + 2*int64(len(otherLengthData))
+	if sizeRecord != expectSize {
+		t.Errorf("ljh file wrong size after writing record, want %v, have %v", expectSize, sizeRecord)
+	}
+	w.Close()
+}

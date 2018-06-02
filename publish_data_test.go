@@ -56,5 +56,21 @@ func TestPublishData(t *testing.T) {
 	// if err != nil {
 	// 	t.Error("ZMQ error:", err, "\nmsg:", msg)
 	// }
+	dp.RemovePubFeederChan()
 
+	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
+	err = dp.PublishData(records)
+	if err != nil {
+		t.Error("failed to publish record")
+	}
+	if dp.LJH3.RecordsWritten != 1 {
+		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
+	}
+	if !dp.HasLJH3() {
+		t.Error("HasLJH3 want true, have", dp.HasLJH3())
+	}
+	dp.RemoveLJH3()
+	if dp.HasLJH3() {
+		t.Error("HasLJH3 want false, have", dp.HasLJH3())
+	}
 }
