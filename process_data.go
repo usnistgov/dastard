@@ -228,7 +228,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 // return the uncorrected std deviation of a float slice
 func stdDev(a []float64) float64 {
 	if len(a) == 0 {
-		panic("std deviation of 0 length slice is undefined")
+		return math.NaN()
 	}
 	s, s2 := 0.0, 0.0
 	for _, v := range a {
