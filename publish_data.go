@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/usnistgov/dastard/ljh"
+	"github.com/usnistgov/dastard/off"
 
 	czmq "github.com/zeromq/goczmq"
 )
@@ -16,6 +17,29 @@ type DataPublisher struct {
 	PubFeederChan chan []*DataRecord
 	LJH22         *ljh.Writer
 	LJH3          *ljh.Writer3
+	OFF           *off.Writer
+}
+
+// SetOFF adds an OFF writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
+func (dp *DataPublisher) SetOFF(ChanNum int, Timebase float64,
+	NumberOfRows int, NumberOfColumns int, NumberOfBases int, FileName string) {
+	w := off.Writer{ChanNum: ChanNum,
+		Timebase:        Timebase,
+		NumberOfRows:    NumberOfRows,
+		NumberOfColumns: NumberOfColumns,
+		FileName:        FileName,
+		NumberOfBases:   NumberOfBases, ProjectorsPlaceHolder: "projectors go here",
+		BasisPlaceHolder: "basis goes here", NoiseWhitenerPlaceHolder: "noise whitener goes here"}
+	dp.OFF = &w
+}
+
+// HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
+func (dp *DataPublisher) HasOFF() bool {
+	return dp.OFF != nil
+}
+func (dp *DataPublisher) RemoveOFF() {
+	dp.OFF.Close()
+	dp.OFF = nil
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -154,6 +178,28 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 				data[i] = uint16(v)
 			}
 			dp.LJH3.WriteRecord(record.presamples+1, int64(record.trigFrame), int64(nano)/1000, data)
+		}
+	}
+	if dp.HasOFF() {
+		for _, record := range records {
+			if !dp.OFF.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
+				// if the file doesn't exists yet, create it and write header
+				err := dp.OFF.CreateFile()
+				if err != nil {
+					return err
+				}
+				dp.OFF.WriteHeader()
+			}
+			nano := record.trigTime.UnixNano()
+			data := make([]uint16, len(record.data))
+			for i, v := range record.data {
+				data[i] = uint16(v)
+			}
+			modelCoefs := make([]float32, len(record.modelCoefs))
+			for i, v := range record.modelCoefs {
+				modelCoefs[i] = float32(v)
+			}
+			dp.OFF.WriteRecord(record.presamples+1, int64(record.trigFrame), int64(nano)/1000, modelCoefs)
 		}
 	}
 	return nil
