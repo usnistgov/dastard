@@ -79,6 +79,9 @@ var PubFeederChan chan []*DataRecord
 // configurePubSocket should be run exactly one time
 // it initializes PubFeederChan and launches a goroutine (with no way to stop it at the moment)
 // that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs
+// this way even if go routines in different threads want to publish records, they all use the same
+// zmq port
+// *** This can probably be replaced by czmq.PubChanneler ***
 func configurePubSocket() error {
 	if PubFeederChan != nil {
 		panic("run configurePubSocket only one time")
