@@ -13,8 +13,9 @@ func TestPublishRecord(t *testing.T) {
 	data := []RawType{1, 2, 3, 4, 5, 4, 3, 2, 1}
 	rec := &DataRecord{data: data, trigTime: time.Now()}
 
-	header, message := packet(rec)
-
+	fullMessage := messageRecords(rec)
+	header := fullMessage[0]
+	message := fullMessage[1]
 	buf := bytes.NewReader(header)
 	if buf.Len() != len(header) {
 		t.Errorf("bytes.Reader has length %d, want %d", buf.Len(), len(header))

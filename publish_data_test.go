@@ -59,11 +59,9 @@ func TestPublishData(t *testing.T) {
 	}
 	// ZMQ publishing
 	topics := "" // comma delimted list of topics to subscribe to, empty strings subscribes to all topics
-	inprocEndpoint := "inproc://channelerpubsub"
+	inprocEndpoint := "inproc://channelerpubsubRecords"
 	sub := czmq.NewSubChanneler(inprocEndpoint, topics)
-	if err != nil {
-		t.Error("Sub ZMQ Error:", err)
-	}
+	defer sub.Destroy()
 	if dp.HasPubRecords() {
 		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
@@ -79,13 +77,44 @@ func TestPublishData(t *testing.T) {
 	if dp.HasPubRecords() {
 		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
-	select {
-	case msg := <-sub.RecvChan:
-		if len(msg) != 2 {
-			t.Error("bad message length")
+	for i := 0; i < 3; i++ {
+		select {
+		case msg := <-sub.RecvChan:
+			if len(msg) != 2 {
+				t.Error("bad message length")
+			}
+		case <-time.After(time.Second * 1):
+			t.Errorf("timeout")
 		}
-	case <-time.After(time.Second * 1):
-		t.Errorf("timeout")
+	}
+
+	inprocEndpoint = "inproc://channelerpubsubSummaries"
+	sub = czmq.NewSubChanneler(inprocEndpoint, topics)
+	defer sub.Destroy()
+	if dp.HasPubSummaries() {
+		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+	}
+	dp.SetPubSummariesWithHostname(inprocEndpoint)
+
+	if !dp.HasPubSummaries() {
+		t.Error("HasPubSummaries want true, have", dp.HasPubSummaries())
+	}
+
+	dp.PublishData(records)
+
+	dp.RemovePubSummaries()
+	if dp.HasPubSummaries() {
+		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+	}
+	for i := 0; i < 3; i++ {
+		select {
+		case msg := <-sub.RecvChan:
+			if len(msg) != 2 {
+				t.Error("bad message length")
+			}
+		case <-time.After(time.Second * 1):
+			t.Errorf("timeout")
+		}
 	}
 
 	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
