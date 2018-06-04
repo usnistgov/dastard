@@ -157,15 +157,16 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 
 // messageSummaries makes a message with the following format for publishing on portTrigs
 // Structure of the message header is defined in BINARY_FORMATS.md
-// 16 bits: channel number
-//  8 bits: header version number
-//  8 bits: Presamples
-//  8 bits: length of record
-//  8 bits: pretrigMean
-//  8 bits: peakValue
-//  8 bits: residualStdDev
-//  8 bits: UnixNano trigTime
-//  8 bits: trigFrame
+// uint16: channel number
+// uint8: header version number
+// uint32: bits: Presamples
+// uint32: length of record
+// float32: pretrigMean
+// float32: peakValue
+// float32: pulseRMS
+// float32: residualStdDev
+// uint64: UnixNano trigTime
+// uint64: trigFrame
 //  end of first message packet
 //  modelCoefs, each coef is float32, length can vary
 func messageSummaries(rec *DataRecord) [][]byte {
@@ -176,9 +177,11 @@ func messageSummaries(rec *DataRecord) [][]byte {
 	binary.Write(header, binary.LittleEndian, headerVersion)
 	binary.Write(header, binary.LittleEndian, uint32(rec.presamples))
 	binary.Write(header, binary.LittleEndian, uint32(len(rec.data)))
-	binary.Write(header, binary.LittleEndian, float32(rec.pretrigMean))    // TODO: change to volts/arb
-	binary.Write(header, binary.LittleEndian, float32(rec.peakValue))      // TODO: change to volts/arb
-	binary.Write(header, binary.LittleEndian, float32(rec.residualStdDev)) // TODO: change to volts/arb
+	binary.Write(header, binary.LittleEndian, float32(rec.pretrigMean))
+	binary.Write(header, binary.LittleEndian, float32(rec.peakValue))
+	binary.Write(header, binary.LittleEndian, float32(rec.pulseRMS))
+	binary.Write(header, binary.LittleEndian, float32(rec.pulseAverage))
+	binary.Write(header, binary.LittleEndian, float32(rec.residualStdDev))
 	nano := rec.trigTime.UnixNano()
 	binary.Write(header, binary.LittleEndian, uint64(nano))
 	binary.Write(header, binary.LittleEndian, uint64(rec.trigFrame))
@@ -190,20 +193,21 @@ func messageSummaries(rec *DataRecord) [][]byte {
 
 // messageRecords makes a message with the following format for publishing on portTrigs
 // Structure of the message header is defined in BINARY_FORMATS.md
-// 16 bits: channel number
-//  8 bits: header version number
-//  8 bits: code for data type (0-1 = 8 bits; 2-3 = 16; 4-5 = 32; 6-7 = 64; odd=uint; even=int)
-// 32 bits: # of pre-trigger samples
-// 32 bits: # of samples, total
-// 32 bits: sample period, in seconds (float)
-// 32 bits: volts per arb conversion (float)
-// 64 bits: trigger time, in ns since epoch 1970
-// 64 bits: trigger frame #
+// uint16: channel number
+// uint8: header version number
+// uint8: code for data type (0-1 = 8 bits; 2-3 = 16; 4-5 = 32; 6-7 = 64; odd=uint; even=int)
+// uint32: # of pre-trigger samples
+// uint32: # of samples, total
+// float32: sample period, in seconds (float)
+// float32: volts per arb conversion (float) (not implemented yet)
+// uint64: trigger time, in ns since epoch 1970
+// uint64: trigger frame #
+// end of first message packet
+// data, each sample is uint16, length can vary (but for now is equal to # of samples which should be removed because it is redundant)
 func messageRecords(rec *DataRecord) [][]byte {
 
 	const headerVersion = uint8(0)
 	const dataType = uint8(3)
-
 	header := new(bytes.Buffer)
 	binary.Write(header, binary.LittleEndian, uint16(rec.channum))
 	binary.Write(header, binary.LittleEndian, headerVersion)
@@ -211,7 +215,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 	binary.Write(header, binary.LittleEndian, uint32(rec.presamples))
 	binary.Write(header, binary.LittleEndian, uint32(len(rec.data)))
 	binary.Write(header, binary.LittleEndian, rec.sampPeriod)
-	binary.Write(header, binary.LittleEndian, float32(rec.peakValue)) // TODO: change to volts/arb
+	binary.Write(header, binary.LittleEndian, float32(0)) // todo make this meaningful, though doesn't seem like its needed with every pulse
 	nano := rec.trigTime.UnixNano()
 	binary.Write(header, binary.LittleEndian, uint64(nano))
 	binary.Write(header, binary.LittleEndian, uint64(rec.trigFrame))
