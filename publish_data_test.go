@@ -8,31 +8,6 @@ import (
 )
 
 func TestPublishData(t *testing.T) {
-	// This block is copied from the goczmq TestPublishData
-	// without it, this test fails with a timeout when trying to recieve a message
-	// from pub
-	// I'm guessing there is some sort of initilization in the zmq library that does?
-	func() {
-		pubz := czmq.NewPubChanneler("inproc://channelerpubsubz")
-		defer pubz.Destroy()
-
-		subz := czmq.NewSubChanneler("inproc://channelerpubsubz", "a,b")
-		defer subz.Destroy()
-
-		pubz.SendChan <- [][]byte{[]byte("a"), []byte("message")}
-		select {
-		case resp := <-subz.RecvChan:
-			topic, message := string(resp[0]), string(resp[1])
-			if want, got := "a", topic; want != got {
-				t.Errorf("want '%s', got '%s'", want, got)
-			}
-			if want, got := "message", message; want != got {
-				t.Errorf("want '%s', got '%s'", want, got)
-			}
-		case <-time.After(time.Second * 2):
-			t.Errorf("timeout")
-		}
-	}()
 
 	dp := DataPublisher{}
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
@@ -83,8 +58,8 @@ func TestPublishData(t *testing.T) {
 			if len(msg) != 2 {
 				t.Error("bad message length")
 			}
-		case <-time.After(time.Second * 1):
-			t.Errorf("timeout")
+		case <-time.After(time.Second * 20):
+			t.Errorf("timeout, i=%v", i)
 		}
 	}
 
@@ -112,8 +87,8 @@ func TestPublishData(t *testing.T) {
 			if len(msg) != 2 {
 				t.Error("bad message length")
 			}
-		case <-time.After(time.Second * 1):
-			t.Errorf("timeout")
+		case <-time.After(time.Second * 15):
+			t.Errorf("timeout, i=%v", i)
 		}
 	}
 
