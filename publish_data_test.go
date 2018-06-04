@@ -1,17 +1,43 @@
 package dastard
 
 import (
-	"fmt"
 	"testing"
+	"time"
 
-	"github.com/zeromq/goczmq"
+	czmq "github.com/zeromq/goczmq"
 )
 
 func TestPublishData(t *testing.T) {
+	// This block is copied from the goczmq TestPublishData
+	// without it, this test fails with a timeout when trying to recieve a message
+	// from pub
+	// I'm guessing there is some sort of initilization in the zmq library that does?
+	func() {
+		pubz := czmq.NewPubChanneler("inproc://channelerpubsubz")
+		defer pubz.Destroy()
+
+		subz := czmq.NewSubChanneler("inproc://channelerpubsubz", "a,b")
+		defer subz.Destroy()
+
+		pubz.SendChan <- [][]byte{[]byte("a"), []byte("message")}
+		select {
+		case resp := <-subz.RecvChan:
+			topic, message := string(resp[0]), string(resp[1])
+			if want, got := "a", topic; want != got {
+				t.Errorf("want '%s', got '%s'", want, got)
+			}
+			if want, got := "message", message; want != got {
+				t.Errorf("want '%s', got '%s'", want, got)
+			}
+		case <-time.After(time.Second * 2):
+			t.Errorf("timeout")
+		}
+	}()
+
 	dp := DataPublisher{}
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4}
-	records := []*DataRecord{rec}
+	records := []*DataRecord{rec, rec, rec}
 	err := dp.PublishData(records)
 	if err != nil {
 		t.Fail()
@@ -21,7 +47,7 @@ func TestPublishData(t *testing.T) {
 	if err != nil {
 		t.Fail()
 	}
-	if dp.LJH22.RecordsWritten != 1 {
+	if dp.LJH22.RecordsWritten != 3 {
 		t.Fail()
 	}
 	if !dp.HasLJH22() {
@@ -33,37 +59,41 @@ func TestPublishData(t *testing.T) {
 	}
 	// ZMQ publishing
 	topics := "" // comma delimted list of topics to subscribe to, empty strings subscribes to all topics
-	sub, err := goczmq.NewSub(fmt.Sprintf("tcp://localhost:%v", PortTrigs), topics)
+	inprocEndpoint := "inproc://channelerpubsub"
+	sub := czmq.NewSubChanneler(inprocEndpoint, topics)
 	if err != nil {
 		t.Error("Sub ZMQ Error:", err)
 	}
-	if dp.HasPubFeederChan() {
-		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
+	if dp.HasPubRecords() {
+		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
-	dp.SetPubFeederChan()
-	if !dp.HasPubFeederChan() {
-		t.Error("HasPubFeederChan want true, have", dp.HasPubFeederChan())
+	dp.SetPubRecordsWithHostname(inprocEndpoint)
+
+	if !dp.HasPubRecords() {
+		t.Error("HasPubRecords want true, have", dp.HasPubRecords())
 	}
+
 	dp.PublishData(records)
-	dp.RemovePubFeederChan()
-	if dp.HasPubFeederChan() {
-		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
+
+	dp.RemovePubRecords()
+	if dp.HasPubRecords() {
+		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
-	// I can't get ANY czmq working with tcp ports, I got a pub-sub example from the czmq tests using inproc to work
-	// same example, using tcp, does not work
-	msg, err := sub.RecvMessageNoWait()
-	_ = msg // don't complain about unused msg
-	// if err != nil {
-	// 	t.Error("ZMQ error:", err, "\nmsg:", msg)
-	// }
-	dp.RemovePubFeederChan()
+	select {
+	case msg := <-sub.RecvChan:
+		if len(msg) != 2 {
+			t.Error("bad message length")
+		}
+	case <-time.After(time.Second * 1):
+		t.Errorf("timeout")
+	}
 
 	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
 	err = dp.PublishData(records)
 	if err != nil {
 		t.Error("failed to publish record")
 	}
-	if dp.LJH3.RecordsWritten != 1 {
+	if dp.LJH3.RecordsWritten != 3 {
 		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
 	}
 	if !dp.HasLJH3() {

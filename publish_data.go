@@ -13,9 +13,10 @@ import (
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
 // in each call to PublishData
 type DataPublisher struct {
-	PubFeederChan chan []*DataRecord
-	LJH22         *ljh.Writer
-	LJH3          *ljh.Writer3
+	PubRecords   *czmq.Channeler
+	PubSummaries *czmq.Channeler
+	LJH22        *ljh.Writer
+	LJH3         *ljh.Writer3
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -60,65 +61,35 @@ func (dp *DataPublisher) RemoveLJH22() {
 	dp.LJH22.Close()
 	dp.LJH22 = nil
 }
-func (dp *DataPublisher) HasPubFeederChan() bool {
-	return dp.PubFeederChan != nil
+func (dp *DataPublisher) HasPubRecords() bool {
+	return dp.PubRecords != nil
 }
 
-func (dp *DataPublisher) SetPubFeederChan() {
-	if PubFeederChan == nil {
-		panic("run configurePubSocket before SetPubFeederChan")
-	}
-	dp.PubFeederChan = PubFeederChan
-}
-func (dp *DataPublisher) RemovePubFeederChan() {
-	dp.PubFeederChan = nil
-}
-
-var PubFeederChan chan []*DataRecord
-
-// configurePubSocket should be run exactly one time
-// it initializes PubFeederChan and launches a goroutine (with no way to stop it at the moment)
-// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs
-// this way even if go routines in different threads want to publish records, they all use the same
-// zmq port
-// *** This can probably be replaced by czmq.PubChanneler ***
-func configurePubSocket() error {
-	if PubFeederChan != nil {
-		panic("run configurePubSocket only one time")
-	}
-	const publishChannelDepth = 500
-	// I think this could be a PubChanneler
-	PubFeederChan = make(chan []*DataRecord, publishChannelDepth)
+func (dp *DataPublisher) SetPubRecords() {
 	hostname := fmt.Sprintf("tcp://*:%d", PortTrigs)
-	pubSocket, err := czmq.NewPub(hostname)
-	if err != nil {
-		return err
-	}
-	go func() {
-		defer pubSocket.Destroy()
-		for {
-			records := <-PubFeederChan
-			for _, record := range records {
-				header, signal := packet(record)
-				err := pubSocket.SendFrame(header, czmq.FlagMore)
-				if err != nil {
-					panic("zmq send error")
-				}
-				err = pubSocket.SendFrame(signal, czmq.FlagNone)
-				if err != nil {
-					panic("zmq send error")
-				}
-			}
-		}
+	dp.SetPubRecordsWithHostname(hostname)
+}
 
-	}()
-	return nil
+func (dp *DataPublisher) SetPubRecordsWithHostname(hostname string) {
+	if dp.PubRecords != nil {
+		panic("dont set this twice! Destroy first!")
+	}
+	dp.PubRecords = czmq.NewPubChanneler(hostname)
+}
+
+func (dp *DataPublisher) RemovePubRecords() {
+	dp.PubRecords.Destroy()
+	dp.PubRecords = nil
 }
 
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
 func (dp DataPublisher) PublishData(records []*DataRecord) error {
-	if dp.HasPubFeederChan() {
-		dp.PubFeederChan <- records
+	if dp.HasPubRecords() {
+		for _, record := range records {
+			header, signal := packet(record)
+			msg := [][]byte{header, signal}
+			dp.PubRecords.SendChan <- msg
+		}
 	}
 	if dp.HasLJH22() {
 		for _, record := range records {
@@ -190,12 +161,4 @@ func packet(rec *DataRecord) ([]byte, []byte) {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, rec.data)
 	return header.Bytes(), buf.Bytes()
-}
-
-// this is run on package initialization
-func init() {
-	err := configurePubSocket()
-	if err != nil {
-		panic(fmt.Sprint("configurePubSocket error:", err))
-	}
 }
