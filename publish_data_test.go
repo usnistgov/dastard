@@ -36,6 +36,7 @@ func TestPublishData(t *testing.T) {
 	topics := "" // comma delimted list of topics to subscribe to, empty strings subscribes to all topics
 	inprocEndpoint := "inproc://channelerpubsubRecords"
 	sub := czmq.NewSubChanneler(inprocEndpoint, topics)
+	time.Sleep(1 * time.Second)
 	defer sub.Destroy()
 	if dp.HasPubRecords() {
 		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
@@ -65,6 +66,8 @@ func TestPublishData(t *testing.T) {
 
 	inprocEndpoint = "inproc://channelerpubsubSummaries"
 	sub = czmq.NewSubChanneler(inprocEndpoint, topics)
+	time.Sleep(1 * time.Second)
+
 	defer sub.Destroy()
 	if dp.HasPubSummaries() {
 		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
