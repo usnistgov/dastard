@@ -117,6 +117,8 @@ func extractFloat(line, pattern string, f *float64) bool {
 	return n >= 1 && err != nil
 }
 
+// CreateFile creates a file with filename .FileName and assigns it to .file
+// you can't write records without doing this
 func (w *Writer) CreateFile() error {
 	if w.file == nil {
 		file, err := os.Create(w.FileName)
@@ -130,7 +132,7 @@ func (w *Writer) CreateFile() error {
 	return nil
 }
 
-// WriterHeader writes a header to .file, returns err from WriteString
+// WriteHeader writes a header to .file, returns err from WriteString
 func (w *Writer) WriteHeader() error {
 	s := fmt.Sprintf(`#LJH Memorial File Format
 Save File Format Version: 2.2.0
@@ -151,13 +153,19 @@ Number of columns: %d
 	return err
 }
 
+// Close closes the associated file, no more records can be written after this
 func (w Writer) Close() {
 	w.file.Close()
 }
 
+// WriteRecord writes a single record to the files
+// timestamp should be a posix timestamp in microseconds
+// rowcount is framecount*number_of_rows+row_number for TDM or TDM-like (eg CDM) data,
+// rowcount=framecount for uMux data
+// return error if data is wrong length (w.Samples is correct length)
 func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) error {
 	if len(data) != w.Samples {
-		return errors.New(fmt.Sprintf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples))
+		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
 	err := binary.Write(w.file, binary.LittleEndian, rowcount)
 	if err != nil {
@@ -171,11 +179,11 @@ func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) err
 	if err != nil {
 		return err
 	}
-	w.RecordsWritten += 1
+	w.RecordsWritten++
 	return nil
 }
 
-// Writer writes LJH3.0 files
+// Writer3 writes LJH3.0 files
 type Writer3 struct {
 	ChanNum         int
 	Timebase        float64
@@ -190,6 +198,7 @@ type Writer3 struct {
 	file *os.File
 }
 
+// HeaderTDM contains info about TDM readout for placing in an LJH3 header
 type HeaderTDM struct {
 	NumberOfRows    int
 	NumberOfColumns int
@@ -197,6 +206,7 @@ type HeaderTDM struct {
 	Column          int
 }
 
+// Header is used to format the LJH3 json header
 type Header struct {
 	Frameperiod   float64   `json:"frameperiod"`
 	Format        string    `json:"File Format"`
@@ -204,6 +214,7 @@ type Header struct {
 	TDM           HeaderTDM `json:"TDM"`
 }
 
+// WriteHeader writes a header to the LJH3 file, return error if header already written
 func (w *Writer3) WriteHeader() error {
 	if w.HeaderWritten {
 		return errors.New("header already written")
@@ -227,6 +238,10 @@ func (w *Writer3) WriteHeader() error {
 	return nil
 }
 
+// WriteRecord writes an LJH3 record
+// firstRisingSample is the index in data of the sample after the pretrigger (zero or one indexed?)
+// timestamp is posix timestamp in microseconds since epoch
+// data can be variable length
 func (w *Writer3) WriteRecord(firstRisingSample int, rowcount int64, timestamp int64, data []uint16) error {
 	err := binary.Write(w.file, binary.LittleEndian, int32(len(data)))
 	if err != nil {
@@ -248,14 +263,16 @@ func (w *Writer3) WriteRecord(firstRisingSample int, rowcount int64, timestamp i
 	if err != nil {
 		return err
 	}
-	w.RecordsWritten += 1
+	w.RecordsWritten++
 	return nil
 }
 
+// Close closes the LJH3 file
 func (w Writer3) Close() {
 	w.file.Close()
 }
 
+// CreateFile opens the LJH3 file for writing, must be called before wring RecordSlice
 func (w *Writer3) CreateFile() error {
 	if w.file == nil {
 		file, err := os.Create(w.FileName)
