@@ -10,13 +10,12 @@ func TestPublishData(t *testing.T) {
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4}
 	records := []*DataRecord{rec, rec, rec}
-	err := dp.PublishData(records)
-	if err != nil {
+
+	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
 	dp.SetLJH22(1, 4, len(d), 1, 1, 8, 1, "TestPublishData.ljh")
-	err = dp.PublishData(records)
-	if err != nil {
+	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
 	if dp.LJH22.RecordsWritten != 3 {
@@ -63,8 +62,7 @@ func TestPublishData(t *testing.T) {
 	}
 
 	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
-	err = dp.PublishData(records)
-	if err != nil {
+	if err := dp.PublishData(records); err != nil {
 		t.Error("failed to publish record")
 	}
 	if dp.LJH3.RecordsWritten != 3 {

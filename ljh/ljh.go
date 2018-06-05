@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 )
@@ -167,16 +166,14 @@ func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) err
 	if len(data) != w.Samples {
 		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
-	err := binary.Write(w.file, binary.LittleEndian, rowcount)
-	if err != nil {
+
+	if err := binary.Write(w.file, binary.LittleEndian, rowcount); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, timestamp)
-	if err != nil {
+	if err := binary.Write(w.file, binary.LittleEndian, timestamp); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, data)
-	if err != nil {
+	if err := binary.Write(w.file, binary.LittleEndian, data); err != nil {
 		return err
 	}
 	w.RecordsWritten++
@@ -226,12 +223,12 @@ func (w *Writer3) WriteHeader() error {
 	if err != nil {
 		panic("MarshallIndent error")
 	}
-	_, err = w.file.Write(s)
-	if err != nil {
+
+	if _, err := w.file.Write(s); err != nil {
 		return err
 	}
-	_, err = w.file.WriteString("\n")
-	if err != nil {
+
+	if _, err := w.file.WriteString("\n"); err != nil {
 		return err
 	}
 	w.HeaderWritten = true
@@ -243,24 +240,20 @@ func (w *Writer3) WriteHeader() error {
 // timestamp is posix timestamp in microseconds since epoch
 // data can be variable length
 func (w *Writer3) WriteRecord(firstRisingSample int, rowcount int64, timestamp int64, data []uint16) error {
-	err := binary.Write(w.file, binary.LittleEndian, int32(len(data)))
-	if err != nil {
+
+	if err := binary.Write(w.file, binary.LittleEndian, int32(len(data))); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, int32(firstRisingSample))
-	if err != nil {
+	if err := binary.Write(w.file, binary.LittleEndian, int32(firstRisingSample)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, rowcount)
-	if err != nil {
+	if err := binary.Write(w.file, binary.LittleEndian, rowcount); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, timestamp)
-	if err != nil {
+	if err := binary.Write(w.file, binary.LittleEndian, timestamp); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, data)
-	if err != nil {
+	if err := binary.Write(w.file, binary.LittleEndian, data); err != nil {
 		return err
 	}
 	w.RecordsWritten++
@@ -274,15 +267,14 @@ func (w Writer3) Close() {
 
 // CreateFile opens the LJH3 file for writing, must be called before wring RecordSlice
 func (w *Writer3) CreateFile() error {
-	if w.file == nil {
-		file, err := os.Create(w.FileName)
-		if err != nil {
-			return err
-		}
-		w.file = file
-	} else {
+	if w.file != nil {
 		return errors.New("file already exists")
 	}
+	file, err := os.Create(w.FileName)
+	if err != nil {
+		return err
+	}
+	w.file = file
 	return nil
 }
 
@@ -330,7 +322,6 @@ header:
 	b := make([]byte, 1024) // Assume that # of bytes will cover all the missing newline chars.
 	textLength -= len(endHeaderTag)
 	r.file.ReadAt(b, int64(textLength))
-	log.Printf("read in %d bytes\n", len(b))
 	idx := strings.Index(string(b), endHeaderTag)
 	if idx < 0 {
 		return fmt.Errorf("Could not find '%s' in LJH file", endHeaderTag)
