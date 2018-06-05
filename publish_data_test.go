@@ -80,7 +80,7 @@ func TestPublishData(t *testing.T) {
 	}
 }
 
-func TestRawTypeToBytes(t *testing.T) {
+func TestRawTypeToX(t *testing.T) {
 	d := []RawType{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
 	b := rawTypeToBytes(d)
 	encodedStr := hex.EncodeToString(b)
@@ -91,6 +91,14 @@ func TestRawTypeToBytes(t *testing.T) {
 	if len(b) != 2*len(d) {
 		t.Errorf("wrong length, have %v, want %v", len(b), len(d))
 	}
+	c := rawTypeToUint16(d)
+	expect := []uint16{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
+	for i, v := range expect {
+		if c[i] != v {
+			t.Errorf("want %v, have %v", v, c[i])
+		}
+	}
+
 }
 
 func BenchmarkPublish(b *testing.B) {
@@ -107,13 +115,6 @@ func BenchmarkPublish(b *testing.B) {
 			b.SetBytes(int64(len(d) * 2 * len(records)))
 		}
 	}
-	// warm up the zmq port, don't worry about any startup time
-	// really doubt this matters
-	dp.SetPubRecords()
-	dp.SetPubSummaries()
-	slowPart(b, dp, records)
-	dp.RemovePubRecords()
-	dp.RemovePubSummaries()
 
 	b.Run("PubRecords", func(b *testing.B) {
 		dp.SetPubRecords()
@@ -166,6 +167,13 @@ func BenchmarkPublish(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			data := rawTypeToBytes(rec.data)
 			b.SetBytes(int64(2 * len(data)))
+		}
+	})
+	b.Run("unix.Nano", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			a := rec.trigTime.UnixNano()
+			_ = a
+			b.SetBytes(8)
 		}
 	})
 

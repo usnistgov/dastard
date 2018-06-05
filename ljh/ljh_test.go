@@ -245,3 +245,15 @@ func BenchmarkLJH3(b *testing.B) {
 		b.SetBytes(int64(2 * len(data)))
 	}
 }
+func BenchmarkFileWrite(b *testing.B) {
+	f, _ := os.Create("benchmark.ljh")
+	data := make([]byte, 2000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := f.Write(data)
+		if err != nil {
+			panic(fmt.Sprint(err))
+		}
+		b.SetBytes(int64(len(data)))
+	}
+}

@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"reflect"
 	"unsafe"
@@ -132,11 +131,7 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 				dp.LJH22.WriteHeader()
 			}
 			nano := record.trigTime.UnixNano()
-			data := make([]uint16, len(record.data))
-			for i, v := range record.data {
-				data[i] = uint16(v)
-			}
-			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, data)
+			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
 	if dp.HasLJH3() {
@@ -150,11 +145,7 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 				dp.LJH3.WriteHeader()
 			}
 			nano := record.trigTime.UnixNano()
-			data := make([]uint16, len(record.data))
-			for i, v := range record.data {
-				data[i] = uint16(v)
-			}
-			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, data)
+			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
 	return nil
@@ -188,12 +179,10 @@ func messageSummaries(rec *DataRecord) [][]byte {
 	header.Write(getbytes.FromFloat32(float32(rec.pulseAverage)))
 	header.Write(getbytes.FromFloat32(float32(rec.residualStdDev)))
 	nano := rec.trigTime.UnixNano()
-	binary.Write(header, binary.LittleEndian, uint64(nano))
-	binary.Write(header, binary.LittleEndian, uint64(rec.trigFrame))
+	header.Write(getbytes.FromInt64(nano))
+	header.Write(getbytes.FromInt64(int64(rec.trigFrame)))
 
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, rec.modelCoefs)
-	return [][]byte{header.Bytes(), buf.Bytes()}
+	return [][]byte{header.Bytes(), getbytes.FromSliceFloat64(rec.modelCoefs)}
 }
 
 // messageRecords makes a message with the following format for publishing on portTrigs
@@ -303,5 +292,13 @@ func rawTypeToBytes(d []RawType) []byte {
 	header.Cap *= 2 // byte takes up half the space of RawType
 	header.Len *= 2
 	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
+}
+
+// rawTypeToUint16convert a []RawType to []byte using unsafe
+// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+func rawTypeToUint16(d []RawType) []uint16 {
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	data := *(*[]uint16)(unsafe.Pointer(&header))
 	return data
 }

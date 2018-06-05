@@ -4,6 +4,7 @@ package ljh
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -168,14 +169,11 @@ func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) err
 	if len(data) != w.Samples {
 		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
-
-	if _, err := w.file.Write(getbytes.FromInt64(rowcount)); err != nil {
-		return err
-	}
-	if _, err := w.file.Write(getbytes.FromInt64(timestamp)); err != nil {
-		return err
-	}
-	if _, err := w.file.Write(getbytes.FromSliceUint16(data)); err != nil {
+	buf := new(bytes.Buffer)
+	buf.Write(getbytes.FromInt64(rowcount))
+	buf.Write(getbytes.FromInt64(timestamp))
+	buf.Write(getbytes.FromSliceUint16(data))
+	if _, err := w.file.Write(buf.Bytes()); err != nil {
 		return err
 	}
 	w.RecordsWritten++
@@ -242,20 +240,13 @@ func (w *Writer3) WriteHeader() error {
 // timestamp is posix timestamp in microseconds since epoch
 // data can be variable length
 func (w *Writer3) WriteRecord(firstRisingSample int32, rowcount int64, timestamp int64, data []uint16) error {
-
-	if _, err := w.file.Write(getbytes.FromInt32(int32(len(data)))); err != nil {
-		return err
-	}
-	if _, err := w.file.Write(getbytes.FromInt32(firstRisingSample)); err != nil {
-		return err
-	}
-	if _, err := w.file.Write(getbytes.FromInt64(rowcount)); err != nil {
-		return err
-	}
-	if _, err := w.file.Write(getbytes.FromInt64(timestamp)); err != nil {
-		return err
-	}
-	if _, err := w.file.Write(getbytes.FromSliceUint16(data)); err != nil {
+	buf := new(bytes.Buffer)
+	buf.Write(getbytes.FromInt32(int32(len(data))))
+	buf.Write(getbytes.FromInt32(firstRisingSample))
+	buf.Write(getbytes.FromInt64(rowcount))
+	buf.Write(getbytes.FromInt64(timestamp))
+	buf.Write(getbytes.FromSliceUint16(data))
+	if _, err := w.file.Write(buf.Bytes()); err != nil {
 		return err
 	}
 	w.RecordsWritten++
