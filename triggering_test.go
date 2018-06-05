@@ -405,11 +405,11 @@ func TestEdgeMulti(t *testing.T) {
 	// here we will find all triggers in trigInds, and short records will be created
 	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti D: MakeShortRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
-	expect_lengths := []int{100, 100, 100, 100, 49, 40, 50, 100}
+	expectLengths := []int{100, 100, 100, 100, 49, 40, 50, 100}
 	for i, record := range primaries {
-		if len(record.data) != expect_lengths[i] {
+		if len(record.data) != expectLengths[i] {
 			//if true {
-			t.Errorf("EdgeMulti D record %v: expect_len %v, len %v, presamples %v, trigFrame %v, %v:%v", i, expect_lengths[i],
+			t.Errorf("EdgeMulti D record %v: expect_len %v, len %v, presamples %v, trigFrame %v, %v:%v", i, expectLengths[i],
 				len(record.data), record.presamples, record.trigFrame, int(record.trigFrame)-record.presamples, int(record.trigFrame)-record.presamples+len(record.data)-1)
 		}
 	}
@@ -435,13 +435,13 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
 	nRepeatE := 3
 	// here we attempt to trigger around a segment boundary
-	primaries, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
+	_, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
 
 	dsp.NSamples = 15
 	dsp.NPresamples = 6
 	dsp.LastEdgeMultiTrigger = 0   // need to reset this each time
-	dsp.EdgeMultiState = SEARCHING // need to reset this after E
-	primaries, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
+	dsp.EdgeMultiState = searching // need to reset this after E
+	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.

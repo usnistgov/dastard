@@ -30,12 +30,16 @@ func (dp *DataPublisher) SetLJH3(ChanNum int, Timebase float64,
 	dp.LJH3 = &w
 }
 
-// HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
+// HasLJH3 returns true if LJH3 is non-nil, eg if writing to LJH3 is occuring
 func (dp *DataPublisher) HasLJH3() bool {
 	return dp.LJH3 != nil
 }
+
+// RemoveLJH3 closes existing LJH3 file and assign .LJH3=nil
 func (dp *DataPublisher) RemoveLJH3() {
-	dp.LJH3.Close()
+	if dp.LJH3 != nil {
+		dp.LJH3.Close()
+	}
 	dp.LJH3 = nil
 }
 
@@ -57,11 +61,16 @@ func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, Time
 func (dp *DataPublisher) HasLJH22() bool {
 	return dp.LJH22 != nil
 }
+
+// RemoveLJH22 closes existing LJH22 file and assign .LJH22=nil
 func (dp *DataPublisher) RemoveLJH22() {
-	dp.LJH22.Close()
+	if dp.LJH22 != nil {
+		dp.LJH22.Close()
+	}
 	dp.LJH22 = nil
 }
 
+// HasPubRecords return true if publishing records on PortTrigs Pub is occuring
 func (dp *DataPublisher) HasPubRecords() bool {
 	return dp.PubRecordsChan != nil
 }
@@ -75,15 +84,18 @@ func (dp *DataPublisher) SetPubRecords() {
 		dp.PubRecordsChan = PubRecordsChan
 	}
 }
+
+// RemovePubRecords stops publing records on PortTrigs
 func (dp *DataPublisher) RemovePubRecords() {
 	dp.PubRecordsChan = nil
 }
 
+// HasPubSummaries return true if publishing summaries on PortSummaries Pub is occuring
 func (dp *DataPublisher) HasPubSummaries() bool {
 	return dp.PubSummariesChan != nil
 }
 
-// SetPubSummaries starts publishing records with czmq over tcp at port=PortTrigs
+// SetPubSummaries starts publishing records with czmq over tcp at port=PortSummaries
 func (dp *DataPublisher) SetPubSummaries() {
 	if PubSummariesChan == nil {
 		configurePubSummariesSocket()
@@ -92,6 +104,8 @@ func (dp *DataPublisher) SetPubSummaries() {
 		dp.PubSummariesChan = PubSummariesChan
 	}
 }
+
+// RemovePubSummaries stop publing summaries on PortSummaires
 func (dp *DataPublisher) RemovePubSummaries() {
 	dp.PubSummariesChan = nil
 }
@@ -213,7 +227,10 @@ func messageRecords(rec *DataRecord) [][]byte {
 	return [][]byte{header.Bytes(), buf.Bytes()}
 }
 
+// PubRecordsChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
 var PubRecordsChan chan []*DataRecord
+
+// PubSummariesChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
 var PubSummariesChan chan []*DataRecord
 
 // configurePubSocket should be run exactly one time

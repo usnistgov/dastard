@@ -13,16 +13,15 @@ func matPrint(X mat.Matrix, t *testing.T) {
 	t.Logf("%v\n", fa)
 }
 
-// TestStdDev checks that DataSegment works as expected
 func TestStdDev(t *testing.T) {
 	s := []float64{1.0, 1.0, 1.0}
-	s_stdDev := stdDev(s)
-	if s_stdDev != 0 {
+	sStdDev := stdDev(s)
+	if sStdDev != 0 {
 		t.Errorf("stdDev returned incorrect result")
 	}
 	z := []float64{-1.0, 1.0}
-	z_stdDev := stdDev(z)
-	if z_stdDev != 1.0 {
+	zSstdDev := stdDev(z)
+	if zSstdDev != 1.0 {
 		t.Errorf("stdDev returned incorrect result")
 	}
 }
@@ -178,9 +177,9 @@ func BenchmarkAnalyze(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			var d []RawType
 			records := make([]*DataRecord, b.N)
-			for i, _ := range records {
+			for i := range records {
 				d = make([]RawType, bm.nsamples)
-				for i, _ := range d {
+				for i := range d {
 					d[i] = RawType(i)
 				}
 				records[i] = &DataRecord{data: d}
