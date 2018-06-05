@@ -76,3 +76,47 @@ func TestPublishData(t *testing.T) {
 		t.Error("HasLJH3 want false, have", dp.HasLJH3())
 	}
 }
+
+func BenchmarkPublish(b *testing.B) {
+	dp := DataPublisher{}
+	d := make([]RawType, 1000)
+	rec := &DataRecord{data: d, presamples: 4}
+	records := make([]*DataRecord, 1)
+	for i := range records {
+		records[i] = rec
+	}
+	slowPart := func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			dp.PublishData(records)
+			b.SetBytes(int64(len(d) * 2 * len(records)))
+		}
+	}
+	// warm up the zmq port, don't worry about any startup time
+	// really doubt this matters
+	dp.SetPubRecords()
+	dp.SetPubSummaries()
+	slowPart(b)
+	dp.RemovePubRecords()
+	dp.RemovePubSummaries()
+
+	b.Run("PubRecords", func(b *testing.B) {
+		dp.SetPubRecords()
+		slowPart(b)
+	})
+	b.Run("PubSummaries", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetPubSummaries()
+		slowPart(b)
+	})
+	b.Run("PubLJH22", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		slowPart(b)
+	})
+	b.Run("PubLJH3", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
+		slowPart(b)
+	})
+
+}
