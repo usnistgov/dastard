@@ -3,6 +3,7 @@ package dastard
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"testing"
 )
 
@@ -79,6 +80,19 @@ func TestPublishData(t *testing.T) {
 	}
 }
 
+func TestRawTypeToBytes(t *testing.T) {
+	d := []RawType{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
+	b := rawTypeToBytes(d)
+	encodedStr := hex.EncodeToString(b)
+	expectStr := "ffff0101cdab01ef45238967"
+	if encodedStr != expectStr {
+		t.Errorf("want %v, have %v", expectStr, encodedStr)
+	}
+	if len(b) != 2*len(d) {
+		t.Errorf("wrong length, have %v, want %v", len(b), len(d))
+	}
+}
+
 func BenchmarkPublish(b *testing.B) {
 	dp := DataPublisher{}
 	d := make([]RawType, 1000)
@@ -146,6 +160,12 @@ func BenchmarkPublish(b *testing.B) {
 			var buf bytes.Buffer
 			binary.Write(&buf, binary.LittleEndian, rec.data)
 			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
+	b.Run("rawTypeToBytes", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			data := rawTypeToBytes(rec.data)
+			b.SetBytes(int64(2 * len(data)))
 		}
 	})
 

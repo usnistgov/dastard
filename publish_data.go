@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"reflect"
+	"unsafe"
 
+	"github.com/usnistgov/dastard/getbytes"
 	"github.com/usnistgov/dastard/ljh"
 
 	czmq "github.com/zeromq/goczmq"
@@ -151,7 +154,7 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 			for i, v := range record.data {
 				data[i] = uint16(v)
 			}
-			dp.LJH3.WriteRecord(record.presamples+1, int64(record.trigFrame), int64(nano)/1000, data)
+			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, data)
 		}
 	}
 	return nil
@@ -175,15 +178,15 @@ func messageSummaries(rec *DataRecord) [][]byte {
 	const headerVersion = uint8(0)
 
 	header := new(bytes.Buffer)
-	binary.Write(header, binary.LittleEndian, uint16(rec.channum))
-	binary.Write(header, binary.LittleEndian, headerVersion)
-	binary.Write(header, binary.LittleEndian, uint32(rec.presamples))
-	binary.Write(header, binary.LittleEndian, uint32(len(rec.data)))
-	binary.Write(header, binary.LittleEndian, float32(rec.pretrigMean))
-	binary.Write(header, binary.LittleEndian, float32(rec.peakValue))
-	binary.Write(header, binary.LittleEndian, float32(rec.pulseRMS))
-	binary.Write(header, binary.LittleEndian, float32(rec.pulseAverage))
-	binary.Write(header, binary.LittleEndian, float32(rec.residualStdDev))
+	header.Write(getbytes.FromUint16(uint16(rec.channum)))
+	header.Write(getbytes.FromUint8(headerVersion))
+	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
+	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
+	header.Write(getbytes.FromFloat32(float32(rec.pretrigMean)))
+	header.Write(getbytes.FromFloat32(float32(rec.peakValue)))
+	header.Write(getbytes.FromFloat32(float32(rec.pulseRMS)))
+	header.Write(getbytes.FromFloat32(float32(rec.pulseAverage)))
+	header.Write(getbytes.FromFloat32(float32(rec.residualStdDev)))
 	nano := rec.trigTime.UnixNano()
 	binary.Write(header, binary.LittleEndian, uint64(nano))
 	binary.Write(header, binary.LittleEndian, uint64(rec.trigFrame))
@@ -211,20 +214,19 @@ func messageRecords(rec *DataRecord) [][]byte {
 	const headerVersion = uint8(0)
 	const dataType = uint8(3)
 	header := new(bytes.Buffer)
-	binary.Write(header, binary.LittleEndian, uint16(rec.channum))
-	binary.Write(header, binary.LittleEndian, headerVersion)
-	binary.Write(header, binary.LittleEndian, dataType)
-	binary.Write(header, binary.LittleEndian, uint32(rec.presamples))
-	binary.Write(header, binary.LittleEndian, uint32(len(rec.data)))
-	binary.Write(header, binary.LittleEndian, rec.sampPeriod)
-	binary.Write(header, binary.LittleEndian, float32(0)) // todo make this meaningful, though doesn't seem like its needed with every pulse
+	header.Write(getbytes.FromUint16(uint16(rec.channum)))
+	header.Write(getbytes.FromUint8(headerVersion))
+	header.Write(getbytes.FromUint8(dataType))
+	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
+	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
+	header.Write(getbytes.FromFloat32(rec.sampPeriod))
+	header.Write(getbytes.FromFloat32(0)) // todo make this meaningful, though doesn't seem like its needed with every pulse
 	nano := rec.trigTime.UnixNano()
-	binary.Write(header, binary.LittleEndian, uint64(nano))
-	binary.Write(header, binary.LittleEndian, uint64(rec.trigFrame))
+	header.Write(getbytes.FromInt64(nano))
+	header.Write(getbytes.FromUint64(uint64(rec.trigFrame)))
 
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, rec.data)
-	return [][]byte{header.Bytes(), buf.Bytes()}
+	data := rawTypeToBytes(rec.data)
+	return [][]byte{header.Bytes(), data}
 }
 
 // PubRecordsChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
@@ -292,4 +294,14 @@ func configurePubSummariesSocket() error {
 		}
 	}()
 	return nil
+}
+
+// rawTypeToBytes convert a []RawType to []byte using unsafe
+// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+func rawTypeToBytes(d []RawType) []byte {
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 2 // byte takes up half the space of RawType
+	header.Len *= 2
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }

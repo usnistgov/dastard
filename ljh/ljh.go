@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/usnistgov/dastard/getbytes"
 )
 
 // PulseRecord is the interface for individual pulse records
@@ -167,13 +169,13 @@ func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) err
 		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
 
-	if err := binary.Write(w.file, binary.LittleEndian, rowcount); err != nil {
+	if _, err := w.file.Write(getbytes.FromInt64(rowcount)); err != nil {
 		return err
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, timestamp); err != nil {
+	if _, err := w.file.Write(getbytes.FromInt64(timestamp)); err != nil {
 		return err
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, data); err != nil {
+	if _, err := w.file.Write(getbytes.FromSliceUint16(data)); err != nil {
 		return err
 	}
 	w.RecordsWritten++
@@ -239,21 +241,21 @@ func (w *Writer3) WriteHeader() error {
 // firstRisingSample is the index in data of the sample after the pretrigger (zero or one indexed?)
 // timestamp is posix timestamp in microseconds since epoch
 // data can be variable length
-func (w *Writer3) WriteRecord(firstRisingSample int, rowcount int64, timestamp int64, data []uint16) error {
+func (w *Writer3) WriteRecord(firstRisingSample int32, rowcount int64, timestamp int64, data []uint16) error {
 
-	if err := binary.Write(w.file, binary.LittleEndian, int32(len(data))); err != nil {
+	if _, err := w.file.Write(getbytes.FromInt32(int32(len(data)))); err != nil {
 		return err
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, int32(firstRisingSample)); err != nil {
+	if _, err := w.file.Write(getbytes.FromInt32(firstRisingSample)); err != nil {
 		return err
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, rowcount); err != nil {
+	if _, err := w.file.Write(getbytes.FromInt64(rowcount)); err != nil {
 		return err
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, timestamp); err != nil {
+	if _, err := w.file.Write(getbytes.FromInt64(timestamp)); err != nil {
 		return err
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, data); err != nil {
+	if _, err := w.file.Write(getbytes.FromSliceUint16(data)); err != nil {
 		return err
 	}
 	w.RecordsWritten++
