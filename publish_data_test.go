@@ -118,5 +118,13 @@ func BenchmarkPublish(b *testing.B) {
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
 		slowPart(b)
 	})
+	b.Run("PubAll", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetPubRecords()
+		dp.SetPubSummaries()
+		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
+		slowPart(b)
+	})
 
 }
