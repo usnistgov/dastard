@@ -2,9 +2,6 @@ package dastard
 
 import (
 	"testing"
-	"time"
-
-	czmq "github.com/zeromq/goczmq"
 )
 
 func TestPublishData(t *testing.T) {
@@ -32,16 +29,11 @@ func TestPublishData(t *testing.T) {
 	if dp.HasLJH22() {
 		t.Error("HasLJH22 want false, have", dp.HasLJH22())
 	}
-	// ZMQ publishing
-	topics := "" // comma delimted list of topics to subscribe to, empty strings subscribes to all topics
-	inprocEndpoint := "inproc://channelerpubsubRecords"
-	sub := czmq.NewSubChanneler(inprocEndpoint, topics)
-	time.Sleep(1 * time.Second)
-	defer sub.Destroy()
+
 	if dp.HasPubRecords() {
 		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
-	dp.SetPubRecordsWithHostname(inprocEndpoint)
+	dp.SetPubRecords()
 
 	if !dp.HasPubRecords() {
 		t.Error("HasPubRecords want true, have", dp.HasPubRecords())
@@ -53,26 +45,11 @@ func TestPublishData(t *testing.T) {
 	if dp.HasPubRecords() {
 		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
-	for i := 0; i < 3; i++ {
-		select {
-		case msg := <-sub.RecvChan:
-			if len(msg) != 2 {
-				t.Error("bad message length")
-			}
-		case <-time.After(time.Second * 20):
-			t.Errorf("timeout, i=%v", i)
-		}
-	}
 
-	inprocEndpoint = "inproc://channelerpubsubSummaries"
-	sub = czmq.NewSubChanneler(inprocEndpoint, topics)
-	time.Sleep(1 * time.Second)
-
-	defer sub.Destroy()
 	if dp.HasPubSummaries() {
 		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
 	}
-	dp.SetPubSummariesWithHostname(inprocEndpoint)
+	dp.SetPubSummaries()
 
 	if !dp.HasPubSummaries() {
 		t.Error("HasPubSummaries want true, have", dp.HasPubSummaries())
@@ -83,16 +60,6 @@ func TestPublishData(t *testing.T) {
 	dp.RemovePubSummaries()
 	if dp.HasPubSummaries() {
 		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
-	}
-	for i := 0; i < 3; i++ {
-		select {
-		case msg := <-sub.RecvChan:
-			if len(msg) != 2 {
-				t.Error("bad message length")
-			}
-		case <-time.After(time.Second * 15):
-			t.Errorf("timeout, i=%v", i)
-		}
 	}
 
 	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")

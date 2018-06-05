@@ -13,10 +13,10 @@ import (
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
 // in each call to PublishData
 type DataPublisher struct {
-	PubRecords   *czmq.Channeler
-	PubSummaries *czmq.Channeler
-	LJH22        *ljh.Writer
-	LJH3         *ljh.Writer3
+	PubRecordsChan   chan []*DataRecord
+	PubSummariesChan chan []*DataRecord
+	LJH22            *ljh.Writer
+	LJH3             *ljh.Writer3
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -63,58 +63,46 @@ func (dp *DataPublisher) RemoveLJH22() {
 }
 
 func (dp *DataPublisher) HasPubRecords() bool {
-	return dp.PubRecords != nil
+	return dp.PubRecordsChan != nil
 }
 
 // SetPubRecords starts publishing records with czmq over tcp at port=PortTrigs
 func (dp *DataPublisher) SetPubRecords() {
-	hostname := fmt.Sprintf("tcp://*:%d", PortTrigs)
-	dp.SetPubRecordsWithHostname(hostname)
-}
-func (dp *DataPublisher) SetPubRecordsWithHostname(hostname string) {
-	if dp.PubRecords != nil {
-		panic("dont set this twice! Destroy first!")
+	if PubRecordsChan == nil {
+		configurePubRecordsSocket()
 	}
-	dp.PubRecords = czmq.NewPubChanneler(hostname)
+	if dp.PubRecordsChan == nil {
+		dp.PubRecordsChan = PubRecordsChan
+	}
 }
 func (dp *DataPublisher) RemovePubRecords() {
-	dp.PubRecords.Destroy()
-	dp.PubRecords = nil
+	dp.PubRecordsChan = nil
 }
 
 func (dp *DataPublisher) HasPubSummaries() bool {
-	return dp.PubSummaries != nil
+	return dp.PubSummariesChan != nil
 }
 
-// SetPubSummaries starts publishing summaries with czmq over tcp at port=PortTrigs
+// SetPubSummaries starts publishing records with czmq over tcp at port=PortTrigs
 func (dp *DataPublisher) SetPubSummaries() {
-	hostname := fmt.Sprintf("tcp://*:%d", PortSummaries)
-	dp.SetPubSummariesWithHostname(hostname)
-}
-func (dp *DataPublisher) SetPubSummariesWithHostname(hostname string) {
-	if dp.PubSummaries != nil {
-		panic("dont set this twice! Destroy first!")
+	if PubSummariesChan == nil {
+		configurePubSummariesSocket()
 	}
-	dp.PubSummaries = czmq.NewPubChanneler(hostname)
+	if dp.PubSummariesChan == nil {
+		dp.PubSummariesChan = PubSummariesChan
+	}
 }
 func (dp *DataPublisher) RemovePubSummaries() {
-	dp.PubSummaries.Destroy()
-	dp.PubSummaries = nil
+	dp.PubSummariesChan = nil
 }
 
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
 func (dp DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.HasPubRecords() {
-		for _, record := range records {
-
-			dp.PubRecords.SendChan <- messageRecords(record)
-		}
+		dp.PubRecordsChan <- records
 	}
 	if dp.HasPubSummaries() {
-		for _, record := range records {
-
-			dp.PubSummaries.SendChan <- messageSummaries(record)
-		}
+		dp.PubSummariesChan <- records
 	}
 	if dp.HasLJH22() {
 		for _, record := range records {
@@ -223,4 +211,68 @@ func messageRecords(rec *DataRecord) [][]byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, rec.data)
 	return [][]byte{header.Bytes(), buf.Bytes()}
+}
+
+var PubRecordsChan chan []*DataRecord
+var PubSummariesChan chan []*DataRecord
+
+// configurePubSocket should be run exactly one time
+// it initializes PubFeederChan and launches a goroutine (with no way to stop it at the moment)
+// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs
+// this way even if go routines in different threads want to publish records, they all use the same
+// zmq port
+// *** This looks like it could be replaced by PubChanneler, but tests show terrible perfoance with Channeler ***
+func configurePubRecordsSocket() error {
+	if PubRecordsChan != nil {
+		panic("run configurePubSocket only one time")
+	}
+	const publishChannelDepth = 500
+	// I think this could be a PubChanneler
+	PubRecordsChan = make(chan []*DataRecord, publishChannelDepth)
+	hostname := fmt.Sprintf("tcp://*:%d", PortTrigs)
+	pubSocket, err := czmq.NewPub(hostname)
+	if err != nil {
+		return err
+	}
+	go func() {
+		defer pubSocket.Destroy()
+		for {
+			records := <-PubRecordsChan
+			for _, record := range records {
+				message := messageRecords(record)
+				err := pubSocket.SendMessage(message)
+				if err != nil {
+					panic("zmq send error")
+				}
+			}
+		}
+	}()
+	return nil
+}
+func configurePubSummariesSocket() error {
+	if PubSummariesChan != nil {
+		panic("run configurePubSocket only one time")
+	}
+	const publishChannelDepth = 500
+	// I think this could be a PubChanneler
+	PubSummariesChan = make(chan []*DataRecord, publishChannelDepth)
+	hostname := fmt.Sprintf("tcp://*:%d", PortSummaries)
+	pubSocket, err := czmq.NewPub(hostname)
+	if err != nil {
+		return err
+	}
+	go func() {
+		defer pubSocket.Destroy()
+		for {
+			records := <-PubSummariesChan
+			for _, record := range records {
+				message := messageSummaries(record)
+				err := pubSocket.SendMessage(message)
+				if err != nil {
+					panic("zmq send error")
+				}
+			}
+		}
+	}()
+	return nil
 }
