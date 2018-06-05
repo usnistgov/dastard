@@ -1,6 +1,8 @@
 package dastard
 
 import (
+	"bytes"
+	"encoding/binary"
 	"testing"
 )
 
@@ -85,7 +87,7 @@ func BenchmarkPublish(b *testing.B) {
 	for i := range records {
 		records[i] = rec
 	}
-	slowPart := func(b *testing.B) {
+	slowPart := func(b *testing.B, dp DataPublisher, records []*DataRecord) {
 		for i := 0; i < b.N; i++ {
 			dp.PublishData(records)
 			b.SetBytes(int64(len(d) * 2 * len(records)))
@@ -95,28 +97,28 @@ func BenchmarkPublish(b *testing.B) {
 	// really doubt this matters
 	dp.SetPubRecords()
 	dp.SetPubSummaries()
-	slowPart(b)
+	slowPart(b, dp, records)
 	dp.RemovePubRecords()
 	dp.RemovePubSummaries()
 
 	b.Run("PubRecords", func(b *testing.B) {
 		dp.SetPubRecords()
-		slowPart(b)
+		slowPart(b, dp, records)
 	})
 	b.Run("PubSummaries", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetPubSummaries()
-		slowPart(b)
+		slowPart(b, dp, records)
 	})
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
-		slowPart(b)
+		slowPart(b, dp, records)
 	})
 	b.Run("PubLJH3", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
-		slowPart(b)
+		slowPart(b, dp, records)
 	})
 	b.Run("PubAll", func(b *testing.B) {
 		dp := DataPublisher{}
@@ -124,7 +126,27 @@ func BenchmarkPublish(b *testing.B) {
 		dp.SetPubSummaries()
 		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
-		slowPart(b)
+		slowPart(b, dp, records)
+	})
+	b.Run("PubNone", func(b *testing.B) {
+		dp := DataPublisher{}
+		slowPart(b, dp, records)
+	})
+	b.Run("RawTypeToUint16", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			data := make([]uint16, len(rec.data))
+			for i, v := range rec.data {
+				data[i] = uint16(v)
+			}
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
+	b.Run("binary.Write", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			var buf bytes.Buffer
+			binary.Write(&buf, binary.LittleEndian, rec.data)
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
 	})
 
 }
