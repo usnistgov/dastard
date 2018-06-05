@@ -295,7 +295,7 @@ func rawTypeToBytes(d []RawType) []byte {
 	return data
 }
 
-// rawTypeToUint16convert a []RawType to []byte using unsafe
+// rawTypeToUint16convert a []RawType to []uint16 using unsafe
 // see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
 func rawTypeToUint16(d []RawType) []uint16 {
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
