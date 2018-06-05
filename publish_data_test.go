@@ -102,7 +102,6 @@ func TestRawTypeToX(t *testing.T) {
 }
 
 func BenchmarkPublish(b *testing.B) {
-	dp := DataPublisher{}
 	d := make([]RawType, 1000)
 	rec := &DataRecord{data: d, presamples: 4}
 	records := make([]*DataRecord, 1)
@@ -117,30 +116,39 @@ func BenchmarkPublish(b *testing.B) {
 	}
 
 	b.Run("PubRecords", func(b *testing.B) {
+		dp := DataPublisher{}
 		dp.SetPubRecords()
+		defer dp.RemovePubRecords()
 		slowPart(b, dp, records)
 	})
 	b.Run("PubSummaries", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetPubSummaries()
+		defer dp.RemovePubSummaries()
 		slowPart(b, dp, records)
 	})
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		defer dp.RemoveLJH22()
 		slowPart(b, dp, records)
 	})
 	b.Run("PubLJH3", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
+		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})
 	b.Run("PubAll", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetPubRecords()
+		defer dp.RemovePubRecords()
 		dp.SetPubSummaries()
+		defer dp.RemovePubSummaries()
 		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		defer dp.RemoveLJH22()
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
+		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})
 	b.Run("PubNone", func(b *testing.B) {
@@ -176,5 +184,85 @@ func BenchmarkPublish(b *testing.B) {
 			b.SetBytes(8)
 		}
 	})
-
+	b.Run("LJH22Direct", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.LJH22.CreateFile()
+		dp.LJH22.WriteHeader()
+		defer dp.RemoveLJH22()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			nano := rec.trigTime.UnixNano()
+			dp.LJH22.WriteRecord(int64(rec.trigFrame), int64(nano)/1000, rawTypeToUint16(rec.data))
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
+	b.Run("LJH3Direct", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh")
+		dp.LJH3.CreateFile()
+		dp.LJH3.WriteHeader()
+		defer dp.RemoveLJH3()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			nano := rec.trigTime.UnixNano()
+			dp.LJH3.WriteRecord(int32(rec.presamples+1), int64(rec.trigFrame), int64(nano)/1000, rawTypeToUint16(rec.data))
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
+	b.Run("LJH22Direct2", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.LJH22.CreateFile()
+		dp.LJH22.WriteHeader()
+		defer dp.RemoveLJH22()
+		micro := int64(rec.trigTime.UnixNano()) / 1000
+		tf := int64(rec.trigFrame)
+		data := rawTypeToUint16(rec.data)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			dp.LJH22.WriteRecord(tf, micro, data)
+			b.SetBytes(int64(2 * len(data)))
+		}
+	})
+	b.Run("LJH3Direct2", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh")
+		dp.LJH3.CreateFile()
+		dp.LJH3.WriteHeader()
+		defer dp.RemoveLJH3()
+		micro := int64(rec.trigTime.UnixNano()) / 1000
+		tf := int64(rec.trigFrame)
+		data := rawTypeToUint16(rec.data)
+		ps := int32(rec.presamples + 1)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			dp.LJH3.WriteRecord(ps, tf, micro, data)
+			b.SetBytes(int64(2 * len(data)))
+		}
+	})
+	b.Run("LJH22Direct3", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.LJH22.CreateFile()
+		dp.LJH22.WriteHeader()
+		defer dp.RemoveLJH22()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			dp.LJH22.WriteRecord(0, 0, rawTypeToUint16(rec.data))
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
+	b.Run("LJH3Direct3", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh")
+		dp.LJH3.CreateFile()
+		dp.LJH3.WriteHeader()
+		defer dp.RemoveLJH3()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			dp.LJH3.WriteRecord(0, 0, 0, rawTypeToUint16(rec.data))
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
 }
