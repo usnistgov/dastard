@@ -8,11 +8,12 @@ import (
 	"net/rpc/jsonrpc"
 	"strings"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
-// TODO: consider renaming -> DastardControl (5/11/18)
 type SourceControl struct {
 	simPulses SimPulseSource
 	triangle  TriangleSource
@@ -48,6 +49,7 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
 	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
+	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
 	return err
@@ -57,6 +59,7 @@ func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, repl
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
 	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
+	s.clientUpdates <- ClientUpdate{"SIMPULSE", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return err
@@ -142,32 +145,46 @@ func (s *SourceControl) broadcastTriggerState() {
 	}
 }
 
+// SendAllStatus sends all relevant status messages to
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
-	log.Println("A Client has requested to send all status")
-	s.broadcastTriggerState()
 	s.broadcastUpdate()
-	s.broadcastTriggerState()
+	s.clientUpdates <- ClientUpdate{"SENDALL", 0}
 	return nil
 }
 
 // RunRPCServer sets up and run a permanent JSON-RPC server.
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
-	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
-	sourcecontrol := new(SourceControl)
-	sourcecontrol.clientUpdates = messageChan
-	server.Register(sourcecontrol)
+	sourceControl := new(SourceControl)
+	sourceControl.clientUpdates = messageChan
+
+	// Load stored settings
+	var okay bool
+	var spc SimPulseSourceConfig
+	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
+	err := viper.UnmarshalKey("simpulse", &spc)
+	if err == nil {
+		sourceControl.ConfigureSimPulseSource(&spc, &okay)
+	}
+	var tsc TriangleSourceConfig
+	err = viper.UnmarshalKey("triangle", &tsc)
+	if err == nil {
+		sourceControl.ConfigureTriangleSource(&tsc, &okay)
+	}
+
 	go func() {
 		ticker := time.Tick(2 * time.Second)
 		for _ = range ticker {
-			sourcecontrol.broadcastUpdate()
-			// var ok bool
-			// sourcecontrol.SendAllStatus("dummy", &ok)
+			sourceControl.broadcastUpdate()
 		}
 	}()
 
+	// Transfer saved configuration from Viper to relevant objects.
+
 	// Now launch the connection handler and accept connections.
+	server := rpc.NewServer()
+	server.Register(sourceControl)
 	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	port := fmt.Sprintf(":%d", portrpc)
 	listener, err := net.Listen("tcp", port)
