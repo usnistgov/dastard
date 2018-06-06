@@ -1,6 +1,7 @@
 package ljh
 
 import (
+	"bufio"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -126,6 +127,7 @@ func TestWriter(t *testing.T) {
 		t.Errorf("WriteHeader Error: %v", err)
 	}
 	data := make([]uint16, 100)
+	w.Flush()
 	stat, _ := os.Stat("writertest.ljh")
 	sizeHeader := stat.Size()
 	err = w.WriteRecord(8888888, 127, data)
@@ -135,6 +137,7 @@ func TestWriter(t *testing.T) {
 	if w.RecordsWritten != 1 {
 		t.Error("RecordsWritten want 1, have", w.RecordsWritten)
 	}
+	w.Flush()
 	stat, _ = os.Stat("writertest.ljh")
 	sizeRecord := stat.Size()
 	expectSize := sizeHeader + 8 + 8 + 2*int64(w.Samples)
@@ -185,6 +188,7 @@ func TestWriter3(t *testing.T) {
 		t.Errorf("WriteHeader Error: %v", err)
 	}
 	data := make([]uint16, 100)
+	w.Flush()
 	stat, _ := os.Stat("writertest.ljh3")
 	sizeHeader := stat.Size()
 	err = w.WriteRecord(0, 0, 0, data)
@@ -194,6 +198,7 @@ func TestWriter3(t *testing.T) {
 	if w.RecordsWritten != 1 {
 		t.Error("RecordsWritten want 1, have", w.RecordsWritten)
 	}
+	w.Flush()
 	stat, _ = os.Stat("writertest.ljh3")
 	sizeRecord := stat.Size()
 	expectSize := sizeHeader + 4 + 4 + 8 + 8 + 2*int64(len(data))
@@ -206,6 +211,7 @@ func TestWriter3(t *testing.T) {
 	if err != nil {
 		t.Errorf("WriterTest: couldn't write other size")
 	}
+	w.Flush()
 	stat, _ = os.Stat("writertest.ljh3")
 	sizeRecord = stat.Size()
 	expectSize += 4 + 4 + 8 + 8 + 2*int64(len(otherLengthData))
@@ -213,4 +219,62 @@ func TestWriter3(t *testing.T) {
 		t.Errorf("ljh file wrong size after writing record, want %v, have %v", expectSize, sizeRecord)
 	}
 	w.Close()
+}
+
+func BenchmarkLJH22(b *testing.B) {
+	w := Writer{FileName: "writertest.ljh",
+		Samples:    1000,
+		Presamples: 50}
+	w.CreateFile()
+	w.WriteHeader()
+	data := make([]uint16, 1000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := w.WriteRecord(8888888, 127, data)
+		if err != nil {
+			panic(fmt.Sprint(err))
+		}
+		b.SetBytes(int64(2 * len(data)))
+	}
+}
+func BenchmarkLJH3(b *testing.B) {
+	w := Writer3{FileName: "writertest.ljh"}
+	w.CreateFile()
+	w.WriteHeader()
+	data := make([]uint16, 1000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := w.WriteRecord(0, 0, 0, data)
+		if err != nil {
+			panic(fmt.Sprint(err))
+		}
+		b.SetBytes(int64(2 * len(data)))
+	}
+}
+func BenchmarkFileWrite(b *testing.B) {
+	f, _ := os.Create("benchmark.ljh")
+	data := make([]byte, 2000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := f.Write(data)
+		if err != nil {
+			panic(fmt.Sprint(err))
+		}
+		b.SetBytes(int64(len(data)))
+	}
+}
+func BenchmarkBufIOWrite(b *testing.B) {
+	f, _ := os.Create("benchmark.ljh")
+	w := bufio.NewWriterSize(f, 65536)
+	defer w.Flush()
+	defer f.Close()
+	data := make([]byte, 2000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := w.Write(data)
+		if err != nil {
+			panic(fmt.Sprint(err))
+		}
+		b.SetBytes(int64(len(data)))
+	}
 }

@@ -1,27 +1,27 @@
 package dastard
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
 	"testing"
-
-	"github.com/zeromq/goczmq"
 )
 
 func TestPublishData(t *testing.T) {
+
 	dp := DataPublisher{}
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4}
-	records := []*DataRecord{rec}
-	err := dp.PublishData(records)
-	if err != nil {
+	records := []*DataRecord{rec, rec, rec}
+
+	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
 	dp.SetLJH22(1, 4, len(d), 1, 1, 8, 1, "TestPublishData.ljh")
-	err = dp.PublishData(records)
-	if err != nil {
+	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
-	if dp.LJH22.RecordsWritten != 1 {
+	if dp.LJH22.RecordsWritten != 3 {
 		t.Fail()
 	}
 	if !dp.HasLJH22() {
@@ -31,39 +31,44 @@ func TestPublishData(t *testing.T) {
 	if dp.HasLJH22() {
 		t.Error("HasLJH22 want false, have", dp.HasLJH22())
 	}
-	// ZMQ publishing
-	topics := "" // comma delimted list of topics to subscribe to, empty strings subscribes to all topics
-	sub, err := goczmq.NewSub(fmt.Sprintf("tcp://localhost:%v", PortTrigs), topics)
-	if err != nil {
-		t.Error("Sub ZMQ Error:", err)
+
+	if dp.HasPubRecords() {
+		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
-	if dp.HasPubFeederChan() {
-		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
+	dp.SetPubRecords()
+
+	if !dp.HasPubRecords() {
+		t.Error("HasPubRecords want true, have", dp.HasPubRecords())
 	}
-	dp.SetPubFeederChan()
-	if !dp.HasPubFeederChan() {
-		t.Error("HasPubFeederChan want true, have", dp.HasPubFeederChan())
-	}
+
 	dp.PublishData(records)
-	dp.RemovePubFeederChan()
-	if dp.HasPubFeederChan() {
-		t.Error("HasPubFeederChan want false, have", dp.HasPubFeederChan())
+
+	dp.RemovePubRecords()
+	if dp.HasPubRecords() {
+		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
 	}
-	// I can't get ANY czmq working with tcp ports, I got a pub-sub example from the czmq tests using inproc to work
-	// same example, using tcp, does not work
-	msg, err := sub.RecvMessageNoWait()
-	_ = msg // don't complain about unused msg
-	// if err != nil {
-	// 	t.Error("ZMQ error:", err, "\nmsg:", msg)
-	// }
-	dp.RemovePubFeederChan()
+
+	if dp.HasPubSummaries() {
+		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+	}
+	dp.SetPubSummaries()
+
+	if !dp.HasPubSummaries() {
+		t.Error("HasPubSummaries want true, have", dp.HasPubSummaries())
+	}
+
+	dp.PublishData(records)
+
+	dp.RemovePubSummaries()
+	if dp.HasPubSummaries() {
+		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+	}
 
 	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
-	err = dp.PublishData(records)
-	if err != nil {
+	if err := dp.PublishData(records); err != nil {
 		t.Error("failed to publish record")
 	}
-	if dp.LJH3.RecordsWritten != 1 {
+	if dp.LJH3.RecordsWritten != 3 {
 		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
 	}
 	if !dp.HasLJH3() {
@@ -73,4 +78,103 @@ func TestPublishData(t *testing.T) {
 	if dp.HasLJH3() {
 		t.Error("HasLJH3 want false, have", dp.HasLJH3())
 	}
+}
+
+func TestRawTypeToX(t *testing.T) {
+	d := []RawType{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
+	b := rawTypeToBytes(d)
+	encodedStr := hex.EncodeToString(b)
+	expectStr := "ffff0101cdab01ef45238967"
+	if encodedStr != expectStr {
+		t.Errorf("want %v, have %v", expectStr, encodedStr)
+	}
+	if len(b) != 2*len(d) {
+		t.Errorf("wrong length, have %v, want %v", len(b), len(d))
+	}
+	c := rawTypeToUint16(d)
+	expect := []uint16{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
+	for i, v := range expect {
+		if c[i] != v {
+			t.Errorf("want %v, have %v", v, c[i])
+		}
+	}
+
+}
+
+func BenchmarkPublish(b *testing.B) {
+	d := make([]RawType, 1000)
+	rec := &DataRecord{data: d, presamples: 4}
+	records := make([]*DataRecord, 1)
+	for i := range records {
+		records[i] = rec
+	}
+	slowPart := func(b *testing.B, dp DataPublisher, records []*DataRecord) {
+		for i := 0; i < b.N; i++ {
+			dp.PublishData(records)
+			b.SetBytes(int64(len(d) * 2 * len(records)))
+		}
+	}
+
+	b.Run("PubRecords", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetPubRecords()
+		defer dp.RemovePubRecords()
+		slowPart(b, dp, records)
+	})
+	b.Run("PubSummaries", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetPubSummaries()
+		defer dp.RemovePubSummaries()
+		slowPart(b, dp, records)
+	})
+	b.Run("PubLJH22", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		defer dp.RemoveLJH22()
+		slowPart(b, dp, records)
+	})
+	b.Run("PubLJH3", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
+		defer dp.RemoveLJH3()
+		slowPart(b, dp, records)
+	})
+	b.Run("PubAll", func(b *testing.B) {
+		dp := DataPublisher{}
+		dp.SetPubRecords()
+		defer dp.RemovePubRecords()
+		dp.SetPubSummaries()
+		defer dp.RemovePubSummaries()
+		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		defer dp.RemoveLJH22()
+		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
+		defer dp.RemoveLJH3()
+		slowPart(b, dp, records)
+	})
+	b.Run("PubNone", func(b *testing.B) {
+		dp := DataPublisher{}
+		slowPart(b, dp, records)
+	})
+	b.Run("RawTypeToUint16", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			data := make([]uint16, len(rec.data))
+			for i, v := range rec.data {
+				data[i] = uint16(v)
+			}
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
+	b.Run("binary.Write", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			var buf bytes.Buffer
+			binary.Write(&buf, binary.LittleEndian, rec.data)
+			b.SetBytes(int64(2 * len(rec.data)))
+		}
+	})
+	b.Run("rawTypeToBytes", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			data := rawTypeToBytes(rec.data)
+			b.SetBytes(int64(2 * len(data)))
+		}
+	})
 }

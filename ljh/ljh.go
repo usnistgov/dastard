@@ -8,9 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
+
+	"github.com/usnistgov/dastard/getbytes"
 )
 
 // PulseRecord is the interface for individual pulse records
@@ -59,7 +60,8 @@ type Writer struct {
 	FileName        string
 	RecordsWritten  int
 
-	file *os.File
+	file   *os.File
+	writer *bufio.Writer
 }
 
 // OpenReader returns an active LJH file reader, or an error.
@@ -117,6 +119,8 @@ func extractFloat(line, pattern string, f *float64) bool {
 	return n >= 1 && err != nil
 }
 
+// CreateFile creates a file with filename .FileName and assigns it to .file
+// you can't write records without doing this
 func (w *Writer) CreateFile() error {
 	if w.file == nil {
 		file, err := os.Create(w.FileName)
@@ -127,10 +131,11 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
+	w.writer = bufio.NewWriterSize(w.file, 32768)
 	return nil
 }
 
-// WriterHeader writes a header to .file, returns err from WriteString
+// WriteHeader writes a header to .file, returns err from WriteString
 func (w *Writer) WriteHeader() error {
 	s := fmt.Sprintf(`#LJH Memorial File Format
 Save File Format Version: 2.2.0
@@ -146,36 +151,45 @@ Number of columns: %d
 #End of Header
 `, w.Presamples, w.Samples, w.ChanNum, w.TimestampOffset, w.Timebase,
 		w.NumberOfRows, w.NumberOfColumns)
-	_, err := w.file.WriteString(s)
+	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
 	return err
 }
 
+// Flush flushes buffered data to disk
+func (w Writer) Flush() {
+	w.writer.Flush()
+}
+
+// Close closes the associated file, no more records can be written after this
 func (w Writer) Close() {
+	w.Flush()
 	w.file.Close()
 }
 
+// WriteRecord writes a single record to the files
+// timestamp should be a posix timestamp in microseconds
+// rowcount is framecount*number_of_rows+row_number for TDM or TDM-like (eg CDM) data,
+// rowcount=framecount for uMux data
+// return error if data is wrong length (w.Samples is correct length)
 func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) error {
 	if len(data) != w.Samples {
-		return errors.New(fmt.Sprintf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples))
+		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
-	err := binary.Write(w.file, binary.LittleEndian, rowcount)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, timestamp)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, data)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromSliceUint16(data)); err != nil {
 		return err
 	}
-	w.RecordsWritten += 1
+	w.RecordsWritten++
 	return nil
 }
 
-// Writer writes LJH3.0 files
+// Writer3 writes LJH3.0 files
 type Writer3 struct {
 	ChanNum         int
 	Timebase        float64
@@ -187,9 +201,11 @@ type Writer3 struct {
 	FileName        string
 	RecordsWritten  int
 
-	file *os.File
+	file   *os.File
+	writer *bufio.Writer
 }
 
+// HeaderTDM contains info about TDM readout for placing in an LJH3 header
 type HeaderTDM struct {
 	NumberOfRows    int
 	NumberOfColumns int
@@ -197,6 +213,7 @@ type HeaderTDM struct {
 	Column          int
 }
 
+// Header is used to format the LJH3 json header
 type Header struct {
 	Frameperiod   float64   `json:"frameperiod"`
 	Format        string    `json:"File Format"`
@@ -204,6 +221,7 @@ type Header struct {
 	TDM           HeaderTDM `json:"TDM"`
 }
 
+// WriteHeader writes a header to the LJH3 file, return error if header already written
 func (w *Writer3) WriteHeader() error {
 	if w.HeaderWritten {
 		return errors.New("header already written")
@@ -215,57 +233,64 @@ func (w *Writer3) WriteHeader() error {
 	if err != nil {
 		panic("MarshallIndent error")
 	}
-	_, err = w.file.Write(s)
-	if err != nil {
+
+	if _, err := w.writer.Write(s); err != nil {
 		return err
 	}
-	_, err = w.file.WriteString("\n")
-	if err != nil {
+
+	if _, err := w.writer.WriteString("\n"); err != nil {
 		return err
 	}
 	w.HeaderWritten = true
 	return nil
 }
 
-func (w *Writer3) WriteRecord(firstRisingSample int, rowcount int64, timestamp int64, data []uint16) error {
-	err := binary.Write(w.file, binary.LittleEndian, int32(len(data)))
-	if err != nil {
+// WriteRecord writes an LJH3 record
+// firstRisingSample is the index in data of the sample after the pretrigger (zero or one indexed?)
+// timestamp is posix timestamp in microseconds since epoch
+// data can be variable length
+func (w *Writer3) WriteRecord(firstRisingSample int32, rowcount int64, timestamp int64, data []uint16) error {
+	if _, err := w.writer.Write(getbytes.FromInt32(int32(len(data)))); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, int32(firstRisingSample))
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt32(firstRisingSample)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, rowcount)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, timestamp)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, data)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromSliceUint16(data)); err != nil {
 		return err
 	}
-	w.RecordsWritten += 1
+	w.RecordsWritten++
 	return nil
 }
 
+// Flush flushes buffered data to disk
+func (w Writer3) Flush() {
+	w.writer.Flush()
+}
+
+// Close closes the LJH3 file
 func (w Writer3) Close() {
+	w.writer.Flush()
 	w.file.Close()
 }
 
+// CreateFile opens the LJH3 file for writing, must be called before wring RecordSlice
 func (w *Writer3) CreateFile() error {
-	if w.file == nil {
-		file, err := os.Create(w.FileName)
-		if err != nil {
-			return err
-		}
-		w.file = file
-	} else {
+	if w.file != nil {
 		return errors.New("file already exists")
 	}
+	file, err := os.Create(w.FileName)
+	if err != nil {
+		return err
+	}
+	w.file = file
+	w.writer = bufio.NewWriterSize(w.file, 32768)
 	return nil
 }
 
@@ -313,7 +338,6 @@ header:
 	b := make([]byte, 1024) // Assume that # of bytes will cover all the missing newline chars.
 	textLength -= len(endHeaderTag)
 	r.file.ReadAt(b, int64(textLength))
-	log.Printf("read in %d bytes\n", len(b))
 	idx := strings.Index(string(b), endHeaderTag)
 	if idx < 0 {
 		return fmt.Errorf("Could not find '%s' in LJH file", endHeaderTag)

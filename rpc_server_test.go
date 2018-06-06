@@ -21,10 +21,9 @@ func simpleClient() (*rpc.Client, error) {
 		tries++
 		if err == nil || tries > retries {
 			return client, err
-		} else {
-			time.Sleep(wait)
-			wait = wait * 2
 		}
+		time.Sleep(wait)
+		wait = wait * 2
 	}
 }
 

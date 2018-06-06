@@ -42,6 +42,9 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 
 	// Where do we store configuration dfiles?
 	u, err := user.Current()
+	if err != nil {
+		panic("user.Current error")
+	}
 	configDirname := u.HomeDir + "/.dastard/"
 	err = os.Mkdir(configDirname, os.FileMode(0775))
 	if err != nil && !os.IsExist(err) {

@@ -175,15 +175,16 @@ func (ds *AnySource) CloseOutputs() {
 	}
 }
 
+// FullTriggerState used to collect channels that share the same TriggerState
 type FullTriggerState struct {
 	ChanNumbers []int
 	TriggerState
 }
 
+// ComputeFullTriggerState uses a map to collect channels with identical TriggerStates, so they
+// can be sent all together as one unit.
 func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 
-	// Use a map to collect channels with identical TriggerStates, so they
-	// can be sent all together as one unit.
 	result := make(map[TriggerState][]int)
 	for _, dsp := range ds.processors {
 		chans, ok := result[dsp.TriggerState]
