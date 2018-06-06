@@ -2,7 +2,7 @@
 package off
 
 import (
-	"encoding/binary"
+	"bufio"
 	"encoding/json"
 	"errors"
 	"os"
@@ -24,9 +24,11 @@ type Writer struct {
 	FileName                 string
 	RecordsWritten           int
 
-	file *os.File
+	file   *os.File
+	writer bufio.Writer
 }
 
+// HeaderTDM stores info related to tdm readout for printing to the file header
 type HeaderTDM struct {
 	NumberOfRows    int
 	NumberOfColumns int
@@ -34,6 +36,7 @@ type HeaderTDM struct {
 	Column          int
 }
 
+// Header stores info for the file header, and formats the json correctly
 type Header struct {
 	Frameperiod   float64   `json:"frameperiod"`
 	Format        string    `json:"File Format"`
@@ -41,6 +44,7 @@ type Header struct {
 	TDM           HeaderTDM `json:"TDM"`
 }
 
+// WriteHeader writes a header to the file
 func (w *Writer) WriteHeader() error {
 	if w.HeaderWritten {
 		return errors.New("header already written")
@@ -52,47 +56,45 @@ func (w *Writer) WriteHeader() error {
 	if err != nil {
 		panic("MarshallIndent error")
 	}
-	_, err = w.file.Write(s)
-	if err != nil {
+	if _, err = w.writer.Write(s); err != nil {
 		return err
 	}
-	_, err = w.file.WriteString("\n")
-	if err != nil {
+	if _, err = w.writer.WriteString("\n"); err != nil {
 		return err
 	}
 	w.HeaderWritten = true
 	return nil
 }
 
+// WriteRecord writes a record to the file
 func (w *Writer) WriteRecord(firstRisingSample int, rowcount int64, timestamp int64, data []float32) error {
-	err := binary.Write(w.file, binary.LittleEndian, int32(len(data)))
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromUint32(uint32(len(data)))); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, int32(firstRisingSample))
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt32(int32(firstRisingSample))); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, rowcount)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, timestamp)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt642(timestamp)); err != nil {
 		return err
 	}
-	err = binary.Write(w.file, binary.LittleEndian, data)
-	if err != nil {
+	if _, err := w.writer.Write(getbytes.FromSliceFloat32(data)); err != nil {
 		return err
 	}
 	w.RecordsWritten += 1
 	return nil
 }
 
+// Close closes the file, it flushes the bufio.Writer first
 func (w Writer) Close() {
+	f.writer.Flush()
 	w.file.Close()
 }
 
+// CreateFile creates a file at w.FileName
+// must be called before WriteHeader or WriteRecord
 func (w *Writer) CreateFile() error {
 	if w.file == nil {
 		file, err := os.Create(w.FileName)
@@ -103,5 +105,6 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
+	w.writer = bufio.NewWriterSize(w.file, 32768)
 	return nil
 }
