@@ -4,7 +4,6 @@ package ljh
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -61,7 +60,8 @@ type Writer struct {
 	FileName        string
 	RecordsWritten  int
 
-	file *os.File
+	file   *os.File
+	writer *bufio.Writer
 }
 
 // OpenReader returns an active LJH file reader, or an error.
@@ -131,6 +131,7 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
+	w.writer = bufio.NewWriterSize(w.file, 32768)
 	return nil
 }
 
@@ -150,13 +151,19 @@ Number of columns: %d
 #End of Header
 `, w.Presamples, w.Samples, w.ChanNum, w.TimestampOffset, w.Timebase,
 		w.NumberOfRows, w.NumberOfColumns)
-	_, err := w.file.WriteString(s)
+	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
 	return err
 }
 
+// Flush flushes buffered data to disk
+func (w Writer) Flush() {
+	w.writer.Flush()
+}
+
 // Close closes the associated file, no more records can be written after this
 func (w Writer) Close() {
+	w.Flush()
 	w.file.Close()
 }
 
@@ -169,11 +176,13 @@ func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) err
 	if len(data) != w.Samples {
 		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
-	buf := new(bytes.Buffer)
-	buf.Write(getbytes.FromInt64(rowcount))
-	buf.Write(getbytes.FromInt64(timestamp))
-	buf.Write(getbytes.FromSliceUint16(data))
-	if _, err := w.file.Write(buf.Bytes()); err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromSliceUint16(data)); err != nil {
 		return err
 	}
 	w.RecordsWritten++
@@ -192,7 +201,8 @@ type Writer3 struct {
 	FileName        string
 	RecordsWritten  int
 
-	file *os.File
+	file   *os.File
+	writer *bufio.Writer
 }
 
 // HeaderTDM contains info about TDM readout for placing in an LJH3 header
@@ -224,11 +234,11 @@ func (w *Writer3) WriteHeader() error {
 		panic("MarshallIndent error")
 	}
 
-	if _, err := w.file.Write(s); err != nil {
+	if _, err := w.writer.Write(s); err != nil {
 		return err
 	}
 
-	if _, err := w.file.WriteString("\n"); err != nil {
+	if _, err := w.writer.WriteString("\n"); err != nil {
 		return err
 	}
 	w.HeaderWritten = true
@@ -240,21 +250,33 @@ func (w *Writer3) WriteHeader() error {
 // timestamp is posix timestamp in microseconds since epoch
 // data can be variable length
 func (w *Writer3) WriteRecord(firstRisingSample int32, rowcount int64, timestamp int64, data []uint16) error {
-	buf := new(bytes.Buffer)
-	buf.Write(getbytes.FromInt32(int32(len(data))))
-	buf.Write(getbytes.FromInt32(firstRisingSample))
-	buf.Write(getbytes.FromInt64(rowcount))
-	buf.Write(getbytes.FromInt64(timestamp))
-	buf.Write(getbytes.FromSliceUint16(data))
-	if _, err := w.file.Write(buf.Bytes()); err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt32(int32(len(data)))); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromInt32(firstRisingSample)); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromSliceUint16(data)); err != nil {
 		return err
 	}
 	w.RecordsWritten++
 	return nil
 }
 
+// Flush flushes buffered data to disk
+func (w Writer3) Flush() {
+	w.writer.Flush()
+}
+
 // Close closes the LJH3 file
 func (w Writer3) Close() {
+	w.writer.Flush()
 	w.file.Close()
 }
 
@@ -268,6 +290,7 @@ func (w *Writer3) CreateFile() error {
 		return err
 	}
 	w.file = file
+	w.writer = bufio.NewWriterSize(w.file, 32768)
 	return nil
 }
 
