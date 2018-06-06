@@ -20,8 +20,8 @@ func TestStdDev(t *testing.T) {
 		t.Errorf("stdDev returned incorrect result")
 	}
 	z := []float64{-1.0, 1.0}
-	zSstdDev := stdDev(z)
-	if zSstdDev != 1.0 {
+	zStdDev := stdDev(z)
+	if zStdDev != 1.0 {
 		t.Errorf("stdDev returned incorrect result")
 	}
 }

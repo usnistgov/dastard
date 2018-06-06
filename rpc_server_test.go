@@ -6,8 +6,12 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"os/user"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 func simpleClient() (*rpc.Client, error) {
@@ -27,7 +31,7 @@ func simpleClient() (*rpc.Client, error) {
 	}
 }
 
-func TestOne(t *testing.T) {
+func TestServer(t *testing.T) {
 	client, err := simpleClient()
 	if err != nil {
 		t.Fatalf("Could not connect simpleClient() to RPC server")
@@ -89,6 +93,15 @@ func TestOne(t *testing.T) {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
+	sizes := SizeObject{Nsamp: 800, Npre: 200}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	if err != nil {
+		t.Logf(err.Error())
+		t.Errorf("Error calling SourceControl.ConfigurePulseLengths(%v)", sizes)
+	}
+	if !okay {
+		t.Errorf("SourceControl.ConfigurePulseLengths(%v) returns !okay, want okay", sizes)
+	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Logf(err.Error())
@@ -96,6 +109,10 @@ func TestOne(t *testing.T) {
 	}
 	if !okay {
 		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
+	}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	if err == nil {
+		t.Errorf("Expected error calling SourceControl.ConfigurePulseLengths(%v) when source stopped, saw none", sizes)
 	}
 
 	// Configure, start, and stop a triangle server
@@ -148,7 +165,68 @@ func TestOne(t *testing.T) {
 	t.Log("Done with TestOne")
 }
 
+// verifyConfigFile checks that path/filename exists, and creates the directory
+// and file if it doesn't.
+func verifyConfigFile(path, filename string) error {
+	u, err := user.Current()
+	if err != nil {
+		return err
+	}
+	path = strings.Replace(path, "$HOME", u.HomeDir, 1)
+
+	// Create directory <path>, if needed
+	_, err = os.Stat(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		err = os.MkdirAll(path, 0775)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Create an empty file path/filename, if it doesn't exist.
+	fullname := fmt.Sprintf("%s/%s", path, filename)
+	_, err = os.Stat(fullname)
+	if os.IsNotExist(err) {
+		f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
+		if err != nil {
+			return err
+		}
+		f.Close()
+	}
+	return nil
+}
+
+// setupViper sets up the viper configuration manager: says where to find config
+// files and the filename and suffix. Sets some defaults.
+func setupViper() error {
+	viper.SetDefault("Verbose", false)
+
+	const path string = "$HOME/.dastard"
+	const filename string = "testconfig"
+	const suffix string = ".yaml"
+	if err := verifyConfigFile(path, filename+suffix); err != nil {
+		return err
+	}
+
+	viper.SetConfigName(filename)
+	viper.AddConfigPath(path)
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig() // Find and read the config file
+	if err != nil {             // Handle errors reading the config file
+		return fmt.Errorf("error reading config file: %s", err)
+	}
+	return nil
+}
+
 func TestMain(m *testing.M) {
+	// Find config file, creating it if needed, and read it.
+	if err := setupViper(); err != nil {
+		panic(err)
+	}
+
 	// call flag.Parse() here if TestMain uses flags
 	messageChan := make(chan ClientUpdate)
 	go RunClientUpdater(messageChan, PortStatus)
