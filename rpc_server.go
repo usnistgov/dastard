@@ -137,11 +137,6 @@ func (s *SourceControl) broadcastUpdate() {
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
-// func (s *SourceControl) broadcastConfigurations() {
-// 	// s.triangle.
-// 	// s.clientUpdates <- ClientUpdate{"STATUS", s.status}
-// }
-//
 func (s *SourceControl) broadcastTriggerState() {
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ComputeFullTriggerState()
@@ -167,7 +162,7 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	// Load stored settings
 	var okay bool
 	var spc SimPulseSourceConfig
-	fmt.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
+	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
 	err := viper.UnmarshalKey("simpulse", &spc)
 	if err == nil {
 		sourceControl.ConfigureSimPulseSource(&spc, &okay)
