@@ -13,7 +13,6 @@ func matPrint(X mat.Matrix, t *testing.T) {
 	t.Logf("%v\n", fa)
 }
 
-// TestStdDev checks that DataSegment works as expected
 func TestStdDev(t *testing.T) {
 	s := []float64{1.0, 1.0, 1.0}
 	sStdDev := stdDev(s)

@@ -12,7 +12,6 @@ import (
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
 	Channum              int
-	Publisher            chan<- []*DataRecord
 	Broker               *TriggerBroker
 	NSamples             int
 	NPresamples          int
@@ -29,6 +28,7 @@ type DataStreamProcessor struct {
 	// (NSamples, nbases) such that basis*modelCoefs = modeled_data
 	DecimateState
 	TriggerState
+	DataPublisher
 	changeMutex sync.Mutex // Don't change key data without locking this.
 }
 
@@ -61,8 +61,7 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
-func NewDataStreamProcessor(channum int, publisher chan<- []*DataRecord,
-	broker *TriggerBroker) *DataStreamProcessor {
+func NewDataStreamProcessor(channum int, broker *TriggerBroker) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
 	framesPerSample := 1
 	firstFrame := FrameIndex(0)
@@ -71,7 +70,7 @@ func NewDataStreamProcessor(channum int, publisher chan<- []*DataRecord,
 	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
 	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
 	npre := 256   // TODO: figure out what this ought to be, or make an argument
-	dsp := DataStreamProcessor{Channum: channum, Publisher: publisher, Broker: broker,
+	dsp := DataStreamProcessor{Channum: channum, Broker: broker,
 		stream: *stream, NSamples: nsamp, NPresamples: npre,
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
@@ -129,7 +128,7 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	}
 	dsp.AnalyzeData(records) // add analysis results to records in-place
 	// TODO: dsp.WriteData(records)
-	dsp.PublishData(records)
+	dsp.DataPublisher.PublishData(records)
 }
 
 // DecimateData decimates data in-place.
@@ -226,15 +225,10 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 
 }
 
-// PublishData sends the slice of DataRecords to be published.
-func (dsp *DataStreamProcessor) PublishData(records []*DataRecord) {
-	dsp.Publisher <- records
-}
-
 // return the uncorrected std deviation of a float slice
 func stdDev(a []float64) float64 {
 	if len(a) == 0 {
-		panic("std deviation of 0 length slice is undefined")
+		return math.NaN()
 	}
 	s, s2 := 0.0, 0.0
 	for _, v := range a {
