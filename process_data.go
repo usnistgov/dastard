@@ -12,6 +12,7 @@ import (
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
 	Channum              int
+	Name                 string
 	Broker               *TriggerBroker
 	NSamples             int
 	NPresamples          int
@@ -61,7 +62,7 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
-func NewDataStreamProcessor(channum int, broker *TriggerBroker) *DataStreamProcessor {
+func NewDataStreamProcessor(chnum int, broker *TriggerBroker) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
 	framesPerSample := 1
 	firstFrame := FrameIndex(0)
@@ -70,7 +71,7 @@ func NewDataStreamProcessor(channum int, broker *TriggerBroker) *DataStreamProce
 	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
 	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
 	npre := 256   // TODO: figure out what this ought to be, or make an argument
-	dsp := DataStreamProcessor{Channum: channum, Broker: broker,
+	dsp := DataStreamProcessor{Channum: chnum, Broker: broker,
 		stream: *stream, NSamples: nsamp, NPresamples: npre,
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
@@ -121,11 +122,8 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	records, secondaries := dsp.TriggerData()
-	if len(records)+len(secondaries) > 0 {
-		// log.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
-		// 	dsp.Channum, len(records), len(secondaries))
-	}
+	// records, secondaries := dsp.TriggerData()
+	records, _ := dsp.TriggerData()
 	dsp.AnalyzeData(records) // add analysis results to records in-place
 	// TODO: dsp.WriteData(records)
 	dsp.DataPublisher.PublishData(records)

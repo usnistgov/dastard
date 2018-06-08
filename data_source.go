@@ -27,6 +27,7 @@ type DataSource interface {
 	CloseOutputs()
 	Nchan() int
 	ComputeFullTriggerState() []FullTriggerState
+	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
 }
 
@@ -70,8 +71,9 @@ func Start(ds DataSource) error {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan      int     // how many channels to provide
-	sampleRate float64 // samples per second
+	nchan      int      // how many channels to provide
+	chanNames  []string // one name per channel
+	sampleRate float64  // samples per second
 	lastread   time.Time
 	output     []chan DataSegment
 	processors []*DataStreamProcessor
@@ -100,6 +102,17 @@ func (ds *AnySource) Running() bool {
 	}
 }
 
+func (ds *AnySource) fillEmptyChannelNames() {
+	if len(ds.chanNames) < ds.nchan {
+		ds.chanNames = make([]string, ds.nchan)
+	}
+	for i := 0; i < ds.nchan; i++ {
+		if len(ds.chanNames[i]) == 0 {
+			ds.chanNames[i] = fmt.Sprintf("unk%d", i)
+		}
+	}
+}
+
 // PrepareRun configures an AnySource by initializing all data structures that
 // cannot be prepared until we know the number of channels. It's an error for
 // ds.nchan to be less than 1.
@@ -109,6 +122,7 @@ func (ds *AnySource) PrepareRun() error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
+	ds.fillEmptyChannelNames()
 	ds.abortSelf = make(chan struct{})
 
 	// Start a TriggerBroker to handle secondary triggering
@@ -124,10 +138,11 @@ func (ds *AnySource) PrepareRun() error {
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
-	for chnum, ch := range ds.output {
-		dsp := NewDataStreamProcessor(chnum, ds.broker)
+	for idnum, dataSegChan := range ds.output {
+		dsp := NewDataStreamProcessor(idnum, ds.broker)
+		dsp.Name = ds.chanNames[idnum]
 		dsp.SampleRate = ds.sampleRate
-		ds.processors[chnum] = dsp
+		ds.processors[idnum] = dsp
 
 		// TODO: don't just set these to arbitrary values
 		dsp.Decimate = false
@@ -141,11 +156,11 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.NPresamples = 200
 		dsp.NSamples = 1000
 
-		// This goroutine will run until the ch==ds.output[chnum] channel is closed
+		// This goroutine will run until the dataSegChan==ds.output[idnum] channel is closed
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
 			dsp.ProcessData(ch)
-		}(ch)
+		}(dataSegChan)
 	}
 	ds.lastread = time.Now()
 	return nil
@@ -201,6 +216,11 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 		fts = append(fts, FullTriggerState{ChanNumbers: v, TriggerState: k})
 	}
 	return fts
+}
+
+// ChannelNames returns a slice of the channel names
+func (ds AnySource) ChannelNames() []string {
+	return ds.chanNames
 }
 
 // ConfigurePulseLengths set the pulse record length and pre-samples.

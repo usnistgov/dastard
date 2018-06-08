@@ -111,6 +111,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 			s.status.Nchannels = s.activeSource.Nchan()
 			s.broadcastUpdate()
 			s.broadcastTriggerState()
+			s.broadcastChannelNames()
 		}
 	}()
 	*reply = true
@@ -142,6 +143,14 @@ func (s *SourceControl) broadcastTriggerState() {
 		configs := s.activeSource.ComputeFullTriggerState()
 		log.Printf("configs: %v\n", configs)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", configs}
+	}
+}
+
+func (s *SourceControl) broadcastChannelNames() {
+	if s.activeSource != nil && s.status.Running {
+		configs := s.activeSource.ChannelNames()
+		log.Printf("chanNames: %v\n", configs)
+		s.clientUpdates <- ClientUpdate{"CHANNELNAMES", configs}
 	}
 }
 
