@@ -6,6 +6,10 @@
 //
 package lancero
 
+import (
+	"time"
+)
+
 // Notes:
 // Want 4 objects:
 // Lancero (high-level, exported). This isn't in the C++ version.
@@ -33,7 +37,7 @@ func NewLancero(devnum int) (*Lancero, error) {
 	lan.device = dev
 	lan.collector = &collector{device: dev, simulated: false}
 	lan.adapter = &adapter{device: dev}
-	lan.adapter.verbosity = 3
+	// lan.adapter.verbosity = 3
 	// lan.adapter.allocateRingBuffer(1<<24, 1<<23)
 	lan.adapter.allocateRingBuffer(32000000, 16000000)
 
@@ -84,7 +88,7 @@ func (lan *Lancero) StopCollector() error {
 }
 
 // Wait blocks until there is data in the ring buffer adapter.
-func (lan *Lancero) Wait() error {
+func (lan *Lancero) Wait() (time.Time, time.Duration, error) {
 	return lan.adapter.wait()
 }
 

@@ -265,28 +265,34 @@ func (a *adapter) stop() error {
 }
 
 // Wait until a the threshold amount of data is available.
-func (a *adapter) wait() error {
+// Return timestamp when ready, duration since last ready, and error.
+func (a *adapter) wait() (time.Time, time.Duration, error) {
+	now := time.Now()
 	dataAvailable, err := a.available()
 	if err != nil {
-		return err
+		sinceLast := now.Sub(a.lastThresh)
+		a.lastThresh = now
+		return now, sinceLast, err
 	}
 	if dataAvailable >= a.thresholdLevel {
-		return nil
+		sinceLast := now.Sub(a.lastThresh)
+		a.lastThresh = now
+		return now, sinceLast, nil
 	}
 	if a.verbosity >= 3 {
 		log.Println("adapter.wait(): Waiting for threshold event.")
 	}
-	start := time.Now()
 
 	// block until an interrupt event occurs.
+	start := time.Now()
 	_, err = a.device.readEvents()
+	now = time.Now()
+	sinceLast := now.Sub(a.lastThresh)
+	a.lastThresh = now
 	if a.verbosity >= 3 {
-		now := time.Now()
 		waitTime := now.Sub(start)
-		sinceLast := now.Sub(a.lastThresh)
-		a.lastThresh = now
 		log.Printf("adapter.wait(): Waited for %v (%v since last thresh).\n",
 			waitTime, sinceLast)
 	}
-	return err
+	return now, sinceLast, err
 }
