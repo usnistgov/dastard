@@ -128,15 +128,16 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 	return nil
 }
 
-// Find total amount of available data and return a slice with 1 or 2 buffers (byte slices).
-// There will be 2 buffers when the available data cross the ring buffer boundary.
-// Returns the slice containing the buffers, the total # of bytes in the two, and any possible error.
-
-func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err error) {
+// Find total amount of available data and return a buffer (byte slice).
+// Returns the data buffer and any possible error.
+func (a *adapter) availableBuffers() (buffer []byte, err error) {
 	// Ask the hardware for the current write pointer and the bytes available.
 	// Note that "write pointer" is where the DRIVER is about to write to.
 	a.writeIndex, err = a.device.readRegister(adapterRBWI)
 	if err != nil {
+		return
+	}
+	if a.writeIndex == a.readIndex {
 		return
 	}
 
@@ -146,23 +147,15 @@ func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err erro
 		// buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
 		length := C.int(a.writeIndex - a.readIndex) // can equal 0, b/f collector gets going
 		if length > 0 {
-			buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
-			totalBytes = len(buffers[0])
+			buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length)
 		}
 		return
 	}
 
 	// The available data cross the ring boundary, so return 2 separate buffers.
 	// buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
-	length1 := C.int(a.length - a.readIndex)
-	buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1))
-	totalBytes = len(buffers[0])
-
-	// We don't want this second buffer now, if it's too short to be worth handling.
-	if a.writeIndex >= a.minBufSize {
-		buffers = append(buffers, C.GoBytes(unsafe.Pointer(a.buffer), C.int(a.writeIndex)))
-		totalBytes += len(buffers[1])
-	}
+	length := C.int(a.length - a.readIndex)
+	buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length)
 	return
 }
 

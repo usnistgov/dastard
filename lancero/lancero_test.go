@@ -2,6 +2,7 @@ package lancero
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"testing"
@@ -68,24 +69,26 @@ func TestLancero(t *testing.T) {
 			if err != nil {
 				return
 			}
-			buffers, totalBytes, err := lan.AvailableBuffers()
+			buffer, err := lan.AvailableBuffers()
+			totalBytes := len(buffer)
 			fmt.Printf("waittime: %v\n", waittime)
 			if err != nil {
 				return
 			}
-			fmt.Printf("Found %d buffers with %d total bytes, bytesRead=%d\n", len(buffers), totalBytes, bytesRead)
-			if len(buffers) > 0 {
-				for _, b := range buffers {
-					q, p, n, err := FindFrameBits(b)
-					bytesPerFrame := 4 * (p - q)
-					if err != nil {
-						fmt.Println("Error in findFrameBits:", err)
-						break
-					}
-					fmt.Println(q, p, bytesPerFrame, n, err)
-					fmt.Println("cols=", n, "rows=", (p-q)/n)
-					fmt.Println("frame period nanoseconds", waittime.Nanoseconds()/(int64(totalBytes)/int64(bytesPerFrame)))
+			fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
+			if totalBytes > 0 {
+				q, p, n, err := FindFrameBits(buffer)
+				bytesPerFrame := 4 * (p - q)
+				if err != nil {
+					fmt.Println("Error in findFrameBits:", err)
+					break
 				}
+				fmt.Println(q, p, bytesPerFrame, n, err)
+				nrows := (p - q) / n
+				fmt.Println("cols=", n, "rows=", nrows)
+				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
+				lsync := int(math.Round(float64(periodNS) / float64(nrows*8)))
+				fmt.Printf("frame period %5d ns, lsync=%d\n", periodNS, lsync)
 			}
 			// Quit when read enough samples.
 			bytesRead += totalBytes
