@@ -148,11 +148,11 @@ func (device *LanceroDevice) sampleCard() error {
 		}
 		select {
 		case <-interruptCatcher:
-			return nil
+			return fmt.Errorf("LanceroDevice.sampleCard was interrupted")
 		default:
 			_, waittime, err := lan.Wait()
 			if err != nil {
-				return nil
+				return err
 			}
 			buffer, err := lan.AvailableBuffers()
 			totalBytes := len(buffer)
@@ -161,21 +161,20 @@ func (device *LanceroDevice) sampleCard() error {
 				return err
 			}
 			fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
-			if totalBytes > 15000 {
+			if totalBytes > 45000 {
 				q, p, n, err := lancero.FindFrameBits(buffer)
 				bytesPerFrame := 4 * (p - q)
 				if err != nil {
 					fmt.Println("Error in findFrameBits:", err)
 					break
 				}
-				fmt.Println(q, p, bytesPerFrame, n, err)
 				device.ncols = n
 				device.nrows = (p - q) / n
 				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
 				device.lsync = int(math.Round(float64(periodNS) * 1e-3 * float64(device.clockMhz) / float64(device.nrows)))
 
-				fmt.Println("cols=", device.ncols, "rows=", device.nrows)
-				fmt.Printf("frame period %5d ns, lsync=%d\n", periodNS, device.lsync)
+				fmt.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
+					device.nrows, periodNS, device.lsync)
 
 				lan.ReleaseBytes(totalBytes)
 				return nil
