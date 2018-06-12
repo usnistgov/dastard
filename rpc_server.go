@@ -17,7 +17,8 @@ import (
 type SourceControl struct {
 	simPulses SimPulseSource
 	triangle  TriangleSource
-	// TODO: Add sources for Lancero, ROACH, Abaco
+	lancero   LanceroSource
+	// TODO: Add sources for ROACH, Abaco
 	activeSource DataSource
 
 	status        ServerStatus
@@ -97,7 +98,11 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.activeSource = DataSource(&s.triangle)
 		s.status.SourceName = "Triangles"
 
-	// TODO: Add cases here for LANCERO, ROACH, ABACO, etc.
+	case "LANCEROSOURCE":
+		s.activeSource = DataSource(&s.lancero)
+		s.status.SourceName = "Lancero"
+
+	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
