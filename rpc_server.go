@@ -184,6 +184,7 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 
 	// Set up objects to handle remote calls
 	sourceControl := NewSourceControl()
+	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = messageChan
 
 	// Load stored settings

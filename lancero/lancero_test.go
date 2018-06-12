@@ -19,6 +19,7 @@ func TestMain(m *testing.M) {
 		fmt.Println("found zero lancero devices")
 		os.Exit(0)
 	}
+	fmt.Printf("Found lancero devices %v\n", devs)
 	os.Exit(m.Run())
 }
 
