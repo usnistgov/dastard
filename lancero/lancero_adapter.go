@@ -90,6 +90,7 @@ func (a *adapter) freeBuffer() {
 	if a.buffer != nil {
 		C.free(unsafe.Pointer(a.buffer))
 	}
+	a.buffer = nil
 }
 
 // Reads, optionally prints, and returns the Avalon ST/MM adapter status word.
@@ -119,6 +120,7 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 	a.thresholdLevel = uint32(threshold)
 	a.minBufSize = a.thresholdLevel / 2
 	const PAGEALIGN C.size_t = 4096
+	a.freeBuffer()
 	a.buffer = C.posixMemAlign(PAGEALIGN, C.size_t(length))
 
 	a.stop()

@@ -40,12 +40,17 @@ func NewLancero(devnum int) (*Lancero, error) {
 	lan.adapter = &adapter{device: dev}
 	// lan.adapter.verbosity = 3
 	// lan.adapter.allocateRingBuffer(1<<24, 1<<23)
-	lan.adapter.allocateRingBuffer(32000000, 16000000)
+	lan.ChangeRingBuffer(32000000, 16000000)
 
 	lan.adapter.status()
 	lan.adapter.inspect()
 
 	return lan, nil
+}
+
+//ChangeRingBuffer re-sizes the adapter's ring buffer.
+func (lan *Lancero) ChangeRingBuffer(length, threshold int) error {
+	return lan.adapter.allocateRingBuffer(length, threshold)
 }
 
 // Close releases all resources used by this lancero device.
