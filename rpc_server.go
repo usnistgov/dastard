@@ -15,14 +15,26 @@ import (
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
 type SourceControl struct {
-	simPulses SimPulseSource
-	triangle  TriangleSource
-	lancero   LanceroSource
+	simPulses *SimPulseSource
+	triangle  *TriangleSource
+	lancero   *LanceroSource
 	// TODO: Add sources for ROACH, Abaco
 	activeSource DataSource
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
+}
+
+// NewSourceControl creates a new SourceControl object with correctly initialized
+// contents.
+func NewSourceControl() *SourceControl {
+	sc := new(SourceControl)
+	sc.simPulses = new(SimPulseSource)
+	sc.triangle = new(TriangleSource)
+	if lan, err := NewLanceroSource(); err == nil {
+		sc.lancero = lan
+	}
+	return sc
 }
 
 // ServerStatus the status that SourceControl reports to clients.
@@ -66,6 +78,16 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 	return err
 }
 
+// ConfigureLanceroSource configures the lancero cards.
+func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply *bool) error {
+	log.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
+	err := s.lancero.Configure(args)
+	s.clientUpdates <- ClientUpdate{"LANCERO", args}
+	*reply = (err == nil)
+	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMhz, s.lancero.ncards)
+	return err
+}
+
 // SizeObject is the RPC-usable structure for ConfigurePulseLengths to change pulse record sizes.
 type SizeObject struct {
 	Nsamp int
@@ -91,15 +113,15 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	name := strings.ToUpper(*sourceName)
 	switch name {
 	case "SIMPULSESOURCE":
-		s.activeSource = DataSource(&s.simPulses)
+		s.activeSource = DataSource(s.simPulses)
 		s.status.SourceName = "SimPulses"
 
 	case "TRIANGLESOURCE":
-		s.activeSource = DataSource(&s.triangle)
+		s.activeSource = DataSource(s.triangle)
 		s.status.SourceName = "Triangles"
 
 	case "LANCEROSOURCE":
-		s.activeSource = DataSource(&s.lancero)
+		s.activeSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
 	// TODO: Add cases here for ROACH, ABACO, etc.
@@ -161,7 +183,7 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 
 	// Set up objects to handle remote calls
-	sourceControl := new(SourceControl)
+	sourceControl := NewSourceControl()
 	sourceControl.clientUpdates = messageChan
 
 	// Load stored settings
@@ -176,6 +198,11 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	err = viper.UnmarshalKey("triangle", &tsc)
 	if err == nil {
 		sourceControl.ConfigureTriangleSource(&tsc, &okay)
+	}
+	var lsc LanceroSourceConfig
+	err = viper.UnmarshalKey("lancero", &lsc)
+	if err == nil {
+		sourceControl.ConfigureLanceroSource(&lsc, &okay)
 	}
 
 	go func() {

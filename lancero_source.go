@@ -13,20 +13,22 @@ type LanceroDevice struct {
 	ncols     int
 	fiberMask uint32
 	cardDelay int
-	clockMhz  int
 	card      *lancero.Lancero
 }
 
-// LanceroSource is a DataSource that reads 1 or more lancero devices.
+// LanceroSource is a DataSource that handles 1 or more lancero devices.
 type LanceroSource struct {
-	devices []LanceroDevice
-	ncards  int
+	devices  map[int]*LanceroDevice
+	ncards   int
+	clockMhz int
+	active   []*LanceroDevice
 	AnySource
 }
 
 // NewLanceroSource creates a new LanceroSource.
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
+	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
 		return source, err
@@ -40,61 +42,57 @@ func NewLanceroSource() (*LanceroSource, error) {
 			continue
 		}
 		ld.card = lan
-		source.devices = append(source.devices, ld)
+		source.devices[dnum] = &ld
 		source.ncards++
 	}
 	return source, nil
 }
 
-// LanceroSourceConfig holds the arguments needed to call LanceroSource.Configure by RPC
+// LanceroSourceConfig holds the arguments needed to call LanceroSource.Configure by RPC.
+// For now, we'll make the mask and card delay equal for all cards. That need not
+// be permanent, but I do think ClockMhz is necessarily the same for all cards.
 type LanceroSourceConfig struct {
-	FiberMask uint32
-	CardDelay int
-	ClockMhz  int
+	FiberMask      uint32
+	CardDelay      int
+	ClockMhz       int
+	ActiveCards    []int
+	AvailableCards []int
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
-func (ts *LanceroSource) Configure(config *LanceroSourceConfig) error {
-	// if config.Nchan < 1 {
-	// 	return fmt.Errorf("LanceroSource.Configure() asked for %d channels, should be > 0", config.Nchan)
-	// }
-	// ts.nchan = config.Nchan
-	// ts.sampleRate = config.SampleRate
-	// ts.minval = config.Min
-	// ts.maxval = config.Max
-	//
-	// ts.output = make([]chan DataSegment, ts.nchan)
-	// for i := 0; i < ts.nchan; i++ {
-	// 	ts.output[i] = make(chan DataSegment, 1)
-	// }
-	//
-	// nrise := ts.maxval - ts.minval
-	// ts.cycleLen = 2 * int(nrise)
-	// ts.onecycle = make([]RawType, ts.cycleLen)
-	// var i RawType
-	// for i = 0; i < nrise; i++ {
-	// 	ts.onecycle[i] = ts.minval + i
-	// 	ts.onecycle[int(i)+int(nrise)] = ts.maxval - i
-	// }
-	// cycleTime := float64(ts.cycleLen) / ts.sampleRate
-	// ts.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
+func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
+	ls.clockMhz = config.ClockMhz
+	ls.active = make([]*LanceroDevice, 0)
+	for _, c := range config.ActiveCards {
+		dev := ls.devices[c]
+		if dev == nil {
+			continue
+		}
+		ls.active = append(ls.active, dev)
+		dev.cardDelay = config.CardDelay
+		dev.fiberMask = config.FiberMask
+	}
+	config.AvailableCards = make([]int, 0)
+	for k := range ls.devices {
+		config.AvailableCards = append(config.AvailableCards, k)
+	}
 	return nil
 }
 
 // Sample determines key data facts by sampling some initial data.
 // It's a no-op for simulated (software) sources
-func (ts *LanceroSource) Sample() error {
+func (ls *LanceroSource) Sample() error {
 	return nil
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
 // It's a no-op for simulated (software) sources
-func (ts *LanceroSource) StartRun() error {
+func (ls *LanceroSource) StartRun() error {
 	return nil
 }
 
 // blockingRead blocks and then reads data when "enough" is ready.
-func (ts *LanceroSource) blockingRead() error {
+func (ls *LanceroSource) blockingRead() error {
 	// nextread := ts.lastread.Add(ts.timeperbuf)
 	// waittime := time.Until(nextread)
 	// select {
