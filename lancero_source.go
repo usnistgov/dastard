@@ -127,14 +127,14 @@ func (device *LanceroDevice) sampleCard() error {
 	channelMask := device.fiberMask
 	err := lan.CollectorConfigure(linePeriod, dataDelay, channelMask, frameLength)
 	if err != nil {
-		return fmt.Errorf("CollectorConfigure err, %v:", err)
+		return fmt.Errorf("error in CollectorConfigure: %v", err)
 	}
 
 	const simulate bool = false
 	err = lan.StartCollector(simulate)
 	defer lan.StopCollector()
 	if err != nil {
-		return fmt.Errorf("StartCollector err, %v:", err)
+		return fmt.Errorf("error in StartCollector: %v", err)
 	}
 	interruptCatcher := make(chan os.Signal, 1)
 	signal.Notify(interruptCatcher, os.Interrupt)
