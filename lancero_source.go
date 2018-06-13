@@ -233,20 +233,27 @@ func (ls *LanceroSource) StartRun() error {
 		device.collRunning = true
 
 		// 3. Consume possibly fractional frame info
-		if _, _, err := lan.Wait(); err != nil {
-			return fmt.Errorf("error in Wait: %v", err)
-		}
-		bytes, err := lan.AvailableBuffers()
-		if err != nil {
-			return fmt.Errorf("error in AvailableBuffers: %v", err)
-		}
+		for {
+			if _, _, err := lan.Wait(); err != nil {
+				return fmt.Errorf("error in Wait: %v", err)
+			}
+			bytes, err := lan.AvailableBuffers()
+			if err != nil {
+				return fmt.Errorf("error in AvailableBuffers: %v", err)
+			}
+			if len(bytes) <= 0 {
+				continue
+			}
 
-		// 3a. Consume any words with frame bit set (in case you missed some)
-		firstWord, _, _, _ := lancero.FindFrameBits(bytes)
-		bytesToRelease := 4 * firstWord
-		// bytesToRelease += ((len(bytes) - 4*firstWord) / device.frameSize) * device.frameSize
-		fmt.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
-		lan.ReleaseBytes(bytesToRelease)
+			firstWord, _, _, err := lancero.FindFrameBits(bytes)
+			if err == nil && firstWord > 0 {
+				bytesToRelease := 4 * firstWord
+				// bytesToRelease += ((len(bytes) - 4*firstWord) / device.frameSize) * device.frameSize
+				fmt.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
+				lan.ReleaseBytes(bytesToRelease)
+				break
+			}
+		}
 	}
 	return nil
 }
@@ -301,7 +308,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 		}
 		buffers = append(buffers, bytesToRawType(b))
 		fmt.Printf("new buffer of length %d bytes\n", len(b))
-		lb := 128
+		lb := 480
 		if len(b) < lb {
 			lb = len(b)
 		}
@@ -340,6 +347,10 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 		for j := 0; j < minframes; j++ {
 			for i := 0; i < nchan; i++ {
 				datacopies[i+ch0num][j] = buffer[idx]
+				if j < 5 && i < 6 {
+					fmt.Printf("datacopies[%d][%d] = buffer[%d] = 0x%x = %d\n",
+						i+ch0num, j, idx, buffer[idx], buffer[idx])
+				}
 				idx++
 			}
 		}
@@ -349,14 +360,15 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 	// Now send these data downstream
 	for i, ch := range ls.output {
 		// mask out frame and extern trigger bits from FB channels
-		// if i%2 == 1 {
-		// 	const mask = ^RawType(0x3)
-		// 	for j := 0; j < len(datacopies[i]); j++ {
-		// 		datacopies[i][j] &= mask
-		// 	}
-		// I think you'd do err->FB mixing here??
-		// }
-		if i <= 1 && len(datacopies[i]) > 31 {
+		if i%2 == 1 {
+			const mask = ^RawType(0x3)
+			for j := 0; j < len(datacopies[i]); j++ {
+				datacopies[i][j] &= mask
+			}
+			// I think you'd do err->FB mixing here??
+		}
+
+		if i <= 6 && len(datacopies[i]) > 31 {
 			fmt.Printf("datacopies[%d][ 0: 8]: %v\n", i, datacopies[i][0:8])
 			fmt.Printf("datacopies[%d][ 8:16]: %v\n", i, datacopies[i][8:16])
 			fmt.Printf("datacopies[%d][16:24]: %v\n", i, datacopies[i][16:24])
