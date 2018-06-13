@@ -302,3 +302,12 @@ func rawTypeToUint16(d []RawType) []uint16 {
 	data := *(*[]uint16)(unsafe.Pointer(&header))
 	return data
 }
+
+func bytesToRawType(b []byte) []RawType {
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&b))
+	const ratio = int(unsafe.Sizeof(RawType(0)))
+	header.Cap /= ratio // byte takes up twice the space of RawType
+	header.Len /= ratio
+	data := *(*[]RawType)(unsafe.Pointer(&header))
+	return data
+}

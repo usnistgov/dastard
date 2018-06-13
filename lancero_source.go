@@ -161,13 +161,13 @@ func (device *LanceroDevice) sampleCard() error {
 				return err
 			}
 			buffer, err := lan.AvailableBuffers()
-			totalBytes := len(buffer)
-			fmt.Printf("waittime: %v\n", waittime)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
+			totalBytes := len(buffer)
 			if totalBytes > 45000 {
+				fmt.Printf("waittime: %v\n", waittime)
+				fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
 				q, p, n, err := lancero.FindFrameBits(buffer)
 				bytesPerFrame := 4 * (p - q)
 				if err != nil {
@@ -205,8 +205,8 @@ func (ls *LanceroSource) StartRun() error {
 		if device.frameSize <= 0 {
 			device.frameSize = 128 // a random guess
 		}
-		thresh := 16384 * device.frameSize
-		if err := lan.ChangeRingBuffer(4*thresh, thresh); err != nil {
+		thresh := 8192 * device.frameSize
+		if err := lan.ChangeRingBuffer(8*thresh, thresh); err != nil {
 			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 		}
 
@@ -243,7 +243,10 @@ func (ls *LanceroSource) StartRun() error {
 
 		// 3a. Consume any words with frame bit set (in case you missed some)
 		firstWord, _, _, _ := lancero.FindFrameBits(bytes)
-		lan.ReleaseBytes(4 * firstWord)
+		bytesToRelease := 4 * firstWord
+		// bytesToRelease += ((len(bytes) - 4*firstWord) / device.frameSize) * device.frameSize
+		fmt.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
+		lan.ReleaseBytes(bytesToRelease)
 	}
 	return nil
 }
@@ -255,6 +258,18 @@ func (ls *LanceroSource) blockingRead() error {
 	nextread := ls.lastread.Add(period)
 	waittime := time.Until(nextread)
 
+	type waiter struct {
+		timestamp time.Time
+		duration  time.Duration
+		err       error
+	}
+	done := make(chan waiter)
+	dev := ls.active[0]
+	go func() {
+		timestamp, duration, err := dev.card.Wait()
+		done <- waiter{timestamp, duration, err}
+	}()
+
 	select {
 	case <-ls.abortSelf:
 		if err := ls.stop(); err != nil {
@@ -263,16 +278,99 @@ func (ls *LanceroSource) blockingRead() error {
 		return io.EOF
 	case <-time.After(waittime):
 		ls.lastread = time.Now()
+	case result := <-done:
+		if result.err != nil {
+			return result.err
+		}
+		fmt.Printf("time to distribute data after wait of %v\n", result.duration)
+		ls.distributeData(result.timestamp)
 	}
-	//
-	// for _, ch := range ts.output {
-	// 	datacopy := make([]RawType, ts.cycleLen)
-	// 	copy(datacopy, ts.onecycle)
-	// 	seg := DataSegment{rawData: datacopy, framesPerSample: 1}
-	// 	ch <- seg
-	// }
-	//
 	return nil
+}
+
+func (ls *LanceroSource) distributeData(timestamp time.Time) {
+
+	// Get 1 buffer per card, and compute which contains the fewest frames
+	minframes := math.MaxInt64
+	var buffers [][]RawType
+	for _, dev := range ls.active {
+		b, err := dev.card.AvailableBuffers()
+		if err != nil {
+			log.Printf("Warning: AvailableBuffers failed")
+			return
+		}
+		buffers = append(buffers, bytesToRawType(b))
+		fmt.Printf("new buffer of length %d bytes\n", len(b))
+		lb := 128
+		if len(b) < lb {
+			lb = len(b)
+		}
+		for j := 0; j < lb; j += 4 {
+			p := uint64(b[j+3])
+			for i := 2; i >= 0; i-- {
+				p = 256*p + uint64(b[j+i])
+			}
+			fmt.Printf("%8.8x ", p)
+			if j%32 == 28 {
+				fmt.Println()
+			}
+		}
+
+		bframes := len(b) / dev.frameSize
+		if bframes < minframes {
+			minframes = bframes
+		}
+	}
+	if minframes <= 0 {
+		fmt.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
+		return
+	}
+
+	// Consume minframes frames of data from each channel
+	ch0num := 0
+	datacopies := make([][]RawType, len(ls.output))
+	for i := range ls.output {
+		datacopies[i] = make([]RawType, minframes)
+	}
+
+	for ibuf, dev := range ls.active {
+		nchan := dev.ncols * dev.nrows * 2
+		buffer := buffers[ibuf]
+		idx := 0
+		for j := 0; j < minframes; j++ {
+			for i := 0; i < nchan; i++ {
+				datacopies[i+ch0num][j] = buffer[idx]
+				idx++
+			}
+		}
+		ch0num += nchan
+	}
+
+	// Now send these data downstream
+	for i, ch := range ls.output {
+		// mask out frame and extern trigger bits from FB channels
+		// if i%2 == 1 {
+		// 	const mask = ^RawType(0x3)
+		// 	for j := 0; j < len(datacopies[i]); j++ {
+		// 		datacopies[i][j] &= mask
+		// 	}
+		// I think you'd do err->FB mixing here??
+		// }
+		if i <= 1 && len(datacopies[i]) > 31 {
+			fmt.Printf("datacopies[%d][ 0: 8]: %v\n", i, datacopies[i][0:8])
+			fmt.Printf("datacopies[%d][ 8:16]: %v\n", i, datacopies[i][8:16])
+			fmt.Printf("datacopies[%d][16:24]: %v\n", i, datacopies[i][16:24])
+			fmt.Printf("datacopies[%d][24:32]: %v\n", i, datacopies[i][24:32])
+		}
+		seg := DataSegment{rawData: datacopies[i], framesPerSample: 1}
+		ch <- seg
+	}
+
+	// Inform the driver to release the data we just consumed
+	for _, dev := range ls.active {
+		dev.card.ReleaseBytes(minframes * dev.frameSize)
+	}
+
 }
 
 // stop ends the data streaming on all active lancero devices.
