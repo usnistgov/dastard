@@ -153,7 +153,6 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		*reply = true
 
 		s.status.Running = false
-		s.status.SourceName = ""
 		s.status.Nchannels = 0
 	}
 	s.broadcastUpdate()
@@ -204,6 +203,11 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	err = viper.UnmarshalKey("lancero", &lsc)
 	if err == nil {
 		sourceControl.ConfigureLanceroSource(&lsc, &okay)
+	}
+	err = viper.UnmarshalKey("status", &sourceControl.status)
+	sourceControl.status.Running = false
+	if err == nil {
+		sourceControl.broadcastUpdate()
 	}
 
 	go func() {
