@@ -146,7 +146,6 @@ func (a *adapter) availableBuffers() (buffer []byte, err error) {
 	// Handle the easier, single-buffer case first.
 	if a.writeIndex >= a.readIndex {
 		// There's only one continuous region in the buffer, not crossing the ring boundary
-		// buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
 		length := C.int(a.writeIndex - a.readIndex) // can equal 0, b/f collector gets going
 		if length > 0 {
 			buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length)
@@ -154,10 +153,14 @@ func (a *adapter) availableBuffers() (buffer []byte, err error) {
 		return
 	}
 
-	// The available data cross the ring boundary, so return 2 separate buffers.
-	// buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
-	length := C.int(a.length - a.readIndex)
-	buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length)
+	// The available data cross the ring boundary, so return separate buffers joined together.
+	// buffers = a.buffer[a.readIndex:] + a.buffer[0:a.writeIndex])
+	length1 := C.int(a.length - a.readIndex)
+	buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1)
+	length2 := C.int(a.writeIndex)
+	if length2 > 0 {
+		buffer = append(buffer, C.GoBytes(unsafe.Pointer(a.buffer), length2)...)
+	}
 	return
 }
 
