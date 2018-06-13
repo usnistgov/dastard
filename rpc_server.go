@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -149,17 +151,21 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	log.Printf("Stopping data source\n")
 	if s.activeSource != nil {
 		s.activeSource.Stop()
+		s.status.Running = false
 		s.activeSource = nil
 		*reply = true
 
-		s.status.Running = false
-		s.status.Nchannels = 0
 	}
 	s.broadcastUpdate()
 	return nil
 }
 
 func (s *SourceControl) broadcastUpdate() {
+	// Check whether the "active" source actually stopped on its own
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.activeSource = nil
+		s.status.Running = false
+	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
@@ -211,10 +217,21 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	}
 
 	go func() {
+		interruptCatcher := make(chan os.Signal, 1)
+		signal.Notify(interruptCatcher, os.Interrupt)
+
 		ticker := time.Tick(2 * time.Second)
-		for _ = range ticker {
-			sourceControl.broadcastUpdate()
+		for {
+			select {
+			case <-ticker:
+				sourceControl.broadcastUpdate()
+			case <-interruptCatcher:
+				return
+			}
 		}
+		// for _ = range ticker {
+		// 	sourceControl.broadcastUpdate()
+		// }
 	}()
 
 	// Transfer saved configuration from Viper to relevant objects.

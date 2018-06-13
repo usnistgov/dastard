@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -13,14 +14,17 @@ import (
 
 // LanceroDevice represents one lancero device.
 type LanceroDevice struct {
-	devnum    int
-	nrows     int
-	ncols     int
-	lsync     int
-	fiberMask uint32
-	cardDelay int
-	clockMhz  int
-	card      *lancero.Lancero
+	devnum      int
+	nrows       int
+	ncols       int
+	lsync       int
+	fiberMask   uint32
+	cardDelay   int
+	clockMhz    int
+	frameSize   int // frame size, in bytes
+	adapRunning bool
+	collRunning bool
+	card        *lancero.Lancero
 }
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
@@ -172,6 +176,7 @@ func (device *LanceroDevice) sampleCard() error {
 				device.nrows = (p - q) / n
 				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
 				device.lsync = int(math.Round(float64(periodNS) * 1e-3 * float64(device.clockMhz) / float64(device.nrows)))
+				device.frameSize = device.ncols * device.nrows * 4
 
 				fmt.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
 					device.nrows, periodNS, device.lsync)
@@ -186,22 +191,84 @@ func (device *LanceroDevice) sampleCard() error {
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
-// It's a no-op for simulated (software) sources
+// For lancero TDM systems, we need to consume any initial data that constitutes
+// a fraction of a frame.
 func (ls *LanceroSource) StartRun() error {
+
+	// Starting the source for all active cards has 3 steps per card.
+	for _, device := range ls.active {
+		lan := device.card
+
+		// 1. Resize the ring buffer to hold 16,384 frames
+		if device.frameSize <= 0 {
+			device.frameSize = 128 // a random guess
+		}
+		thresh := 16384 * device.frameSize
+		if err := lan.ChangeRingBuffer(4*thresh, thresh); err != nil {
+			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
+		}
+
+		// 2. Start the adapter and collector components in firmware
+		const Timeout int = 2 // seconds
+		if err := lan.StartAdapter(Timeout); err != nil {
+			return fmt.Errorf("failed to start lancero (driver problem): %v", err)
+		}
+		device.adapRunning = true
+
+		linePeriod := 1 // use dummy values for things we will learn by sampling data
+		frameLength := 1
+		dataDelay := device.cardDelay
+		channelMask := device.fiberMask
+		if err := lan.CollectorConfigure(linePeriod, dataDelay,
+			channelMask, frameLength); err != nil {
+			return fmt.Errorf("error in CollectorConfigure: %v", err)
+		}
+
+		const simulate bool = false
+		if err := lan.StartCollector(simulate); err != nil {
+			return fmt.Errorf("error in StartCollector: %v", err)
+		}
+		device.collRunning = true
+
+		// 3. Consume possibly fractional frame info
+		if _, _, err := lan.Wait(); err != nil {
+			return fmt.Errorf("error in Wait: %v", err)
+		}
+		bytes, err := lan.AvailableBuffers()
+		if err != nil {
+			return fmt.Errorf("error in AvailableBuffers: %v", err)
+		}
+
+		// 3a. Consume any words with frame bit set (in case you missed some)
+		firstWord, _, _, _ := lancero.FindFrameBits(bytes)
+		lan.ReleaseBytes(4 * firstWord)
+	}
 	return nil
 }
 
 // blockingRead blocks and then reads data when "enough" is ready.
+// This will need to somehow work across multiple cards???
 func (ls *LanceroSource) blockingRead() error {
-	time.Sleep(100 * time.Millisecond)
-	// nextread := ts.lastread.Add(ts.timeperbuf)
-	// waittime := time.Until(nextread)
-	// select {
-	// case <-ts.abortSelf:
-	// 	return io.EOF
-	// case <-time.After(waittime):
-	// 	ts.lastread = time.Now()
-	// }
+	period := 100 * time.Millisecond
+	nextread := ls.lastread.Add(period)
+	waittime := time.Until(nextread)
+	interruptCatcher := make(chan os.Signal, 1)
+	signal.Notify(interruptCatcher, os.Interrupt)
+
+	select {
+	case <-ls.abortSelf:
+		log.Println("LanceroSource.abortSelf was closed")
+		if err := ls.stop(); err != nil {
+			return err
+		}
+		return io.EOF
+	case <-interruptCatcher:
+		log.Println("Caught Ctrl-C; initiating LanceroSource.Stop")
+		go ls.Stop()
+		return nil
+	case <-time.After(waittime):
+		ls.lastread = time.Now()
+	}
 	//
 	// for _, ch := range ts.output {
 	// 	datacopy := make([]RawType, ts.cycleLen)
@@ -210,5 +277,25 @@ func (ls *LanceroSource) blockingRead() error {
 	// 	ch <- seg
 	// }
 	//
+	return nil
+}
+
+// stop ends the data streaming on all active lancero devices.
+func (ls *LanceroSource) stop() error {
+	for _, device := range ls.active {
+		if device.collRunning {
+			device.card.StopCollector()
+			log.Printf("stopped collector\n")
+			device.collRunning = false
+		}
+	}
+
+	for _, device := range ls.active {
+		if device.adapRunning {
+			device.card.StopAdapter()
+			log.Printf("stopped adapter\n")
+			device.adapRunning = false
+		}
+	}
 	return nil
 }

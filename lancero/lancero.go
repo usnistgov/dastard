@@ -119,7 +119,7 @@ func (lan *Lancero) InspectAdapter() uint32 {
 // n number of consecutive words with frame bit set, starting at q
 // err is nil if q,p,n all found as expected
 func FindFrameBits(b []byte) (int, int, int, error) {
-	frameMask := byte(1)
+	const frameMask = byte(1)
 	var q, p, n int
 
 	var state int // was frame bit seen in previous word?
