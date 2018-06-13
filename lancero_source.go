@@ -140,8 +140,10 @@ func (device *LanceroDevice) sampleCard() error {
 	if err != nil {
 		return fmt.Errorf("error in StartCollector: %v", err)
 	}
+
 	interruptCatcher := make(chan os.Signal, 1)
 	signal.Notify(interruptCatcher, os.Interrupt)
+	defer signal.Stop(interruptCatcher)
 
 	var bytesRead int
 	const tooManyBytes int = 1000000 // shouldn't need this many bytes to SampleData
@@ -252,20 +254,13 @@ func (ls *LanceroSource) blockingRead() error {
 	period := 100 * time.Millisecond
 	nextread := ls.lastread.Add(period)
 	waittime := time.Until(nextread)
-	interruptCatcher := make(chan os.Signal, 1)
-	signal.Notify(interruptCatcher, os.Interrupt)
 
 	select {
 	case <-ls.abortSelf:
-		log.Println("LanceroSource.abortSelf was closed")
 		if err := ls.stop(); err != nil {
 			return err
 		}
 		return io.EOF
-	case <-interruptCatcher:
-		log.Println("Caught Ctrl-C; initiating LanceroSource.Stop")
-		go ls.Stop()
-		return nil
 	case <-time.After(waittime):
 		ls.lastread = time.Now()
 	}
@@ -285,7 +280,6 @@ func (ls *LanceroSource) stop() error {
 	for _, device := range ls.active {
 		if device.collRunning {
 			device.card.StopCollector()
-			log.Printf("stopped collector\n")
 			device.collRunning = false
 		}
 	}
@@ -293,7 +287,6 @@ func (ls *LanceroSource) stop() error {
 	for _, device := range ls.active {
 		if device.adapRunning {
 			device.card.StopAdapter()
-			log.Printf("stopped adapter\n")
 			device.adapRunning = false
 		}
 	}

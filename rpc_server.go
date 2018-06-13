@@ -134,13 +134,15 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	go func() {
-		err := Start(s.activeSource)
-		if err == nil {
-			s.status.Running = true
-			s.status.Nchannels = s.activeSource.Nchan()
-			s.broadcastUpdate()
-			s.broadcastTriggerState()
+		s.status.Running = true
+		if err := Start(s.activeSource); err != nil {
+			s.status.Running = false
+			s.activeSource = nil
+			return
 		}
+		s.status.Nchannels = s.activeSource.Nchan()
+		s.broadcastUpdate()
+		s.broadcastTriggerState()
 	}()
 	*reply = true
 	return nil
@@ -192,7 +194,8 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = messageChan
 
-	// Load stored settings
+	// Load stored settings, and transfer saved configuration
+	// from Viper to relevant objects.
 	var okay bool
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
@@ -216,41 +219,38 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 		sourceControl.broadcastUpdate()
 	}
 
+	// Regularly broadcast status to all clients
 	go func() {
-		interruptCatcher := make(chan os.Signal, 1)
-		signal.Notify(interruptCatcher, os.Interrupt)
-
 		ticker := time.Tick(2 * time.Second)
-		for {
-			select {
-			case <-ticker:
-				sourceControl.broadcastUpdate()
-			case <-interruptCatcher:
-				return
-			}
+		for _ = range ticker {
+			sourceControl.broadcastUpdate()
 		}
-		// for _ = range ticker {
-		// 	sourceControl.broadcastUpdate()
-		// }
 	}()
 
-	// Transfer saved configuration from Viper to relevant objects.
-
 	// Now launch the connection handler and accept connections.
-	server := rpc.NewServer()
-	server.Register(sourceControl)
-	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
-	port := fmt.Sprintf(":%d", portrpc)
-	listener, err := net.Listen("tcp", port)
-	if err != nil {
-		log.Fatal("listen error:", err)
-	}
-	for {
-		if conn, err := listener.Accept(); err != nil {
-			log.Fatal("accept error: " + err.Error())
-		} else {
-			log.Printf("new connection established\n")
-			go server.ServeCodec(jsonrpc.NewServerCodec(conn))
+	go func() {
+		server := rpc.NewServer()
+		server.Register(sourceControl)
+		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+		port := fmt.Sprintf(":%d", portrpc)
+		listener, err := net.Listen("tcp", port)
+		if err != nil {
+			log.Fatal("listen error:", err)
 		}
-	}
+		for {
+			if conn, err := listener.Accept(); err != nil {
+				log.Fatal("accept error: " + err.Error())
+			} else {
+				log.Printf("new connection established\n")
+				go server.ServeCodec(jsonrpc.NewServerCodec(conn))
+			}
+		}
+	}()
+
+	// Finally, handle ctrl-C gracefully
+	interruptCatcher := make(chan os.Signal, 1)
+	signal.Notify(interruptCatcher, os.Interrupt)
+	<-interruptCatcher
+	dummy := "dummy"
+	sourceControl.Stop(&dummy, &okay)
 }
