@@ -58,7 +58,11 @@ func (lan *Lancero) Close() {
 	if lan.device != nil {
 		lan.device.Close()
 	}
+	if lan.collector != nil {
+		lan.collector.stop()
+	}
 	if lan.adapter != nil {
+		lan.adapter.stop()
 		lan.adapter.freeBuffer()
 	}
 }
