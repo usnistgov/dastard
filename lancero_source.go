@@ -75,8 +75,8 @@ func (ls *LanceroSource) Delete() {
 // be permanent, but I do think ClockMhz is necessarily the same for all cards.
 type LanceroSourceConfig struct {
 	FiberMask      uint32
-	CardDelay      int
 	ClockMhz       int
+	CardDelay      []int
 	ActiveCards    []int
 	AvailableCards []int
 }
@@ -85,13 +85,15 @@ type LanceroSourceConfig struct {
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMhz = config.ClockMhz
-	for _, c := range config.ActiveCards {
+	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
 		if dev == nil {
 			continue
 		}
 		ls.active = append(ls.active, dev)
-		dev.cardDelay = config.CardDelay
+		if len(config.CardDelay) >= 1+i {
+			dev.cardDelay = config.CardDelay[i]
+		}
 		dev.fiberMask = config.FiberMask
 		dev.clockMhz = config.ClockMhz
 	}
@@ -224,7 +226,6 @@ func (ls *LanceroSource) StartRun() error {
 
 	// Starting the source for all active cards has 3 steps per card.
 	for _, device := range ls.active {
-		lan := device.card
 
 		// 1. Resize the ring buffer to hold up to 16,384 frames
 		if device.frameSize <= 0 {
@@ -236,6 +237,10 @@ func (ls *LanceroSource) StartRun() error {
 		if bufsize > int(lancero.HardMaxBufSize) {
 			bufsize = int(lancero.HardMaxBufSize)
 			thresh = bufsize / threshBufferRatio
+		}
+		lan := device.card
+		if lan == nil {
+			continue
 		}
 		if err := lan.ChangeRingBuffer(bufsize, thresh); err != nil {
 			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)

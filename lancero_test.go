@@ -14,7 +14,8 @@ func TestChannelOrder(t *testing.T) {
 	d1 := LanceroDevice{devnum: 0, nrows: 3, ncols: 3}
 	ls.devices[0] = &d0
 	ls.devices[1] = &d1
-	config := LanceroSourceConfig{FiberMask: 0xbeef, ActiveCards: []int{0, 1, 2}}
+	config := LanceroSourceConfig{FiberMask: 0xbeef, ActiveCards: []int{0, 1, 2},
+		CardDelay: []int{1, 1, 1}}
 	ls.Configure(&config)
 
 	if len(ls.active) > 2 {
@@ -51,6 +52,19 @@ func TestChannelOrder(t *testing.T) {
 	for i, v := range ls.chan2readoutOrder {
 		if v != expect[i+32]-32 {
 			t.Errorf("chan2readoutOrder[%d]=%d, want %d", i, v, expect[i+32]-32)
+		}
+	}
+
+	ls.StartRun()
+	ls.stop()
+	ls.Delete()
+
+	// test roundint
+	fs := []float64{-1.4, -.6, -.4, 0, .4, .5, .6, 1.4}
+	es := []int{-1, -1, 0, 0, 0, 1, 1, 1}
+	for i, f := range fs {
+		if es[i] != roundint(f) {
+			t.Errorf("roundint(%f)=%d, want %d", f, roundint(f), es[i])
 		}
 	}
 }
