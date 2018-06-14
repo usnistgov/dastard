@@ -159,6 +159,7 @@ func (a *adapter) availableBuffers() (buffer []byte, err error) {
 	buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1)
 	length2 := C.int(a.writeIndex)
 	if length2 > 0 {
+		fmt.Printf("\tjoining buffers of length %7d+%7d\n", length1, length2)
 		buffer = append(buffer, C.GoBytes(unsafe.Pointer(a.buffer), length2)...)
 	}
 	return

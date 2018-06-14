@@ -261,10 +261,6 @@ func (ls *LanceroSource) StartRun() error {
 // blockingRead blocks and then reads data when "enough" is ready.
 // This will need to somehow work across multiple cards???
 func (ls *LanceroSource) blockingRead() error {
-	period := 100 * time.Millisecond
-	nextread := ls.lastread.Add(period)
-	waittime := time.Until(nextread)
-
 	type waiter struct {
 		timestamp time.Time
 		duration  time.Duration
@@ -283,19 +279,18 @@ func (ls *LanceroSource) blockingRead() error {
 			return err
 		}
 		return io.EOF
-	case <-time.After(waittime):
-		ls.lastread = time.Now()
 	case result := <-done:
 		if result.err != nil {
 			return result.err
 		}
-		ls.distributeData(result.timestamp)
-		fmt.Printf(" after wait of %v\n", result.duration)
+		timediff := result.timestamp.Sub(ls.lastread)
+		ls.lastread = result.timestamp
+		ls.distributeData(result.timestamp, timediff)
 	}
 	return nil
 }
 
-func (ls *LanceroSource) distributeData(timestamp time.Time) {
+func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration) {
 
 	// Get 1 buffer per card, and compute which contains the fewest frames
 	minframes := math.MaxInt64
@@ -307,12 +302,16 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 			return
 		}
 		buffers = append(buffers, bytesToRawType(b))
-		fmt.Printf("new buffer of length %d bytes", len(b))
 
 		bframes := len(b) / dev.frameSize
 		if bframes < minframes {
 			minframes = bframes
 		}
+		rate := 0.0
+		if wait > 0 {
+			rate = float64(len(b)) * 1e3 / float64(wait)
+		}
+		fmt.Printf("new buffer of length %8d b after wait %6.2f ms for %8.2f Mb/s\n", len(b), .001*float64(wait/time.Microsecond), rate)
 	}
 	if minframes <= 0 {
 		fmt.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
@@ -355,8 +354,10 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 	}
 
 	// Inform the driver to release the data we just consumed
-	for _, dev := range ls.active {
-		dev.card.ReleaseBytes(minframes * dev.frameSize)
+	for i, dev := range ls.active {
+		release := minframes * dev.frameSize
+		dev.card.ReleaseBytes(release)
+		fmt.Printf("           releasing %8d b (%5d b remain)\n", release, 2*len(buffers[i])-release)
 	}
 
 }
