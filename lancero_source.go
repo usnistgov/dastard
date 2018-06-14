@@ -29,10 +29,11 @@ type LanceroDevice struct {
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
 type LanceroSource struct {
-	devices  map[int]*LanceroDevice
-	ncards   int
-	clockMhz int
-	active   []*LanceroDevice
+	devices           map[int]*LanceroDevice
+	ncards            int
+	clockMhz          int
+	active            []*LanceroDevice
+	chan2readoutOrder map[int]int
 	AnySource
 }
 
@@ -40,6 +41,7 @@ type LanceroSource struct {
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
 	source.devices = make(map[int]*LanceroDevice)
+	source.chan2readoutOrder = make(map[int]int)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
 		return source, err
@@ -100,6 +102,23 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	return nil
 }
 
+// updateChanOrderMap updates the map chan2readoutOrder based on the number
+// of columns and rows in each active device
+func (ls *LanceroSource) updateChanOrderMap() {
+	ls.chan2readoutOrder = make(map[int]int)
+	nchanPrevDevices := 0
+	for _, dev := range ls.active {
+		nchan := dev.ncols * dev.nrows * 2
+		for readIdx := 0; readIdx < nchan; readIdx++ {
+			rownum := (readIdx / 2) / dev.ncols
+			colnum := (readIdx / 2) % dev.ncols
+			channum := (readIdx % 2) + rownum*2 + (colnum*dev.nrows)*2
+			ls.chan2readoutOrder[channum+nchanPrevDevices] = readIdx + nchanPrevDevices
+		}
+		nchanPrevDevices += nchan
+	}
+}
+
 // Sample determines key data facts by sampling some initial data.
 // It's a no-op for simulated (software) sources
 func (ls *LanceroSource) Sample() error {
@@ -111,6 +130,7 @@ func (ls *LanceroSource) Sample() error {
 		}
 		ls.nchan += device.ncols * device.nrows * 2
 	}
+	ls.updateChanOrderMap()
 	return nil
 }
 
@@ -243,7 +263,7 @@ func (ls *LanceroSource) StartRun() error {
 		}
 		device.collRunning = true
 
-		// 3. Consume possibly fractional frame info
+		// 3. Consume any possible fractional frames at the start of the buffer
 		for {
 			if _, _, err := lan.Wait(); err != nil {
 				return fmt.Errorf("error in Wait: %v", err)
@@ -330,37 +350,43 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	}
 
 	// Consume minframes frames of data from each channel
-	ch0num := 0
 	datacopies := make([][]RawType, len(ls.output))
+
+	// Careful! This slice of slices will be in lancero READOUT order:
+	// r0c0, r0c1, r0c2, etc.
 	for i := range ls.output {
 		datacopies[i] = make([]RawType, minframes)
 	}
 
+	nchanPrevDevices := 0
 	for ibuf, dev := range ls.active {
-		nchan := dev.ncols * dev.nrows * 2
 		buffer := buffers[ibuf]
+		nchan := dev.ncols * dev.nrows * 2
 		idx := 0
 		for j := 0; j < minframes; j++ {
 			for i := 0; i < nchan; i++ {
-				datacopies[i+ch0num][j] = buffer[idx]
+				datacopies[i+nchanPrevDevices][j] = buffer[idx]
 				idx++
 			}
 		}
-		ch0num += nchan
+		nchanPrevDevices += nchan
 	}
 
-	// Now send these data downstream
-	for i, ch := range ls.output {
+	// Now send these data downstream. Here we permute data into the expected
+	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
+	for channum, ch := range ls.output {
+		data := datacopies[ls.chan2readoutOrder[channum]]
 		// mask out frame and extern trigger bits from FB channels
-		if i%2 == 1 {
+		if channum%2 == 1 {
 			const mask = ^RawType(0x3)
-			for j := 0; j < len(datacopies[i]); j++ {
-				datacopies[i][j] &= mask
+			for j := 0; j < len(data); j++ {
+				data[j] &= mask
 			}
-			// I think you'd do err->FB mixing here??
+			// TODO: I think err->FB mixing goes here??
 		}
 
-		seg := DataSegment{rawData: datacopies[i], framesPerSample: 1}
+		// TODO: replace framesPerSample=1 with the actual decimate value
+		seg := DataSegment{rawData: data, framesPerSample: 1}
 		ch <- seg
 	}
 
@@ -370,7 +396,6 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		dev.card.ReleaseBytes(release)
 		fmt.Printf("           releasing %8d b (%5d b remain)\n", release, 2*len(buffers[i])-release)
 	}
-
 }
 
 // stop ends the data streaming on all active lancero devices.
