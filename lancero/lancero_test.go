@@ -88,7 +88,7 @@ func TestLancero(t *testing.T) {
 				nrows := (p - q) / n
 				fmt.Println("cols=", n, "rows=", nrows)
 				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
-				lsync := int(math.Round(float64(periodNS) / float64(nrows*8)))
+				lsync := roundint(float64(periodNS) / float64(nrows*8))
 				fmt.Printf("frame period %5d ns, lsync=%d\n", periodNS, lsync)
 			}
 			// Quit when read enough samples.
@@ -98,4 +98,9 @@ func TestLancero(t *testing.T) {
 		}
 	}
 	fmt.Println("loop DONE DONE DONE")
+}
+
+// Imperfect round to nearest integer
+func roundint(x float64) int {
+	return int(x + math.Copysign(0.5, x))
 }
