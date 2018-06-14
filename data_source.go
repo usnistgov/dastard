@@ -141,6 +141,10 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.NPresamples = 200
 		dsp.NSamples = 1000
 
+		// TODO: don't automatically turn on all record publishing.
+		dsp.SetPubRecords()
+		dsp.SetPubSummaries()
+
 		// This goroutine will run until the ch==ds.output[chnum] channel is closed
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
