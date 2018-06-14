@@ -102,8 +102,8 @@ func (lan *Lancero) Wait() (time.Time, time.Duration, error) {
 	return lan.adapter.wait()
 }
 
-// AvailableBuffers returns the ring buffer segment now ready for reading.
-func (lan *Lancero) AvailableBuffers() (buffer []byte, err error) {
+// AvailableBuffers returns a COPY OF the ring buffer segment now ready for reading.
+func (lan *Lancero) AvailableBuffers() ([]byte, error) {
 	return lan.adapter.availableBuffers()
 }
 

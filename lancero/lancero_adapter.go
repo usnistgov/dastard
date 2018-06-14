@@ -36,6 +36,10 @@ const (
 	bitsAdapterCtrlIEFull   uint32 = 8  // Adapter control bit: interrupt enable full
 	bitsAdapterCtrlIEFlush  uint32 = 16 // Adapter control bit: flush buffer
 	bitsAdapterCtrlRunFlush uint32 = bitsAdapterCtrlRun | bitsAdapterCtrlIEFlush
+
+	HardMaxBufSize uint32 = 40 * (1 << 20) // Longest allowed adapter buffer
+	// For latest value, look in driver lancero/Lancero-RELEASE/C/driver/lancero-base.c
+	// for the line that reads #define LANCERO_TRANSFER_MAX_BYTES (40 * (1<<20))
 )
 
 // adapter is the interface to the DMA ring buffer adapter.
@@ -48,7 +52,6 @@ type adapter struct {
 	writeIndex     uint32         // Write index of the FPGA, last time we asked the FPGA
 	thresholdLevel uint32         // Threshold level of the adapter, in bytes.
 	verbosity      int            // log level
-	minBufSize     uint32         // Do not return 2 buffers if 2nd is smaller than this
 	lastThresh     time.Time      // When the previous threshold wait ended
 }
 
@@ -109,7 +112,9 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 	case length%32 != 0:
 		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must be a multiple of the 32-byte SGDMA bus width", length)
 	case length > 1<<31:
-		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must be a < 2 GB", length)
+		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must be <= 2 GB", length)
+	case length > int(HardMaxBufSize):
+		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must not exceed hard max of %d", length, HardMaxBufSize)
 	case threshold*2 > length:
 		return fmt.Errorf("adapter.allocateRingBuffer(%d): threshold (%d) must be at most 50%% of length", length, threshold)
 	case threshold <= 0:
@@ -118,7 +123,6 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 
 	a.length = uint32(length)
 	a.thresholdLevel = uint32(threshold)
-	a.minBufSize = a.thresholdLevel / 2
 	const PAGEALIGN C.size_t = 4096
 	a.freeBuffer()
 	a.buffer = C.posixMemAlign(PAGEALIGN, C.size_t(length))

@@ -201,12 +201,18 @@ func (ls *LanceroSource) StartRun() error {
 	for _, device := range ls.active {
 		lan := device.card
 
-		// 1. Resize the ring buffer to hold 16,384 frames
+		// 1. Resize the ring buffer to hold up to 16,384 frames
 		if device.frameSize <= 0 {
 			device.frameSize = 128 // a random guess
 		}
+		const threshBufferRatio = 4
 		thresh := 16384 * device.frameSize
-		if err := lan.ChangeRingBuffer(4*thresh, thresh); err != nil {
+		bufsize := threshBufferRatio * thresh
+		if bufsize > int(lancero.HardMaxBufSize) {
+			bufsize = int(lancero.HardMaxBufSize)
+			thresh = bufsize / threshBufferRatio
+		}
+		if err := lan.ChangeRingBuffer(bufsize, thresh); err != nil {
 			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 		}
 
