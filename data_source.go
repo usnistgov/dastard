@@ -6,6 +6,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 // RawType holds raw signal data.
@@ -70,7 +72,7 @@ func Start(ds DataSource) error {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan      int     // how many channels to provide
+	nchan      int     // how many channels to provide, can this just be len(processors)?
 	sampleRate float64 // samples per second
 	lastread   time.Time
 	output     []chan DataSegment
@@ -79,6 +81,15 @@ type AnySource struct {
 	broker     *TriggerBroker
 	runMutex   sync.Mutex
 	runDone    sync.WaitGroup
+}
+
+// ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[processorsInd]
+func (ds *AnySource) ConfigureProjectorsBases(processorInd int, projectors mat.Dense, basis mat.Dense) error {
+	if processorInd >= len(ds.processors) || processorInd < 0 {
+		return fmt.Errorf("processorInd out of range, processorInd=%v, len(ds.processors)=%v", processorInd, len(ds.processors))
+	}
+	dsp := ds.processors[processorInd]
+	return dsp.SetProjectorsBasis(projectors, basis)
 }
 
 // Nchan returns the current number of valid channels in the data source.
