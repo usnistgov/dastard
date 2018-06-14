@@ -160,6 +160,9 @@ func TestServer(t *testing.T) {
 	if err := client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay); err != nil {
 		t.Error(err)
 	}
+	if !okay {
+		t.Errorf("SourceControl.ConfigureProjectorsBasis(\"%s\") returns !okay, want okay", sourceName)
+	}
 	if err := client.Call("SourceControl.Stop", sourceName, &okay); err != nil {
 		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
 	}
