@@ -72,6 +72,7 @@ type ProjectorsBasisObject struct {
 	BasisBase64      string
 }
 
+// ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
 func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, reply *bool) error {
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
@@ -182,6 +183,7 @@ func (s *SourceControl) broadcastTriggerState() {
 	}
 }
 
+// SendAllStatus causes a broadcast to clients containing all broadcastable status info
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	log.Println("A Client has requested to send all status")
 	s.broadcastTriggerState()

@@ -91,7 +91,8 @@ func TestServer(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
-	if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
+	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	if err == nil {
 		t.Errorf("expected error when starting Source while a source is active")
 	}
 	time.Sleep(time.Millisecond * 400)
@@ -157,13 +158,15 @@ func TestServer(t *testing.T) {
 		ProjectorsBase64: base64.StdEncoding.EncodeToString(projectorsBytes),
 		BasisBase64:      base64.StdEncoding.EncodeToString(basisBytes)}
 
-	if err := client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay); err != nil {
+	err = client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay)
+	if err != nil {
 		t.Error(err)
 	}
 	if !okay {
 		t.Errorf("SourceControl.ConfigureProjectorsBasis(\"%s\") returns !okay, want okay", sourceName)
 	}
-	if err := client.Call("SourceControl.Stop", sourceName, &okay); err != nil {
+	err = client.Call("SourceControl.Stop", sourceName, &okay)
+	if err != nil {
 		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
 	}
 	if !okay {
