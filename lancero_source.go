@@ -205,8 +205,8 @@ func (ls *LanceroSource) StartRun() error {
 		if device.frameSize <= 0 {
 			device.frameSize = 128 // a random guess
 		}
-		thresh := 8192 * device.frameSize
-		if err := lan.ChangeRingBuffer(8*thresh, thresh); err != nil {
+		thresh := 16384 * device.frameSize
+		if err := lan.ChangeRingBuffer(4*thresh, thresh); err != nil {
 			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 		}
 
@@ -289,8 +289,8 @@ func (ls *LanceroSource) blockingRead() error {
 		if result.err != nil {
 			return result.err
 		}
-		fmt.Printf("time to distribute data after wait of %v\n", result.duration)
 		ls.distributeData(result.timestamp)
+		fmt.Printf(" after wait of %v\n", result.duration)
 	}
 	return nil
 }
@@ -307,21 +307,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 			return
 		}
 		buffers = append(buffers, bytesToRawType(b))
-		fmt.Printf("new buffer of length %d bytes\n", len(b))
-		lb := 480
-		if len(b) < lb {
-			lb = len(b)
-		}
-		for j := 0; j < lb; j += 4 {
-			p := uint64(b[j+3])
-			for i := 2; i >= 0; i-- {
-				p = 256*p + uint64(b[j+i])
-			}
-			fmt.Printf("%8.8x ", p)
-			if j%32 == 28 {
-				fmt.Println()
-			}
-		}
+		fmt.Printf("new buffer of length %d bytes", len(b))
 
 		bframes := len(b) / dev.frameSize
 		if bframes < minframes {
@@ -347,10 +333,6 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 		for j := 0; j < minframes; j++ {
 			for i := 0; i < nchan; i++ {
 				datacopies[i+ch0num][j] = buffer[idx]
-				if j < 5 && i < 6 {
-					fmt.Printf("datacopies[%d][%d] = buffer[%d] = 0x%x = %d\n",
-						i+ch0num, j, idx, buffer[idx], buffer[idx])
-				}
 				idx++
 			}
 		}
@@ -368,12 +350,6 @@ func (ls *LanceroSource) distributeData(timestamp time.Time) {
 			// I think you'd do err->FB mixing here??
 		}
 
-		if i <= 6 && len(datacopies[i]) > 31 {
-			fmt.Printf("datacopies[%d][ 0: 8]: %v\n", i, datacopies[i][0:8])
-			fmt.Printf("datacopies[%d][ 8:16]: %v\n", i, datacopies[i][8:16])
-			fmt.Printf("datacopies[%d][16:24]: %v\n", i, datacopies[i][16:24])
-			fmt.Printf("datacopies[%d][24:32]: %v\n", i, datacopies[i][24:32])
-		}
 		seg := DataSegment{rawData: datacopies[i], framesPerSample: 1}
 		ch <- seg
 	}
