@@ -338,11 +338,11 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		if bframes < minframes {
 			minframes = bframes
 		}
-		rate := 0.0
-		if wait > 0 {
-			rate = float64(len(b)) * 1e3 / float64(wait)
-		}
-		fmt.Printf("new buffer of length %8d b after wait %6.2f ms for %8.2f Mb/s\n", len(b), .001*float64(wait/time.Microsecond), rate)
+		// rate := 0.0
+		// if wait > 0 {
+		// 	rate = float64(len(b)) * 1e3 / float64(wait)
+		// }
+		// fmt.Printf("new buffer of length %8d b after wait %6.2f ms for %8.2f Mb/s\n", len(b), .001*float64(wait/time.Microsecond), rate)
 	}
 	if minframes <= 0 {
 		fmt.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
@@ -391,10 +391,10 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	}
 
 	// Inform the driver to release the data we just consumed
-	for i, dev := range ls.active {
+	for _, dev := range ls.active {
 		release := minframes * dev.frameSize
 		dev.card.ReleaseBytes(release)
-		fmt.Printf("           releasing %8d b (%5d b remain)\n", release, 2*len(buffers[i])-release)
+		// fmt.Printf("           releasing %8d b (%5d b remain)\n", release, 2*len(buffers[i])-release)
 	}
 }
 
