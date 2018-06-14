@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
@@ -9,11 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/viper"
+	"gonum.org/v1/gonum/mat"
 )
 
 // SourceControl is the sub-server that handles configuration and operation of
 // the Dastard data sources.
+// TODO: consider renaming -> DastardControl (5/11/18)
 type SourceControl struct {
 	simPulses SimPulseSource
 	triangle  TriangleSource
@@ -49,7 +51,6 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
 	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
-	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
 	return err
@@ -59,10 +60,42 @@ func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, repl
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
 	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
-	s.clientUpdates <- ClientUpdate{"SIMPULSE", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return err
+}
+
+// ProjectorsBasisObject is the RPC-usable structure for
+type ProjectorsBasisObject struct {
+	ProcessorInd     int
+	ProjectorsBase64 string
+	BasisBase64      string
+}
+
+func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, reply *bool) error {
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+	projectorsBytes, err := base64.StdEncoding.DecodeString(pbo.ProjectorsBase64)
+	if err != nil {
+		return err
+	}
+	basisBytes, err := base64.StdEncoding.DecodeString(pbo.BasisBase64)
+	if err != nil {
+		return err
+	}
+	var projectors, basis mat.Dense
+	if err := projectors.UnmarshalBinary(projectorsBytes); err != nil {
+		return err
+	}
+	if err := basis.UnmarshalBinary(basisBytes); err != nil {
+		return err
+	}
+	if err := s.activeSource.ConfigureProjectorsBases(pbo.ProcessorInd, projectors, basis); err != nil {
+		return err
+	}
+	*reply = true
+	return nil
 }
 
 // SizeObject is the RPC-usable structure for ConfigurePulseLengths to change pulse record sizes.
@@ -87,6 +120,9 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
+	if s.activeSource != nil {
+		return fmt.Errorf("activeSource is not nil, want nil (you should call Stop)")
+	}
 	name := strings.ToUpper(*sourceName)
 	switch name {
 	case "SIMPULSESOURCE":
@@ -119,17 +155,18 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
-	log.Printf("Stopping data source\n")
-	if s.activeSource != nil {
-		s.activeSource.Stop()
-		s.activeSource = nil
-		*reply = true
-
-		s.status.Running = false
-		s.status.SourceName = ""
-		s.status.Nchannels = 0
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
 	}
+	log.Printf("Stopping data source\n")
+	s.activeSource.Stop()
+	s.activeSource = nil
+
+	s.status.Running = false
+	s.status.SourceName = ""
+	s.status.Nchannels = 0
 	s.broadcastUpdate()
+	*reply = true
 	return nil
 }
 
@@ -145,46 +182,33 @@ func (s *SourceControl) broadcastTriggerState() {
 	}
 }
 
-// SendAllStatus sends all relevant status messages to
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
+	log.Println("A Client has requested to send all status")
+	s.broadcastTriggerState()
 	s.broadcastUpdate()
-	s.clientUpdates <- ClientUpdate{"SENDALL", 0}
+	s.broadcastTriggerState()
+	*reply = true
 	return nil
 }
 
 // RunRPCServer sets up and run a permanent JSON-RPC server.
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
+	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
-	sourceControl := new(SourceControl)
-	sourceControl.clientUpdates = messageChan
-
-	// Load stored settings
-	var okay bool
-	var spc SimPulseSourceConfig
-	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
-	err := viper.UnmarshalKey("simpulse", &spc)
-	if err == nil {
-		sourceControl.ConfigureSimPulseSource(&spc, &okay)
-	}
-	var tsc TriangleSourceConfig
-	err = viper.UnmarshalKey("triangle", &tsc)
-	if err == nil {
-		sourceControl.ConfigureTriangleSource(&tsc, &okay)
-	}
-
+	sourcecontrol := new(SourceControl)
+	sourcecontrol.clientUpdates = messageChan
+	server.Register(sourcecontrol)
 	go func() {
 		ticker := time.Tick(2 * time.Second)
 		for _ = range ticker {
-			sourceControl.broadcastUpdate()
+			sourcecontrol.broadcastUpdate()
+			// var ok bool
+			// sourcecontrol.SendAllStatus("dummy", &ok)
 		}
 	}()
 
-	// Transfer saved configuration from Viper to relevant objects.
-
 	// Now launch the connection handler and accept connections.
-	server := rpc.NewServer()
-	server.Register(sourceControl)
 	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	port := fmt.Sprintf(":%d", portrpc)
 	listener, err := net.Listen("tcp", port)

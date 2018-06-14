@@ -3,6 +3,8 @@ package dastard
 import (
 	"testing"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 // TestTriangle checks that TriangleSource works as expected
@@ -75,6 +77,16 @@ func TestTriangle(t *testing.T) {
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		t.Errorf("TriangleSource has (nsamp, npre)=(%d,%d), want (%d,%d)",
 			dsp.NSamples, dsp.NPresamples, nsamp, npre)
+	}
+	rows := 5
+	cols := 500
+	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
+	basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
+	if err := dsp.SetProjectorsBasis(*projectors, *basis); err != nil {
+		t.Error(err)
+	}
+	if err := ts.ConfigureProjectorsBases(1, *projectors, *basis); err != nil {
+		t.Error(err)
 	}
 	ds.Stop()
 

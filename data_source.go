@@ -30,6 +30,7 @@ type DataSource interface {
 	Nchan() int
 	ComputeFullTriggerState() []FullTriggerState
 	ConfigurePulseLengths(int, int) error
+	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
