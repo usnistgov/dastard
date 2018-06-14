@@ -126,7 +126,6 @@ func TestBrokering(t *testing.T) {
 func TestLongRecords(t *testing.T) {
 	const nchan = 1
 
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
@@ -148,7 +147,7 @@ func TestLongRecords(t *testing.T) {
 		{1000, 10000, 10001},
 	}
 	for _, test := range tests {
-		dsp := NewDataStreamProcessor(0, publisher, broker)
+		dsp := NewDataStreamProcessor(0, broker)
 		dsp.NPresamples = test.npre
 		dsp.NSamples = test.nsamp
 		dsp.SampleRate = 100000.0
@@ -188,11 +187,10 @@ func TestLongRecords(t *testing.T) {
 func TestSingles(t *testing.T) {
 	const nchan = 1
 
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp := NewDataStreamProcessor(0, broker)
 	nRepeat := 1
 
 	const bigval = 8000
@@ -297,11 +295,10 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 func TestEdgeLevelInteraction(t *testing.T) {
 	const nchan = 1
 
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp := NewDataStreamProcessor(0, broker)
 	nRepeat := 1
 
 	const bigval = 8000
@@ -350,11 +347,10 @@ func TestEdgeLevelInteraction(t *testing.T) {
 func TestEdgeMulti(t *testing.T) {
 	const nchan = 1
 
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp := NewDataStreamProcessor(0, broker)
 	nRepeat := 1
 
 	//kink model parameters
@@ -409,11 +405,11 @@ func TestEdgeMulti(t *testing.T) {
 	// here we will find all triggers in trigInds, and short records will be created
 	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti D: MakeShortRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
-	expect_lengths := []int{100, 100, 100, 100, 49, 40, 50, 100}
+	expectLengths := []int{100, 100, 100, 100, 49, 40, 50, 100}
 	for i, record := range primaries {
-		if len(record.data) != expect_lengths[i] {
+		if len(record.data) != expectLengths[i] {
 			//if true {
-			t.Errorf("EdgeMulti D record %v: expect_len %v, len %v, presamples %v, trigFrame %v, %v:%v", i, expect_lengths[i],
+			t.Errorf("EdgeMulti D record %v: expect_len %v, len %v, presamples %v, trigFrame %v, %v:%v", i, expectLengths[i],
 				len(record.data), record.presamples, record.trigFrame, int(record.trigFrame)-record.presamples, int(record.trigFrame)-record.presamples+len(record.data)-1)
 		}
 	}
@@ -439,24 +435,23 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
 	nRepeatE := 3
 	// here we attempt to trigger around a segment boundary
-	primaries, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
+	_, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
 
 	dsp.NSamples = 15
 	dsp.NPresamples = 6
 	dsp.LastEdgeMultiTrigger = 0   // need to reset this each time
-	dsp.EdgeMultiState = SEARCHING // need to reset this after E
-	primaries, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
+	dsp.EdgeMultiState = searching // need to reset this after E
+	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
 func TestEdgeVetosLevel(t *testing.T) {
 	const nchan = 1
 
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 
@@ -493,11 +488,10 @@ func TestEdgeVetosLevel(t *testing.T) {
 
 func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	const nchan = 1
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 	dsp.AutoTrigger = true
@@ -518,11 +512,10 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 
 func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 
@@ -552,11 +545,10 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 
 func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
-	publisher := make(chan []*DataRecord)
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, publisher, broker)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 

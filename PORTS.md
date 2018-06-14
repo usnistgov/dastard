@@ -1,6 +1,6 @@
 # DASTARD TCP PORTS
 
-DASTARD uses a series of TCP ports for communications with its GUI control 
+DASTARD uses a series of TCP ports for communications with its GUI control
 clients (DASTARD-Commander) and to publish triggered pulse data for plotting
 (Microscope).
 
@@ -9,9 +9,10 @@ this number is **BASE=5500**. We might allow this number to be set at the
 DASTARD command-line, but for now it's a constant.  The TCP ports are:
 
 * **5500** (base+0): **Control**. JSON-RPC port for controlling DASTARD.  (JSON-RPC = "Remote Procedure Calls" specificed by JSON data format). Message format is defined by [json-rpc version 1.0](http://www.jsonrpc.org/specification_v1).
-* **5501** (base+1): **Status**. ZMQ PUB port where DASTARD reports its status to all control GUIs. 
+* **5501** (base+1): **Status**. ZMQ PUB port where DASTARD reports its status to all control GUIs.
 * **5502** (base+2): **Pulses**. ZMQ PUB port where DASTARD puts all pulse records. Subscribe by 4-byte channel number. These are for Microscope to use, so it can plot data.
 * **5503** (base+3): **Secondary records**. ZMQ PUB port, same as BASE+2, except that here we put only the secondary triggered records (i.e from a group trigger).
+* **5504** (base+4): **Pulse Summaries**. ZMQ PUB port. Just has summary info and modelCoefs.
 
 ### JSON-RPC commands (BASE+0)
 

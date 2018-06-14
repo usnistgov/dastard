@@ -126,11 +126,6 @@ func (ds *AnySource) PrepareRun() error {
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run()
 
-	// Start a data publishing goroutine
-	const publishChannelDepth = 500
-	dataToPub := make(chan []*DataRecord, publishChannelDepth)
-	go PublishRecords(dataToPub, ds.abortSelf, PortTrigs)
-
 	// Channels onto which we'll put data produced by this source
 	ds.output = make([]chan DataSegment, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
@@ -141,7 +136,7 @@ func (ds *AnySource) PrepareRun() error {
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
 	for chnum, ch := range ds.output {
-		dsp := NewDataStreamProcessor(chnum, dataToPub, ds.broker)
+		dsp := NewDataStreamProcessor(chnum, ds.broker)
 		dsp.SampleRate = ds.sampleRate
 		ds.processors[chnum] = dsp
 
@@ -191,15 +186,16 @@ func (ds *AnySource) CloseOutputs() {
 	}
 }
 
+// FullTriggerState used to collect channels that share the same TriggerState
 type FullTriggerState struct {
 	ChanNumbers []int
 	TriggerState
 }
 
+// ComputeFullTriggerState uses a map to collect channels with identical TriggerStates, so they
+// can be sent all together as one unit.
 func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 
-	// Use a map to collect channels with identical TriggerStates, so they
-	// can be sent all together as one unit.
 	result := make(map[TriggerState][]int)
 	for _, dsp := range ds.processors {
 		chans, ok := result[dsp.TriggerState]

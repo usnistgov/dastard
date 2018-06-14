@@ -17,3 +17,5 @@ lib*.a
 
 cmd/dastard/dastard
 dastardtestlogfile
+*.ljh
+*.ljh3

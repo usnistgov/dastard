@@ -6,4 +6,5 @@ const (
 	PortStatus
 	PortTrigs
 	PortSecondaryTrigs
+	PortSummaries
 )
