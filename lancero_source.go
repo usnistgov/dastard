@@ -177,7 +177,7 @@ func (device *LanceroDevice) sampleCard() error {
 				device.ncols = n
 				device.nrows = (p - q) / n
 				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
-				device.lsync = int(math.Round(float64(periodNS) * 1e-3 * float64(device.clockMhz) / float64(device.nrows)))
+				device.lsync = roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
 				device.frameSize = device.ncols * device.nrows * 4
 
 				fmt.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
@@ -190,6 +190,11 @@ func (device *LanceroDevice) sampleCard() error {
 			bytesRead += totalBytes
 		}
 	}
+}
+
+// Imperfect round to nearest integer
+func roundint(x float64) int {
+	return int(x + math.Copysign(0.5, x))
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
