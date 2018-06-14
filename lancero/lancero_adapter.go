@@ -160,12 +160,14 @@ func (a *adapter) availableBuffers() (buffer []byte, err error) {
 	// The available data cross the ring boundary, so return separate buffers joined together.
 	// buffers = a.buffer[a.readIndex:] + a.buffer[0:a.writeIndex])
 	length1 := C.int(a.length - a.readIndex)
-	buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1)
 	length2 := C.int(a.writeIndex)
+	buffer = make([]byte, length1+length2)
+	C.memcpy(unsafe.Pointer(&buffer[0]), unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), C.size_t(length1))
+	// buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1+length2)
 	if length2 > 0 {
-		fmt.Printf("\tjoining buffers of length %7d+%7d\n", length1, length2)
-		buffer = append(buffer, C.GoBytes(unsafe.Pointer(a.buffer), length2)...)
+		// fmt.Printf("\tjoining buffers of length %7d+%7d\n", length1, length2)
 		// buffer = append(buffer, C.GoBytes(unsafe.Pointer(a.buffer), length2)...)
+		C.memcpy(unsafe.Pointer(&buffer[length1]), unsafe.Pointer(a.buffer), C.size_t(length2))
 	}
 	return
 }
