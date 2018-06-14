@@ -224,28 +224,45 @@ var PubRecordsChan chan []*DataRecord
 // PubSummariesChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
 var PubSummariesChan chan []*DataRecord
 
-// configurePubSocket should be run exactly one time
+// configurePubRecordsSocket should be run exactly one time
 // it initializes PubFeederChan and launches a goroutine (with no way to stop it at the moment)
 // that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs
 // this way even if go routines in different threads want to publish records, they all use the same
-// zmq port
-// *** This looks like it could be replaced by PubChanneler, but tests show terrible perfoance with Channeler ***
-func configurePubRecordsSocket() error {
+// zmq port.
+func configurePubRecordsSocket() (err error) {
 	if PubRecordsChan != nil {
-		panic("run configurePubSocket only one time")
+		return fmt.Errorf("run configurePubRecordsSocket only one time")
 	}
+	PubRecordsChan, err = startSocket(PortTrigs, messageRecords)
+	return
+}
+
+// configurePubSummariesSocket should be run exactly one time; analogue of configurePubRecordsSocket
+func configurePubSummariesSocket() (err error) {
+	if PubSummariesChan != nil {
+		return fmt.Errorf("run configurePubSummariesSocket only one time")
+	}
+	PubSummariesChan, err = startSocket(PortSummaries, messageRecords)
+	return
+}
+
+// startSocket sets up a ZMQ publisher socket and starts a goroutine to publish
+// messages based on any records that appear on a new channel. Returns the
+// channel for other routines to fill.
+// *** This looks like it could be replaced by PubChanneler, but tests show terrible performance with Channeler ***
+func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
 	const publishChannelDepth = 500
-	// I think this could be a PubChanneler
-	PubRecordsChan = make(chan []*DataRecord, publishChannelDepth)
-	hostname := fmt.Sprintf("tcp://*:%d", PortTrigs)
+	// The following could could be a PubChanneler
+	pubchan := make(chan []*DataRecord, publishChannelDepth)
+	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	go func() {
 		defer pubSocket.Destroy()
 		for {
-			records := <-PubRecordsChan
+			records := <-pubchan
 			for _, record := range records {
 				message := messageRecords(record)
 				err := pubSocket.SendMessage(message)
@@ -255,34 +272,7 @@ func configurePubRecordsSocket() error {
 			}
 		}
 	}()
-	return nil
-}
-func configurePubSummariesSocket() error {
-	if PubSummariesChan != nil {
-		panic("run configurePubSocket only one time")
-	}
-	const publishChannelDepth = 500
-	// I think this could be a PubChanneler
-	PubSummariesChan = make(chan []*DataRecord, publishChannelDepth)
-	hostname := fmt.Sprintf("tcp://*:%d", PortSummaries)
-	pubSocket, err := czmq.NewPub(hostname)
-	if err != nil {
-		return err
-	}
-	go func() {
-		defer pubSocket.Destroy()
-		for {
-			records := <-PubSummariesChan
-			for _, record := range records {
-				message := messageSummaries(record)
-				err := pubSocket.SendMessage(message)
-				if err != nil {
-					panic("zmq send error")
-				}
-			}
-		}
-	}()
-	return nil
+	return pubchan, nil
 }
 
 // rawTypeToBytes convert a []RawType to []byte using unsafe
