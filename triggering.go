@@ -358,14 +358,12 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 
 	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
 	nextPotentialTrig := dsp.LastTrigger - segment.firstFramenum + delaySamples
-	// fmt.Printf("npt %d lt %d ff %d ds %d\n", nextPotentialTrig, dsp.LastTrigger, segment.firstFramenum, delaySamples)
 	if nextPotentialTrig < npre {
 		nextPotentialTrig = npre
 	}
 
 	// Loop through all potential trigger times.
 	for nextPotentialTrig+nsamp-npre < FrameIndex(ndata) {
-		// fmt.Printf("considering sample npt %d for auto trigger, nft %d\n", nextPotentialTrig, nextFoundTrig)
 		if nextPotentialTrig+nsamp <= nextFoundTrig {
 			// auto trigger is allowed: no conflict with previously found non-auto triggers
 			newRecord := dsp.triggerAt(segment, int(nextPotentialTrig))
@@ -393,6 +391,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	if dsp.EdgeMulti {
 		// EdgeMulti does not play nice with other triggers!!
 		records = dsp.edgeMultiTriggerComputeAppend(records)
+		// TODO: need to make EdgeMulti compatible with group triggers.
+		// By returning here, we would cause everything to hang if any group trigger
+		// was turned on.
 		return
 	}
 
@@ -434,6 +435,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 
 	// leave one full possible trigger in the stream
 	// trigger algorithms should not inspect the last NSamples samples
+	// fmt.Printf("Trimmed. %7d samples remain (requested %7d)\n", dsp.stream.TrimKeepingN(dsp.NSamples), dsp.NSamples)
 	dsp.stream.TrimKeepingN(dsp.NSamples)
 	return
 }

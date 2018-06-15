@@ -70,16 +70,17 @@ func Start(ds DataSource) error {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan      int     // how many channels to provide
-	sampleRate float64 // samples per second
-	lastread   time.Time
-	output     []chan DataSegment
-	processors []*DataStreamProcessor
-	abortSelf  chan struct{} // This can signal the Run() goroutine to stop
-	broker     *TriggerBroker
-	noProcess  bool // Set true only for testing.
-	runMutex   sync.Mutex
-	runDone    sync.WaitGroup
+	nchan        int     // how many channels to provide
+	sampleRate   float64 // samples per second
+	lastread     time.Time
+	lastFrameNum FrameIndex
+	output       []chan DataSegment
+	processors   []*DataStreamProcessor
+	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
+	broker       *TriggerBroker
+	noProcess    bool // Set true only for testing.
+	runMutex     sync.Mutex
+	runDone      sync.WaitGroup
 }
 
 // Nchan returns the current number of valid channels in the data source.
@@ -141,6 +142,8 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.EdgeRising = true
 		dsp.NPresamples = 200
 		dsp.NSamples = 1000
+		dsp.AutoTrigger = true
+		dsp.AutoDelay = 250 * time.Millisecond
 
 		// TODO: don't automatically turn on all record publishing.
 		dsp.SetPubRecords()

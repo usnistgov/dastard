@@ -9,12 +9,11 @@ import (
 
 // TriangleSource is a DataSource that synthesizes triangle waves.
 type TriangleSource struct {
-	minval       RawType
-	maxval       RawType
-	timeperbuf   time.Duration
-	onecycle     []RawType
-	cycleLen     int
-	lastFrameNum FrameIndex
+	minval     RawType
+	maxval     RawType
+	timeperbuf time.Duration
+	onecycle   []RawType
+	cycleLen   int
 	AnySource
 }
 
@@ -97,10 +96,9 @@ func (ts *TriangleSource) blockingRead() error {
 
 // SimPulseSource simulates simple pulsed sources
 type SimPulseSource struct {
-	timeperbuf   time.Duration
-	onecycle     []RawType
-	cycleLen     int
-	lastFrameNum FrameIndex
+	timeperbuf time.Duration
+	onecycle   []RawType
+	cycleLen   int
 	AnySource
 
 	// regular bool // whether pulses are regular or Poisson-distributed
@@ -130,11 +128,6 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	}
 	sps.nchan = config.Nchan
 	sps.sampleRate = config.SampleRate
-
-	sps.output = make([]chan DataSegment, sps.nchan)
-	for i := 0; i < sps.nchan; i++ {
-		sps.output[i] = make(chan DataSegment, 1)
-	}
 
 	sps.cycleLen = config.Nsamp
 	firstIdx := 5
