@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -195,22 +196,37 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 
 // RunRPCServer sets up and run a permanent JSON-RPC server.
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
-	server := rpc.NewServer()
 
 	// Set up objects to handle remote calls
-	sourcecontrol := new(SourceControl)
-	sourcecontrol.clientUpdates = messageChan
-	server.Register(sourcecontrol)
+	sourceControl := new(SourceControl)
+	sourceControl.clientUpdates = messageChan
+
+	// Load stored settings
+	var okay bool
+	var spc SimPulseSourceConfig
+	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
+	err := viper.UnmarshalKey("simpulse", &spc)
+	if err == nil {
+		sourceControl.ConfigureSimPulseSource(&spc, &okay)
+	}
+	var tsc TriangleSourceConfig
+	err = viper.UnmarshalKey("triangle", &tsc)
+	if err == nil {
+		sourceControl.ConfigureTriangleSource(&tsc, &okay)
+	}
+
 	go func() {
 		ticker := time.Tick(2 * time.Second)
 		for _ = range ticker {
-			sourcecontrol.broadcastUpdate()
-			// var ok bool
-			// sourcecontrol.SendAllStatus("dummy", &ok)
+			sourceControl.broadcastUpdate()
 		}
 	}()
 
+	// Transfer saved configuration from Viper to relevant objects.
+
 	// Now launch the connection handler and accept connections.
+	server := rpc.NewServer()
+	server.Register(sourceControl)
 	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	port := fmt.Sprintf(":%d", portrpc)
 	listener, err := net.Listen("tcp", port)
