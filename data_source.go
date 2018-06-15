@@ -6,6 +6,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 // RawType holds raw signal data.
@@ -28,6 +30,7 @@ type DataSource interface {
 	Nchan() int
 	ComputeFullTriggerState() []FullTriggerState
 	ConfigurePulseLengths(int, int) error
+	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -81,6 +84,15 @@ type AnySource struct {
 	noProcess    bool // Set true only for testing.
 	runMutex     sync.Mutex
 	runDone      sync.WaitGroup
+}
+
+// ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[processorsInd]
+func (ds *AnySource) ConfigureProjectorsBases(processorInd int, projectors mat.Dense, basis mat.Dense) error {
+	if processorInd >= len(ds.processors) || processorInd < 0 {
+		return fmt.Errorf("processorInd out of range, processorInd=%v, len(ds.processors)=%v", processorInd, len(ds.processors))
+	}
+	dsp := ds.processors[processorInd]
+	return dsp.SetProjectorsBasis(projectors, basis)
 }
 
 // Nchan returns the current number of valid channels in the data source.
