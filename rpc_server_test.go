@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/rpc"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"gonum.org/v1/gonum/mat"
 )
 
 func simpleClient() (*rpc.Client, error) {
@@ -33,6 +35,7 @@ func simpleClient() (*rpc.Client, error) {
 
 func TestServer(t *testing.T) {
 	client, err := simpleClient()
+	defer client.Close()
 	if err != nil {
 		t.Fatalf("Could not connect simpleClient() to RPC server")
 	}
@@ -75,12 +78,8 @@ func TestServer(t *testing.T) {
 		t.Errorf("Expected error calling SourceControl.Start(\"%s\") with wrong name, saw none", sourceName)
 	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
-	if err != nil {
-		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
-	}
-	if okay {
-		t.Errorf("SourceControl.Stop(\"%s\") returns okay, want !okay", sourceName)
+	if err == nil {
+		t.Errorf("expected error on Stopping when there is no active source")
 	}
 
 	// Try to start and stop with a sensible name
@@ -91,6 +90,10 @@ func TestServer(t *testing.T) {
 	}
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+	}
+	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	if err == nil {
+		t.Errorf("expected error when starting Source while a source is active")
 	}
 	time.Sleep(time.Millisecond * 400)
 	sizes := SizeObject{Nsamp: 800, Npre: 200}
@@ -139,11 +142,32 @@ func TestServer(t *testing.T) {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
-	t.Log("Calling SourceControl.Stop")
+	rows := 5
+	cols := 1000
+	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
+	basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
+	projectorsBytes, err := projectors.MarshalBinary()
+	if err != nil {
+		t.Error(err)
+	}
+	basisBytes, err := basis.MarshalBinary()
+	if err != nil {
+		t.Error(err)
+	}
+	pbo := ProjectorsBasisObject{ProcessorInd: 0,
+		ProjectorsBase64: base64.StdEncoding.EncodeToString(projectorsBytes),
+		BasisBase64:      base64.StdEncoding.EncodeToString(basisBytes)}
+
+	err = client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay)
+	if err != nil {
+		t.Error(err)
+	}
+	if !okay {
+		t.Errorf("SourceControl.ConfigureProjectorsBasis(\"%s\") returns !okay, want okay", sourceName)
+	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
-		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
+		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
 	}
 	if !okay {
 		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
@@ -161,8 +185,14 @@ func TestServer(t *testing.T) {
 		t.Errorf("Expected error on server with SourceControl.ConfigureTriangleSource() when Nchan<1")
 	}
 
-	client.Close()
-	t.Log("Done with TestOne")
+	// here test all methods that expect an active source to make sure they error appropriatley
+	// otherwise you will get incomprehensible stack traces when they error unexpectedly
+	if err := client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay); err == nil {
+		t.Error("expected error when no source is active")
+	}
+	if err := client.Call("SourceControl.Stop", sourceName, &okay); err == nil {
+		t.Errorf("expected error stopping source when no source is active")
+	}
 }
 
 // verifyConfigFile checks that path/filename exists, and creates the directory
