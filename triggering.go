@@ -346,8 +346,8 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	npre := FrameIndex(dsp.NPresamples)
 
 	delaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
-	if delaySamples < 0 {
-		panic(fmt.Sprintf("delay samples=%v", delaySamples))
+	if delaySamples < nsamp {
+		delaySamples = nsamp
 	}
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
@@ -358,24 +358,22 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 
 	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
 	nextPotentialTrig := dsp.LastTrigger - segment.firstFramenum + delaySamples
+	// fmt.Printf("npt %d lt %d ff %d ds %d\n", nextPotentialTrig, dsp.LastTrigger, segment.firstFramenum, delaySamples)
 	if nextPotentialTrig < npre {
 		nextPotentialTrig = npre
 	}
 
 	// Loop through all potential trigger times.
 	for nextPotentialTrig+nsamp-npre < FrameIndex(ndata) {
+		// fmt.Printf("considering sample npt %d for auto trigger, nft %d\n", nextPotentialTrig, nextFoundTrig)
 		if nextPotentialTrig+nsamp <= nextFoundTrig {
-			// auto trigger is allowed
+			// auto trigger is allowed: no conflict with previously found non-auto triggers
 			newRecord := dsp.triggerAt(segment, int(nextPotentialTrig))
 			records = append(records, newRecord)
-			if delaySamples >= nsamp {
-				nextPotentialTrig += delaySamples
-			} else {
-				nextPotentialTrig += nsamp
-			}
+			nextPotentialTrig += delaySamples
 
 		} else {
-			// auto trigger not allowed
+			// auto trigger not allowed: conflict with previously found non-auto triggers
 			nextPotentialTrig = nextFoundTrig + delaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
