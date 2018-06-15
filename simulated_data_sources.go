@@ -9,11 +9,12 @@ import (
 
 // TriangleSource is a DataSource that synthesizes triangle waves.
 type TriangleSource struct {
-	minval     RawType
-	maxval     RawType
-	timeperbuf time.Duration
-	onecycle   []RawType
-	cycleLen   int
+	minval       RawType
+	maxval       RawType
+	timeperbuf   time.Duration
+	onecycle     []RawType
+	cycleLen     int
+	lastFrameNum FrameIndex
 	AnySource
 }
 
@@ -35,15 +36,12 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 	if config.Nchan < 1 {
 		return fmt.Errorf("TriangleSource.Configure() asked for %d channels, should be > 0", config.Nchan)
 	}
+	ts.runMutex.Lock()
+	defer ts.runMutex.Unlock()
 	ts.nchan = config.Nchan
 	ts.sampleRate = config.SampleRate
 	ts.minval = config.Min
 	ts.maxval = config.Max
-
-	ts.output = make([]chan DataSegment, ts.nchan)
-	for i := 0; i < ts.nchan; i++ {
-		ts.output[i] = make(chan DataSegment, 1)
-	}
 
 	nrise := ts.maxval - ts.minval
 	ts.cycleLen = 2 * int(nrise)
@@ -84,18 +82,25 @@ func (ts *TriangleSource) blockingRead() error {
 	for _, ch := range ts.output {
 		datacopy := make([]RawType, ts.cycleLen)
 		copy(datacopy, ts.onecycle)
-		seg := DataSegment{rawData: datacopy, framesPerSample: 1}
+		seg := DataSegment{
+			rawData:         datacopy,
+			framesPerSample: 1,
+			firstFramenum:   ts.lastFrameNum,
+			firstTime:       ts.lastread,
+		}
 		ch <- seg
 	}
+	ts.lastFrameNum += FrameIndex(ts.cycleLen)
 
 	return nil
 }
 
 // SimPulseSource simulates simple pulsed sources
 type SimPulseSource struct {
-	timeperbuf time.Duration
-	onecycle   []RawType
-	cycleLen   int
+	timeperbuf   time.Duration
+	onecycle     []RawType
+	cycleLen     int
+	lastFrameNum FrameIndex
 	AnySource
 
 	// regular bool // whether pulses are regular or Poisson-distributed
@@ -183,9 +188,14 @@ func (sps *SimPulseSource) blockingRead() error {
 		for i := 0; i < sps.cycleLen; i++ {
 			datacopy[i] += RawType(rand.Intn(21) - 10)
 		}
-		seg := DataSegment{rawData: datacopy, framesPerSample: 1}
+		seg := DataSegment{
+			rawData:         datacopy,
+			framesPerSample: 1,
+			firstFramenum:   sps.lastFrameNum,
+			firstTime:       sps.lastread,
+		}
 		ch <- seg
 	}
-
+	sps.lastFrameNum += FrameIndex(sps.cycleLen)
 	return nil
 }
