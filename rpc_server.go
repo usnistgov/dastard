@@ -61,6 +61,7 @@ func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, repl
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
 	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
+	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return err
@@ -148,6 +149,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 			s.status.Running = true
 			s.status.Nchannels = s.activeSource.Nchan()
 			s.broadcastUpdate()
+			s.clientUpdates <- ClientUpdate{"TRIANGLE", sourceName}
 			s.broadcastTriggerState()
 		}
 	}()
@@ -186,11 +188,8 @@ func (s *SourceControl) broadcastTriggerState() {
 
 // SendAllStatus causes a broadcast to clients containing all broadcastable status info
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
-	log.Println("A Client has requested to send all status")
-	s.broadcastTriggerState()
 	s.broadcastUpdate()
-	s.broadcastTriggerState()
-	*reply = true
+	s.clientUpdates <- ClientUpdate{"SENDALL", 0}
 	return nil
 }
 
