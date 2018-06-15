@@ -52,6 +52,7 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
 	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
+	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
 	return err
@@ -61,7 +62,7 @@ func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, repl
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
 	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
-	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
+	s.clientUpdates <- ClientUpdate{"SIMPULSES", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return err
