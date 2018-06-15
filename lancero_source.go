@@ -329,7 +329,7 @@ func (ls *LanceroSource) blockingRead() error {
 func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration) {
 
 	// Get 1 buffer per card, and compute which contains the fewest frames
-	minframes := math.MaxInt64
+	framesUsed := math.MaxInt64
 	var buffers [][]RawType
 	for _, dev := range ls.active {
 		b, err := dev.card.AvailableBuffers()
@@ -340,8 +340,8 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		buffers = append(buffers, bytesToRawType(b))
 
 		bframes := len(b) / dev.frameSize
-		if bframes < minframes {
-			minframes = bframes
+		if bframes < framesUsed {
+			framesUsed = bframes
 		}
 		// rate := 0.0
 		// if wait > 0 {
@@ -349,18 +349,18 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		// }
 		// fmt.Printf("new buffer of length %8d b after wait %6.2f ms for %8.2f Mb/s\n", len(b), .001*float64(wait/time.Microsecond), rate)
 	}
-	if minframes <= 0 {
+	if framesUsed <= 0 {
 		fmt.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
 		return
 	}
 
-	// Consume minframes frames of data from each channel
+	// Consume framesUsed frames of data from each channel
 	datacopies := make([][]RawType, len(ls.output))
 
 	// Careful! This slice of slices will be in lancero READOUT order:
 	// r0c0, r0c1, r0c2, etc.
 	for i := range ls.output {
-		datacopies[i] = make([]RawType, minframes)
+		datacopies[i] = make([]RawType, framesUsed)
 	}
 
 	nchanPrevDevices := 0
@@ -368,7 +368,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		buffer := buffers[ibuf]
 		nchan := dev.ncols * dev.nrows * 2
 		idx := 0
-		for j := 0; j < minframes; j++ {
+		for j := 0; j < framesUsed; j++ {
 			for i := 0; i < nchan; i++ {
 				datacopies[i+nchanPrevDevices][j] = buffer[idx]
 				idx++
@@ -391,13 +391,19 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		}
 
 		// TODO: replace framesPerSample=1 with the actual decimate value
-		seg := DataSegment{rawData: data, framesPerSample: 1}
+		seg := DataSegment{
+			rawData:         data,
+			framesPerSample: 1,
+			firstFramenum:   ls.lastFrameNum,
+			firstTime:       ls.lastread,
+		}
 		ch <- seg
 	}
+	ls.lastFrameNum += FrameIndex(framesUsed)
 
 	// Inform the driver to release the data we just consumed
 	for _, dev := range ls.active {
-		release := minframes * dev.frameSize
+		release := framesUsed * dev.frameSize
 		dev.card.ReleaseBytes(release)
 		// fmt.Printf("           releasing %8d b (%5d b remain)\n", release, 2*len(buffers[i])-release)
 	}

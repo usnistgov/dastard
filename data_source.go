@@ -70,15 +70,17 @@ func Start(ds DataSource) error {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan      int     // how many channels to provide
-	sampleRate float64 // samples per second
-	lastread   time.Time
-	output     []chan DataSegment
-	processors []*DataStreamProcessor
-	abortSelf  chan struct{} // This can signal the Run() goroutine to stop
-	broker     *TriggerBroker
-	runMutex   sync.Mutex
-	runDone    sync.WaitGroup
+	nchan        int     // how many channels to provide
+	sampleRate   float64 // samples per second
+	lastread     time.Time
+	lastFrameNum FrameIndex
+	output       []chan DataSegment
+	processors   []*DataStreamProcessor
+	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
+	broker       *TriggerBroker
+	noProcess    bool // Set true only for testing.
+	runMutex     sync.Mutex
+	runDone      sync.WaitGroup
 }
 
 // Nchan returns the current number of valid channels in the data source.
@@ -140,15 +142,22 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.EdgeRising = true
 		dsp.NPresamples = 200
 		dsp.NSamples = 1000
+		dsp.AutoTrigger = true
+		dsp.AutoDelay = 250 * time.Millisecond
 
 		// TODO: don't automatically turn on all record publishing.
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 
-		// This goroutine will run until the ch==ds.output[chnum] channel is closed
+		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[chnum]
+		// channel is closed, depending on ds.noProcess (which is false expect for testing)
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
-			dsp.ProcessData(ch)
+			if ds.noProcess {
+				<-ds.abortSelf
+			} else {
+				dsp.ProcessData(ch)
+			}
 		}(ch)
 	}
 	ds.lastread = time.Now()
@@ -169,6 +178,9 @@ func (ds *AnySource) Stop() error {
 
 // Outputs returns the slice of channels that carry buffers of data for downstream processing.
 func (ds *AnySource) Outputs() []chan DataSegment {
+	// Don't run this if PrepareRun or other sensitive sections are running
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
 	return ds.output
 }
 
