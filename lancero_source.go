@@ -131,7 +131,9 @@ func (ls *LanceroSource) Sample() error {
 			return err
 		}
 		ls.nchan += device.ncols * device.nrows * 2
+		ls.sampleRate = float64(device.clockMhz) * 1e6 / float64(device.lsync*device.nrows)
 	}
+
 	ls.updateChanOrderMap()
 	return nil
 }
@@ -379,6 +381,9 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 
 	// Now send these data downstream. Here we permute data into the expected
 	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
+	// Backtrack to find the time associated with the first sample.
+	segDuration := time.Duration(framesUsed * roundint(1e9/ls.sampleRate))
+	firstTime := ls.lastread.Add(-segDuration)
 	for channum, ch := range ls.output {
 		data := datacopies[ls.chan2readoutOrder[channum]]
 		// mask out frame and extern trigger bits from FB channels
@@ -390,16 +395,16 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			// TODO: I think err->FB mixing goes here??
 		}
 
-		// TODO: replace framesPerSample=1 with the actual decimate value
+		// TODO: replace framesPerSample=1 with the actual decimation level
 		seg := DataSegment{
 			rawData:         data,
 			framesPerSample: 1,
-			firstFramenum:   ls.lastFrameNum,
-			firstTime:       ls.lastread,
+			firstFramenum:   ls.nextFrameNum,
+			firstTime:       firstTime,
 		}
 		ch <- seg
 	}
-	ls.lastFrameNum += FrameIndex(framesUsed)
+	ls.nextFrameNum += FrameIndex(framesUsed)
 
 	// Inform the driver to release the data we just consumed
 	for _, dev := range ls.active {

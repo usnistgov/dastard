@@ -78,18 +78,20 @@ func (ts *TriangleSource) blockingRead() error {
 		ts.lastread = time.Now()
 	}
 
+	// Backtrack to find the time associated with the first sample.
+	firstTime := ts.lastread.Add(-ts.timeperbuf)
 	for _, ch := range ts.output {
 		datacopy := make([]RawType, ts.cycleLen)
 		copy(datacopy, ts.onecycle)
 		seg := DataSegment{
 			rawData:         datacopy,
 			framesPerSample: 1,
-			firstFramenum:   ts.lastFrameNum,
-			firstTime:       ts.lastread,
+			firstFramenum:   ts.nextFrameNum,
+			firstTime:       firstTime,
 		}
 		ch <- seg
 	}
-	ts.lastFrameNum += FrameIndex(ts.cycleLen)
+	ts.nextFrameNum += FrameIndex(ts.cycleLen)
 
 	return nil
 }
@@ -175,6 +177,8 @@ func (sps *SimPulseSource) blockingRead() error {
 		sps.lastread = time.Now()
 	}
 
+	// Backtrack to find the time associated with the first sample.
+	firstTime := sps.lastread.Add(-sps.timeperbuf)
 	for _, ch := range sps.output {
 		datacopy := make([]RawType, sps.cycleLen)
 		copy(datacopy, sps.onecycle)
@@ -184,11 +188,11 @@ func (sps *SimPulseSource) blockingRead() error {
 		seg := DataSegment{
 			rawData:         datacopy,
 			framesPerSample: 1,
-			firstFramenum:   sps.lastFrameNum,
-			firstTime:       sps.lastread,
+			firstFramenum:   sps.nextFrameNum,
+			firstTime:       firstTime,
 		}
 		ch <- seg
 	}
-	sps.lastFrameNum += FrameIndex(sps.cycleLen)
+	sps.nextFrameNum += FrameIndex(sps.cycleLen)
 	return nil
 }

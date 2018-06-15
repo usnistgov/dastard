@@ -73,7 +73,7 @@ type AnySource struct {
 	nchan        int     // how many channels to provide
 	sampleRate   float64 // samples per second
 	lastread     time.Time
-	lastFrameNum FrameIndex
+	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	output       []chan DataSegment
 	processors   []*DataStreamProcessor
 	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
