@@ -133,8 +133,13 @@ func (ls *LanceroSource) Sample() error {
 		ls.nchan += device.ncols * device.nrows * 2
 		ls.sampleRate = float64(device.clockMhz) * 1e6 / float64(device.lsync*device.nrows)
 	}
-
 	ls.updateChanOrderMap()
+
+	ls.chanNames = make([]string, ls.nchan)
+	for i := 1; i < ls.nchan; i += 2 {
+		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
+		ls.chanNames[i] = fmt.Sprintf("chan%d", 1+i/2)
+	}
 	return nil
 }
 
