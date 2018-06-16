@@ -175,8 +175,9 @@ func (device *LanceroDevice) sampleCard() error {
 	defer signal.Stop(interruptCatcher)
 
 	var bytesRead int
-	const tooManyBytes int = 1000000 // shouldn't need this many bytes to SampleData
-	for {
+	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
+	const tooManyIterations int = 100 // nor this many reads of the lancero
+	for i := 0; i < tooManyIterations; i++ {
 		if bytesRead >= tooManyBytes {
 			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
 				bytesRead)
@@ -185,6 +186,8 @@ func (device *LanceroDevice) sampleCard() error {
 		case <-interruptCatcher:
 			return fmt.Errorf("LanceroDevice.sampleCard was interrupted")
 		default:
+			var waittime time.Duration
+			var buffer []byte
 			_, waittime, err := lan.Wait()
 			if err != nil {
 				return err
@@ -193,31 +196,34 @@ func (device *LanceroDevice) sampleCard() error {
 			if err != nil {
 				return err
 			}
-			totalBytes := len(buffer)
-			if totalBytes > 45000 {
-				fmt.Printf("waittime: %v\n", waittime)
-				fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
-				q, p, n, err := lancero.FindFrameBits(buffer)
-				bytesPerFrame := 4 * (p - q)
-				if err != nil {
-					fmt.Println("Error in findFrameBits:", err)
-					break
-				}
-				device.ncols = n
-				device.nrows = (p - q) / n
-				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
-				device.lsync = roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
-				device.frameSize = device.ncols * device.nrows * 4
-
-				fmt.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
-					device.nrows, periodNS, device.lsync)
-
-				lan.ReleaseBytes(totalBytes)
-				return nil
-			}
+		}
+		// Don't use the first buffer or a too-small one, because you will get a
+		// bad estimate of waittime and thus of LSYNC.
+		if i == 0 || len(buffer < 45000) {
 			lan.ReleaseBytes(totalBytes)
 			bytesRead += totalBytes
+			continue
 		}
+		totalBytes := len(buffer)
+		fmt.Printf("waittime: %v\n", waittime)
+		fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
+		q, p, n, err := lancero.FindFrameBits(buffer)
+		bytesPerFrame := 4 * (p - q)
+		if err != nil {
+			fmt.Println("Error in findFrameBits:", err)
+			break
+		}
+		device.ncols = n
+		device.nrows = (p - q) / n
+		periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
+		device.lsync = roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
+		device.frameSize = device.ncols * device.nrows * 4
+
+		fmt.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
+			device.nrows, periodNS, device.lsync)
+
+		lan.ReleaseBytes(totalBytes)
+		return nil
 	}
 }
 
