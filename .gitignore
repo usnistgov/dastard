@@ -16,6 +16,7 @@ lib*.a
 .glide/
 
 cmd/dastard/dastard
+lancero/acquire/acquire
 dastardtestlogfile
 *.ljh
 *.ljh3

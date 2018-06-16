@@ -76,7 +76,7 @@ type lanceroDevice struct {
 // possible.
 func openLanceroDevice(devnum int) (dev *lanceroDevice, err error) {
 	dev = new(lanceroDevice)
-	dev.verbosity = 3
+	// dev.verbosity = 3
 
 	// Convert device component name to a devfs path. If devnum is negative, omit
 	// it (for compatibility with older driver versions). Otherwise, append it (for

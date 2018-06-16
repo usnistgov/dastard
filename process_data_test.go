@@ -70,7 +70,9 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0, 1, 0,
 			0, 0, 1,
 			0, 0, 0})
-	dsp.SetProjectorsBasis(*projectors3, *basis3)
+	if err := dsp.SetProjectorsBasis(*projectors3, *basis3); err != nil {
+		t.Error(err)
+	}
 	dsp.AnalyzeData(records)
 
 	// residual should be [0,0,0,4]
@@ -90,7 +92,9 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0,
 			0,
 			0})
-	dsp.SetProjectorsBasis(*projectors1, *basis1)
+	if err := dsp.SetProjectorsBasis(*projectors1, *basis1); err != nil {
+		t.Error(err)
+	}
 	dsp.AnalyzeData(records)
 	// residual should be [0,2,3,4]
 	expect = RTExpect{
@@ -189,7 +193,9 @@ func BenchmarkAnalyze(b *testing.B) {
 			if bm.nbases > 0 {
 				projectors := mat.NewDense(bm.nbases, bm.nsamples, make([]float64, bm.nbases*bm.nsamples))
 				basis := mat.NewDense(bm.nsamples, bm.nbases, make([]float64, bm.nbases*bm.nsamples))
-				dsp.SetProjectorsBasis(*projectors, *basis)
+				if err := dsp.SetProjectorsBasis(*projectors, *basis); err != nil {
+					b.Error(err)
+				}
 			}
 			b.ResetTimer()
 			dsp.AnalyzeData(records)

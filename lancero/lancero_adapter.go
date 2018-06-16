@@ -36,6 +36,10 @@ const (
 	bitsAdapterCtrlIEFull   uint32 = 8  // Adapter control bit: interrupt enable full
 	bitsAdapterCtrlIEFlush  uint32 = 16 // Adapter control bit: flush buffer
 	bitsAdapterCtrlRunFlush uint32 = bitsAdapterCtrlRun | bitsAdapterCtrlIEFlush
+
+	HardMaxBufSize uint32 = 40 * (1 << 20) // Longest allowed adapter buffer
+	// For latest value, look in driver lancero/Lancero-RELEASE/C/driver/lancero-base.c
+	// for the line that reads #define LANCERO_TRANSFER_MAX_BYTES (40 * (1<<20))
 )
 
 // adapter is the interface to the DMA ring buffer adapter.
@@ -48,7 +52,6 @@ type adapter struct {
 	writeIndex     uint32         // Write index of the FPGA, last time we asked the FPGA
 	thresholdLevel uint32         // Threshold level of the adapter, in bytes.
 	verbosity      int            // log level
-	minBufSize     uint32         // Do not return 2 buffers if 2nd is smaller than this
 	lastThresh     time.Time      // When the previous threshold wait ended
 }
 
@@ -90,6 +93,7 @@ func (a *adapter) freeBuffer() {
 	if a.buffer != nil {
 		C.free(unsafe.Pointer(a.buffer))
 	}
+	a.buffer = nil
 }
 
 // Reads, optionally prints, and returns the Avalon ST/MM adapter status word.
@@ -108,7 +112,9 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 	case length%32 != 0:
 		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must be a multiple of the 32-byte SGDMA bus width", length)
 	case length > 1<<31:
-		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must be a < 2 GB", length)
+		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must be <= 2 GB", length)
+	case length > int(HardMaxBufSize):
+		return fmt.Errorf("adapter.allocateRingBuffer(%d): length must not exceed hard max of %d", length, HardMaxBufSize)
 	case threshold*2 > length:
 		return fmt.Errorf("adapter.allocateRingBuffer(%d): threshold (%d) must be at most 50%% of length", length, threshold)
 	case threshold <= 0:
@@ -117,8 +123,8 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 
 	a.length = uint32(length)
 	a.thresholdLevel = uint32(threshold)
-	a.minBufSize = a.thresholdLevel / 2
 	const PAGEALIGN C.size_t = 4096
+	a.freeBuffer()
 	a.buffer = C.posixMemAlign(PAGEALIGN, C.size_t(length))
 
 	a.stop()
@@ -128,40 +134,40 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 	return nil
 }
 
-// Find total amount of available data and return a slice with 1 or 2 buffers (byte slices).
-// There will be 2 buffers when the available data cross the ring buffer boundary.
-// Returns the slice containing the buffers, the total # of bytes in the two, and any possible error.
-
-func (a *adapter) availableBuffers() (buffers [][]byte, totalBytes int, err error) {
+// Find total amount of available data and return a buffer (byte slice).
+// Returns the data buffer and any possible error.
+func (a *adapter) availableBuffers() (buffer []byte, err error) {
 	// Ask the hardware for the current write pointer and the bytes available.
 	// Note that "write pointer" is where the DRIVER is about to write to.
 	a.writeIndex, err = a.device.readRegister(adapterRBWI)
 	if err != nil {
 		return
 	}
+	if a.writeIndex == a.readIndex {
+		return
+	}
 
 	// Handle the easier, single-buffer case first.
 	if a.writeIndex >= a.readIndex {
 		// There's only one continuous region in the buffer, not crossing the ring boundary
-		// buffers = append(buffers, a.buffer[a.readIndex:a.writeIndex])
 		length := C.int(a.writeIndex - a.readIndex) // can equal 0, b/f collector gets going
 		if length > 0 {
-			buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length))
-			totalBytes = len(buffers[0])
+			buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length)
 		}
 		return
 	}
 
-	// The available data cross the ring boundary, so return 2 separate buffers.
-	// buffers = append(buffers, a.buffer[a.readIndex:], a.buffer[0:a.writeIndex])
+	// The available data cross the ring boundary, so return separate buffers joined together.
+	// buffers = a.buffer[a.readIndex:] + a.buffer[0:a.writeIndex])
 	length1 := C.int(a.length - a.readIndex)
-	buffers = append(buffers, C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1))
-	totalBytes = len(buffers[0])
-
-	// We don't want this second buffer now, if it's too short to be worth handling.
-	if a.writeIndex >= a.minBufSize {
-		buffers = append(buffers, C.GoBytes(unsafe.Pointer(a.buffer), C.int(a.writeIndex)))
-		totalBytes += len(buffers[1])
+	length2 := C.int(a.writeIndex)
+	buffer = make([]byte, length1+length2)
+	C.memcpy(unsafe.Pointer(&buffer[0]), unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), C.size_t(length1))
+	// buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1+length2)
+	if length2 > 0 {
+		// fmt.Printf("\tjoining buffers of length %7d+%7d\n", length1, length2)
+		// buffer = append(buffer, C.GoBytes(unsafe.Pointer(a.buffer), length2)...)
+		C.memcpy(unsafe.Pointer(&buffer[length1]), unsafe.Pointer(a.buffer), C.size_t(length2))
 	}
 	return
 }
@@ -265,28 +271,34 @@ func (a *adapter) stop() error {
 }
 
 // Wait until a the threshold amount of data is available.
-func (a *adapter) wait() error {
+// Return timestamp when ready, duration since last ready, and error.
+func (a *adapter) wait() (time.Time, time.Duration, error) {
+	now := time.Now()
 	dataAvailable, err := a.available()
 	if err != nil {
-		return err
+		sinceLast := now.Sub(a.lastThresh)
+		a.lastThresh = now
+		return now, sinceLast, err
 	}
 	if dataAvailable >= a.thresholdLevel {
-		return nil
+		sinceLast := now.Sub(a.lastThresh)
+		a.lastThresh = now
+		return now, sinceLast, nil
 	}
 	if a.verbosity >= 3 {
 		log.Println("adapter.wait(): Waiting for threshold event.")
 	}
-	start := time.Now()
 
 	// block until an interrupt event occurs.
+	start := time.Now()
 	_, err = a.device.readEvents()
+	now = time.Now()
+	sinceLast := now.Sub(a.lastThresh)
+	a.lastThresh = now
 	if a.verbosity >= 3 {
-		now := time.Now()
 		waitTime := now.Sub(start)
-		sinceLast := now.Sub(a.lastThresh)
-		a.lastThresh = now
 		log.Printf("adapter.wait(): Waited for %v (%v since last thresh).\n",
 			waitTime, sinceLast)
 	}
-	return err
+	return now, sinceLast, err
 }

@@ -244,9 +244,29 @@ func TestSingles(t *testing.T) {
 	dsp.AutoDelay = 200 * time.Millisecond
 	dsp.AutoTrigger = true
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level+Auto_200Millisecond", []FrameIndex{1000, 3000, 5000, 6000, 8000})
+
+	// Check that auto triggers are correct, particularly for multiple segments (issue #16)
+	nRepeat = 4 // 4 seconds of data
+	var expected []FrameIndex
+	dsp.LevelTrigger = false
+	dsp.NSamples = 1234
+	dsp.NPresamples = 456
+	expected = make([]FrameIndex, 0)
+	for i := dsp.NPresamples; i < nRepeat*int(dsp.SampleRate); i += 2000 {
+		expected = append(expected, FrameIndex(i))
+	}
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "AutoMultipleSegmentsA", expected)
+
+	dsp.AutoDelay = 1200 * time.Millisecond
+	expected = make([]FrameIndex, 0)
+	for i := dsp.NPresamples; i < nRepeat*int(dsp.SampleRate); i += 12000 {
+		expected = append(expected, FrameIndex(i))
+	}
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "AutoMultipleSegmentsB", expected)
 }
 
-func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataStreamProcessor, trigname string, expectedFrames []FrameIndex) ([]*DataRecord, []*DataRecord) {
+func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataStreamProcessor,
+	trigname string, expectedFrames []FrameIndex) ([]*DataRecord, []*DataRecord) {
 	// fmt.Println(trigname, len(dsp.stream.rawData))
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
@@ -269,7 +289,7 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	for i, pt := range primaries {
 		if i < len(expectedFrames) {
 			if pt.trigFrame != expectedFrames[i] {
-				t.Errorf("%s trigger at frame %d, want %d", trigname, pt.trigFrame, expectedFrames[i])
+				t.Errorf("%s trigger[%d] at frame %d, want %d", trigname, i, pt.trigFrame, expectedFrames[i])
 			}
 		}
 	}
@@ -281,7 +301,7 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 		for i := 0; i < len(pt.data); i++ {
 			expect := raw[i+offset]
 			if pt.data[i] != expect {
-				t.Errorf("%s trigger found data[%d]=%d, want %d", trigname, i,
+				t.Errorf("%s trigger[0] found data[%d]=%d, want %d", trigname, i,
 					pt.data[i], expect)
 			}
 		}

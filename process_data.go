@@ -1,7 +1,7 @@
 package dastard
 
 import (
-	"log"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -39,26 +39,23 @@ func (dsp *DataStreamProcessor) RemoveProjectorsBasis() {
 	dsp.basis.Reset()
 }
 
-// SetProjectorsBasis sets .projectors and .basis to the arguments, panics if the sizes are not right
-func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) {
+// SetProjectorsBasis sets .projectors and .basis to the arguments, returns an error if the sizes are not right
+func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
 	if dsp.NSamples != cols {
-		log.Println("projectors has wrong size, rows: ", rows, " cols: ", cols)
-		log.Println("should have cols: ", dsp.NSamples)
-		panic("")
+		return fmt.Errorf("projectors has wrong size, rows: %v, cols: %v, want cols: %v", rows, cols, dsp.NSamples)
 	}
 	brows, bcols := basis.Dims()
 	if bcols != nbases {
-		log.Println("basis has wrong size, has cols: ", bcols, "should have cols: ", nbases)
-		panic("")
+		return fmt.Errorf("basis has wrong size, has cols: %v, want: %v", bcols, nbases)
 	}
 	if brows != dsp.NSamples {
-		log.Println("basis has wrong size, has rows: ", brows, "should have rows: ", dsp.NSamples)
-		panic("")
+		return fmt.Errorf("basis has wrong size, has rows: %v, want: %v", brows, dsp.NSamples)
 	}
 	dsp.projectors = projectors
 	dsp.basis = basis
+	return nil
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
@@ -126,7 +123,7 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	records, _ := dsp.TriggerData()
 	dsp.AnalyzeData(records) // add analysis results to records in-place
 	// TODO: dsp.WriteData(records)
-	dsp.DataPublisher.PublishData(records)
+	dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
 }
 
 // DecimateData decimates data in-place.
