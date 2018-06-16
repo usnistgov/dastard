@@ -183,6 +183,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.status.Nchannels = s.activeSource.Nchan()
 		s.broadcastUpdate()
 		s.broadcastTriggerState()
+		s.broadcastChannelNames()
 	}()
 	*reply = true
 	return nil
