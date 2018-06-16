@@ -90,11 +90,19 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	}
 }
 
+// nosaveMessages is a set of message names that you don't save
+var nosaveMessages = map[string]struct{}{
+	"channelnames": {},
+}
+
 // saveState stores server configuration to the standard config file.
 func saveState(lastMessages map[string]interface{}) {
+
 	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
 	for k, v := range lastMessages {
-		viper.Set(k, v)
+		if _, ok := nosaveMessages[strings.ToLower((k))]; !ok {
+			viper.Set(k, v)
+		}
 	}
 
 	mainname := viper.ConfigFileUsed()

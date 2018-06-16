@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -18,13 +20,26 @@ import (
 // the Dastard data sources.
 // TODO: consider renaming -> DastardControl (5/11/18)
 type SourceControl struct {
-	simPulses SimPulseSource
-	triangle  TriangleSource
-	// TODO: Add sources for Lancero, ROACH, Abaco
+	simPulses *SimPulseSource
+	triangle  *TriangleSource
+	lancero   *LanceroSource
+	// TODO: Add sources for ROACH, Abaco
 	activeSource DataSource
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
+}
+
+// NewSourceControl creates a new SourceControl object with correctly initialized
+// contents.
+func NewSourceControl() *SourceControl {
+	sc := new(SourceControl)
+	sc.simPulses = new(SimPulseSource)
+	sc.triangle = new(TriangleSource)
+	if lan, err := NewLanceroSource(); err == nil {
+		sc.lancero = lan
+	}
+	return sc
 }
 
 // ServerStatus the status that SourceControl reports to clients.
@@ -65,6 +80,16 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 	s.clientUpdates <- ClientUpdate{"SIMPULSES", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
+	return err
+}
+
+// ConfigureLanceroSource configures the lancero cards.
+func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply *bool) error {
+	log.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
+	err := s.lancero.Configure(args)
+	s.clientUpdates <- ClientUpdate{"LANCERO", args}
+	*reply = (err == nil)
+	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMhz, s.lancero.ncards)
 	return err
 }
 
@@ -130,14 +155,18 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	name := strings.ToUpper(*sourceName)
 	switch name {
 	case "SIMPULSESOURCE":
-		s.activeSource = DataSource(&s.simPulses)
+		s.activeSource = DataSource(s.simPulses)
 		s.status.SourceName = "SimPulses"
 
 	case "TRIANGLESOURCE":
-		s.activeSource = DataSource(&s.triangle)
+		s.activeSource = DataSource(s.triangle)
 		s.status.SourceName = "Triangles"
 
-	// TODO: Add cases here for LANCERO, ROACH, ABACO, etc.
+	case "LANCEROSOURCE":
+		s.activeSource = DataSource(s.lancero)
+		s.status.SourceName = "Lancero"
+
+	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
@@ -145,14 +174,15 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	go func() {
-		err := Start(s.activeSource)
-		if err == nil {
-			s.status.Running = true
-			s.status.Nchannels = s.activeSource.Nchan()
-			s.broadcastUpdate()
-			s.clientUpdates <- ClientUpdate{"TRIANGLE", sourceName}
-			s.broadcastTriggerState()
+		s.status.Running = true
+		if err := Start(s.activeSource); err != nil {
+			s.status.Running = false
+			s.activeSource = nil
+			return
 		}
+		s.status.Nchannels = s.activeSource.Nchan()
+		s.broadcastUpdate()
+		s.broadcastTriggerState()
 	}()
 	*reply = true
 	return nil
@@ -164,18 +194,24 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		return fmt.Errorf("No source is active")
 	}
 	log.Printf("Stopping data source\n")
-	s.activeSource.Stop()
-	s.activeSource = nil
+	if s.activeSource != nil {
+		s.activeSource.Stop()
+		s.status.Running = false
+		s.activeSource = nil
+		*reply = true
 
-	s.status.Running = false
-	s.status.SourceName = ""
-	s.status.Nchannels = 0
+	}
 	s.broadcastUpdate()
 	*reply = true
 	return nil
 }
 
 func (s *SourceControl) broadcastUpdate() {
+	// Check whether the "active" source actually stopped on its own
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.activeSource = nil
+		s.status.Running = false
+	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
@@ -198,10 +234,12 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 
 	// Set up objects to handle remote calls
-	sourceControl := new(SourceControl)
+	sourceControl := NewSourceControl()
+	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = messageChan
 
-	// Load stored settings
+	// Load stored settings, and transfer saved configuration
+	// from Viper to relevant objects.
 	var okay bool
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
@@ -214,7 +252,18 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	if err == nil {
 		sourceControl.ConfigureTriangleSource(&tsc, &okay)
 	}
+	var lsc LanceroSourceConfig
+	err = viper.UnmarshalKey("lancero", &lsc)
+	if err == nil {
+		sourceControl.ConfigureLanceroSource(&lsc, &okay)
+	}
+	err = viper.UnmarshalKey("status", &sourceControl.status)
+	sourceControl.status.Running = false
+	if err == nil {
+		sourceControl.broadcastUpdate()
+	}
 
+	// Regularly broadcast status to all clients
 	go func() {
 		ticker := time.Tick(2 * time.Second)
 		for _ = range ticker {
@@ -222,23 +271,30 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 		}
 	}()
 
-	// Transfer saved configuration from Viper to relevant objects.
-
 	// Now launch the connection handler and accept connections.
-	server := rpc.NewServer()
-	server.Register(sourceControl)
-	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
-	port := fmt.Sprintf(":%d", portrpc)
-	listener, err := net.Listen("tcp", port)
-	if err != nil {
-		log.Fatal("listen error:", err)
-	}
-	for {
-		if conn, err := listener.Accept(); err != nil {
-			log.Fatal("accept error: " + err.Error())
-		} else {
-			log.Printf("new connection established\n")
-			go server.ServeCodec(jsonrpc.NewServerCodec(conn))
+	go func() {
+		server := rpc.NewServer()
+		server.Register(sourceControl)
+		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+		port := fmt.Sprintf(":%d", portrpc)
+		listener, err := net.Listen("tcp", port)
+		if err != nil {
+			log.Fatal("listen error:", err)
 		}
-	}
+		for {
+			if conn, err := listener.Accept(); err != nil {
+				log.Fatal("accept error: " + err.Error())
+			} else {
+				log.Printf("new connection established\n")
+				go server.ServeCodec(jsonrpc.NewServerCodec(conn))
+			}
+		}
+	}()
+
+	// Finally, handle ctrl-C gracefully
+	interruptCatcher := make(chan os.Signal, 1)
+	signal.Notify(interruptCatcher, os.Interrupt)
+	<-interruptCatcher
+	dummy := "dummy"
+	sourceControl.Stop(&dummy, &okay)
 }

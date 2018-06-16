@@ -123,9 +123,8 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 		// log.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
 		// 	dsp.Channum, len(records), len(secondaries))
 	}
-	dsp.AnalyzeData(records) // add analysis results to records in-place
-	// TODO: dsp.WriteData(records)
-	dsp.DataPublisher.PublishData(records)
+	dsp.AnalyzeData(records)               // add analysis results to records in-place
+	dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
 }
 
 // DecimateData decimates data in-place.

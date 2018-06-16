@@ -10,13 +10,14 @@ import (
 // TestTriangle checks that TriangleSource works as expected
 func TestTriangle(t *testing.T) {
 	ts := NewTriangleSource()
-	config := &TriangleSourceConfig{
+	config := TriangleSourceConfig{
 		Nchan:      4,
 		SampleRate: 10000.0,
-		Min:        10,
-		Max:        15,
+		Min:        100,
+		Max:        200,
 	}
-	ts.Configure(config)
+	ts.Configure(&config)
+	ts.noProcess = true
 	ds := DataSource(ts)
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true before first start.")
@@ -29,6 +30,8 @@ func TestTriangle(t *testing.T) {
 	if len(outputs) != config.Nchan {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}
+
+	// Check first segment per source.
 	n := int(config.Max - config.Min)
 	for i, ch := range outputs {
 		segment := <-ch
@@ -44,12 +47,34 @@ func TestTriangle(t *testing.T) {
 				t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j+n, data[j+n], int(config.Max)-j)
 			}
 		}
+		if segment.firstFramenum != 0 {
+			t.Errorf("TriangleSource first segment, output %d gives firstFramenum %d, want 0", i, segment.firstFramenum)
+		}
+	}
+	// Check second segment per source.
+	for i, ch := range outputs {
+		segment := <-ch
+		data := segment.rawData
+		if len(data) != 2*n {
+			t.Errorf("TriangleSource output %d is length %d, expect %d", i, len(data), 2*n)
+		}
+		for j := 0; j < n; j++ {
+			if data[j] != config.Min+RawType(j) {
+				t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j, data[j], int(config.Min)+j)
+			}
+			if data[j+n] != config.Max-RawType(j) {
+				t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j+n, data[j+n], int(config.Max)-j)
+			}
+		}
+		if segment.firstFramenum != FrameIndex(2*n) {
+			t.Errorf("TriangleSource second segment, ouput %d gives firstFramenum %d, want %d", i, segment.firstFramenum, 2*n)
+		}
 	}
 	ds.Stop()
 
 	// Check that Running() is correct
 	if ds.Running() {
-		t.Errorf("TriangleSource.Running() says true before started.")
+		t.Errorf("TriangleSource.Running() says true after stopped.")
 	}
 	if err := Start(ds); err != nil {
 		t.Fatalf("TriangleSource could not be started")
@@ -92,21 +117,22 @@ func TestTriangle(t *testing.T) {
 
 	// Now configure a 0-channel source and make sure it fails
 	config.Nchan = 0
-	if err := ts.Configure(config); err == nil {
+	if err := ts.Configure(&config); err == nil {
 		t.Errorf("TriangleSource can be configured with 0 channels, want error.")
 	}
 }
 
 func TestSimPulse(t *testing.T) {
 	ps := NewSimPulseSource()
-	config := &SimPulseSourceConfig{
+	config := SimPulseSourceConfig{
 		Nchan:      5,
 		SampleRate: 150000.0,
 		Pedestal:   1000.0,
 		Amplitude:  10000.0,
 		Nsamp:      16000,
 	}
-	ps.Configure(config)
+	ps.Configure(&config)
+	ps.noProcess = true // for testing
 	ds := DataSource(ps)
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
@@ -119,6 +145,7 @@ func TestSimPulse(t *testing.T) {
 	if len(outputs) != config.Nchan {
 		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
 	}
+	// Check first segment per source.
 	for i, ch := range outputs {
 		segment := <-ch
 		data := segment.rawData
@@ -139,6 +166,20 @@ func TestSimPulse(t *testing.T) {
 		}
 		if max <= RawType(config.Pedestal+config.Amplitude*0.5) {
 			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(config.Pedestal+config.Amplitude*0.5))
+		}
+		if segment.firstFramenum != 0 {
+			t.Errorf("SimPulseSource first segment, output %d gives firstFramenum %d, want 0", i, segment.firstFramenum)
+		}
+	}
+	// Check second segment per source.
+	for i, ch := range outputs {
+		segment := <-ch
+		data := segment.rawData
+		if len(data) != config.Nsamp {
+			t.Errorf("SimPulseSource output %d is length %d, expect %d", i, len(data), config.Nsamp)
+		}
+		if segment.firstFramenum <= 0 {
+			t.Errorf("SimPulseSource second segment gives firstFramenum %d, want %d", segment.firstFramenum, config.Nsamp)
 		}
 	}
 	ds.Stop()
@@ -163,8 +204,7 @@ func TestSimPulse(t *testing.T) {
 
 	// Now configure a 0-channel source and make sure it fails
 	config.Nchan = 0
-	ps.Configure(config)
-	if err := ps.Configure(config); err == nil {
+	if err := ps.Configure(&config); err == nil {
 		t.Errorf("SimPulseSource can be configured with 0 channels.")
 	}
 }

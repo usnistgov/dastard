@@ -25,43 +25,43 @@ func TestPublishData(t *testing.T) {
 		t.Fail()
 	}
 	if !dp.HasLJH22() {
-		t.Error("HasLJH22 want true, have", dp.HasLJH22())
+		t.Error("HasLJH22() false, want true")
 	}
 	dp.RemoveLJH22()
 	if dp.HasLJH22() {
-		t.Error("HasLJH22 want false, have", dp.HasLJH22())
+		t.Error("HasLJH22() true, want false")
 	}
 
 	if dp.HasPubRecords() {
-		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
+		t.Error("HasPubRecords() true, want false")
 	}
 	dp.SetPubRecords()
 
 	if !dp.HasPubRecords() {
-		t.Error("HasPubRecords want true, have", dp.HasPubRecords())
+		t.Error("HasPubRecords() false, want true")
 	}
 
 	dp.PublishData(records)
 
 	dp.RemovePubRecords()
 	if dp.HasPubRecords() {
-		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
+		t.Error("HasPubRecords() true, want false")
 	}
 
 	if dp.HasPubSummaries() {
-		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+		t.Error("HasPubSummaries() true, want false")
 	}
 	dp.SetPubSummaries()
 
 	if !dp.HasPubSummaries() {
-		t.Error("HasPubSummaries want true, have", dp.HasPubSummaries())
+		t.Error("HasPubSummaries() false, want true")
 	}
 
 	dp.PublishData(records)
 
 	dp.RemovePubSummaries()
 	if dp.HasPubSummaries() {
-		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+		t.Error("HasPubSummaries() true, want false")
 	}
 
 	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
@@ -72,11 +72,11 @@ func TestPublishData(t *testing.T) {
 		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
 	}
 	if !dp.HasLJH3() {
-		t.Error("HasLJH3 want true, have", dp.HasLJH3())
+		t.Error("HasLJH3() false, want true")
 	}
 	dp.RemoveLJH3()
 	if dp.HasLJH3() {
-		t.Error("HasLJH3 want false, have", dp.HasLJH3())
+		t.Error("HasLJH3() true, want false")
 	}
 }
 
@@ -86,7 +86,7 @@ func TestRawTypeToX(t *testing.T) {
 	encodedStr := hex.EncodeToString(b)
 	expectStr := "ffff0101cdab01ef45238967"
 	if encodedStr != expectStr {
-		t.Errorf("want %v, have %v", expectStr, encodedStr)
+		t.Errorf("have %v, want %v", encodedStr, expectStr)
 	}
 	if len(b) != 2*len(d) {
 		t.Errorf("wrong length, have %v, want %v", len(b), len(d))
@@ -95,7 +95,7 @@ func TestRawTypeToX(t *testing.T) {
 	expect := []uint16{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
 	for i, v := range expect {
 		if c[i] != v {
-			t.Errorf("want %v, have %v", v, c[i])
+			t.Errorf("have %v, want %v", c[i], v)
 		}
 	}
 

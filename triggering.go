@@ -346,8 +346,8 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	npre := FrameIndex(dsp.NPresamples)
 
 	delaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
-	if delaySamples < 0 {
-		panic(fmt.Sprintf("delay samples=%v", delaySamples))
+	if delaySamples < nsamp {
+		delaySamples = nsamp
 	}
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
@@ -365,17 +365,13 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	// Loop through all potential trigger times.
 	for nextPotentialTrig+nsamp-npre < FrameIndex(ndata) {
 		if nextPotentialTrig+nsamp <= nextFoundTrig {
-			// auto trigger is allowed
+			// auto trigger is allowed: no conflict with previously found non-auto triggers
 			newRecord := dsp.triggerAt(segment, int(nextPotentialTrig))
 			records = append(records, newRecord)
-			if delaySamples >= nsamp {
-				nextPotentialTrig += delaySamples
-			} else {
-				nextPotentialTrig += nsamp
-			}
+			nextPotentialTrig += delaySamples
 
 		} else {
-			// auto trigger not allowed
+			// auto trigger not allowed: conflict with previously found non-auto triggers
 			nextPotentialTrig = nextFoundTrig + delaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
@@ -395,6 +391,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	if dsp.EdgeMulti {
 		// EdgeMulti does not play nice with other triggers!!
 		records = dsp.edgeMultiTriggerComputeAppend(records)
+		// TODO: need to make EdgeMulti compatible with group triggers.
+		// By returning here, we would cause everything to hang if any group trigger
+		// was turned on.
 		return
 	}
 
@@ -436,6 +435,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 
 	// leave one full possible trigger in the stream
 	// trigger algorithms should not inspect the last NSamples samples
+	// fmt.Printf("Trimmed. %7d samples remain (requested %7d)\n", dsp.stream.TrimKeepingN(dsp.NSamples), dsp.NSamples)
 	dsp.stream.TrimKeepingN(dsp.NSamples)
 	return
 }
