@@ -182,29 +182,30 @@ func (device *LanceroDevice) sampleCard() error {
 			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
 				bytesRead)
 		}
+
+		var waittime time.Duration
+		var buffer []byte
 		select {
 		case <-interruptCatcher:
 			return fmt.Errorf("LanceroDevice.sampleCard was interrupted")
 		default:
-			var waittime time.Duration
-			var buffer []byte
-			_, waittime, err := lan.Wait()
+			_, waittime, err = lan.Wait()
 			if err != nil {
 				return err
 			}
-			buffer, err := lan.AvailableBuffers()
+			buffer, err = lan.AvailableBuffers()
 			if err != nil {
 				return err
 			}
 		}
 		// Don't use the first buffer or a too-small one, because you will get a
 		// bad estimate of waittime and thus of LSYNC.
-		if i == 0 || len(buffer < 45000) {
+		totalBytes := len(buffer)
+		if i == 0 || len(buffer) < 45000 {
 			lan.ReleaseBytes(totalBytes)
 			bytesRead += totalBytes
 			continue
 		}
-		totalBytes := len(buffer)
 		fmt.Printf("waittime: %v\n", waittime)
 		fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
 		q, p, n, err := lancero.FindFrameBits(buffer)
@@ -225,6 +226,7 @@ func (device *LanceroDevice) sampleCard() error {
 		lan.ReleaseBytes(totalBytes)
 		return nil
 	}
+	return fmt.Errorf("After %d reads, found no valid buffers in Lancero device %d", tooManyIterations, device.devnum)
 }
 
 // Imperfect round to nearest integer
