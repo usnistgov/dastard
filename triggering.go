@@ -39,9 +39,9 @@ type TriggerState struct {
 	EdgeMultiMakeShortRecords        bool
 	EdgeMultiMakeContaminatedRecords bool
 	EdgeMultiVerifyNMonotone         int
-	EdgeMultiState                   edgeMultiStateType
-	EdgeMultiIPotential              FrameIndex
-	EdgeMultiILastInspected          FrameIndex
+	edgeMultiState                   edgeMultiStateType
+	edgeMultiIPotential              FrameIndex
+	edgeMultiILastInspected          FrameIndex
 
 	// TODO:  Noise info.
 	// TODO: group source/rx info.
@@ -167,10 +167,10 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 
 	var triggerInds []int
 	var iPotential, iLast, iFirst int
-	iPotential = int(dsp.EdgeMultiIPotential - segment.firstFramenum)
+	iPotential = int(dsp.edgeMultiIPotential - segment.firstFramenum)
 	iLast = ndata + dsp.NPresamples - dsp.NSamples + 1
-	if dsp.EdgeMultiState == verifying {
-		iFirst = dsp.NPresamples + int(dsp.EdgeMultiILastInspected-segment.firstFramenum)
+	if dsp.edgeMultiState == verifying {
+		iFirst = dsp.NPresamples + int(dsp.edgeMultiILastInspected-segment.firstFramenum)
 	} else {
 		iFirst = dsp.NPresamples
 	}
@@ -181,13 +181,13 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		panic(fmt.Sprintf("%v %v %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
 	}
 	for i := iFirst; i <= iLast; i++ {
-		switch dsp.EdgeMultiState {
+		switch dsp.edgeMultiState {
 		case searching:
 			diff := int32(raw[i]) - int32(raw[i-1])
 			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 				(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
 				iPotential = i
-				dsp.EdgeMultiState = verifying
+				dsp.edgeMultiState = verifying
 			}
 		case verifying:
 			// now we have a potenial trigger
@@ -212,14 +212,14 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 					}
 					triggerInds = append(triggerInds, iTrigger)
 				}
-				dsp.EdgeMultiState = searching
+				dsp.edgeMultiState = searching
 			} else if i-iPotential >= dsp.NSamples { // if it has been rising for a whole record, that won't be a useful pulse, so just to back to searching
-				dsp.EdgeMultiState = searching
+				dsp.edgeMultiState = searching
 			}
 		}
 	}
-	dsp.EdgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
-	dsp.EdgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
+	dsp.edgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
+	dsp.edgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
 	// fmt.Println("triggerInds", triggerInds)
 	var t, u, v, tFirst int
 	// t index of previous trigger
@@ -263,7 +263,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	if len(records) > 0 {
 		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
 	}
-	if dsp.EdgeMultiState == verifying {
+	if dsp.edgeMultiState == verifying {
 		// fmt.Println("dsp.NPresamples", dsp.NPresamples, "ndata", ndata, "iPotential", iPotential)
 		dsp.stream.TrimKeepingN(dsp.NPresamples + (ndata - iPotential) + 1) // +1 to account for maximum shift from kink model
 	} else {
