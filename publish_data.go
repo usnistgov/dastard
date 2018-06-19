@@ -233,7 +233,7 @@ func configurePubRecordsSocket() (err error) {
 	if PubRecordsChan != nil {
 		return fmt.Errorf("run configurePubRecordsSocket only one time")
 	}
-	PubRecordsChan, err = startSocket(PortTrigs, messageRecords)
+	PubRecordsChan, err = startSocket(ports.Trigs, messageRecords)
 	return
 }
 
@@ -242,7 +242,7 @@ func configurePubSummariesSocket() (err error) {
 	if PubSummariesChan != nil {
 		return fmt.Errorf("run configurePubSummariesSocket only one time")
 	}
-	PubSummariesChan, err = startSocket(PortSummaries, messageRecords)
+	PubSummariesChan, err = startSocket(ports.Summaries, messageRecords)
 	return
 }
 
