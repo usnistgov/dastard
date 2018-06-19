@@ -101,6 +101,7 @@ type MixFractionObject struct {
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + mixFraction*err
+// NOTE: only supported by LanceroSource
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")

@@ -127,8 +127,8 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	}
 }
 
-// ConfigureMixFraction provides a default implementation for all non-lancero sources that
-// don't need the mix
+// ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
+// mix = fb + mixFraction*err
 func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
 	if processorIndex >= len(ls.MixFraction) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
