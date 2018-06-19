@@ -101,6 +101,17 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	return err
 }
 
+// ConfigureTriggers configures the trigger state for 1 or more channels.
+func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+	err := s.activeSource.ChangeTriggerState(state)
+	s.broadcastTriggerState()
+	*reply = (err == nil)
+	return err
+}
+
 // ProjectorsBasisObject is the RPC-usable structure for
 type ProjectorsBasisObject struct {
 	ProcessorInd     int

@@ -32,6 +32,7 @@ type DataSource interface {
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
+	ChangeTriggerState(*FullTriggerState) error
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -246,6 +247,14 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 		fts = append(fts, FullTriggerState{ChanNumbers: v, TriggerState: k})
 	}
 	return fts
+}
+
+func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
+	fmt.Printf("ChangeTriggerState called with %v\n", state)
+	for _, chnum := range state.ChanNumbers {
+		ds.processors[chnum].TriggerState = state.TriggerState
+	}
+	return nil
 }
 
 // ChannelNames returns a slice of the channel names
