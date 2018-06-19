@@ -33,8 +33,8 @@ type LanceroSource struct {
 	ncards            int
 	clockMhz          int
 	active            []*LanceroDevice
-	mixFraction       []float64
-	chan2readoutOrder []int // this could be a slice
+	chan2readoutOrder []int
+	MixFraction       []float64
 	AnySource
 }
 
@@ -106,12 +106,14 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 
 // updateChanOrderMap updates the map chan2readoutOrder based on the number
 // of columns and rows in each active device
+// also initializes mixFraction to correct length with all zeros
 func (ls *LanceroSource) updateChanOrderMap() {
-	allNChan := int(0)
+	nChannelsAllCards := int(0)
 	for _, dev := range ls.active {
-		allNChan += dev.ncols * dev.nrows * 2
+		nChannelsAllCards += dev.ncols * dev.nrows * 2
 	}
-	ls.chan2readoutOrder = make([]int, allNChan)
+	ls.MixFraction = make([]float64, nChannelsAllCards)
+	ls.chan2readoutOrder = make([]int, nChannelsAllCards)
 	nchanPrevDevices := 0
 	for _, dev := range ls.active {
 		nchan := dev.ncols * dev.nrows * 2
@@ -123,6 +125,16 @@ func (ls *LanceroSource) updateChanOrderMap() {
 		}
 		nchanPrevDevices += nchan
 	}
+}
+
+// ConfigureMixFraction provides a default implementation for all non-lancero sources that
+// don't need the mix
+func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
+	if processorIndex >= len(ls.MixFraction) || processorIndex < 0 {
+		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
+	}
+	ls.MixFraction[processorIndex] = mixFraction
+	return nil
 }
 
 // Sample determines key data facts by sampling some initial data.
@@ -393,8 +405,18 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		// mask out frame and extern trigger bits from FB channels
 		if channum%2 == 1 {
 			const mask = ^RawType(0x3)
-			for j := 0; j < len(data); j++ {
-				data[j] &= mask
+			mixFraction := ls.MixFraction[channum]
+			if mixFraction == 0 { // no mix
+				for j := 0; j < len(data); j++ {
+					data[j] &= mask
+				}
+			} else { // apply mix
+				associatedErr := datacopies[ls.chan2readoutOrder[channum-1]]
+				for j := 0; j < len(data); j++ {
+					d := data[j] & mask
+					m := roundint(float64(associatedErr[j]) * mixFraction)
+					data[j] = d + RawType(m)
+				}
 			}
 			// TODO: I think err->FB mixing goes here??
 		}
