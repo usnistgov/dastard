@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/viper"
@@ -28,6 +29,7 @@ type SourceControl struct {
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
+	mu            sync.Mutex // Serialize RPC commands and status broadcasts
 }
 
 // NewSourceControl creates a new SourceControl object with correctly initialized
@@ -65,6 +67,8 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 
 // ConfigureTriangleSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
 	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
@@ -75,6 +79,8 @@ func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, repl
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
 	s.clientUpdates <- ClientUpdate{"SIMPULSE", args}
@@ -85,6 +91,8 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 
 // ConfigureLanceroSource configures the lancero cards.
 func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
 	err := s.lancero.Configure(args)
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
@@ -102,6 +110,8 @@ type ProjectorsBasisObject struct {
 
 // ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
 func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -135,6 +145,8 @@ type SizeObject struct {
 
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
@@ -149,6 +161,8 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource != nil {
 		return fmt.Errorf("activeSource is not nil, want nil (you should call Stop)")
 	}
@@ -191,6 +205,8 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -202,12 +218,14 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		*reply = true
 
 	}
-	s.broadcastUpdate()
+	go s.broadcastUpdate()
 	*reply = true
 	return nil
 }
 
 func (s *SourceControl) broadcastUpdate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	// Check whether the "active" source actually stopped on its own
 	if s.activeSource != nil && !s.activeSource.Running() {
 		s.activeSource = nil
@@ -217,6 +235,8 @@ func (s *SourceControl) broadcastUpdate() {
 }
 
 func (s *SourceControl) broadcastTriggerState() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ComputeFullTriggerState()
 		log.Printf("configs: %v\n", configs)
@@ -225,6 +245,8 @@ func (s *SourceControl) broadcastTriggerState() {
 }
 
 func (s *SourceControl) broadcastChannelNames() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ChannelNames()
 		log.Printf("chanNames: %v\n", configs)
