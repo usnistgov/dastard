@@ -43,6 +43,8 @@ func (dsp *DataStreamProcessor) RemoveProjectorsBasis() {
 func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
 	if dsp.NSamples != cols {
 		return fmt.Errorf("projectors has wrong size, rows: %v, cols: %v, want cols: %v", rows, cols, dsp.NSamples)
 	}

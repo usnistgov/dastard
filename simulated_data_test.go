@@ -99,10 +99,12 @@ func TestTriangle(t *testing.T) {
 	ds.ConfigurePulseLengths(nsamp, npre)
 	time.Sleep(5 * time.Millisecond)
 	dsp := ts.processors[0]
+	dsp.changeMutex.Lock()
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		t.Errorf("TriangleSource has (nsamp, npre)=(%d,%d), want (%d,%d)",
 			dsp.NSamples, dsp.NPresamples, nsamp, npre)
 	}
+	dsp.changeMutex.Unlock()
 	rows := 5
 	cols := 500
 	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))

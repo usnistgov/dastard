@@ -177,7 +177,7 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.SetPubSummaries()
 
 		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[chnum]
-		// channel is closed, depending on ds.noProcess (which is false expect for testing)
+		// channel is closed, depending on ds.noProcess (which is false except for testing)
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
 			if ds.noProcess {
@@ -193,9 +193,6 @@ func (ds *AnySource) PrepareRun() error {
 
 // Stop ends the data supply.
 func (ds *AnySource) Stop() error {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
-
 	if ds.Running() {
 		close(ds.abortSelf)
 	}
@@ -213,9 +210,14 @@ func (ds *AnySource) Outputs() []chan DataSegment {
 
 // CloseOutputs closes all channels that carry buffers of data for downstream processing.
 func (ds *AnySource) CloseOutputs() {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+
 	for _, ch := range ds.output {
 		close(ch)
 	}
+	// ds.output = make([]chan DataSegment, 0)
+	ds.output = nil
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState

@@ -312,6 +312,8 @@ func (ls *LanceroSource) StartRun() error {
 // blockingRead blocks and then reads data when "enough" is ready.
 // This will need to somehow work across multiple cards???
 func (ls *LanceroSource) blockingRead() error {
+	ls.runMutex.Lock()
+	defer ls.runMutex.Unlock()
 	type waiter struct {
 		timestamp time.Time
 		duration  time.Duration

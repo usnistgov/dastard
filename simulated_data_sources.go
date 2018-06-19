@@ -73,6 +73,8 @@ func (ts *TriangleSource) StartRun() error {
 
 // blockingRead blocks and then reads data when "enough" is ready.
 func (ts *TriangleSource) blockingRead() error {
+	ts.runMutex.Lock()
+	defer ts.runMutex.Unlock()
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
 	select {
@@ -176,6 +178,8 @@ func (sps *SimPulseSource) StartRun() error {
 
 // blockingRead blocks and then reads data when "enough" is ready.
 func (sps *SimPulseSource) blockingRead() error {
+	sps.runMutex.Lock()
+	defer sps.runMutex.Unlock()
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
 	select {
