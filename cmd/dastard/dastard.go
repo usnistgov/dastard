@@ -74,6 +74,6 @@ func main() {
 	}
 
 	messageChan := make(chan dastard.ClientUpdate)
-	go dastard.RunClientUpdater(messageChan, dastard.ports.Status)
-	dastard.RunRPCServer(messageChan, dastard.ports.RPC)
+	go dastard.RunClientUpdater(messageChan, dastard.Ports.Status)
+	dastard.RunRPCServer(messageChan, dastard.Ports.RPC)
 }
