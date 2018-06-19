@@ -33,7 +33,8 @@ type LanceroSource struct {
 	ncards            int
 	clockMhz          int
 	active            []*LanceroDevice
-	chan2readoutOrder map[int]int
+	mixFraction       []float64
+	chan2readoutOrder []int // this could be a slice
 	AnySource
 }
 
@@ -41,7 +42,6 @@ type LanceroSource struct {
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
 	source.devices = make(map[int]*LanceroDevice)
-	source.chan2readoutOrder = make(map[int]int)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
 		return source, err
@@ -107,7 +107,11 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 // updateChanOrderMap updates the map chan2readoutOrder based on the number
 // of columns and rows in each active device
 func (ls *LanceroSource) updateChanOrderMap() {
-	ls.chan2readoutOrder = make(map[int]int)
+	allNChan := int(0)
+	for _, dev := range ls.active {
+		allNChan += dev.ncols * dev.nrows * 2
+	}
+	ls.chan2readoutOrder = make([]int, allNChan)
 	nchanPrevDevices := 0
 	for _, dev := range ls.active {
 		nchan := dev.ncols * dev.nrows * 2
