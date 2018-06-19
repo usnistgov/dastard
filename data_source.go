@@ -247,7 +247,7 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 }
 
 // ChannelNames returns a slice of the channel names
-func (ds AnySource) ChannelNames() []string {
+func (ds *AnySource) ChannelNames() []string {
 	return ds.chanNames
 }
 
