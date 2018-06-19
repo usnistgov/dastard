@@ -1,6 +1,6 @@
 package dastard
 
-// Portnumbers holds all TCP port numbers used by Dastard.
+// Portnumbers structs can contain all TCP port numbers used by Dastard.
 type Portnumbers struct {
 	RPC            int
 	Status         int
@@ -9,7 +9,12 @@ type Portnumbers struct {
 	Summaries      int
 }
 
-var Ports = Portnumbers{5500, 5501, 5502, 5503, 5504}
+// Ports globally holds all TCP port numbers used by Dastard.
+var Ports Portnumbers
+
+func init() {
+	setPortnumbers(5500)
+}
 
 func setPortnumbers(base int) {
 	Ports.RPC = base
