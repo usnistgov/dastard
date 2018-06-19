@@ -17,7 +17,7 @@ import (
 )
 
 func simpleClient() (*rpc.Client, error) {
-	serverAddress := fmt.Sprintf("localhost:%d", ports.RPC)
+	serverAddress := fmt.Sprintf("localhost:%d", Ports.RPC)
 	retries := 5
 	wait := 10 * time.Millisecond
 	tries := 1
@@ -262,8 +262,8 @@ func TestMain(m *testing.M) {
 
 	// call flag.Parse() here if TestMain uses flags
 	messageChan := make(chan ClientUpdate)
-	go RunClientUpdater(messageChan, ports.Status)
-	go RunRPCServer(messageChan, ports.RPC)
+	go RunClientUpdater(messageChan, Ports.Status)
+	go RunRPCServer(messageChan, Ports.RPC)
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {
