@@ -411,6 +411,22 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 					data[j] &= mask
 				}
 			} else { // apply mix
+				// comments based upon NDFBServer.cp
+				// fb_physical[n] refers to the feedback signal applied during tick [n]
+				// err_physical[n] refers to the error signal measured during tick [n], eg with fb_physical[n] applied
+				// fb_data[n]=fb_physical[n+1]
+				// err_data[n]=err_physical[n]
+				// in words: at frame [n] we get data for the error measured at frame [n]
+				// and the feedback that will be applied during frame [n+1]
+				// we want
+				// mix[n] = fb_physical[n] + mixFraction * err_physical[n]
+				// so
+				// mix[n] = fb_data[n-1]   + mixFraction * err_data[n]
+				// or
+				// mix[n+1] = fb_data[n]   + mixFraction * err_data[n+1]
+
+				// correct phasing not yet implemented
+
 				associatedErr := datacopies[ls.chan2readoutOrder[channum-1]]
 				for j := 0; j < len(data); j++ {
 					d := data[j] & mask
@@ -418,7 +434,6 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 					data[j] = d + RawType(m)
 				}
 			}
-			// TODO: I think err->FB mixing goes here??
 		}
 
 		// TODO: replace framesPerSample=1 with the actual decimation level
