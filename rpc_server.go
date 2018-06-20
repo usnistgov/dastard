@@ -115,15 +115,14 @@ type MixFractionObject struct {
 // mix = fb + mixFraction*err
 // NOTE: only supported by LanceroSource
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
 	err := s.activeSource.ConfigureMixFraction(mfo.ProcessorIndex, mfo.MixFraction)
-	if err != nil {
-		return err
-	}
-	*reply = true
-	return nil
+	*reply = (err == nil)
+	return err
 }
 
 // ConfigureTriggers configures the trigger state for 1 or more channels.

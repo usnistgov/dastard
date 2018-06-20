@@ -24,6 +24,9 @@ func TestStdDev(t *testing.T) {
 	if zStdDev != 1.0 {
 		t.Errorf("stdDev returned incorrect result")
 	}
+	if !math.IsNaN(stdDev([]float64{})) {
+		t.Error("stdDev should return NaN for a length-0 input")
+	}
 }
 
 // TestAnalyze tests the DataChannel.AnalyzeData computations on a very simple "pulse".
@@ -40,6 +43,21 @@ func TestAnalyze(t *testing.T) {
 		ModelCoefs:     nil,
 		PTM:            10.0, Avg: 5.0, Max: 10.0, RMS: 5.84522597225006}
 	testAnalyzeCheck(t, rec, expect, "Analyze A")
+
+	dsp.ConfigurePulseLengths(1, 0) // this is supposed to be ignored
+	if dsp.NPresamples != 4 || dsp.NSamples != len(d) {
+		t.Errorf("ConfigurePulseLengths(1,0) yields (%d, %d), want (%d, %d)",
+			dsp.NSamples, dsp.NPresamples, len(d), 4)
+	}
+
+	tstate := TriggerState{EdgeTrigger: true, EdgeLevel: 123}
+	dsp.ConfigureTrigger(tstate) // for fuller test coverage
+	if !dsp.EdgeTrigger {
+		t.Error("EdgeTrigger is off, want on")
+	}
+	if dsp.EdgeLevel != 123 {
+		t.Errorf("EdgeLevel = %d, want 123", dsp.EdgeLevel)
+	}
 }
 
 type RTExpect struct {

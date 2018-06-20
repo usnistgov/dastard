@@ -57,7 +57,7 @@ func TestServer(t *testing.T) {
 		}
 	}
 
-	// Test a basic start and stop
+	// Test a basic configuration
 	var okay bool
 	simConfig := SimPulseSourceConfig{
 		Nchan: 4, SampleRate: 10000.0, Pedestal: 3000.0,
@@ -94,6 +94,11 @@ func TestServer(t *testing.T) {
 	err = client.Call("SourceControl.Start", &sourceName, &okay)
 	if err == nil {
 		t.Errorf("expected error when starting Source while a source is active")
+	}
+	dummy := ""
+	err = client.Call("SourceControl.SendAllStatus", &dummy, &okay)
+	if err != nil {
+		t.Error("Error calling SourceControl.SendAllStatus():", err)
 	}
 	time.Sleep(time.Millisecond * 400)
 	sizes := SizeObject{Nsamp: 800, Npre: 200}
@@ -165,6 +170,14 @@ func TestServer(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.ConfigureProjectorsBasis(\"%s\") returns !okay, want okay", sourceName)
 	}
+	mfo := MixFractionObject{0, 1.0}
+	if err := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err == nil {
+		t.Error("error on ConfigureMixFraction expected for non-mixable source")
+	}
+	tstate := FullTriggerState{ChanNumbers: []int{0, 1, 2}}
+	if err := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err != nil {
+		t.Error("error on ConfigureTriggers:", err)
+	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
@@ -188,10 +201,26 @@ func TestServer(t *testing.T) {
 	// here test all methods that expect an active source to make sure they error appropriatley
 	// otherwise you will get incomprehensible stack traces when they error unexpectedly
 	if err := client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay); err == nil {
-		t.Error("expected error when no source is active")
+		t.Error("expected error on ConfigureProjectorsBasiswhen no source is active")
 	}
 	if err := client.Call("SourceControl.Stop", sourceName, &okay); err == nil {
 		t.Errorf("expected error stopping source when no source is active")
+	}
+	if err := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err == nil {
+		t.Error("expected error on ConfigureMixFraction when no source is active")
+	}
+	if err := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err == nil {
+		t.Error("expected error on ConfigureTriggers when no source is active")
+	}
+
+	// lancero source should fail
+	sourceName = "LanceroSource"
+	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	if err != nil {
+		t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
+	}
+	if !okay {
+		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 }
 
