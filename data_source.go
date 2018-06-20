@@ -29,8 +29,10 @@ type DataSource interface {
 	CloseOutputs()
 	Nchan() int
 	ComputeFullTriggerState() []FullTriggerState
+	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
+	ChangeTriggerState(*FullTriggerState) error
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -73,8 +75,9 @@ func Start(ds DataSource) error {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan        int     // how many channels to provide
-	sampleRate   float64 // samples per second
+	nchan        int      // how many channels to provide
+	chanNames    []string // one name per channel
+	sampleRate   float64  // samples per second
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	output       []chan DataSegment
@@ -114,6 +117,19 @@ func (ds *AnySource) Running() bool {
 	}
 }
 
+// setDefaultChannelNames defensively sets channel names of the appropriate length.
+// They should have been set in DataSource.Sample()
+func (ds *AnySource) setDefaultChannelNames() {
+	// If the number of channel names is correct, assume it was set in Sample, as expected.
+	if len(ds.chanNames) == ds.nchan {
+		return
+	}
+	ds.chanNames = make([]string, ds.nchan)
+	for i := 0; i < ds.nchan; i++ {
+		ds.chanNames[i] = fmt.Sprintf("ch%d", i)
+	}
+}
+
 // PrepareRun configures an AnySource by initializing all data structures that
 // cannot be prepared until we know the number of channels. It's an error for
 // ds.nchan to be less than 1.
@@ -123,6 +139,7 @@ func (ds *AnySource) PrepareRun() error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
+	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
 	ds.abortSelf = make(chan struct{})
 
 	// Start a TriggerBroker to handle secondary triggering
@@ -138,10 +155,11 @@ func (ds *AnySource) PrepareRun() error {
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
-	for chnum, ch := range ds.output {
-		dsp := NewDataStreamProcessor(chnum, ds.broker)
+	for channelNum, dataSegmentChan := range ds.output {
+		dsp := NewDataStreamProcessor(channelNum, ds.broker)
+		dsp.Name = ds.chanNames[channelNum]
 		dsp.SampleRate = ds.sampleRate
-		ds.processors[chnum] = dsp
+		ds.processors[channelNum] = dsp
 
 		// TODO: don't just set these to arbitrary values
 		dsp.Decimate = false
@@ -162,7 +180,7 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.SetPubSummaries()
 
 		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[chnum]
-		// channel is closed, depending on ds.noProcess (which is false expect for testing)
+		// channel is closed, depending on ds.noProcess (which is false except for testing)
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
 			if ds.noProcess {
@@ -170,7 +188,7 @@ func (ds *AnySource) PrepareRun() error {
 			} else {
 				dsp.ProcessData(ch)
 			}
-		}(ch)
+		}(dataSegmentChan)
 	}
 	ds.lastread = time.Now()
 	return nil
@@ -178,9 +196,6 @@ func (ds *AnySource) PrepareRun() error {
 
 // Stop ends the data supply.
 func (ds *AnySource) Stop() error {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
-
 	if ds.Running() {
 		close(ds.abortSelf)
 	}
@@ -198,9 +213,14 @@ func (ds *AnySource) Outputs() []chan DataSegment {
 
 // CloseOutputs closes all channels that carry buffers of data for downstream processing.
 func (ds *AnySource) CloseOutputs() {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+
 	for _, ch := range ds.output {
 		close(ch)
 	}
+	// ds.output = make([]chan DataSegment, 0)
+	ds.output = nil
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState
@@ -229,6 +249,19 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 		fts = append(fts, FullTriggerState{ChanNumbers: v, TriggerState: k})
 	}
 	return fts
+}
+
+// ChangeTriggerState changes the trigger state for 1 or more channels.
+func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
+	for _, chnum := range state.ChanNumbers {
+		ds.processors[chnum].TriggerState = state.TriggerState
+	}
+	return nil
+}
+
+// ChannelNames returns a slice of the channel names
+func (ds *AnySource) ChannelNames() []string {
+	return ds.chanNames
 }
 
 // ConfigurePulseLengths set the pulse record length and pre-samples.
