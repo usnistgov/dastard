@@ -41,6 +41,8 @@ func NewSourceControl() *SourceControl {
 	if lan, err := NewLanceroSource(); err == nil {
 		sc.lancero = lan
 	}
+	sc.status.Ncol = make([]int, 0)
+	sc.status.Nrow = make([]int, 0)
 	return sc
 }
 
@@ -51,7 +53,9 @@ type ServerStatus struct {
 	Nchannels  int
 	Nsamples   int
 	Npresamp   int
-	// TODO: maybe Ncol, Nrow, bytes/sec data rate...?
+	Ncol       []int
+	Nrow       []int
+	// TODO: maybe bytes/sec data rate...?
 }
 
 // FactorArgs holds the arguments to a Multiply operation
@@ -206,6 +210,17 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 			return
 		}
 		s.status.Nchannels = s.activeSource.Nchan()
+		if ls, ok := s.activeSource.(*LanceroSource); ok {
+			s.status.Ncol = make([]int, ls.ncards)
+			s.status.Nrow = make([]int, ls.ncards)
+			for i, device := range ls.active {
+				s.status.Ncol[i] = device.ncols
+				s.status.Nrow[i] = device.nrows
+			}
+		} else {
+			s.status.Ncol = make([]int, 0)
+			s.status.Nrow = make([]int, 0)
+		}
 		s.broadcastUpdate()
 		s.broadcastTriggerState()
 		s.broadcastChannelNames()
