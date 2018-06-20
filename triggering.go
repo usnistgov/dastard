@@ -322,6 +322,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
+			continue
 		}
 
 		// If you get here, a level trigger is permissible. Check for it.
