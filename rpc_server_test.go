@@ -17,7 +17,7 @@ import (
 )
 
 func simpleClient() (*rpc.Client, error) {
-	serverAddress := fmt.Sprintf("localhost:%d", PortRPC)
+	serverAddress := fmt.Sprintf("localhost:%d", Ports.RPC)
 	retries := 5
 	wait := 10 * time.Millisecond
 	tries := 1
@@ -248,6 +248,9 @@ func setupViper() error {
 	if err != nil {             // Handle errors reading the config file
 		return fmt.Errorf("error reading config file: %s", err)
 	}
+
+	// Set up different ports for testing than you'd use otherwise
+	setPortnumbers(33000)
 	return nil
 }
 
@@ -259,8 +262,8 @@ func TestMain(m *testing.M) {
 
 	// call flag.Parse() here if TestMain uses flags
 	messageChan := make(chan ClientUpdate)
-	go RunClientUpdater(messageChan, PortStatus)
-	go RunRPCServer(messageChan, PortRPC)
+	go RunClientUpdater(messageChan, Ports.Status)
+	go RunRPCServer(messageChan, Ports.RPC)
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {

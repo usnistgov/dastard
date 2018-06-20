@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/viper"
@@ -28,6 +29,7 @@ type SourceControl struct {
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
+	mu            sync.Mutex // Serialize RPC commands and status broadcasts
 }
 
 // NewSourceControl creates a new SourceControl object with correctly initialized
@@ -39,6 +41,8 @@ func NewSourceControl() *SourceControl {
 	if lan, err := NewLanceroSource(); err == nil {
 		sc.lancero = lan
 	}
+	sc.status.Ncol = make([]int, 0)
+	sc.status.Nrow = make([]int, 0)
 	return sc
 }
 
@@ -49,7 +53,9 @@ type ServerStatus struct {
 	Nchannels  int
 	Nsamples   int
 	Npresamp   int
-	// TODO: maybe Ncol, Nrow, bytes/sec data rate...?
+	Ncol       []int
+	Nrow       []int
+	// TODO: maybe bytes/sec data rate...?
 }
 
 // FactorArgs holds the arguments to a Multiply operation
@@ -65,6 +71,8 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 
 // ConfigureTriangleSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
 	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
@@ -75,6 +83,8 @@ func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, repl
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
 	s.clientUpdates <- ClientUpdate{"SIMPULSE", args}
@@ -85,6 +95,8 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 
 // ConfigureLanceroSource configures the lancero cards.
 func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
 	err := s.lancero.Configure(args)
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
@@ -114,6 +126,17 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 	return nil
 }
 
+// ConfigureTriggers configures the trigger state for 1 or more channels.
+func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+	err := s.activeSource.ChangeTriggerState(state)
+	s.broadcastTriggerState()
+	*reply = (err == nil)
+	return err
+}
+
 // ProjectorsBasisObject is the RPC-usable structure for ConfigureProjectorsBases
 type ProjectorsBasisObject struct {
 	ProcessorIndex   int
@@ -123,6 +146,8 @@ type ProjectorsBasisObject struct {
 
 // ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
 func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -156,6 +181,8 @@ type SizeObject struct {
 
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
@@ -170,6 +197,8 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource != nil {
 		return fmt.Errorf("activeSource is not nil, want nil (you should call Stop)")
 	}
@@ -202,8 +231,20 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 			return
 		}
 		s.status.Nchannels = s.activeSource.Nchan()
+		if ls, ok := s.activeSource.(*LanceroSource); ok {
+			s.status.Ncol = make([]int, ls.ncards)
+			s.status.Nrow = make([]int, ls.ncards)
+			for i, device := range ls.active {
+				s.status.Ncol[i] = device.ncols
+				s.status.Nrow[i] = device.nrows
+			}
+		} else {
+			s.status.Ncol = make([]int, 0)
+			s.status.Nrow = make([]int, 0)
+		}
 		s.broadcastUpdate()
 		s.broadcastTriggerState()
+		s.broadcastChannelNames()
 	}()
 	*reply = true
 	return nil
@@ -211,6 +252,8 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -222,12 +265,14 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		*reply = true
 
 	}
-	s.broadcastUpdate()
+	go s.broadcastUpdate()
 	*reply = true
 	return nil
 }
 
 func (s *SourceControl) broadcastUpdate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	// Check whether the "active" source actually stopped on its own
 	if s.activeSource != nil && !s.activeSource.Running() {
 		s.activeSource = nil
@@ -237,10 +282,22 @@ func (s *SourceControl) broadcastUpdate() {
 }
 
 func (s *SourceControl) broadcastTriggerState() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ComputeFullTriggerState()
 		log.Printf("configs: %v\n", configs)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", configs}
+	}
+}
+
+func (s *SourceControl) broadcastChannelNames() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeSource != nil && s.status.Running {
+		configs := s.activeSource.ChannelNames()
+		log.Printf("chanNames: %v\n", configs)
+		s.clientUpdates <- ClientUpdate{"CHANNELNAMES", configs}
 	}
 }
 
