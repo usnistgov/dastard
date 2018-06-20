@@ -65,12 +65,6 @@ func (ts *TriangleSource) Sample() error {
 	return nil
 }
 
-// StartRun tells the hardware to switch into data streaming mode.
-// It's a no-op for simulated (software) sources
-func (ts *TriangleSource) StartRun() error {
-	return nil
-}
-
 // blockingRead blocks and then reads data when "enough" is ready.
 func (ts *TriangleSource) blockingRead() error {
 	ts.runMutex.Lock()
@@ -115,8 +109,6 @@ type SimPulseSource struct {
 // NewSimPulseSource creates a new SimPulseSource with given size, speed.
 func NewSimPulseSource() *SimPulseSource {
 	ps := new(SimPulseSource)
-
-	// At this point, there are no invariants to enforce
 	return ps
 }
 
@@ -167,12 +159,6 @@ func (sps *SimPulseSource) Sample() error {
 	for i := 0; i < sps.nchan; i++ {
 		sps.chanNames[i] = fmt.Sprintf("sim%d", i+1)
 	}
-	return nil
-}
-
-// StartRun tells the hardware to switch into data streaming mode.
-// It's a no-op for simulated (software) sources
-func (sps *SimPulseSource) StartRun() error {
 	return nil
 }
 

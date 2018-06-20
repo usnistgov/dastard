@@ -96,6 +96,12 @@ type AnySource struct {
 	runDone      sync.WaitGroup
 }
 
+// StartRun tells the hardware to switch into data streaming mode.
+// It's a no-op for simulated (software) sources
+func (ds *AnySource) StartRun() error {
+	return nil
+}
+
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[processorsInd]
 func (ds *AnySource) ConfigureProjectorsBases(processorInd int, projectors mat.Dense, basis mat.Dense) error {
 	if processorInd >= len(ds.processors) || processorInd < 0 {
