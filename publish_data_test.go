@@ -78,6 +78,13 @@ func TestPublishData(t *testing.T) {
 	if dp.HasLJH3() {
 		t.Error("HasLJH3() true, want false")
 	}
+
+	if err := configurePubRecordsSocket(); err == nil {
+		t.Error("it should be an error to configurePubRecordsSocket twice")
+	}
+	if err := configurePubSummariesSocket(); err == nil {
+		t.Error("it should be an error to configurePubSummariesSocket twice")
+	}
 }
 
 func TestRawTypeToX(t *testing.T) {
@@ -86,19 +93,31 @@ func TestRawTypeToX(t *testing.T) {
 	encodedStr := hex.EncodeToString(b)
 	expectStr := "ffff0101cdab01ef45238967"
 	if encodedStr != expectStr {
-		t.Errorf("have %v, want %v", encodedStr, expectStr)
+		t.Errorf("hex.EncodeToString(rawTypeToBytes(d)) have %v, want %v", encodedStr, expectStr)
 	}
 	if len(b) != 2*len(d) {
-		t.Errorf("wrong length, have %v, want %v", len(b), len(d))
+		t.Errorf("rawTypeToBytes giveswrong length, have %v, want %v", len(b), len(d))
 	}
 	c := rawTypeToUint16(d)
 	expect := []uint16{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
+	if len(c) != len(expect) {
+		t.Errorf("rawTypeToUint16 length %d, want %d", len(c), len(expect))
+	}
 	for i, v := range expect {
 		if c[i] != v {
-			t.Errorf("have %v, want %v", c[i], v)
+			t.Errorf("rawTypeToUint16[%d] = %v, want %v", i, c[i], v)
 		}
 	}
 
+	d2 := bytesToRawType(b)
+	if len(d) != len(d2) {
+		t.Errorf("bytesToRawType length %d, want %d", len(d2), len(d))
+	}
+	for i, val := range d {
+		if d2[i] != val {
+			t.Errorf("bytesToRawType(b)[%d] = 0x%x, want 0x%x", i, d2[i], val)
+		}
+	}
 }
 
 func BenchmarkPublish(b *testing.B) {

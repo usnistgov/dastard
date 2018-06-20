@@ -242,7 +242,7 @@ func configurePubSummariesSocket() (err error) {
 	if PubSummariesChan != nil {
 		return fmt.Errorf("run configurePubSummariesSocket only one time")
 	}
-	PubSummariesChan, err = startSocket(Ports.Summaries, messageRecords)
+	PubSummariesChan, err = startSocket(Ports.Summaries, messageSummaries)
 	return
 }
 
@@ -264,7 +264,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 		for {
 			records := <-pubchan
 			for _, record := range records {
-				message := messageRecords(record)
+				message := converter(record)
 				err := pubSocket.SendMessage(message)
 				if err != nil {
 					panic("zmq send error")
