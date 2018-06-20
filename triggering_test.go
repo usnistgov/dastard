@@ -362,6 +362,12 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	dsp.EdgeLevel = 1
 	// should yield 2 level triggers
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge + Level 5", []FrameIndex{1000, 6000})
+	// now exercise issue 25: when the 2nd edge trigger is too close to end-of-frame
+	for i := 9050; i < 9060; i++ {
+		raw[i] = bigval
+	}
+	dsp.EdgeTrigger = true
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge + Level 6", []FrameIndex{1000, 6000, 9050})
 }
 
 func TestEdgeMulti(t *testing.T) {
