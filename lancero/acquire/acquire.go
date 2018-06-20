@@ -183,7 +183,6 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 	defer lan.InspectAdapter()
 
 	var buffer []byte
-	var totalBytes int
 
 	// Trap interrupts so we can cleanly exit the program
 	interruptCatcher := make(chan os.Signal, 1)
@@ -199,6 +198,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 				return
 			}
 			buffer, err = lan.AvailableBuffers()
+			totalBytes := len(buffer)
 			if err != nil {
 				return
 			}
