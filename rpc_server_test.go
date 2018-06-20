@@ -154,7 +154,7 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	pbo := ProjectorsBasisObject{ProcessorInd: 0,
+	pbo := ProjectorsBasisObject{ProcessorIndex: 0,
 		ProjectorsBase64: base64.StdEncoding.EncodeToString(projectorsBytes),
 		BasisBase64:      base64.StdEncoding.EncodeToString(basisBytes)}
 

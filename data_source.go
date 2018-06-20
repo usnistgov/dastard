@@ -33,6 +33,13 @@ type DataSource interface {
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
 	ChangeTriggerState(*FullTriggerState) error
+	ConfigureMixFraction(int, float64) error
+}
+
+// ConfigureMixFraction provides a default implementation for all non-lancero sources that
+// don't need the mix
+func (ds *AnySource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
+	return fmt.Errorf("this source does not support Mix") // how to best provide name of source here?
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.

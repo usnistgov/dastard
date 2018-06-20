@@ -105,6 +105,27 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	return err
 }
 
+// MixFractionObject is the RPC-usable structure for ConfigureMixFraction
+type MixFractionObject struct {
+	ProcessorIndex int
+	MixFraction    float64
+}
+
+// ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
+// mix = fb + mixFraction*err
+// NOTE: only supported by LanceroSource
+func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+	err := s.activeSource.ConfigureMixFraction(mfo.ProcessorIndex, mfo.MixFraction)
+	if err != nil {
+		return err
+	}
+	*reply = true
+	return nil
+}
+
 // ConfigureTriggers configures the trigger state for 1 or more channels.
 func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
 	if s.activeSource == nil {
@@ -116,9 +137,9 @@ func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) 
 	return err
 }
 
-// ProjectorsBasisObject is the RPC-usable structure for
+// ProjectorsBasisObject is the RPC-usable structure for ConfigureProjectorsBases
 type ProjectorsBasisObject struct {
-	ProcessorInd     int
+	ProcessorIndex   int
 	ProjectorsBase64 string
 	BasisBase64      string
 }
@@ -145,7 +166,7 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 	if err := basis.UnmarshalBinary(basisBytes); err != nil {
 		return err
 	}
-	if err := s.activeSource.ConfigureProjectorsBases(pbo.ProcessorInd, projectors, basis); err != nil {
+	if err := s.activeSource.ConfigureProjectorsBases(pbo.ProcessorIndex, projectors, basis); err != nil {
 		return err
 	}
 	*reply = true
