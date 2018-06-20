@@ -419,8 +419,18 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	firstTime := ls.lastread.Add(-segDuration)
 	for channum, ch := range ls.output {
 		data := datacopies[ls.chan2readoutOrder[channum]]
-		// mask out frame and extern trigger bits from FB channels
-		if channum%2 == 1 {
+		if channum%2 == 0 {
+			// The error channels are simple to handle
+			// TODO: replace framesPerSample=1 with the actual decimation level
+			seg := DataSegment{
+				rawData:         data,
+				framesPerSample: 1,
+				firstFramenum:   ls.nextFrameNum,
+				firstTime:       firstTime,
+			}
+			ch <- seg
+		} else {
+			// mask out frame and extern trigger bits from FB channels
 			const mask = ^RawType(0x3)
 			mixFraction := ls.MixFraction[channum]
 			if mixFraction == 0 { // no mix
