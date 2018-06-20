@@ -117,14 +117,16 @@ func (ds *AnySource) Running() bool {
 	}
 }
 
-func (ds *AnySource) fillEmptyChannelNames() {
-	if len(ds.chanNames) < ds.nchan {
-		ds.chanNames = make([]string, ds.nchan)
+// setDefaultChannelNames defensively sets channel names of the appropriate length.
+// They should have been set in DataSource.Sample()
+func (ds *AnySource) setDefaultChannelNames() {
+	// If the number of channel names is correct, assume it was set in Sample, as expected.
+	if len(ds.chanNames) == ds.nchan {
+		return
 	}
+	ds.chanNames = make([]string, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
-		if len(ds.chanNames[i]) == 0 {
-			ds.chanNames[i] = fmt.Sprintf("unk%d", i)
-		}
+		ds.chanNames[i] = fmt.Sprintf("ch%d", i)
 	}
 }
 
@@ -137,7 +139,7 @@ func (ds *AnySource) PrepareRun() error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
-	ds.fillEmptyChannelNames()
+	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
 	ds.abortSelf = make(chan struct{})
 
 	// Start a TriggerBroker to handle secondary triggering
@@ -153,11 +155,11 @@ func (ds *AnySource) PrepareRun() error {
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
-	for idnum, dataSegChan := range ds.output {
-		dsp := NewDataStreamProcessor(idnum, ds.broker)
-		dsp.Name = ds.chanNames[idnum]
+	for channelNum, dataSegmentChan := range ds.output {
+		dsp := NewDataStreamProcessor(channelNum, ds.broker)
+		dsp.Name = ds.chanNames[channelNum]
 		dsp.SampleRate = ds.sampleRate
-		ds.processors[idnum] = dsp
+		ds.processors[channelNum] = dsp
 
 		// TODO: don't just set these to arbitrary values
 		dsp.Decimate = false
@@ -186,7 +188,7 @@ func (ds *AnySource) PrepareRun() error {
 			} else {
 				dsp.ProcessData(ch)
 			}
-		}(dataSegChan)
+		}(dataSegmentChan)
 	}
 	ds.lastread = time.Now()
 	return nil
