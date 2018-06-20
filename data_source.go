@@ -249,8 +249,8 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 	return fts
 }
 
+// ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
-	fmt.Printf("ChangeTriggerState called with %v\n", state)
 	for _, chnum := range state.ChanNumbers {
 		ds.processors[chnum].TriggerState = state.TriggerState
 	}
