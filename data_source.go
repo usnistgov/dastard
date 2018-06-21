@@ -70,8 +70,8 @@ func Start(ds DataSource) error {
 			if err := ds.blockingRead(); err == io.EOF {
 				break
 			} else if err != nil {
-				log.Printf("blockingRead returns Error\n")
-				break
+				log.Printf("blockingRead returns Error: %s\n", err.Error())
+				// break
 			}
 		}
 		ds.CloseOutputs()

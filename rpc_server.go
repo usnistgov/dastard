@@ -223,6 +223,8 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		s.status.Running = true
 		if err := Start(s.activeSource); err != nil {
 			s.status.Running = false
@@ -241,9 +243,11 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 			s.status.Ncol = make([]int, 0)
 			s.status.Nrow = make([]int, 0)
 		}
-		s.broadcastUpdate()
-		s.broadcastTriggerState()
-		s.broadcastChannelNames()
+		// The following can't run without holding the s.mu lock, so they need
+		// to be launched in separate goroutines.
+		go s.broadcastUpdate()
+		go s.broadcastTriggerState()
+		go s.broadcastChannelNames()
 	}()
 	*reply = true
 	return nil
@@ -262,8 +266,9 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		s.status.Running = false
 		s.activeSource = nil
 		*reply = true
-
 	}
+	// The following can't run without holding the s.mu lock, so it needs
+	// to be launched in a separate goroutine.
 	go s.broadcastUpdate()
 	*reply = true
 	return nil
