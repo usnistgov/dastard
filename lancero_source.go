@@ -419,17 +419,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	firstTime := ls.lastread.Add(-segDuration)
 	for channum, ch := range ls.output {
 		data := datacopies[ls.chan2readoutOrder[channum]]
-		if channum%2 == 0 {
-			// The error channels are simple to handle
-			// TODO: replace framesPerSample=1 with the actual decimation level
-			seg := DataSegment{
-				rawData:         data,
-				framesPerSample: 1,
-				firstFramenum:   ls.nextFrameNum,
-				firstTime:       firstTime,
-			}
-			ch <- seg
-		} else {
+		if channum%2 == 1 {
 			// mask out frame and extern trigger bits from FB channels
 			const mask = ^RawType(0x3)
 			mixFraction := ls.MixFraction[channum]
@@ -437,54 +427,38 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 				for j := 0; j < len(data); j++ {
 					data[j] &= mask
 				}
-				// TODO: replace framesPerSample=1 with the actual decimation level
-				seg := DataSegment{
-					rawData:         data,
-					framesPerSample: 1,
-					firstFramenum:   ls.nextFrameNum,
-					firstTime:       firstTime,
-				}
-				ch <- seg
 			} else { // apply mix
-				// comments based upon NDFBServer.cp
-				// fb_physical[n] refers to the feedback signal applied during tick [n]
-				// err_physical[n] refers to the error signal measured during tick [n], eg with fb_physical[n] applied
-				// fb_data[n]=fb_physical[n+1]
-				// err_data[n]=err_physical[n]
-				// in words: at frame [n] we get data for the error measured at frame [n]
-				// and the feedback that will be applied during frame [n+1]
-				// we want
-				// mix[n] = fb_physical[n] + mixFraction * err_physical[n]
-				// so
-				// mix[n] = fb_data[n-1]   + mixFraction * err_data[n]
-				// or
-				// mix[n+1] = fb_data[n]   + mixFraction * err_data[n+1]
+				// Retard the raw data stream by 1 sample so it can be mixed with
+				// the appropriate error sample. This corrects for a poor choice in the
+				// TDM firmware design, but so it goes.
+				mix := make([]RawType, len(data))
+				mix[0] = ls.lastFbData[channum]
+				copy(mix[1:], data[0:len(data)-1])
 
-				// correct phasing not yet implemented
-				fbData := datacopies[ls.chan2readoutOrder[channum]]
 				errData := datacopies[ls.chan2readoutOrder[channum-1]]
-				mix := make([]RawType, len(fbData))
-				for j := 0; j < len(fbData); j++ {
-					var fbPhysical RawType
-					if j == 0 {
-						fbPhysical = ls.lastFbData[channum]
+				for j := 0; j < len(data); j++ {
+					mixAmount := float64(errData[j]) * mixFraction
+					// Be careful not to overflow!
+					floatMixResult := mixAmount + float64(mix[j])
+					if floatMixResult >= math.MaxUint16 {
+						data[j] = math.MaxUint16
+					} else if floatMixResult < 0 {
+						data[j] = 0
 					} else {
-						fbPhysical = fbData[j-1] & mask
+						data[j] = RawType(roundint(floatMixResult))
 					}
-					mixFractionTimesErrPhysical := RawType(roundint(float64(errData[j]) * mixFraction))
-					mix[j] = fbPhysical + mixFractionTimesErrPhysical
 				}
-				ls.lastFbData[channum] = fbData[len(fbData)-1]
-				// TODO: replace framesPerSample=1 with the actual decimation level
-				seg := DataSegment{
-					rawData:         mix,
-					framesPerSample: 1,
-					firstFramenum:   ls.nextFrameNum,
-					firstTime:       firstTime,
-				}
-				ch <- seg
+				ls.lastFbData[channum] = data[len(data)-1]
 			}
 		}
+		// TODO: replace framesPerSample=1 with the actual decimation level
+		seg := DataSegment{
+			rawData:         data,
+			framesPerSample: 1,
+			firstFramenum:   ls.nextFrameNum,
+			firstTime:       firstTime,
+		}
+		ch <- seg
 	}
 	ls.nextFrameNum += FrameIndex(framesUsed)
 
