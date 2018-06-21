@@ -422,12 +422,11 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		if channum%2 == 1 {
 			// mask out frame and extern trigger bits from FB channels
 			const mask = ^RawType(0x3)
+			for j := 0; j < len(data); j++ {
+				data[j] &= mask
+			}
 			mixFraction := ls.MixFraction[channum]
-			if mixFraction == 0 { // no mix
-				for j := 0; j < len(data); j++ {
-					data[j] &= mask
-				}
-			} else { // apply mix
+			if mixFraction != 0 { // apply mix
 				// Retard the raw data stream by 1 sample so it can be mixed with
 				// the appropriate error sample. This corrects for a poor choice in the
 				// TDM firmware design, but so it goes.
