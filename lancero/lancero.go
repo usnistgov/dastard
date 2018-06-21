@@ -11,6 +11,22 @@ import (
 	"time"
 )
 
+// Lanceroer is the interaface shared by Lancero and NoHardware
+// used to allow testing without lancero hardware
+type Lanceroer interface {
+	ChangeRingBuffer(int, int) error
+	Close() error
+	StartAdapter(int) error
+	StopAdapter() error
+	CollectorConfigure(int, int, uint32, int) error
+	StartCollector(bool) error
+	StopCollector() error
+	Wait() (time.Time, time.Duration, error)
+	AvailableBuffers() ([]byte, error)
+	ReleaseBytes(int) error
+	InspectAdapter() uint32
+}
+
 // Notes:
 // Want 4 objects:
 // Lancero (high-level, exported). This isn't in the C++ version.
@@ -54,7 +70,7 @@ func (lan *Lancero) ChangeRingBuffer(length, threshold int) error {
 }
 
 // Close releases all resources used by this lancero device.
-func (lan *Lancero) Close() {
+func (lan *Lancero) Close() error {
 	if lan.device != nil {
 		lan.device.Close()
 	}
@@ -65,6 +81,7 @@ func (lan *Lancero) Close() {
 		lan.adapter.stop()
 		lan.adapter.freeBuffer()
 	}
+	return nil
 }
 
 // StartAdapter starts the ring buffer adapter, waiting up to waitSeconds sec for it to work.

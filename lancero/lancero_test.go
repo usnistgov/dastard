@@ -6,45 +6,49 @@ import (
 	"os"
 	"os/signal"
 	"testing"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
-func TestMain(m *testing.M) {
+func TestLancero(t *testing.T) {
 	// call flag.Parse() here if TestMain uses flags
 	devs, err := EnumerateLanceroDevices()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		t.Error(err)
 	}
 	if len(devs) < 1 {
 		fmt.Println("found zero lancero devices")
-		os.Exit(0)
+		return
 	}
 	fmt.Printf("Found lancero devices %v\n", devs)
-	os.Exit(m.Run())
-}
-
-func TestLancero(t *testing.T) {
-	devs, err := EnumerateLanceroDevices()
-	t.Logf("Lancero devices: %v\n", devs)
-	if err != nil {
-		t.Errorf("EnumerateLanceroDevices() failed with err=%s", err.Error())
-	}
 	devnum := devs[0]
 	lan, err := NewLancero(devnum)
 	defer lan.Close()
-	if err != nil {
-		t.Errorf("%v", err)
-	}
-	if err1 := lan.StartAdapter(2); err1 != nil {
-		t.Error("failed to start lancero (driver problem):", err1)
+	testLanceroerSubroutine(lan, t)
+}
+
+func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error) {
+	// devs, err := EnumerateLanceroDevices()
+	// t.Logf("Lancero devices: %v\n", devs)
+	// if err != nil {
+	// 	t.Errorf("EnumerateLanceroDevices() failed with err=%s", err.Error())
+	// }
+	//
+	// defer lan.Close()
+	// if err != nil {
+	// 	t.Errorf("%v", err)
+	// }
+	var nrows, ncols, linePeriod int
+	if err := lan.StartAdapter(2); err != nil {
+		t.Error("failed to start lancero (driver problem):", err)
 	}
 	lan.InspectAdapter()
 	defer lan.StopAdapter()
-	linePeriod := 1 // use dummy values for things we will learn
+	linePeriodSet := 1 // use dummy values for things we will learn
 	dataDelay := 1
 	channelMask := uint32(0xffff)
 	frameLength := 1
-	err = lan.CollectorConfigure(linePeriod, dataDelay, channelMask, frameLength)
+	err := lan.CollectorConfigure(linePeriodSet, dataDelay, channelMask, frameLength)
 	if err != nil {
 		t.Errorf("CollectorConfigure err, %v", err)
 	}
@@ -64,17 +68,17 @@ func TestLancero(t *testing.T) {
 		}
 		select {
 		case <-interruptCatcher:
-			return
+			return 0, 0, 0, fmt.Errorf("interruptCatcher")
 		default:
 			_, waittime, err := lan.Wait()
 			if err != nil {
-				return
+				return 0, 0, 0, fmt.Errorf("lan.Wait: %v", err)
 			}
 			buffer, err := lan.AvailableBuffers()
 			totalBytes := len(buffer)
 			fmt.Printf("waittime: %v\n", waittime)
 			if err != nil {
-				return
+				return 0, 0, 0, fmt.Errorf("lan.AvailableBuffers: %v", err)
 			}
 			fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
 			if totalBytes > 0 {
@@ -82,14 +86,18 @@ func TestLancero(t *testing.T) {
 				bytesPerFrame := 4 * (p - q)
 				if err != nil {
 					fmt.Println("Error in findFrameBits:", err)
+					spew.Println(buffer)
+					fmt.Println(q, p, n)
+					return 0, 0, 0, err
 					break
 				}
 				fmt.Println(q, p, bytesPerFrame, n, err)
-				nrows := (p - q) / n
+				nrows = (p - q) / n
+				ncols = n
 				fmt.Println("cols=", n, "rows=", nrows)
 				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
-				lsync := roundint(float64(periodNS) / float64(nrows*8))
-				fmt.Printf("frame period %5d ns, lsync=%d\n", periodNS, lsync)
+				linePeriod = roundint(float64(periodNS) / float64(nrows*8)) // 8 is nanoseconds per row
+				fmt.Printf("frame period %5d ns, linePeriod=%d\n", periodNS, linePeriod)
 			}
 			// Quit when read enough samples.
 			bytesRead += totalBytes
@@ -97,7 +105,7 @@ func TestLancero(t *testing.T) {
 			lan.ReleaseBytes(totalBytes)
 		}
 	}
-	fmt.Println("loop DONE DONE DONE")
+	return ncols, nrows, linePeriod, nil
 }
 
 // Imperfect round to nearest integer

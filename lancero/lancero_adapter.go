@@ -37,7 +37,8 @@ const (
 	bitsAdapterCtrlIEFlush  uint32 = 16 // Adapter control bit: flush buffer
 	bitsAdapterCtrlRunFlush uint32 = bitsAdapterCtrlRun | bitsAdapterCtrlIEFlush
 
-	HardMaxBufSize uint32 = 40 * (1 << 20) // Longest allowed adapter buffer
+	// HardMaxBufSize Longest allowed adapter buffer
+	HardMaxBufSize uint32 = 40 * (1 << 20)
 	// For latest value, look in driver lancero/Lancero-RELEASE/C/driver/lancero-base.c
 	// for the line that reads #define LANCERO_TRANSFER_MAX_BYTES (40 * (1<<20))
 )
