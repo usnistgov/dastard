@@ -462,11 +462,14 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	ls.nextFrameNum += FrameIndex(framesUsed)
 
 	// Inform the driver to release the data we just consumed
+	totalBytes := 0
 	for _, dev := range ls.active {
 		release := framesUsed * dev.frameSize
 		dev.card.ReleaseBytes(release)
-		// fmt.Printf("           releasing %8d b (%5d b remain)\n", release, 2*len(buffers[i])-release)
+		totalBytes += release
 	}
+	ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
+		Time: wait.Seconds()}
 }
 
 // stop ends the data streaming on all active lancero devices.

@@ -29,6 +29,8 @@ type SourceControl struct {
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
+	totalData     Heartbeat
+	heartbeats    chan Heartbeat
 	mu            sync.Mutex // Serialize RPC commands and status broadcasts
 }
 
@@ -36,10 +38,15 @@ type SourceControl struct {
 // contents.
 func NewSourceControl() *SourceControl {
 	sc := new(SourceControl)
+	sc.heartbeats = make(chan Heartbeat)
 	sc.simPulses = new(SimPulseSource)
+	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle = new(TriangleSource)
+	sc.triangle.heartbeats = sc.heartbeats
 	if lan, err := NewLanceroSource(); err == nil {
 		sc.lancero = lan
+		sc.lancero.heartbeats = sc.heartbeats
+
 	}
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
@@ -281,7 +288,7 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	return nil
 }
 
-func (s *SourceControl) heartbeat() {
+func (s *SourceControl) broadcastHeartbeat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Check whether the "active" source actually stopped on its own
@@ -289,8 +296,10 @@ func (s *SourceControl) heartbeat() {
 		s.activeSource = nil
 		s.status.Running = false
 	}
-	hb := Heartbeat{Running: s.status.Running}
-	s.clientUpdates <- ClientUpdate{"ALIVE", hb}
+	s.totalData.Running = s.status.Running
+	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
+	s.totalData.DataMB = 0
+	s.totalData.Time = 0
 }
 
 func (s *SourceControl) broadcastUpdate() {
@@ -364,11 +373,17 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 		sourceControl.broadcastUpdate()
 	}
 
-	// Regularly broadcast a "heartbeat" to all clients
+	// Regularly broadcast a "heartbeat" containing data rate to all clients
 	go func() {
 		ticker := time.Tick(2 * time.Second)
-		for _ = range ticker {
-			sourceControl.heartbeat()
+		for {
+			select {
+			case <-ticker:
+				sourceControl.broadcastHeartbeat()
+			case h := <-sourceControl.heartbeats:
+				sourceControl.totalData.DataMB += h.DataMB
+				sourceControl.totalData.Time += h.Time
+			}
 		}
 	}()
 

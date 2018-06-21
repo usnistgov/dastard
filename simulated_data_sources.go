@@ -75,7 +75,11 @@ func (ts *TriangleSource) blockingRead() error {
 	case <-ts.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
-		ts.lastread = time.Now()
+		now := time.Now()
+		dt := now.Sub(ts.lastread).Seconds()
+		mb := float64(ts.cycleLen*2*len(ts.output)) / 1e6
+		ts.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
+		ts.lastread = now
 	}
 
 	// Backtrack to find the time associated with the first sample.
@@ -172,7 +176,11 @@ func (sps *SimPulseSource) blockingRead() error {
 	case <-sps.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
-		sps.lastread = time.Now()
+		now := time.Now()
+		dt := now.Sub(sps.lastread).Seconds()
+		mb := float64(sps.cycleLen*2*len(sps.output)) / 1e6
+		sps.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
+		sps.lastread = now
 	}
 
 	// Backtrack to find the time associated with the first sample.

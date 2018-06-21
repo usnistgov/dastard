@@ -92,6 +92,7 @@ type AnySource struct {
 	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
 	broker       *TriggerBroker
 	noProcess    bool // Set true only for testing.
+	heartbeats   chan Heartbeat
 	runMutex     sync.Mutex
 	runDone      sync.WaitGroup
 }
