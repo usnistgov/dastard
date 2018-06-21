@@ -58,6 +58,13 @@ type ServerStatus struct {
 	// TODO: maybe bytes/sec data rate...?
 }
 
+// Heartbeat is the info sent in the regular heartbeat to clients
+type Heartbeat struct {
+	Running bool
+	Time    float64
+	DataMB  float64
+}
+
 // FactorArgs holds the arguments to a Multiply operation
 type FactorArgs struct {
 	A, B int
@@ -274,6 +281,18 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	return nil
 }
 
+func (s *SourceControl) heartbeat() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Check whether the "active" source actually stopped on its own
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.activeSource = nil
+		s.status.Running = false
+	}
+	hb := Heartbeat{Running: s.status.Running}
+	s.clientUpdates <- ClientUpdate{"ALIVE", hb}
+}
+
 func (s *SourceControl) broadcastUpdate() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -345,11 +364,11 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 		sourceControl.broadcastUpdate()
 	}
 
-	// Regularly broadcast status to all clients
+	// Regularly broadcast a "heartbeat" to all clients
 	go func() {
 		ticker := time.Tick(2 * time.Second)
 		for _ = range ticker {
-			sourceControl.broadcastUpdate()
+			sourceControl.heartbeat()
 		}
 	}()
 
