@@ -1,7 +1,10 @@
 package dastard
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/usnistgov/dastard/lancero"
 )
 
 // TestChannelOrder checks the map from channel to readout numbering
@@ -67,4 +70,38 @@ func TestChannelOrder(t *testing.T) {
 			t.Errorf("roundint(%f)=%d, want %d", f, roundint(f), es[i])
 		}
 	}
+}
+
+func TestNoHardware(t *testing.T) {
+	var ncolsSet, nrowsSet, linePeriodSet int
+	ncolsSet = 8
+	nrowsSet = 8
+	linePeriodSet = 20
+	lan, err := lancero.NewNoHardware(ncolsSet, nrowsSet, linePeriodSet)
+	if err != nil {
+		t.Error(err)
+	}
+	dev := LanceroDevice{card: lan}
+	source := new(LanceroSource)
+	source.devices = make(map[int]*LanceroDevice)
+	source.devices[0] = &dev
+	source.ncards++
+	source.clockMhz = 125
+	// above is essentially NewLanceroSource
+
+	config := LanceroSourceConfig{ClockMhz: 125, CardDelay: []int{0},
+		ActiveCards: []int{0}, AvailableCards: []int{0}}
+	source.Configure(&config)
+	if err := source.StartRun(); err != nil {
+		t.Error(err)
+	}
+	fmt.Println("mix fraction")
+	source.ConfigureMixFraction(0, 1.0)
+	fmt.Println("ready for blockingRead")
+	if err := source.blockingRead(); err != nil {
+		t.Error(err)
+	}
+
+	panic("dont timeout")
+
 }

@@ -114,7 +114,8 @@ func (lan *Lancero) StopCollector() error {
 	return lan.collector.stop()
 }
 
-// Wait blocks until there is data in the ring buffer adapter.
+// Wait until a the threshold amount of data is available.
+// Return timestamp when ready, duration since last ready, and error.
 func (lan *Lancero) Wait() (time.Time, time.Duration, error) {
 	return lan.adapter.wait()
 }

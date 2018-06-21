@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/usnistgov/dastard/lancero"
 )
 
@@ -24,7 +25,7 @@ type LanceroDevice struct {
 	frameSize   int // frame size, in bytes
 	adapRunning bool
 	collRunning bool
-	card        *lancero.Lancero
+	card        lancero.Lanceroer
 }
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
@@ -140,7 +141,6 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 }
 
 // Sample determines key data facts by sampling some initial data.
-// It's a no-op for simulated (software) sources
 func (ls *LanceroSource) Sample() error {
 	ls.nchan = 0
 	for _, device := range ls.active {
@@ -259,6 +259,7 @@ func (ls *LanceroSource) StartRun() error {
 
 	// Starting the source for all active cards has 3 steps per card.
 	for _, device := range ls.active {
+		fmt.Println("loop start")
 
 		// 1. Resize the ring buffer to hold up to 16,384 frames
 		if device.frameSize <= 0 {
@@ -278,7 +279,7 @@ func (ls *LanceroSource) StartRun() error {
 		if err := lan.ChangeRingBuffer(bufsize, thresh); err != nil {
 			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 		}
-
+		fmt.Println("2")
 		// 2. Start the adapter and collector components in firmware
 		const Timeout int = 2 // seconds
 		if err := lan.StartAdapter(Timeout); err != nil {
@@ -300,7 +301,7 @@ func (ls *LanceroSource) StartRun() error {
 			return fmt.Errorf("error in StartCollector: %v", err)
 		}
 		device.collRunning = true
-
+		fmt.Println("3")
 		// 3. Consume any possible fractional frames at the start of the buffer
 		for {
 			if _, _, err := lan.Wait(); err != nil {
@@ -362,6 +363,7 @@ func (ls *LanceroSource) blockingRead() error {
 }
 
 func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration) {
+	fmt.Println("distribute data")
 
 	// Get 1 buffer per card, and compute which contains the fewest frames
 	framesUsed := math.MaxInt64
@@ -388,7 +390,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		fmt.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
 		return
 	}
-
+	fmt.Println("a")
 	// Consume framesUsed frames of data from each channel
 	datacopies := make([][]RawType, len(ls.output))
 
@@ -411,7 +413,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		}
 		nchanPrevDevices += nchan
 	}
-
+	fmt.Println("b")
 	// Now send these data downstream. Here we permute data into the expected
 	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
 	// Backtrack to find the time associated with the first sample.
@@ -460,7 +462,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		ch <- seg
 	}
 	ls.nextFrameNum += FrameIndex(framesUsed)
-
+	fmt.Println("c")
 	// Inform the driver to release the data we just consumed
 	totalBytes := 0
 	for _, dev := range ls.active {
@@ -468,8 +470,11 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		dev.card.ReleaseBytes(release)
 		totalBytes += release
 	}
+	fmt.Println("d")
+	spew.Dump(ls.heartbeats)
 	ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 		Time: wait.Seconds()}
+	fmt.Println("e")
 }
 
 // stop ends the data streaming on all active lancero devices.
