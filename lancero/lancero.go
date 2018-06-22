@@ -185,8 +185,8 @@ func OdDashTX(b []byte, maxLines int) string {
 	repeatCount := int(0)
 	outBuffer.WriteString(fmt.Sprintf("dumping %v bytes, output max lines %v\n", len(b), maxLines))
 	outBuffer.WriteString("L = least significant byte, M = most significant byte\n")
-	outBuffer.WriteString("framebit in errL\n")
-	outBuffer.WriteString("errMerrL fbkMfdbL errMerrL fbkMfdbL errMerrL fbkMfdbL errMerrL fbkMfdbL\n")
+	outBuffer.WriteString("framebit in fbkL\n")
+	outBuffer.WriteString("errLerrM fbkLfdbM errLerrM fbkLfdbM errLerrM fbkLfdbM errLerrM fbkLfdbM \n")
 	lines := 0
 	for i := 0; i < len(b) && lines < maxLines; i++ {
 		encoder.Write([]byte{b[i]})

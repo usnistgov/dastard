@@ -37,7 +37,7 @@ type LanceroSource struct {
 	active            []*LanceroDevice
 	chan2readoutOrder []int
 	lastFbData        []RawType // used in mix calculation
-	MixFraction       []float64
+	Mix               []Mix
 	AnySource
 }
 
@@ -133,7 +133,7 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	for _, dev := range ls.active {
 		nChannelsAllCards += dev.ncols * dev.nrows * 2
 	}
-	ls.MixFraction = make([]float64, nChannelsAllCards)
+	ls.Mix = make([]Mix, nChannelsAllCards)
 	ls.chan2readoutOrder = make([]int, nChannelsAllCards)
 	ls.lastFbData = make([]RawType, nChannelsAllCards)
 	nchanPrevDevices := 0
@@ -152,13 +152,13 @@ func (ls *LanceroSource) updateChanOrderMap() {
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + mixFraction*err
 func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
-	if processorIndex >= len(ls.MixFraction) || processorIndex < 0 {
+	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
 	}
 	if processorIndex%2 == 0 {
 		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", processorIndex)
 	}
-	ls.MixFraction[processorIndex] = mixFraction
+	ls.Mix[processorIndex] = Mix{mixFraction: mixFraction}
 	return nil
 }
 
@@ -438,43 +438,9 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			for j := 0; j < len(data); j++ {
 				data[j] &= mask
 			}
-			mixFraction := ls.MixFraction[channum]
-			if mixFraction != 0 { // apply mix
-				// Retard the raw data stream by 1 sample so it can be mixed with
-				// the appropriate error sample. This corrects for a poor choice in the
-				// TDM firmware design, but so it goes.
-
-				// fb_physical[n] refers to the feedback signal applied during tick [n]
-				// err_physical[n] refers to the error signal measured during tick [n], eg with fb_physical[n] applied
-				// fb_data[n]=fb_physical[n+1]
-				// err_data[n]=err_physical[n]
-				// in words: at frame [n] we get data for the error measured at frame [n]
-				// and the feedback that will be applied during frame [n+1]
-				// we want
-				// mix[n] = fb_physical[n] + mixFraction * err_physical[n]
-				// so
-				// mix[n] = fb_data[n-1]   + mixFraction * err_data[n]
-				// or
-				// mix[n+1] = fb_data[n]   + mixFraction * err_data[n+1]
-				mix := make([]RawType, len(data))
-				mix[0] = ls.lastFbData[channum]
-				copy(mix[1:], data[0:len(data)-1])
-
-				errData := datacopies[ls.chan2readoutOrder[channum-1]]
-				for j := 0; j < len(data); j++ {
-					mixAmount := float64(errData[j]) * mixFraction
-					// Be careful not to overflow!
-					floatMixResult := mixAmount + float64(mix[j])
-					if floatMixResult >= math.MaxUint16 {
-						data[j] = math.MaxUint16
-					} else if floatMixResult < 0 {
-						data[j] = 0
-					} else {
-						data[j] = RawType(roundint(floatMixResult))
-					}
-				}
-				ls.lastFbData[channum] = data[len(data)-1]
-			}
+			mix := ls.Mix[channum]
+			errData := datacopies[ls.chan2readoutOrder[channum-1]]
+			mix.MixRetardFb(&data, &errData) // alters data in place
 		}
 		// TODO: replace framesPerSample=1 with the actual decimation level
 		seg := DataSegment{
