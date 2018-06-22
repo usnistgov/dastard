@@ -288,6 +288,27 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	return nil
 }
 
+// WriteControlConfig object to control start/stop/pause of data writing
+type WriteControlConfig struct {
+	Request   string // "Start", "Stop", "Pause", or "Unpause"
+	Path      string // write in a new directory under this path
+	FileType  string // "LJH2.2", "LJH3", or ... ?
+	Rec2Write int
+}
+
+// WriteControl requests start/stop/pause/unpause data writing
+func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	*reply = true
+	if s.activeSource == nil {
+		return nil
+	}
+	err := s.activeSource.WriteControl(config)
+	*reply = (err != nil)
+	return err
+}
+
 func (s *SourceControl) broadcastHeartbeat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
