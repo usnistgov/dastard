@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"testing"
+	"time"
 
 	"github.com/usnistgov/dastard/lancero"
 )
@@ -113,8 +114,12 @@ func TestNoHardware(t *testing.T) {
 		t.Error(err)
 	}
 	defer source.Stop()
-	if err := source.ConfigureMixFraction(0, 1.0); err != nil {
+	if err := source.ConfigureMixFraction(0, 1.0); err == nil {
+		t.Error("expected error for mixing on even channel")
+	}
+	if err := source.ConfigureMixFraction(1, 1.0); err != nil {
 		t.Error(err)
 	}
+	time.Sleep(50 * time.Millisecond)
 
 }
