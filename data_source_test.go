@@ -48,4 +48,40 @@ func TestWritingFiles(t *testing.T) {
 	if _, err := makeDirectory("/notallowed"); err == nil {
 		t.Errorf("makeDirectory(%s) should have failed", "/notallowed")
 	}
+
+	ds := AnySource{nchan: 4}
+	ds.PrepareRun()
+	config := &WriteControlConfig{Request: "Pause", Path: tmp, FileType: "LJH2.2"}
+	for _, request := range []string{"Pause", "Unpause", "Stop"} {
+		config.Request = request
+		if err := ds.WriteControl(config); err != nil {
+			t.Errorf("WriteControl request %s failed on a non-writing file: %v", request, err)
+		}
+	}
+	config.Request = "notvalid"
+	if err := ds.WriteControl(config); err == nil {
+		t.Errorf("WriteControl request %s should fail, but didn't", config.Request)
+	}
+	config.Request = "Start"
+	config.FileType = "notvalid"
+	if err := ds.WriteControl(config); err == nil {
+		t.Errorf("WriteControl request Start with nonvalid filetype should fail, but didn't")
+	}
+
+	config.FileType = "LJH2.2"
+	config.Path = "/notvalid/because/permissions"
+	if err := ds.WriteControl(config); err == nil {
+		t.Errorf("WriteControl request Start with nonvalid path should fail, but didn't")
+	}
+
+	config.Path = tmp
+	if err := ds.WriteControl(config); err != nil {
+		t.Errorf("WriteControl request %s failed: %v", config.Request, err)
+	}
+	for _, request := range []string{"Pause", "Unpause", "Stop"} {
+		config.Request = request
+		if err := ds.WriteControl(config); err != nil {
+			t.Errorf("WriteControl request %s failed on a writing file: %v", request, err)
+		}
+	}
 }
