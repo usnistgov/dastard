@@ -31,6 +31,7 @@ type DataSource interface {
 	CloseOutputs()
 	Nchan() int
 	ComputeFullTriggerState() []FullTriggerState
+	ComputeWritingState() WritingState
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
@@ -96,6 +97,7 @@ type AnySource struct {
 	broker       *TriggerBroker
 	noProcess    bool // Set true only for testing.
 	heartbeats   chan Heartbeat
+	writingState WritingState
 	runMutex     sync.Mutex
 	runDone      sync.WaitGroup
 }
@@ -135,15 +137,21 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(true)
 		}
+		ds.writingState.Paused = true
 	} else if strings.HasPrefix(config.Request, "Unpause") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(false)
 		}
+		ds.writingState.Paused = false
 	} else if strings.HasPrefix(config.Request, "Stop") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveLJH3()
 		}
+		ds.writingState.Active = false
+		ds.writingState.Paused = false
+		ds.writingState.BasePath = config.Path
+		ds.writingState.Filename = ""
 	} else if strings.HasPrefix(config.Request, "Start") {
 		if config.FileType != "LJH2.2" {
 			return fmt.Errorf("WriteControl FileType=%q, needs to be %q",
@@ -164,12 +172,29 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			var timestampOffset float64 // TODO: figure this out
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, timebase, timestampOffset, nrows, ncols, filename)
 		}
+		ds.writingState.Active = true
+		ds.writingState.Paused = false
+		ds.writingState.BasePath = config.Path
+		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*")
 	} else {
 		return fmt.Errorf("WriteControl config.Request=%q, need (Start,Stop,Pause,Unpause)",
 			config.Request)
 	}
 
 	return nil
+}
+
+// WritingState monitors the state of file writing.
+type WritingState struct {
+	Active   bool
+	Paused   bool
+	BasePath string
+	Filename string
+}
+
+// ComputeWritingState doesn't need to compute, but just returns the writingState
+func (ds *AnySource) ComputeWritingState() WritingState {
+	return ds.writingState
 }
 
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[processorsInd]
