@@ -184,6 +184,7 @@ func (a *adapter) inspect() uint32 {
 	available, _ := a.device.readRegister(adapterRBAD)
 	fill, _ := a.device.readRegister(adapterFILL)
 	threshold, err := a.device.readRegister(adapterRBTH)
+	log.Printf("lancero.adapter.inspect:")
 	log.Printf("writeIndex = 0x%08x, readIndex = 0x%08x  available = 0x%08x\n",
 		writeIndex, readIndex, available)
 	log.Printf("max filled = 0x%08x, threshold = 0x%08x\n", fill, threshold)

@@ -3,6 +3,7 @@ package lancero
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -23,14 +24,23 @@ type NoHardware struct {
 	lastReadTime             time.Time
 	minTimeBetweenReads      time.Duration
 	rowCount                 int
+	idNum                    int
 }
+
+// String implements Stringer for NoHardware, aka controls how Println output looks
+func (lan NoHardware) String() string {
+	return fmt.Sprintf("lancero.NoHardware: idNum %v", lan.idNum)
+}
+
+var idNumCounter int
 
 // NewNoHardware generates and returns a new Lancero object in test mode,
 // meaning it emulate a lancero without any hardware
 func NewNoHardware(ncols int, nrows int, linePeriod int) (*NoHardware, error) {
 	lan := NoHardware{ncols: ncols, nrows: nrows, linePeriod: linePeriod,
 		nanoSecondsPerLinePeriod: 8, isOpen: true, lastReadTime: time.Now(),
-		minTimeBetweenReads: 10 * time.Millisecond}
+		minTimeBetweenReads: 10 * time.Millisecond, idNum: idNumCounter}
+	idNumCounter++
 	return &lan, nil
 }
 
@@ -42,7 +52,7 @@ func (lan *NoHardware) ChangeRingBuffer(length, threshold int) error {
 // Close errors if already closed
 func (lan *NoHardware) Close() error {
 	if !lan.isOpen {
-		return fmt.Errorf("NoHardware.Close: already closed")
+		return fmt.Errorf("NoHardware.Close: already closed: id %v\n", lan.idNum)
 	}
 	lan.isOpen = false
 	return nil
@@ -51,7 +61,7 @@ func (lan *NoHardware) Close() error {
 // StartAdapter errors if already started
 func (lan *NoHardware) StartAdapter(waitSeconds int) error {
 	if lan.isStarted {
-		return fmt.Errorf("NoHardware.StartAdapter: already started")
+		return fmt.Errorf("NoHardware.StartAdapter: already started: id %v", lan.idNum)
 	}
 	lan.isStarted = true
 	return nil
@@ -60,9 +70,9 @@ func (lan *NoHardware) StartAdapter(waitSeconds int) error {
 // StopAdapter errors if not started
 func (lan *NoHardware) StopAdapter() error {
 	if !lan.isStarted {
-		return fmt.Errorf("NoHardware.StopAdapter: not started")
+		return fmt.Errorf("NoHardware.StopAdapter: not started: id %v", lan.idNum)
 	}
-	lan.isStarted = true
+	lan.isStarted = false
 	return nil
 }
 
@@ -75,7 +85,7 @@ func (lan *NoHardware) CollectorConfigure(linePeriod, dataDelay int, channelMask
 // StartCollector errors if Collector Already Started
 func (lan *NoHardware) StartCollector(simulate bool) error {
 	if lan.collectorStarted {
-		return fmt.Errorf("NoHardware.StartCollector: collector started already")
+		return fmt.Errorf("NoHardware.StartCollector: collector started already: id %v", lan.idNum)
 	}
 	lan.collectorStarted = true
 	return nil
@@ -84,7 +94,7 @@ func (lan *NoHardware) StartCollector(simulate bool) error {
 // StopCollector errors if Collector not started
 func (lan *NoHardware) StopCollector() error {
 	if !lan.collectorStarted {
-		return fmt.Errorf("NoHardware.StopCollector: collector stopped already")
+		return fmt.Errorf("NoHardware.StopCollector: collector stopped already: id %v", lan.idNum)
 	}
 	lan.collectorStarted = false
 	return nil
@@ -92,12 +102,9 @@ func (lan *NoHardware) StopCollector() error {
 
 // Wait sleeps until lastReadTime + minTimeBetweenReads
 func (lan *NoHardware) Wait() (time.Time, time.Duration, error) {
-	fmt.Println("waiting")
 	sleepDuration := time.Until(lan.lastReadTime.Add(lan.minTimeBetweenReads))
-	fmt.Println(sleepDuration)
 	time.Sleep(sleepDuration)
 	now := time.Now()
-	fmt.Println("done waiting")
 	return now, now.Sub(lan.lastReadTime), nil
 }
 
@@ -107,13 +114,13 @@ func (lan *NoHardware) Wait() (time.Time, time.Duration, error) {
 func (lan *NoHardware) AvailableBuffers() ([]byte, error) {
 	var buf bytes.Buffer
 	if !lan.isStarted {
-		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: not started")
+		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: not started: id %v", lan.idNum)
 	}
 	if !lan.collectorStarted {
-		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: collector not started")
+		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: collector not started: id %v", lan.idNum)
 	}
 	if !lan.isOpen {
-		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: not open")
+		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: not open: id %v", lan.idNum)
 	}
 	now := time.Now()
 	sinceLastReadNanoseconds := now.Sub(lan.lastReadTime).Nanoseconds()
@@ -147,6 +154,6 @@ func (lan *NoHardware) ReleaseBytes(nBytes int) error {
 
 // InspectAdapter prints some info and returns 0
 func (lan *NoHardware) InspectAdapter() uint32 {
-	spew.Println(lan)
+	log.Println(spew.Sprint("NoHardware.InspectAdapter:", lan))
 	return uint32(0)
 }

@@ -1,7 +1,6 @@
 package dastard
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/usnistgov/dastard/lancero"
@@ -73,35 +72,51 @@ func TestChannelOrder(t *testing.T) {
 }
 
 func TestNoHardware(t *testing.T) {
-	var ncolsSet, nrowsSet, linePeriodSet int
+	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
 	ncolsSet = 8
 	nrowsSet = 8
 	linePeriodSet = 20
-	lan, err := lancero.NewNoHardware(ncolsSet, nrowsSet, linePeriodSet)
-	if err != nil {
-		t.Error(err)
-	}
-	dev := LanceroDevice{card: lan}
+	nLancero = 3
 	source := new(LanceroSource)
-	source.devices = make(map[int]*LanceroDevice)
-	source.devices[0] = &dev
-	source.ncards++
-	source.clockMhz = 125
+	source.devices = make(map[int]*LanceroDevice, nLancero)
+	cardDelay := []int{0} // a single card delay value works for multiple cards
+	activeCards := make([]int, nLancero)
+	for i := 0; i < nLancero; i++ {
+		lan, err := lancero.NewNoHardware(ncolsSet, nrowsSet, linePeriodSet)
+		if err != nil {
+			t.Error(err)
+		}
+		dev := LanceroDevice{card: lan}
+		dev.devnum = i
+		source.devices[i] = &dev
+		activeCards[i] = i
+		source.ncards++
+	}
 	// above is essentially NewLanceroSource
 
-	config := LanceroSourceConfig{ClockMhz: 125, CardDelay: []int{0},
-		ActiveCards: []int{0}, AvailableCards: []int{0}}
-	source.Configure(&config)
-	if err := source.StartRun(); err != nil {
+	config := LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
+		ActiveCards: make([]int, nLancero)}
+	if err := source.Configure(&config); err == nil {
+		t.Error("expected error for re-using a device")
+	}
+	config = LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
+		ActiveCards: activeCards}
+	if err := source.Configure(&config); err != nil {
 		t.Error(err)
 	}
-	fmt.Println("mix fraction")
-	source.ConfigureMixFraction(0, 1.0)
-	fmt.Println("ready for blockingRead")
+	for i := 0; i < nLancero; i++ {
+		if config.ActiveCards[i] != config.AvailableCards[i] {
+			t.Errorf("AvailableCards not populated corrects. AvailableCards %v", config.AvailableCards)
+		}
+	}
+	if err := Start(source); err != nil {
+		t.Error(err)
+	}
+
+	if err := source.ConfigureMixFraction(0, 1.0); err != nil {
+		t.Error(err)
+	}
 	if err := source.blockingRead(); err != nil {
 		t.Error(err)
 	}
-
-	panic("dont timeout")
-
 }

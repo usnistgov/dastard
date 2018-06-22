@@ -7,7 +7,10 @@
 package lancero
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -172,4 +175,41 @@ func FindFrameBits(b []byte) (int, int, int, error) {
 		}
 	}
 	return q / 4, p / 4, n, fmt.Errorf("b did not contain two frame starts")
+}
+
+// OdDashTX creates output like od -xt, used for debugging Lancero
+func OdDashTX(b []byte) string {
+	var lineBuffer, outBuffer bytes.Buffer
+	var line, lastLine string
+	encoder := hex.NewEncoder(&lineBuffer)
+	repeatCount := int(0)
+	outBuffer.WriteString(fmt.Sprintf("dumping %v bytes\n", len(b)))
+	outBuffer.WriteString("L = least significant byte, M = most significant byte\n")
+	outBuffer.WriteString("framebit in errL\n")
+	outBuffer.WriteString("errMerrL fbkMfdbL errMerrL fbkMfdbL errMerrL fbkMfdbL errMerrL fbkMfdbL\n")
+	for i := 0; i < len(b); i++ {
+		encoder.Write([]byte{b[i]})
+		if (i+1)%4 == 0 {
+			lineBuffer.WriteString(" ")
+		}
+		if (i+1)%32 == 0 {
+			line = lineBuffer.String()
+			lineBuffer.Reset()
+			if strings.Compare(line, lastLine) == 0 {
+				repeatCount++
+			} else {
+				if repeatCount > 0 {
+					outBuffer.WriteString(fmt.Sprintf("* (%v identical lines)\n", repeatCount))
+					repeatCount = 0
+				}
+				outBuffer.WriteString(line)
+				outBuffer.WriteString("\n")
+				lastLine = line
+			}
+		}
+	}
+	if repeatCount > 0 {
+		outBuffer.WriteString(fmt.Sprintf("* (%v identical lines)", repeatCount))
+	}
+	return outBuffer.String()
 }

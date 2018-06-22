@@ -108,6 +108,23 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 	return ncols, nrows, linePeriod, nil
 }
 
+func TestOdDashTX(t *testing.T) {
+	b := make([]byte, 10000)
+	if s := OdDashTX(b); len(s) != 259 {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 259", s, len(s))
+	}
+	for i, _ := range b {
+		b[i] = byte(i)
+	}
+	if s := OdDashTX(b); len(s) != 22939 {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 22939", s, len(s))
+	}
+	b = make([]byte, 0)
+	if s := OdDashTX(b); len(s) != 159 {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 159", s, len(s))
+	}
+}
+
 // Imperfect round to nearest integer
 func roundint(x float64) int {
 	return int(x + math.Copysign(0.5, x))
