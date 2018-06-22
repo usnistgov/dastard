@@ -112,11 +112,9 @@ func TestNoHardware(t *testing.T) {
 	if err := Start(source); err != nil {
 		t.Error(err)
 	}
-
+	defer source.Stop()
 	if err := source.ConfigureMixFraction(0, 1.0); err != nil {
 		t.Error(err)
 	}
-	if err := source.blockingRead(); err != nil {
-		t.Error(err)
-	}
+
 }

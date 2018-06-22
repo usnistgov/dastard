@@ -178,16 +178,17 @@ func FindFrameBits(b []byte) (int, int, int, error) {
 }
 
 // OdDashTX creates output like od -xt, used for debugging Lancero
-func OdDashTX(b []byte) string {
+func OdDashTX(b []byte, maxLines int) string {
 	var lineBuffer, outBuffer bytes.Buffer
 	var line, lastLine string
 	encoder := hex.NewEncoder(&lineBuffer)
 	repeatCount := int(0)
-	outBuffer.WriteString(fmt.Sprintf("dumping %v bytes\n", len(b)))
+	outBuffer.WriteString(fmt.Sprintf("dumping %v bytes, output max lines %v\n", len(b), maxLines))
 	outBuffer.WriteString("L = least significant byte, M = most significant byte\n")
 	outBuffer.WriteString("framebit in errL\n")
 	outBuffer.WriteString("errMerrL fbkMfdbL errMerrL fbkMfdbL errMerrL fbkMfdbL errMerrL fbkMfdbL\n")
-	for i := 0; i < len(b); i++ {
+	lines := 0
+	for i := 0; i < len(b) && lines < maxLines; i++ {
 		encoder.Write([]byte{b[i]})
 		if (i+1)%4 == 0 {
 			lineBuffer.WriteString(" ")
@@ -201,9 +202,11 @@ func OdDashTX(b []byte) string {
 				if repeatCount > 0 {
 					outBuffer.WriteString(fmt.Sprintf("* (%v identical lines)\n", repeatCount))
 					repeatCount = 0
+					lines++
 				}
 				outBuffer.WriteString(line)
 				outBuffer.WriteString("\n")
+				lines++
 				lastLine = line
 			}
 		}
