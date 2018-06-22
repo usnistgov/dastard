@@ -426,6 +426,11 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	if err == nil {
 		sourceControl.broadcastStatus()
 	}
+	var ws WritingState
+	err = viper.UnmarshalKey("writingstate", &ws)
+	if err == nil {
+		sourceControl.clientUpdates <- ClientUpdate{"WRITING", ws}
+	}
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
 	go func() {
