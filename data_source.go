@@ -138,11 +138,13 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.SetPause(true)
 		}
 		ds.writingState.Paused = true
+
 	} else if strings.HasPrefix(config.Request, "Unpause") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(false)
 		}
 		ds.writingState.Paused = false
+
 	} else if strings.HasPrefix(config.Request, "Stop") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.RemoveLJH22()
@@ -150,8 +152,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		}
 		ds.writingState.Active = false
 		ds.writingState.Paused = false
-		ds.writingState.BasePath = config.Path
 		ds.writingState.Filename = ""
+
 	} else if strings.HasPrefix(config.Request, "Start") {
 		if config.FileType != "LJH2.2" {
 			return fmt.Errorf("WriteControl FileType=%q, needs to be %q",

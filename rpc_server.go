@@ -9,6 +9,7 @@ import (
 	"net/rpc/jsonrpc"
 	"os"
 	"os/signal"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -308,6 +309,28 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	*reply = (err != nil)
 	go s.broadcastWritingState()
 	return err
+}
+
+// WriteComment writes the comment to comment.txt
+func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	*reply = true
+	if s.activeSource == nil || len(*comment) == 0 {
+		return nil
+	}
+	ws := s.activeSource.ComputeWritingState()
+	if ws.Active {
+		dir := path.Dir(ws.Filename)
+		commentName := path.Join(dir, "comment.txt")
+		fp, err := os.Create(commentName)
+		if err != nil {
+			return err
+		}
+		defer fp.Close()
+		fp.WriteString(*comment)
+	}
+	return nil
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
