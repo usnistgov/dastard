@@ -73,6 +73,7 @@ func (ls *LanceroSource) Delete() {
 	}
 }
 
+// used to make sure the same device isn't used twice
 func contains(s []*LanceroDevice, e *LanceroDevice) bool {
 	for _, a := range s {
 		if a == e {
@@ -432,15 +433,12 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	firstTime := ls.lastread.Add(-segDuration)
 	for channum, ch := range ls.output {
 		data := datacopies[ls.chan2readoutOrder[channum]]
-		if channum%2 == 1 {
-			// mask out frame and extern trigger bits from FB channels
-			const mask = ^RawType(0x3)
-			for j := 0; j < len(data); j++ {
-				data[j] &= mask
-			}
+		if channum%2 == 1 { // feedback channel needs more processing
 			mix := ls.Mix[channum]
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
-			mix.MixRetardFb(&data, &errData) // alters data in place
+			mix.MixRetardFb(&data, &errData)
+			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
+
 		}
 		// TODO: replace framesPerSample=1 with the actual decimation level
 		seg := DataSegment{
