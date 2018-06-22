@@ -116,17 +116,17 @@ func makeDirectory(basepath string) (string, error) {
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
 		return "", err
 	}
-	for i := 0; i < 1000; i++ {
-		thisDir := fmt.Sprintf("%s/%3.3d", todayDir, i)
-		_, err := os.Lstat(thisDir)
-		if err == os.ErrNotExist {
+	for i := 0; i < 10000; i++ {
+		thisDir := fmt.Sprintf("%s/%4.4d", todayDir, i)
+		_, err := os.Stat(thisDir)
+		if os.IsNotExist(err) {
 			if err2 := os.MkdirAll(thisDir, 0755); err2 != nil {
 				return "", err
 			}
-			return fmt.Sprintf("%s/%s_run%3.3d_%%s.ljh", thisDir, today, i), nil
+			return fmt.Sprintf("%s/%s_run%4.4d_%%s.ljh", thisDir, today, i), nil
 		}
 	}
-	return "", fmt.Errorf("out of ID numbers for today in %s", todayDir)
+	return "", fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)
 }
 
 // WriteControl changes the data writing start/stop/pause/unpause state
@@ -209,7 +209,7 @@ func (ds *AnySource) setDefaultChannelNames() {
 	}
 	ds.chanNames = make([]string, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
-		ds.chanNames[i] = fmt.Sprintf("ch%d", i)
+		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
 	}
 }
 
