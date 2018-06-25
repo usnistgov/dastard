@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"time"
 	"unsafe"
 
 	"github.com/usnistgov/dastard/getbytes"
@@ -20,7 +19,6 @@ type DataPublisher struct {
 	PubSummariesChan chan []*DataRecord
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
-	triggerCounter   TriggerCounter
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -150,10 +148,6 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	for _, record := range records {
-		dp.triggerCounter.Observe(record.trigTime.Nanosecond())
-	}
-	dp.triggerCounter.ObserveTime()
 	return nil
 }
 
@@ -176,7 +170,7 @@ func messageSummaries(rec *DataRecord) [][]byte {
 	const headerVersion = uint8(0)
 
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channum)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
 	header.Write(getbytes.FromUint8(headerVersion))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
 	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
@@ -210,7 +204,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 	const headerVersion = uint8(0)
 	const dataType = uint8(3)
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channum)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
 	header.Write(getbytes.FromUint8(headerVersion))
 	header.Write(getbytes.FromUint8(dataType))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
@@ -307,53 +301,4 @@ func bytesToRawType(b []byte) []RawType {
 	header.Len /= ratio
 	data := *(*[]RawType)(unsafe.Pointer(&header))
 	return data
-}
-
-// TriggerCounter counts triggers
-type TriggerCounter struct {
-	nanoStep   int
-	nanoHi     int
-	nanoLo     int
-	countsSeen int
-}
-
-// NewTriggerCounter returns a TriggerCounter
-// nanoNow should be the current time in nanoSeconds, but is passed
-// as an argument to make sure many new trigger Brokers get the same value
-func NewTriggerCounter(nanoStep int, nanoNow int) TriggerCounter {
-	nanoHi := (nanoNow / nanoStep) * nanoNow
-	return TriggerCounter{nanoStep: nanoStep, nanoHi: nanoHi, nanoLo: nanoHi - nanoStep}
-}
-
-func (tc *TriggerCounter) messageAndReset() {
-	fmt.Printf("%v counts seen in %v nanosecond period ending at %v\n", tc.countsSeen,
-		tc.nanoStep, tc.nanoHi)
-	tc.countsSeen = 0
-	tc.nanoHi += tc.nanoStep
-	tc.nanoLo = tc.nanoHi - tc.nanoStep
-}
-
-// Observe a single trigger at nano (a unix time in nanoseconds)
-// possibly create a message, increment countSeen, check for out of bounds errors
-func (tc *TriggerCounter) Observe(nano int) error {
-	for nano > tc.nanoHi {
-		tc.messageAndReset()
-	}
-	if nano <= tc.nanoLo {
-		return fmt.Errorf("observed count before nanoLo=%v, nano=%v", tc.nanoLo, nano)
-	}
-	tc.countsSeen += 1
-	return nil
-}
-
-// ObserveTime the current time, possibly create messages
-func (tc *TriggerCounter) ObserveTime() error {
-	nano := time.Now().Nanosecond()
-	for nano > tc.nanoHi {
-		tc.messageAndReset()
-	}
-	if nano <= tc.nanoLo {
-		return fmt.Errorf("observed time before nanoLo=%v, nano=%v", tc.nanoLo, nano)
-	}
-	return nil
 }

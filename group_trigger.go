@@ -2,9 +2,89 @@ package dastard
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"sync"
+	"time"
+
+	"github.com/davecgh/go-spew/spew"
 )
+
+// TriggerCounter takes advantage of the fact that TriggerBroker provides a synchronization point
+// to count triggers for all channels in sync
+type TriggerCounter struct {
+	channelIndex         int
+	hi                   FrameIndex // the highest value for which we should observer triggers
+	lo                   FrameIndex // observations below this value are errors
+	hiTime               time.Time
+	countsSeen           int
+	stepDuration         time.Duration
+	sampleRate           float64
+	keyFrame             FrameIndex // keyFrame occured at keyTime to the best of our knowledge
+	keyTime              time.Time
+	haveObservedKeyFrame bool
+	messages             []triggerRateMessage
+}
+
+type triggerRateMessage struct {
+	channelIndex int
+	hiTime       time.Time
+	duration     time.Duration
+	countsSeen   int
+}
+
+// NewTriggerCounter returns a TriggerCounter
+func NewTriggerCounter(channelIndex int, stepDuration time.Duration) TriggerCounter {
+	return TriggerCounter{channelIndex: channelIndex, stepDuration: stepDuration, messages: make([]triggerRateMessage, 0)}
+}
+
+func (tc *TriggerCounter) messageAndReset() {
+	if tc.haveObservedKeyFrame {
+		message := triggerRateMessage{channelIndex: tc.channelIndex, hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
+		tc.messages = append(tc.messages, message)
+		tc.countsSeen = 0
+		tc.hiTime = tc.hiTime.Add(tc.stepDuration)
+		tc.lo = tc.hi + 1
+		tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
+	} else {
+		hiTime := tc.keyTime.Round(tc.stepDuration)
+		if hiTime.Before(tc.keyTime) {
+			// hiTime is the first multiple of stepDuration after keyTime
+			hiTime = hiTime.Add(tc.stepDuration)
+		}
+		tc.hiTime = hiTime
+		tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
+		lo := tc.hi - FrameIndex(roundint(tc.sampleRate*tc.stepDuration.Seconds())) + 1
+		tc.lo = lo
+		tc.haveObservedKeyFrame = true
+	}
+}
+
+func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
+	tc.keyFrame = tList.keyFrame
+	tc.keyTime = tList.keyTime
+	tc.sampleRate = tList.sampleRate
+	if !tc.haveObservedKeyFrame {
+		tc.messageAndReset()
+	}
+	for _, frame := range tList.frames {
+		if frame > tc.hi {
+			tc.messageAndReset()
+		}
+		if frame > tc.hi {
+			return fmt.Errorf("frame %v still higher than tc.hi=%v after reset", frame, tc.hi)
+		}
+		if frame < tc.lo {
+			return fmt.Errorf("observed count before lo=%v, frame=%v", tc.lo, frame)
+		}
+		tc.countsSeen++
+	}
+	if tList.lastFrameThatWillNeverTrigger > tc.hi {
+		// fmt.Println("resetting due to lastFrameThatWillNeverTrigger")
+		tc.messageAndReset()
+	}
+	return nil
+}
 
 // TriggerBroker communicates with DataChannel objects to allow them to operate independently
 // yet still share group triggering information.
@@ -14,6 +94,7 @@ type TriggerBroker struct {
 	PrimaryTrigs    chan triggerList
 	SecondaryTrigs  []chan []FrameIndex
 	latestPrimaries [][]FrameIndex
+	triggerCounters []TriggerCounter
 	abort           chan struct{} // This can signal the Run() goroutine to stop
 	sync.RWMutex
 }
@@ -33,6 +114,11 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 		broker.SecondaryTrigs[i] = make(chan []FrameIndex, 1)
 	}
 	broker.latestPrimaries = make([][]FrameIndex, nchan)
+	broker.triggerCounters = make([]TriggerCounter, nchan)
+	for i := 0; i < nchan; i++ {
+		triggerReportRate := time.Second // could be programmable in future
+		broker.triggerCounters[i] = NewTriggerCounter(i, triggerReportRate)
+	}
 	return broker
 }
 
@@ -100,7 +186,12 @@ func (broker *TriggerBroker) Run() {
 			case <-broker.abort:
 				return
 			case tlist := <-broker.PrimaryTrigs:
-				broker.latestPrimaries[tlist.channum] = tlist.frames
+				broker.latestPrimaries[tlist.channelIndex] = tlist.frames
+				err := broker.triggerCounters[tlist.channelIndex].observeTriggerList(&tlist)
+				if err != nil {
+					log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
+						spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[tlist.channelIndex]))
+				}
 			}
 		}
 
@@ -118,6 +209,7 @@ func (broker *TriggerBroker) Run() {
 			rxchan <- trigs
 		}
 		broker.RUnlock()
+
 	}
 }
 

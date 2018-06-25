@@ -251,9 +251,9 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 	for _, dsp := range ds.processors {
 		chans, ok := result[dsp.TriggerState]
 		if ok {
-			result[dsp.TriggerState] = append(chans, dsp.Channum)
+			result[dsp.TriggerState] = append(chans, dsp.channelIndex)
 		} else {
-			result[dsp.TriggerState] = []int{dsp.Channum}
+			result[dsp.TriggerState] = []int{dsp.channelIndex}
 		}
 	}
 
@@ -359,12 +359,12 @@ func (stream *DataStream) TrimKeepingN(N int) int {
 
 // DataRecord contains a single triggered pulse record.
 type DataRecord struct {
-	data       []RawType
-	trigFrame  FrameIndex
-	trigTime   time.Time
-	channum    int
-	presamples int
-	sampPeriod float32
+	data         []RawType
+	trigFrame    FrameIndex
+	trigTime     time.Time
+	channelIndex int
+	presamples   int
+	sampPeriod   float32
 
 	// trigger type?
 
