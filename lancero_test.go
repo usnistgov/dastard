@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"testing"
-	"time"
 
 	"github.com/usnistgov/dastard/lancero"
 )
@@ -120,7 +119,7 @@ func TestNoHardware(t *testing.T) {
 	if err := source.ConfigureMixFraction(1, 1.0); err != nil {
 		t.Error(err)
 	}
-	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
+	// time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
 
 }
 
