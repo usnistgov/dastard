@@ -113,6 +113,9 @@ func (ds *AnySource) StartRun() error {
 // It also returns the formatting code for use in an Sprintf call
 // basepath/20060102/000/20060102_run000_%s.ljh and an error, if any.
 func makeDirectory(basepath string) (string, error) {
+	if len(basepath) == 0 {
+		return "", fmt.Errorf("BasePath is the empty string")
+	}
 	today := time.Now().Format("20060102")
 	todayDir := fmt.Sprintf("%s/%s", basepath, today)
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
@@ -133,19 +136,20 @@ func makeDirectory(basepath string) (string, error) {
 
 // WriteControl changes the data writing start/stop/pause/unpause state
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
-	if strings.HasPrefix(config.Request, "Pause") {
+	request := strings.ToUpper(config.Request)
+	if strings.HasPrefix(request, "PAUSE") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(true)
 		}
 		ds.writingState.Paused = true
 
-	} else if strings.HasPrefix(config.Request, "Unpause") {
+	} else if strings.HasPrefix(request, "UNPAUSE") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(false)
 		}
 		ds.writingState.Paused = false
 
-	} else if strings.HasPrefix(config.Request, "Stop") {
+	} else if strings.HasPrefix(request, "STOP") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveLJH3()
@@ -154,12 +158,17 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Paused = false
 		ds.writingState.Filename = ""
 
-	} else if strings.HasPrefix(config.Request, "Start") {
+	} else if strings.HasPrefix(request, "START") {
 		if config.FileType != "LJH2.2" {
 			return fmt.Errorf("WriteControl FileType=%q, needs to be %q",
 				config.FileType, "LJH2.2")
 		}
-		filenamePattern, err := makeDirectory(config.Path)
+		// Write to the previous BasePath if config.Path is empty.
+		path := ds.writingState.BasePath
+		if len(config.Path) > 0 {
+			path = config.Path
+		}
+		filenamePattern, err := makeDirectory(path)
 		if err != nil {
 			return fmt.Errorf("Could not make directory: %s", err.Error())
 		}
@@ -176,7 +185,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
-		ds.writingState.BasePath = config.Path
+		ds.writingState.BasePath = path
 		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*")
 	} else {
 		return fmt.Errorf("WriteControl config.Request=%q, need (Start,Stop,Pause,Unpause)",
