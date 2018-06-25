@@ -306,9 +306,8 @@ func TestMain(m *testing.M) {
 	}
 
 	// call flag.Parse() here if TestMain uses flags
-	messageChan := make(chan ClientUpdate)
-	go RunClientUpdater(messageChan, Ports.Status)
-	go RunRPCServer(messageChan, Ports.RPC)
+	go RunClientUpdater(Ports.Status)
+	go RunRPCServer(Ports.RPC)
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {

@@ -23,24 +23,30 @@ type TriggerCounter struct {
 	keyFrame             FrameIndex // keyFrame occured at keyTime to the best of our knowledge
 	keyTime              time.Time
 	haveObservedKeyFrame bool
-	messages             []triggerRateMessage
+	messages             []triggerCounterMessage
 }
 
-type triggerRateMessage struct {
-	channelIndex int
-	hiTime       time.Time
-	duration     time.Duration
-	countsSeen   int
+type triggerCounterMessage struct {
+	hiTime     time.Time
+	duration   time.Duration
+	countsSeen int
+}
+
+// TriggerRateMessage is used to publish trigger rate info over zmq
+type TriggerRateMessage struct {
+	HiTime     time.Time
+	Duration   time.Duration
+	CountsSeen []int
 }
 
 // NewTriggerCounter returns a TriggerCounter
 func NewTriggerCounter(channelIndex int, stepDuration time.Duration) TriggerCounter {
-	return TriggerCounter{channelIndex: channelIndex, stepDuration: stepDuration, messages: make([]triggerRateMessage, 0)}
+	return TriggerCounter{channelIndex: channelIndex, stepDuration: stepDuration, messages: make([]triggerCounterMessage, 0)}
 }
 
 func (tc *TriggerCounter) messageAndReset() {
 	if tc.haveObservedKeyFrame {
-		message := triggerRateMessage{channelIndex: tc.channelIndex, hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
+		message := triggerCounterMessage{hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
 		tc.messages = append(tc.messages, message)
 		tc.countsSeen = 0
 		tc.hiTime = tc.hiTime.Add(tc.stepDuration)
@@ -209,6 +215,30 @@ func (broker *TriggerBroker) Run() {
 			rxchan <- trigs
 		}
 		broker.RUnlock()
+
+		// generate combined trigger rate message
+		var hiTime time.Time
+		var duration time.Duration
+		nMessages := len(broker.triggerCounters[0].messages)
+		countsSeen := make([]int, broker.nchannels)
+		for i := 0; i < nMessages; i++ {
+			for j := 0; j < broker.nchannels; j++ {
+				// fmt.Println(i, j, nMessages, broker.nchannels)
+				message := broker.triggerCounters[j].messages[i]
+				if j == 0 { // first channel
+					hiTime = message.hiTime
+					duration = message.duration
+				}
+				if message.hiTime.Nanosecond() != hiTime.Nanosecond() || message.duration.Nanoseconds() != duration.Nanoseconds() {
+					panic("trigger messages not in sync")
+				}
+				countsSeen[j] = message.countsSeen
+			}
+			clientMessageChan <- ClientUpdate{tag: "TRIGGERRATE", state: TriggerRateMessage{HiTime: hiTime, Duration: duration, CountsSeen: countsSeen}}
+		}
+		for j := 0; j < broker.nchannels; j++ {
+			broker.triggerCounters[j].messages = make([]triggerCounterMessage, 0) // release all memory
+		}
 
 	}
 }
