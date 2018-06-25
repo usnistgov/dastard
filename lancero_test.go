@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"testing"
+	"time"
 
 	"github.com/usnistgov/dastard/lancero"
 )
@@ -76,7 +77,7 @@ func TestNoHardware(t *testing.T) {
 	ncolsSet = 8
 	nrowsSet = 8
 	linePeriodSet = 20
-	nLancero = 3
+	nLancero = 1
 	source := new(LanceroSource)
 	source.devices = make(map[int]*LanceroDevice, nLancero)
 	cardDelay := []int{0} // a single card delay value works for multiple cards
@@ -96,7 +97,7 @@ func TestNoHardware(t *testing.T) {
 
 	config := LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
 		ActiveCards: make([]int, nLancero)}
-	if err := source.Configure(&config); err == nil {
+	if err := source.Configure(&config); err == nil && nLancero > 1 {
 		t.Error("expected error for re-using a device")
 	}
 	config = LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
@@ -111,6 +112,8 @@ func TestNoHardware(t *testing.T) {
 	}
 	if err := Start(source); err != nil {
 		t.Error(err)
+		source.Stop()
+		return
 	}
 	defer source.Stop()
 	if err := source.ConfigureMixFraction(0, 1.0); err == nil {
@@ -119,7 +122,7 @@ func TestNoHardware(t *testing.T) {
 	if err := source.ConfigureMixFraction(1, 1.0); err != nil {
 		t.Error(err)
 	}
-	// time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
+	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
 
 }
 
