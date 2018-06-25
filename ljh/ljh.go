@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/usnistgov/dastard/getbytes"
 )
@@ -53,7 +54,7 @@ type Writer struct {
 	Presamples      int
 	Samples         int
 	Timebase        float64
-	TimestampOffset float64
+	TimestampOffset time.Time
 	NumberOfRows    int
 	NumberOfColumns int
 	HeaderWritten   bool
@@ -139,6 +140,9 @@ func (w *Writer) CreateFile() error {
 
 // WriteHeader writes a header to .file, returns err from WriteString
 func (w *Writer) WriteHeader() error {
+	starttime := w.TimestampOffset.Format("02 Jan 2006, 15:04:05 MST")
+	timestamp := float64(w.TimestampOffset.UnixNano()) / 1e9
+
 	s := fmt.Sprintf(`#LJH Memorial File Format
 Save File Format Version: 2.2.1
 Software Version: DASTARD version %s
@@ -147,13 +151,15 @@ Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
 Channel: %d
-Timestamp offset (s): %f
+Server Start Time: %s
+Timestamp offset (s): %.6f
 Timebase: %f
 Number of rows: %d
 Number of columns: %d
 #End of Header
-`, w.DastardVersion, w.GitHash,
-		w.Presamples, w.Samples, w.ChanNum, w.TimestampOffset, w.Timebase,
+`,
+		w.DastardVersion, w.GitHash,
+		w.Presamples, w.Samples, w.ChanNum, starttime, timestamp, w.Timebase,
 		w.NumberOfRows, w.NumberOfColumns)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true

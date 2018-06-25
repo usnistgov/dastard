@@ -1,5 +1,7 @@
 package dastard
 
+import "time"
+
 // Portnumbers structs can contain all TCP port numbers used by Dastard.
 type Portnumbers struct {
 	RPC            int
@@ -25,9 +27,10 @@ var buildDate = "build date not computed"
 
 // BuildInfo can contain compile-time information about the build
 type BuildInfo struct {
-	Version string
-	Githash string
-	Date    string
+	Version  string
+	Githash  string
+	Date     string
+	RunStart time.Time
 }
 
 // Build is a global holding compile-time information about the build
@@ -39,4 +42,5 @@ var Build = BuildInfo{
 
 func init() {
 	setPortnumbers(5500)
+	Build.RunStart = time.Now()
 }

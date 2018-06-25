@@ -178,8 +178,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			var nrows, ncols int // default to 0 x 0 array
 			// TODO: update nrows, ncols for a Lancero source
 			filename := fmt.Sprintf(filenamePattern, dsp.Name)
-			var timestampOffset float64 // TODO: figure this out
-			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, timebase, timestampOffset, nrows, ncols, filename)
+			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, timebase, Build.RunStart, nrows, ncols, filename)
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
