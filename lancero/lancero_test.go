@@ -110,18 +110,18 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 
 func TestOdDashTX(t *testing.T) {
 	b := make([]byte, 10000)
-	if s := OdDashTX(b, 15); len(s) != 280 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 280", s, len(s))
+	if s := OdDashTX(b, 15); len(s) != 281 {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 281", s, len(s))
 	}
 	for i := range b {
 		b[i] = byte(i)
 	}
-	if s := OdDashTX(b, 15); len(s) != 1279 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 1279", s, len(s))
+	if s := OdDashTX(b, 15); len(s) != 1280 {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 1280", s, len(s))
 	}
 	b = make([]byte, 0)
-	if s := OdDashTX(b, 15); len(s) != 180 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 180", s, len(s))
+	if s := OdDashTX(b, 15); len(s) != 181 {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 181", s, len(s))
 	}
 }
 
