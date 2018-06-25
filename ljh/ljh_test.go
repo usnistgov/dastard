@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestRead(t *testing.T) {
@@ -119,7 +120,7 @@ func TestWriter(t *testing.T) {
 	if w.HeaderWritten {
 		t.Error("TestWriter: header written should be false")
 	}
-	err = w.WriteHeader()
+	err = w.WriteHeader(time.Now())
 	if !w.HeaderWritten {
 		t.Error("TestWriter: header written should be true")
 	}
@@ -226,7 +227,7 @@ func BenchmarkLJH22(b *testing.B) {
 		Samples:    1000,
 		Presamples: 50}
 	w.CreateFile()
-	w.WriteHeader()
+	w.WriteHeader(time.Now())
 	data := make([]uint16, 1000)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

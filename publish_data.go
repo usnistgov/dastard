@@ -146,7 +146,7 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 				if err != nil {
 					return err
 				}
-				dp.LJH22.WriteHeader()
+				dp.LJH22.WriteHeader(record.trigTime)
 			}
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))

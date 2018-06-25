@@ -139,9 +139,10 @@ func (w *Writer) CreateFile() error {
 }
 
 // WriteHeader writes a header to .file, returns err from WriteString
-func (w *Writer) WriteHeader() error {
+func (w *Writer) WriteHeader(firstRecord time.Time) error {
 	starttime := w.TimestampOffset.Format("02 Jan 2006, 15:04:05 MST")
 	timestamp := float64(w.TimestampOffset.UnixNano()) / 1e9
+	firstrec := firstRecord.Format("02 Jan 2006, 15:04:05 MST")
 
 	s := fmt.Sprintf(`#LJH Memorial File Format
 Save File Format Version: 2.2.1
@@ -153,13 +154,14 @@ Total Samples: %d
 Channel: %d
 Server Start Time: %s
 Timestamp offset (s): %.6f
+File First Record Time: %s
 Timebase: %f
 Number of rows: %d
 Number of columns: %d
 #End of Header
 `, w.DastardVersion, w.GitHash,
-		w.Presamples, w.Samples, w.ChanNum, starttime, timestamp, w.Timebase,
-		w.NumberOfRows, w.NumberOfColumns)
+		w.Presamples, w.Samples, w.ChanNum, starttime, timestamp,
+		firstrec, w.Timebase, w.NumberOfRows, w.NumberOfColumns)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
 	return err
