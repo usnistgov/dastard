@@ -167,6 +167,7 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 // float32: pretrigMean
 // float32: peakValue
 // float32: pulseRMS
+// float32: pulseAverage
 // float32: residualStdDev
 // uint64: UnixNano trigTime
 // uint64: trigFrame
@@ -176,7 +177,7 @@ func messageSummaries(rec *DataRecord) [][]byte {
 	const headerVersion = uint8(0)
 
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channum)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
 	header.Write(getbytes.FromUint8(headerVersion))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
 	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
@@ -210,7 +211,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 	const headerVersion = uint8(0)
 	const dataType = uint8(3)
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channum)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
 	header.Write(getbytes.FromUint8(headerVersion))
 	header.Write(getbytes.FromUint8(dataType))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))

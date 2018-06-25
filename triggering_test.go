@@ -94,7 +94,7 @@ func TestBrokering(t *testing.T) {
 
 	for iter := 0; iter < 3; iter++ {
 		for i := 0; i < N; i++ {
-			trigs := triggerList{i, []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
+			trigs := triggerList{channelIndex: i, frames: []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
 			broker.PrimaryTrigs <- trigs
 		}
 		t0 := <-broker.SecondaryTrigs[0]
@@ -617,5 +617,73 @@ func TestKinkModel(t *testing.T) {
 	kbest, X2min, err := kinkModelFit(xdata, ydata, []float64{1, 2, 2.5, 3, 3.5, 4, 5})
 	if kbest != 3 || X2min != 0 || err != nil {
 		t.Errorf("kbest %v, X2min %v, err %v", kbest, X2min, err)
+	}
+}
+
+func TestTriggerCounter(t *testing.T) {
+	now := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
+	tc := NewTriggerCounter(0, time.Second)
+	tList := triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 0,
+		keyTime: now, sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
+	if err := tc.observeTriggerList(&tList); err != nil {
+		t.Error(err)
+	}
+	if tc.hi != 0 {
+		t.Errorf("have %v, want %v", tc.hi, 0)
+	}
+	if tc.lo != -999 {
+		t.Errorf("have %v, want %v", tc.lo, -999)
+	}
+	if tc.countsSeen != len(tList.frames) {
+		t.Errorf("want %v, have %v", len(tList.frames), tc.countsSeen)
+	}
+	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1, 2, 3, 4, 5}, keyFrame: 100,
+		keyTime: now.Add(100 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
+	if err := tc.observeTriggerList(&tList); err != nil {
+		t.Error(err)
+	}
+	if tc.countsSeen != len(tList.frames) {
+		t.Errorf("want %v, have %v", len(tList.frames), tc.countsSeen)
+	}
+	if tc.hi != 1000 {
+		t.Errorf("have %v, want %v", tc.hi, 1000)
+	}
+	if tc.lo != 1 {
+		t.Errorf("have %v, want %v", tc.lo, 1)
+	}
+	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1007, 1008, 1009, 2000, 2001}, keyFrame: 1900,
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
+	if err := tc.observeTriggerList(&tList); err != nil {
+		t.Error(err)
+	}
+	if tc.hi != 3000 {
+		t.Errorf("have %v, want %v", tc.hi, 3000)
+	}
+	if tc.lo != 2001 {
+		t.Errorf("have %v, want %v", tc.lo, 2001)
+	}
+	if tc.countsSeen != 1 { // 2001
+		t.Errorf("want %v, have %v", 1, tc.countsSeen)
+	}
+	tList = triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 1900,
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 3001}
+	if err := tc.observeTriggerList(&tList); err != nil {
+		t.Error(err)
+	}
+	if tc.hi != 4000 {
+		t.Errorf("have %v, want %v", tc.hi, 4000)
+	}
+	if tc.lo != 3001 {
+		t.Errorf("have %v, want %v", tc.lo, 3001)
+	}
+	if len(tc.messages) != 4 {
+		t.Errorf("have %v, expect %v", len(tc.messages), 4)
+	}
+	expectCounts := []int{0, 5, 4, 1}
+	for i, m := range tc.messages {
+		if expectCounts[i] != m.countsSeen {
+			t.Errorf("message %v has %v counts, want %v", i, m.countsSeen, expectCounts[i])
+		}
+
 	}
 }

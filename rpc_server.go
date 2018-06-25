@@ -395,12 +395,12 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 }
 
 // RunRPCServer sets up and run a permanent JSON-RPC server.
-func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
+func RunRPCServer(portrpc int) {
 
 	// Set up objects to handle remote calls
 	sourceControl := NewSourceControl()
 	defer sourceControl.lancero.Delete()
-	sourceControl.clientUpdates = messageChan
+	sourceControl.clientUpdates = clientMessageChan
 
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects.
