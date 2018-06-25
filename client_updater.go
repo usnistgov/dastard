@@ -30,9 +30,15 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	pubSocket.SendFrame(message, czmq.FlagNone)
 }
 
+var clientMessageChan chan ClientUpdate
+
+func init() {
+	clientMessageChan = make(chan ClientUpdate)
+}
+
 // RunClientUpdater forwards any message from its input channel to the ZMQ publisher socket
 // to publish any information that clients need to know.
-func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
+func RunClientUpdater(portstatus int) {
 	hostname := fmt.Sprintf("tcp://*:%d", portstatus)
 	pubSocket, err := czmq.NewPub(hostname)
 	if err != nil {
@@ -55,7 +61,7 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 
 	for {
 		select {
-		case update := <-messages:
+		case update := <-clientMessageChan:
 			if update.tag == "SENDALL" {
 				for k, v := range lastMessages {
 					publish(pubSocket, ClientUpdate{tag: k, state: v}, []byte(lastMessageStrings[k]))
