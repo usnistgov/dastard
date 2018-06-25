@@ -53,6 +53,7 @@ type Writer struct {
 	ChanNum         int
 	Presamples      int
 	Samples         int
+	FramesPerSample int
 	Timebase        float64
 	TimestampOffset time.Time
 	NumberOfRows    int
@@ -151,6 +152,7 @@ Software Git Hash: %s
 Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
+Number of samples per point: %d
 Channel: %d
 Server Start Time: %s
 Timestamp offset (s): %.6f
@@ -160,7 +162,7 @@ Number of rows: %d
 Number of columns: %d
 #End of Header
 `, w.DastardVersion, w.GitHash,
-		w.Presamples, w.Samples, w.ChanNum, starttime, timestamp,
+		w.Presamples, w.Samples, w.FramesPerSample, w.ChanNum, starttime, timestamp,
 		firstrec, w.Timebase, w.NumberOfRows, w.NumberOfColumns)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true

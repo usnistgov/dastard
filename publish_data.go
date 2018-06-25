@@ -60,11 +60,13 @@ func (dp *DataPublisher) RemoveLJH3() {
 }
 
 // SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
-func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, Timebase float64, TimestampOffset time.Time,
+func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, FramesPerSample int,
+	Timebase float64, TimestampOffset time.Time,
 	NumberOfRows int, NumberOfColumns int, FileName string) {
 	w := ljh.Writer{ChanNum: ChanNum,
 		Presamples:      Presamples,
 		Samples:         Samples,
+		FramesPerSample: FramesPerSample,
 		Timebase:        Timebase,
 		TimestampOffset: TimestampOffset,
 		NumberOfRows:    NumberOfRows,
