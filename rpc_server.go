@@ -9,6 +9,7 @@ import (
 	"net/rpc/jsonrpc"
 	"os"
 	"os/signal"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -259,7 +260,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		}
 		// The following can't run without holding the s.mu lock, so they need
 		// to be launched in separate goroutines.
-		go s.broadcastUpdate()
+		go s.broadcastStatus()
 		go s.broadcastTriggerState()
 		go s.broadcastChannelNames()
 	}()
@@ -283,8 +284,52 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	}
 	// The following can't run without holding the s.mu lock, so it needs
 	// to be launched in a separate goroutine.
-	go s.broadcastUpdate()
+	go s.broadcastStatus()
 	*reply = true
+	return nil
+}
+
+// WriteControlConfig object to control start/stop/pause of data writing
+type WriteControlConfig struct {
+	Request   string // "Start", "Stop", "Pause", or "Unpause"
+	Path      string // write in a new directory under this path
+	FileType  string // "LJH2.2", "LJH3", or ... ?
+	Rec2Write int
+}
+
+// WriteControl requests start/stop/pause/unpause data writing
+func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	*reply = true
+	if s.activeSource == nil {
+		return nil
+	}
+	err := s.activeSource.WriteControl(config)
+	*reply = (err != nil)
+	go s.broadcastWritingState()
+	return err
+}
+
+// WriteComment writes the comment to comment.txt
+func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	*reply = true
+	if s.activeSource == nil || len(*comment) == 0 {
+		return nil
+	}
+	ws := s.activeSource.ComputeWritingState()
+	if ws.Active {
+		dir := path.Dir(ws.Filename)
+		commentName := path.Join(dir, "comment.txt")
+		fp, err := os.Create(commentName)
+		if err != nil {
+			return err
+		}
+		defer fp.Close()
+		fp.WriteString(*comment)
+	}
 	return nil
 }
 
@@ -302,7 +347,7 @@ func (s *SourceControl) broadcastHeartbeat() {
 	s.totalData.Time = 0
 }
 
-func (s *SourceControl) broadcastUpdate() {
+func (s *SourceControl) broadcastStatus() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Check whether the "active" source actually stopped on its own
@@ -313,13 +358,22 @@ func (s *SourceControl) broadcastUpdate() {
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
+func (s *SourceControl) broadcastWritingState() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeSource != nil && s.status.Running {
+		state := s.activeSource.ComputeWritingState()
+		s.clientUpdates <- ClientUpdate{"WRITING", state}
+	}
+}
+
 func (s *SourceControl) broadcastTriggerState() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.activeSource != nil && s.status.Running {
-		configs := s.activeSource.ComputeFullTriggerState()
-		log.Printf("configs: %v\n", configs)
-		s.clientUpdates <- ClientUpdate{"TRIGGER", configs}
+		state := s.activeSource.ComputeFullTriggerState()
+		log.Printf("TriggerState: %v\n", state)
+		s.clientUpdates <- ClientUpdate{"TRIGGER", state}
 	}
 }
 
@@ -335,7 +389,7 @@ func (s *SourceControl) broadcastChannelNames() {
 
 // SendAllStatus causes a broadcast to clients containing all broadcastable status info
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
-	s.broadcastUpdate()
+	s.broadcastStatus()
 	s.clientUpdates <- ClientUpdate{"SENDALL", 0}
 	return nil
 }
@@ -370,7 +424,12 @@ func RunRPCServer(messageChan chan<- ClientUpdate, portrpc int) {
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
 	if err == nil {
-		sourceControl.broadcastUpdate()
+		sourceControl.broadcastStatus()
+	}
+	var ws WritingState
+	err = viper.UnmarshalKey("writingstate", &ws)
+	if err == nil {
+		sourceControl.clientUpdates <- ClientUpdate{"WRITING", ws}
 	}
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients

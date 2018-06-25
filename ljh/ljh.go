@@ -158,7 +158,9 @@ Number of columns: %d
 
 // Flush flushes buffered data to disk
 func (w Writer) Flush() {
-	w.writer.Flush()
+	if w.writer != nil {
+		w.writer.Flush()
+	}
 }
 
 // Close closes the associated file, no more records can be written after this

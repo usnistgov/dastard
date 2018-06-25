@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,11 +31,13 @@ type DataSource interface {
 	CloseOutputs()
 	Nchan() int
 	ComputeFullTriggerState() []FullTriggerState
+	ComputeWritingState() WritingState
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(int, float64) error
+	WriteControl(*WriteControlConfig) error
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -93,6 +97,7 @@ type AnySource struct {
 	broker       *TriggerBroker
 	noProcess    bool // Set true only for testing.
 	heartbeats   chan Heartbeat
+	writingState WritingState
 	runMutex     sync.Mutex
 	runDone      sync.WaitGroup
 }
@@ -101,6 +106,106 @@ type AnySource struct {
 // It's a no-op for simulated (software) sources
 func (ds *AnySource) StartRun() error {
 	return nil
+}
+
+// makeDirectory creates directory of the form basepath/20060102/000 where
+// the 3-digit subdirectory counts separate file-writing occasions.
+// It also returns the formatting code for use in an Sprintf call
+// basepath/20060102/000/20060102_run000_%s.ljh and an error, if any.
+func makeDirectory(basepath string) (string, error) {
+	if len(basepath) == 0 {
+		return "", fmt.Errorf("BasePath is the empty string")
+	}
+	today := time.Now().Format("20060102")
+	todayDir := fmt.Sprintf("%s/%s", basepath, today)
+	if err := os.MkdirAll(todayDir, 0755); err != nil {
+		return "", err
+	}
+	for i := 0; i < 10000; i++ {
+		thisDir := fmt.Sprintf("%s/%4.4d", todayDir, i)
+		_, err := os.Stat(thisDir)
+		if os.IsNotExist(err) {
+			if err2 := os.MkdirAll(thisDir, 0755); err2 != nil {
+				return "", err
+			}
+			return fmt.Sprintf("%s/%s_run%4.4d_%%s.ljh", thisDir, today, i), nil
+		}
+	}
+	return "", fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)
+}
+
+// WriteControl changes the data writing start/stop/pause/unpause state
+func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
+	request := strings.ToUpper(config.Request)
+	if strings.HasPrefix(request, "PAUSE") {
+		for _, dsp := range ds.processors {
+			dsp.DataPublisher.SetPause(true)
+		}
+		ds.writingState.Paused = true
+
+	} else if strings.HasPrefix(request, "UNPAUSE") {
+		for _, dsp := range ds.processors {
+			dsp.DataPublisher.SetPause(false)
+		}
+		ds.writingState.Paused = false
+
+	} else if strings.HasPrefix(request, "STOP") {
+		for _, dsp := range ds.processors {
+			dsp.DataPublisher.RemoveLJH22()
+			dsp.DataPublisher.RemoveLJH3()
+		}
+		ds.writingState.Active = false
+		ds.writingState.Paused = false
+		ds.writingState.Filename = ""
+
+	} else if strings.HasPrefix(request, "START") {
+		if config.FileType != "LJH2.2" {
+			return fmt.Errorf("WriteControl FileType=%q, needs to be %q",
+				config.FileType, "LJH2.2")
+		}
+		// Write to the previous BasePath if config.Path is empty.
+		path := ds.writingState.BasePath
+		if len(config.Path) > 0 {
+			path = config.Path
+		}
+		filenamePattern, err := makeDirectory(path)
+		if err != nil {
+			return fmt.Errorf("Could not make directory: %s", err.Error())
+		}
+		for i, dsp := range ds.processors {
+			if dsp.DataPublisher.HasLJH22() {
+				return fmt.Errorf("WriteControl Request:Start is not yet implemented when writing already running")
+			}
+			timebase := 1.0 / dsp.SampleRate
+			var nrows, ncols int // default to 0 x 0 array
+			// TODO: update nrows, ncols for a Lancero source
+			filename := fmt.Sprintf(filenamePattern, dsp.Name)
+			var timestampOffset float64 // TODO: figure this out
+			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, timebase, timestampOffset, nrows, ncols, filename)
+		}
+		ds.writingState.Active = true
+		ds.writingState.Paused = false
+		ds.writingState.BasePath = path
+		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*")
+	} else {
+		return fmt.Errorf("WriteControl config.Request=%q, need (Start,Stop,Pause,Unpause)",
+			config.Request)
+	}
+
+	return nil
+}
+
+// WritingState monitors the state of file writing.
+type WritingState struct {
+	Active   bool
+	Paused   bool
+	BasePath string
+	Filename string
+}
+
+// ComputeWritingState doesn't need to compute, but just returns the writingState
+func (ds *AnySource) ComputeWritingState() WritingState {
+	return ds.writingState
 }
 
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[processorsInd]
@@ -140,7 +245,7 @@ func (ds *AnySource) setDefaultChannelNames() {
 	}
 	ds.chanNames = make([]string, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
-		ds.chanNames[i] = fmt.Sprintf("ch%d", i)
+		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
 	}
 }
 

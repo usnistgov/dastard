@@ -19,6 +19,11 @@ type DataPublisher struct {
 	PubSummariesChan chan []*DataRecord
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
+	writingPaused    bool
+}
+
+func (dp *DataPublisher) SetPause(pause bool) {
+	dp.writingPaused = pause
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -30,11 +35,12 @@ func (dp *DataPublisher) SetLJH3(ChanNum int, Timebase float64,
 		NumberOfColumns: NumberOfColumns,
 		FileName:        FileName}
 	dp.LJH3 = &w
+	dp.writingPaused = false
 }
 
 // HasLJH3 returns true if LJH3 is non-nil, eg if writing to LJH3 is occuring
 func (dp *DataPublisher) HasLJH3() bool {
-	return dp.LJH3 != nil
+	return dp.LJH3 != nil && !dp.writingPaused
 }
 
 // RemoveLJH3 closes existing LJH3 file and assign .LJH3=nil
@@ -57,11 +63,12 @@ func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, Time
 		NumberOfColumns: NumberOfColumns,
 		FileName:        FileName}
 	dp.LJH22 = &w
+	dp.writingPaused = false
 }
 
 // HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
 func (dp *DataPublisher) HasLJH22() bool {
-	return dp.LJH22 != nil
+	return dp.LJH22 != nil && !dp.writingPaused
 }
 
 // RemoveLJH22 closes existing LJH22 file and assign .LJH22=nil
