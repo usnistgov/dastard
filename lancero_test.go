@@ -74,8 +74,8 @@ func TestChannelOrder(t *testing.T) {
 
 func TestNoHardware(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
-	ncolsSet = 8
-	nrowsSet = 8
+	ncolsSet = 1
+	nrowsSet = 4
 	linePeriodSet = 20
 	nLancero = 1
 	source := new(LanceroSource)
