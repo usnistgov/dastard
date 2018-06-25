@@ -6,8 +6,6 @@ import (
 	"sync"
 )
 
-// type receiverSet map[int]bool
-
 // TriggerBroker communicates with DataChannel objects to allow them to operate independently
 // yet still share group triggering information.
 type TriggerBroker struct {

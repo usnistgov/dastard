@@ -76,6 +76,7 @@ func NewDataStreamProcessor(chnum int, broker *TriggerBroker) *DataStreamProcess
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
+	dsp.triggerCounter = NewTriggerCounter(1000000000, time.Now().Nanosecond())
 	// dsp.basis has zero value
 	// dsp.projectors has zero value
 	return &dsp
