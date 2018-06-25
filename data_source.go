@@ -47,14 +47,12 @@ func (ds *AnySource) ConfigureMixFraction(processorIndex int, mixFraction float6
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
-// Steps are:
-// 1. Sample: a per-source method that determines the # of channels and other internal
-//    facts that we need to know.
-// 2. PrepareRun: an AnySource method to do the actions that any source needs before
-//    starting the actual acquisition phase.
-// 3. StartRun: a per-source method to begin data acquisition, if relevant.
-// 4. Loop over calls to ds.blockingRead(), a per-source method that waits for data.
-//    When done with the loop, close all channels to DataStreamProcessor objects.
+// Steps are: 1) Sample: a per-source method that determines the # of channels and other
+// internal facts that we need to know.  2) PrepareRun: an AnySource method to do the
+// actions that any source needs before starting the actual acquisition phase.
+// 3) StartRun: a per-source method to begin data acquisition, if relevant.
+// 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
+// When done with the loop, close all channels to DataStreamProcessor objects.
 func Start(ds DataSource) error {
 	if ds.Running() {
 		return fmt.Errorf("cannot Start() a source that's already Running()")
