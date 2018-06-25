@@ -11,7 +11,6 @@ import (
 	"github.com/usnistgov/dastard"
 )
 
-var version = "0.0.0"
 var githash = "githash not computed"
 var buildDate = "build date not computed"
 
@@ -76,9 +75,12 @@ var printVersion = flag.Bool("version", false, "print version and quit")
 
 func main() {
 	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems
+	dastard.Build.Date = buildDate
+	dastard.Build.Githash = githash
+
 	flag.Parse()
 	if *printVersion {
-		fmt.Printf("This is DASTARD version %s\n", version)
+		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
 		fmt.Printf("Git commit hash: %s\n", githash)
 		fmt.Printf("Build time: %s\n", buildDate)
 		os.Exit(0)
