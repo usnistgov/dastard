@@ -26,6 +26,12 @@ type DataPublisher struct {
 // SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.writingPaused = pause
+	if dp.LJH22 != nil {
+		dp.LJH22.Flush()
+	}
+	if dp.LJH3 != nil {
+		dp.LJH3.Flush()
+	}
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord

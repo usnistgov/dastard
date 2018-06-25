@@ -157,8 +157,7 @@ Timebase: %f
 Number of rows: %d
 Number of columns: %d
 #End of Header
-`,
-		w.DastardVersion, w.GitHash,
+`, w.DastardVersion, w.GitHash,
 		w.Presamples, w.Samples, w.ChanNum, starttime, timestamp, w.Timebase,
 		w.NumberOfRows, w.NumberOfColumns)
 	_, err := w.writer.WriteString(s)
