@@ -22,6 +22,7 @@ type DataPublisher struct {
 	writingPaused    bool
 }
 
+// SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.writingPaused = pause
 }
@@ -61,7 +62,10 @@ func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, Time
 		TimestampOffset: TimestampOffset,
 		NumberOfRows:    NumberOfRows,
 		NumberOfColumns: NumberOfColumns,
-		FileName:        FileName}
+		FileName:        FileName,
+		DastardVersion:  Build.Version,
+		GitHash:         Build.Githash,
+	}
 	dp.LJH22 = &w
 	dp.writingPaused = false
 }
