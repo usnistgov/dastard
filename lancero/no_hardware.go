@@ -52,7 +52,7 @@ func (lan *NoHardware) ChangeRingBuffer(length, threshold int) error {
 // Close errors if already closed
 func (lan *NoHardware) Close() error {
 	if !lan.isOpen {
-		return fmt.Errorf("NoHardware.Close: already closed: id %v\n", lan.idNum)
+		return fmt.Errorf("NoHardware.Close: already closed: id %v", lan.idNum)
 	}
 	lan.isOpen = false
 	return nil
@@ -103,6 +103,7 @@ func (lan *NoHardware) StopCollector() error {
 // Wait sleeps until lastReadTime + minTimeBetweenReads
 func (lan *NoHardware) Wait() (time.Time, time.Duration, error) {
 	sleepDuration := time.Until(lan.lastReadTime.Add(lan.minTimeBetweenReads))
+	fmt.Println("sleepDuration", sleepDuration)
 	time.Sleep(sleepDuration)
 	now := time.Now()
 	return now, now.Sub(lan.lastReadTime), nil
@@ -123,10 +124,15 @@ func (lan *NoHardware) AvailableBuffers() ([]byte, error) {
 		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: not open: id %v", lan.idNum)
 	}
 	now := time.Now()
-	sinceLastReadNanoseconds := now.Sub(lan.lastReadTime).Nanoseconds()
+	sinceLastRead := now.Sub(lan.lastReadTime)
 	lan.lastReadTime = now
 	frameDurationNanoseconds := lan.linePeriod * lan.nanoSecondsPerLinePeriod * lan.nrows
-	frames := int(sinceLastReadNanoseconds) / frameDurationNanoseconds
+	frames := int(sinceLastRead.Nanoseconds()) / frameDurationNanoseconds
+	fmt.Printf("id %v read at %v", lan.idNum, time.Now())
+	if sinceLastRead > 50*lan.minTimeBetweenReads {
+		return buf.Bytes(), fmt.Errorf("reads were %v apart, want < %v\n", sinceLastRead, 50*lan.minTimeBetweenReads)
+	}
+
 	for i := 0; i < frames; i++ { // i counts frames
 		for row := 0; row < lan.nrows; row++ {
 			for col := 0; col < lan.ncols; col++ {

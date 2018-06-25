@@ -144,6 +144,7 @@ func (lan *Lancero) InspectAdapter() uint32 {
 // n number of consecutive words with frame bit set, starting at q
 // err is nil if q,p,n all found as expected
 func FindFrameBits(b []byte) (int, int, int, error) {
+	fmt.Println("in FindFrameBits")
 	const frameMask = byte(1)
 	var q, p, n int
 
