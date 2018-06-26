@@ -68,3 +68,69 @@ func TestChannelOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestMix(t *testing.T) {
+	data := make([]RawType, 10)
+	errData := make([]RawType, len(data))
+	for i := range errData {
+		errData[i] = RawType(i * 4)
+
+	}
+	mix := Mix{mixFraction: 0}
+	mix.MixRetardFb(&data, &errData)
+	passed := true
+	for i := range data {
+		if data[i] != 0 {
+			passed = false
+		}
+	}
+	if !passed {
+		t.Errorf("want all zeros, have\n%v", data)
+	}
+	mix = Mix{mixFraction: 1}
+	mix.MixRetardFb(&data, &errData)
+	passed = true
+	for i := range data {
+		if data[i] != errData[i] {
+			passed = false
+		}
+	}
+	if !passed {
+		t.Errorf("want %v\n have\n%v", errData, data)
+	}
+	if mix.lastFb != 0 {
+		t.Errorf("want 0, have %v", mix.lastFb)
+	}
+	mix.lastFb = 100
+	mix.MixRetardFb(&data, &errData)
+	passed = true
+	expect := []RawType{100 + 0, (0 + 1) * 4, (1 + 2) * 4, (2 + 3) * 4,
+		(3 + 4) * 4, (4 + 5) * 4, (5 + 6) * 4, (6 + 7) * 4, (7 + 8) * 4, (8 + 9) * 4}
+	for i := range data {
+		if data[i] != expect[i] {
+			passed = false
+		}
+	}
+	if !passed {
+		t.Errorf("want %v\nhave\n%v", expect, data)
+	}
+	if mix.lastFb != 36 {
+		t.Errorf("want 36, have %v", mix.lastFb)
+	}
+	// test 2 LSBs of feedback are masked off
+	for i := range data {
+		data[i] = RawType(i % 4)
+	}
+	mix = Mix{mixFraction: 0}
+	mix.MixRetardFb(&data, &errData)
+	passed = true
+	for i := range data {
+		if data[i] != 0 {
+			passed = false
+		}
+	}
+	if !passed {
+		t.Errorf("want all zeros, have\n%v", data)
+	}
+
+}
