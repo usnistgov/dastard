@@ -225,9 +225,9 @@ func (device *LanceroDevice) sampleCard() error {
 			bytesRead += totalBytes
 			continue
 		}
-		// log.Printf("waittime: %v\n", waittime)
-		// log.Printf("Found buffer with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
-		// log.Println(lancero.OdDashTX(buffer, 10))
+		log.Printf("waittime: %v\n", waittime)
+		log.Printf("Found buffer with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
+		log.Println(lancero.OdDashTX(buffer, 10))
 		q, p, n, err := lancero.FindFrameBits(buffer)
 		bytesPerFrame := 4 * (p - q)
 		if err != nil {
