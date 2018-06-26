@@ -383,11 +383,6 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		if bframes < framesUsed {
 			framesUsed = bframes
 		}
-		// rate := 0.0
-		// if wait > 0 {
-		// 	rate = float64(len(b)) * 1e3 / float64(wait)
-		// }
-		// fmt.Printf("new buffer of length %8d b after wait %6.2f ms for %8.2f Mb/s\n", len(b), .001*float64(wait/time.Microsecond), rate)
 	}
 	if framesUsed <= 0 {
 		fmt.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
@@ -430,10 +425,9 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			mix.MixRetardFb(&data, &errData)
 			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
 		}
-		// TODO: replace framesPerSample=1 with the actual decimation level
 		seg := DataSegment{
 			rawData:         data,
-			framesPerSample: 1,
+			framesPerSample: 1, // This will be changed later if decimating
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
 		}

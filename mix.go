@@ -27,15 +27,25 @@ type Mix struct {
 }
 
 // MixRetardFb mixes err into fbs, alters fbs in place to contain the mixed values
-// consecutive calls must be on consecutive data
+// consecutive calls must be on consecutive data.
+// The following ASSUMES that error signals are signed. That holds for Lancero
+// TDM systems, at least, and that is the only source that uses Mix.
 func (m *Mix) MixRetardFb(fbs *[]RawType, errs *[]RawType) {
 	const mask = ^RawType(0x03)
+	if m.mixFraction == 0.0 {
+		for j := 0; j < len(*fbs); j++ {
+			fb := m.lastFb
+			m.lastFb = (*fbs)[j] & mask
+			(*fbs)[j] = fb
+		}
+		return
+	}
 	for j := 0; j < len(*fbs); j++ {
-		fb := m.lastFb & mask
-		mixAmount := float64((*errs)[j]) * m.mixFraction
+		fb := m.lastFb
+		mixAmount := float64(int16((*errs)[j])) * m.mixFraction
 		// Be careful not to overflow!
 		floatMixResult := mixAmount + float64(fb)
-		m.lastFb = (*fbs)[j]
+		m.lastFb = (*fbs)[j] & mask
 		if floatMixResult >= math.MaxUint16 {
 			(*fbs)[j] = math.MaxUint16
 		} else if floatMixResult < 0 {
