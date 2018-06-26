@@ -225,6 +225,42 @@ func TestDataSignedness(t *testing.T) {
 			t.Errorf("DecimateData signed -> seg[%d]=%d, want %d", i, seg.rawData[i], e)
 		}
 	}
+
+	// AnalyzeData on a signed record
+	d := []RawType{65535, 65535, 65535, 2, 5} // as ints: {-1, -1, -1, 2, 5}
+	rec := &DataRecord{data: d, presamples: 2}
+	records := []*DataRecord{rec}
+	type AnalyzeTests struct {
+		name   string
+		value  float64
+		expect float64
+	}
+
+	rec.signed = false
+	dsp.AnalyzeData(records)
+	testsU := []AnalyzeTests{
+		{"pretrigger mean", rec.pretrigMean, 65535.0},
+		{"peak", rec.peakValue, 0.0},
+		{"pulse average", rec.pulseAverage, -43687.666667},
+	}
+	for _, x := range testsU {
+		if math.Abs(x.value-x.expect) > 1e-5 {
+			t.Errorf("AnalyzeData unsigned -> %s = %f, want %f", x.name, x.value, x.expect)
+		}
+	}
+
+	rec.signed = true
+	dsp.AnalyzeData(records)
+	testsS := []AnalyzeTests{
+		{"pretrigger mean", rec.pretrigMean, -1.0},
+		{"peak", rec.peakValue, 6.0},
+		{"pulse average", rec.pulseAverage, 3.0},
+	}
+	for _, x := range testsS {
+		if math.Abs(x.value-x.expect) > 1e-5 {
+			t.Errorf("AnalyzeData signed -> %s = %f, want %f", x.name, x.value, x.expect)
+		}
+	}
 }
 
 func BenchmarkAnalyze(b *testing.B) {
