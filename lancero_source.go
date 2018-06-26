@@ -196,7 +196,7 @@ func (device *LanceroDevice) sampleCard() error {
 	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
 	const tooManyIterations int = 100 // nor this many reads of the lancero
 	for i := 0; i < tooManyIterations; i++ {
-		if bytesRead >= tooManyBytes {
+		if bytesRead >= tooManyBytes && i > 1 { // we ignore first buffer, so make sure we've seen 2
 			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
 				bytesRead)
 		}
@@ -212,6 +212,7 @@ func (device *LanceroDevice) sampleCard() error {
 				return err
 			}
 			buffer, err = lan.AvailableBuffers()
+
 			if err != nil {
 				return err
 			}
@@ -224,8 +225,9 @@ func (device *LanceroDevice) sampleCard() error {
 			bytesRead += totalBytes
 			continue
 		}
-		fmt.Printf("waittime: %v\n", waittime)
-		fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
+		// log.Printf("waittime: %v\n", waittime)
+		// log.Printf("Found buffer with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
+		// log.Println(lancero.OdDashTX(buffer, 10))
 		q, p, n, err := lancero.FindFrameBits(buffer)
 		bytesPerFrame := 4 * (p - q)
 		if err != nil {
