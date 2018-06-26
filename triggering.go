@@ -286,8 +286,17 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 	raw := segment.rawData
 	ndata := len(raw)
 
+	// Solve the problem of signed data by shifting all values up by 2^15
+	if dsp.stream.signed {
+		raw = make([]RawType, ndata)
+		copy(raw, segment.rawData)
+		for i := 0; i < ndata; i++ {
+			raw[i] += 32768
+		}
+	}
+
 	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
-		diff := int32(raw[i]+raw[i-1]) - int32(raw[i-2]+raw[i-3])
+		diff := int32(raw[i]) + int32(raw[i-1]) - int32(raw[i-2]) - int32(raw[i-3])
 		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
 			newRecord := dsp.triggerAt(segment, i)
@@ -314,6 +323,17 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 	}
 
+	// Solve the problem of signed data by shifting all values up by 2^15
+	threshold := dsp.LevelLevel
+	if dsp.stream.signed {
+		threshold += 32768
+		raw = make([]RawType, ndata)
+		copy(raw, segment.rawData)
+		for i := 0; i < ndata; i++ {
+			raw[i] += 32768
+		}
+	}
+
 	// Normal loop through all samples in triggerable range
 	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
 
@@ -332,8 +352,8 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 		}
 
 		// If you get here, a level trigger is permissible. Check for it.
-		if (dsp.LevelRising && raw[i] >= dsp.LevelLevel && raw[i-1] < dsp.LevelLevel) ||
-			(!dsp.LevelRising && raw[i] <= dsp.LevelLevel && raw[i-1] > dsp.LevelLevel) {
+		if (dsp.LevelRising && raw[i] >= threshold && raw[i-1] < threshold) ||
+			(!dsp.LevelRising && raw[i] <= threshold && raw[i-1] > threshold) {
 			newRecord := dsp.triggerAt(segment, i)
 			records = append(records, newRecord)
 		}
