@@ -491,3 +491,25 @@ func (ls *LanceroSource) stop() error {
 	}
 	return nil
 }
+
+// Signed returns a per-channel value: whether data are signed ints.
+func (ls *LanceroSource) Signed() []bool {
+	s := make([]bool, ls.nchan)
+	for i := 0; i < ls.nchan; i += 2 {
+		s[i] = true
+	}
+	return s
+}
+
+// VoltsPerArb returns a per-channel value scaling raw into volts.
+func (ls *LanceroSource) VoltsPerArb() []float32 {
+	const Nsamp float32 = 4.0 // TODO: what is Nsamp? 4 is typical but not guaranteed.
+	v := make([]float32, ls.nchan)
+	for i := 0; i < ls.nchan; i += 2 {
+		v[i] = 1.0 / (4096. * Nsamp)
+	}
+	for i := 1; i < ls.nchan; i += 2 {
+		v[i] = 1. / 65535.0
+	}
+	return v
+}

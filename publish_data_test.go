@@ -85,6 +85,20 @@ func TestPublishData(t *testing.T) {
 	if err := configurePubSummariesSocket(); err == nil {
 		t.Error("it should be an error to configurePubSummariesSocket twice")
 	}
+
+	for i, signed := range []bool{false, true} {
+		(*rec).signed = signed
+		msg := messageRecords(rec)
+		header := msg[0]
+		dtype := header[3]
+		expect := []uint8{3, 2}
+		if dtype != expect[i] {
+			t.Errorf("messageRecords with signed=%t gives dtype=%d, want %d",
+				signed, dtype, expect[i])
+		}
+
+	}
+
 }
 
 func TestRawTypeToX(t *testing.T) {

@@ -85,3 +85,23 @@ func TestWritingFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestDataScaling(t *testing.T) {
+	var ts TriangleSource
+	ts.nchan = 4
+	st := ts.Signed()
+	for i, s := range st {
+		if s {
+			t.Errorf("TriangleSource.Signed()[%d] is true, want false", i)
+		}
+	}
+	var ls LanceroSource
+	ls.nchan = 4
+	st = ls.Signed()
+	for i, s := range st {
+		expect := (i % 2) == 0
+		if s != expect {
+			t.Errorf("LanceroSource.Signed()[%d] is %t, want %t", i, s, expect)
+		}
+	}
+}

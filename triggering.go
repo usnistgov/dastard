@@ -53,19 +53,21 @@ type TriggerState struct {
 
 // create a record using dsp.NPresamples and dsp.NSamples
 func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataRecord {
-	record := dsp.triggerAtSpecSamples(segment, i, dsp.NPresamples, dsp.NSamples)
+	record := dsp.triggerAtSpecificSamples(segment, i, dsp.NPresamples, dsp.NSamples)
 	return record
 }
 
 // create a record with NPresamples and NSamples passed as arguments
-func (dsp *DataStreamProcessor) triggerAtSpecSamples(segment *DataSegment, i int, NPresamples int, NSamples int) *DataRecord {
+func (dsp *DataStreamProcessor) triggerAtSpecificSamples(segment *DataSegment, i int, NPresamples int, NSamples int) *DataRecord {
 	data := make([]RawType, NSamples)
 	copy(data, segment.rawData[i-NPresamples:i+NSamples-NPresamples])
 	tf := segment.firstFramenum + FrameIndex(i)
 	tt := segment.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
-		channelIndex: dsp.channelIndex, presamples: NPresamples, sampPeriod: sampPeriod}
+		channelIndex: dsp.channelIndex, signed: segment.signed,
+		voltsPerArb: segment.voltsPerArb,
+		presamples:  NPresamples, sampPeriod: sampPeriod}
 	return record
 }
 
@@ -252,13 +254,13 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
 		//fmt.Println("i", i, "npre", npre, "npost", npost, "t", t, "u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 		if dsp.EdgeMultiMakeShortRecords {
-			newRecord := dsp.triggerAtSpecSamples(segment, u, npre, npre+npost)
+			newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
 			records = append(records, newRecord)
 		} else if dsp.EdgeMultiMakeContaminatedRecords {
-			newRecord := dsp.triggerAtSpecSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 			records = append(records, newRecord)
 		} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
-			newRecord := dsp.triggerAtSpecSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 			records = append(records, newRecord)
 		}
 
