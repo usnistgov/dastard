@@ -178,6 +178,55 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 	}
 }
 
+func TestDataSignedness(t *testing.T) {
+	var ts TriangleSource
+	ts.nchan = 4
+	st := ts.Signed()
+	for i, s := range st {
+		if s {
+			t.Errorf("TriangleSource.Signed()[%d] is true, want false", i)
+		}
+	}
+	var ls LanceroSource
+	ls.nchan = 4
+	st = ls.Signed()
+	for i, s := range st {
+		expect := (i % 2) == 0
+		if s != expect {
+			t.Errorf("LanceroSource.Signed()[%d] is %t, want %t", i, s, expect)
+		}
+	}
+
+	errsig := []RawType{3, 3, 1, 1, 65535, 65535, 65533, 65533,
+		65533, 65535, 65535, 1, 1, 3, 65535, 1, 65530, 6, 65500, 36}
+	data := make([]RawType, len(errsig))
+	copy(data, errsig)
+	seg := &DataSegment{rawData: data}
+	dsp := NewDataStreamProcessor(0, nil)
+	dsp.DecimateLevel = 2
+	dsp.Decimate = true
+	dsp.DecimateAvgMode = true
+	seg.signed = false
+	dsp.DecimateData(seg)
+	expectU := []RawType{3, 1, 65535, 65533, 65534, 32768, 2, 32768, 32768, 32768}
+	for i, e := range expectU {
+		if seg.rawData[i] != e {
+			t.Errorf("DecimateData unsigned-> seg[%d]=%d, want %d", i, seg.rawData[i], e)
+		}
+	}
+	data = make([]RawType, len(errsig))
+	copy(data, errsig)
+	seg = &DataSegment{rawData: data}
+	seg.signed = true
+	dsp.DecimateData(seg)
+	expectS := []RawType{3, 1, 65535, 65533, 65534, 0, 2, 0, 0, 0}
+	for i, e := range expectS {
+		if seg.rawData[i] != e {
+			t.Errorf("DecimateData signed -> seg[%d]=%d, want %d", i, seg.rawData[i], e)
+		}
+	}
+}
+
 func BenchmarkAnalyze(b *testing.B) {
 	benchmarks := []struct {
 		nsamples    int
