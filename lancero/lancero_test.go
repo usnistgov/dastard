@@ -1,6 +1,7 @@
 package lancero
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"os"
@@ -124,6 +125,96 @@ func TestOdDashTX(t *testing.T) {
 	b = make([]byte, 0)
 	if s := OdDashTX(b, 15); len(s) != 181 {
 		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 181", s, len(s))
+	}
+}
+
+// used in TestFindFrameBits
+type frameBitFindTestDataMaker struct {
+	frames       int
+	nrows        int
+	ncols        int
+	leadingWords int
+}
+
+// used in TestFindFrameBits
+func (f frameBitFindTestDataMaker) bytes() []byte {
+	var buf bytes.Buffer
+	for i := 0; i < f.leadingWords; i++ {
+		buf.Write([]byte{0x00, 0x00, 0x00, 0x00})
+	}
+	for i := 0; i < f.frames; i++ { // i counts frames
+		for row := 0; row < f.nrows; row++ {
+			for col := 0; col < f.ncols; col++ {
+				if row == 0 {
+					// first row has frame bit
+					buf.Write([]byte{0x00, 0x00, 0x01, 0x00})
+				} else {
+					// all data is zeros
+					buf.Write([]byte{0x00, 0x00, 0x00, 0x00})
+				}
+			}
+		}
+	}
+	return buf.Bytes()
+}
+
+func TestFindFrameBits(t *testing.T) {
+	b := frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 2, leadingWords: 0}.bytes()
+	firstWord, secondWord, nConsecutive, err := FindFrameBits(b)
+	if err != nil {
+		t.Error(err)
+	}
+	if firstWord != 16 {
+		t.Errorf("have %v, want 16", firstWord)
+	}
+	if secondWord != 16+16 {
+		t.Errorf("have %v, want 32", secondWord)
+	}
+	if nConsecutive != 2 {
+		t.Errorf("have %v, want 2", nConsecutive)
+	}
+	b = frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 2, leadingWords: 0}.bytes()
+	firstWord, secondWord, nConsecutive, err = FindFrameBits(b[4 : len(b)-1])
+	// start mid frame bits
+	if err != nil {
+		t.Error(err)
+	}
+	if firstWord != 15 {
+		t.Errorf("have %v, want 15", firstWord)
+	}
+	if secondWord != 15+16 {
+		t.Errorf("have %v, want 31", secondWord)
+	}
+	if nConsecutive != 2 {
+		t.Errorf("have %v, want 2", nConsecutive)
+	}
+	b = frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 2, leadingWords: 10}.bytes()
+	firstWord, secondWord, nConsecutive, err = FindFrameBits(b)
+	if err != nil {
+		t.Error(err)
+	}
+	if firstWord != 10 {
+		t.Errorf("have %v, want 10", firstWord)
+	}
+	if secondWord != 10+16 {
+		t.Errorf("have %v, want 26", secondWord)
+	}
+	if nConsecutive != 2 {
+		t.Errorf("have %v, want 2", nConsecutive)
+	}
+	b = frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 8, leadingWords: 0}.bytes()
+	firstWord, secondWord, nConsecutive, err = FindFrameBits(b)
+	if err != nil {
+		t.Error(err)
+	}
+	if firstWord != 64 {
+		t.Errorf("have %v, want 10", firstWord)
+	}
+	if secondWord != 64+64 {
+		t.Errorf("have %v, want 26", secondWord)
+	}
+	if nConsecutive != 8 {
+		t.Errorf("have %v, want 2", nConsecutive)
 	}
 }
 
