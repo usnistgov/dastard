@@ -10,8 +10,12 @@ import (
 )
 
 type triggerList struct {
-	channum int
-	frames  []FrameIndex
+	channelIndex                  int
+	frames                        []FrameIndex
+	keyFrame                      FrameIndex
+	keyTime                       time.Time
+	sampleRate                    float64
+	lastFrameThatWillNeverTrigger FrameIndex
 }
 
 type edgeMultiStateType int
@@ -61,7 +65,7 @@ func (dsp *DataStreamProcessor) triggerAtSpecSamples(segment *DataSegment, i int
 	tt := segment.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
-		channum: dsp.Channum, presamples: NPresamples, sampPeriod: sampPeriod}
+		channelIndex: dsp.channelIndex, presamples: NPresamples, sampPeriod: sampPeriod}
 	return record
 }
 
@@ -420,15 +424,20 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	// answer about when the secondary triggers are.
 
 	// Step 2a: prepare the primary trigger list from the DataRecord list
-	trigList := triggerList{channum: dsp.Channum}
+	trigList := triggerList{channelIndex: dsp.channelIndex}
 	trigList.frames = make([]FrameIndex, len(records))
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
 	}
+	trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
+	trigList.keyTime = dsp.stream.DataSegment.firstTime
+	trigList.sampleRate = dsp.SampleRate
+	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
+		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
 	dsp.Broker.PrimaryTrigs <- trigList
-	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.Channum]
+	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.channelIndex]
 	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
 		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))

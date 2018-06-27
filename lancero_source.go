@@ -153,6 +153,11 @@ func (ls *LanceroSource) updateChanOrderMap() {
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + mixFraction*err
 func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
+<<<<<<< HEAD
+=======
+	ls.runMutex.Lock()
+	defer ls.runMutex.Unlock()
+>>>>>>> master
 	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
 	}
@@ -221,8 +226,12 @@ func (device *LanceroDevice) sampleCard() error {
 	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
 	const tooManyIterations int = 100 // nor this many reads of the lancero
 	for i := 0; i < tooManyIterations; i++ {
+<<<<<<< HEAD
 		fmt.Println(i)
 		if bytesRead >= tooManyBytes && i > 1 { // we ignore first buffer, make sure we see 2nd
+=======
+		if bytesRead >= tooManyBytes && i > 1 { // we ignore first buffer, so make sure we've seen 2
+>>>>>>> master
 			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
 				bytesRead)
 		}
@@ -238,6 +247,7 @@ func (device *LanceroDevice) sampleCard() error {
 				return err
 			}
 			buffer, err = lan.AvailableBuffers()
+
 			if err != nil {
 				return err
 			}
@@ -444,7 +454,10 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
 			mix.MixRetardFb(&data, &errData)
 			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
+<<<<<<< HEAD
 
+=======
+>>>>>>> master
 		}
 		// TODO: replace framesPerSample=1 with the actual decimation level
 		seg := DataSegment{

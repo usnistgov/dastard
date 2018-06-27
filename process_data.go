@@ -11,7 +11,7 @@ import (
 
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
-	Channum              int
+	channelIndex         int
 	Name                 string
 	Broker               *TriggerBroker
 	NSamples             int
@@ -70,7 +70,7 @@ func NewDataStreamProcessor(chnum int, broker *TriggerBroker) *DataStreamProcess
 	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
 	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
 	npre := 256   // TODO: figure out what this ought to be, or make an argument
-	dsp := DataStreamProcessor{Channum: chnum, Broker: broker,
+	dsp := DataStreamProcessor{channelIndex: chnum, Broker: broker,
 		stream: *stream, NSamples: nsamp, NPresamples: npre,
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it

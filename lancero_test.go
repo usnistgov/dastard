@@ -72,6 +72,7 @@ func TestChannelOrder(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestNoHardware(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
 	ncolsSet = 1
@@ -126,6 +127,8 @@ func TestNoHardware(t *testing.T) {
 
 }
 
+=======
+>>>>>>> master
 func TestMix(t *testing.T) {
 	data := make([]RawType, 10)
 	errData := make([]RawType, len(data))
