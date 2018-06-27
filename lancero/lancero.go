@@ -141,18 +141,18 @@ func (lan *Lancero) InspectAdapter() uint32 {
 // FindFrameBits returns q,p,n,err
 // q index of word with first frame bit following non-frame index
 // p index of word with next  frame bit following non-frame index
+// word means 4 bytes: errLerrMfbkLfbkM
 // n number of consecutive words with frame bit set, starting at q
 // err is nil if q,p,n all found as expected
 func FindFrameBits(b []byte) (int, int, int, error) {
-	fmt.Println("in FindFrameBits")
 	const frameMask = byte(1)
 	var q, p, n int
 
-	var state int // was frame bit seen in previous word?
+	var frameBitInPreviousWord bool // was frame bit seen in previous word?
 	for i := 2; i < len(b); i += 4 {
-		if state == 0 && !(frameMask&b[i] == 1) { // first look for lack of frame bit
-			state = 1
-		} else if state == 1 && frameMask&b[i] == 1 {
+		if frameBitInPreviousWord && !(frameMask&b[i] == 1) { // first look for lack of frame bit
+			frameBitInPreviousWord = true
+		} else if !frameBitInPreviousWord && frameMask&b[i] == 1 {
 			// found a frame bit when before there was none
 			q = i
 			break
@@ -165,11 +165,11 @@ func FindFrameBits(b []byte) (int, int, int, error) {
 			break
 		}
 	}
-	state = 0
+	frameBitInPreviousWord = true
 	for i := q + 4*n; i < len(b); i += 4 {
-		if state == 0 && !(frameMask&b[i] == 1) { // first look for lack of frame bit
-			state = 1
-		} else if state == 1 && frameMask&b[i] == 1 {
+		if frameBitInPreviousWord && !(frameMask&b[i] == 1) { // first look for lack of frame bit
+			frameBitInPreviousWord = false
+		} else if !frameBitInPreviousWord && frameMask&b[i] == 1 {
 			// found a frame bit when before there was none
 			p = i
 			return q / 4, p / 4, n, nil
