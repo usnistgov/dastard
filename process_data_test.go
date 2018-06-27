@@ -178,6 +178,99 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 	}
 }
 
+func TestDataSignedness(t *testing.T) {
+	// Make sure PrepareRun produces the right answers.
+	var ts TriangleSource
+	ts.nchan = 4
+	ts.PrepareRun()
+	for i, dsp := range ts.processors {
+		expect := false
+		if dsp.stream.signed != expect {
+			t.Errorf("LanceroSource.processors[%d].stream.signed is %t, want %t", i, dsp.stream.signed, expect)
+		}
+	}
+
+	// TODO: use a no-hardware source to test this!
+	var ls LanceroSource
+	ls.nchan = 4
+	ls.signed = make([]bool, ls.nchan)
+	for i := 0; i < ls.nchan; i += 2 {
+		ls.signed[i] = true
+	}
+	ls.PrepareRun()
+	for i, dsp := range ls.processors {
+		expect := (i % 2) == 0
+		if dsp.stream.signed != expect {
+			t.Errorf("LanceroSource.processors[%d].stream.signed is %t, want %t", i, dsp.stream.signed, expect)
+		}
+	}
+
+	errsig := []RawType{3, 3, 1, 1, 65535, 65535, 65533, 65533,
+		65533, 65535, 65535, 1, 1, 3, 65535, 1, 65530, 6, 65500, 36}
+	data := make([]RawType, len(errsig))
+	copy(data, errsig)
+	seg := &DataSegment{rawData: data}
+	dsp := NewDataStreamProcessor(0, nil)
+	dsp.DecimateLevel = 2
+	dsp.Decimate = true
+	dsp.DecimateAvgMode = true
+	seg.signed = false
+	dsp.DecimateData(seg)
+	expectU := []RawType{3, 1, 65535, 65533, 65534, 32768, 2, 32768, 32768, 32768}
+	for i, e := range expectU {
+		if seg.rawData[i] != e {
+			t.Errorf("DecimateData unsigned-> seg[%d]=%d, want %d", i, seg.rawData[i], e)
+		}
+	}
+	data = make([]RawType, len(errsig))
+	copy(data, errsig)
+	seg = &DataSegment{rawData: data}
+	seg.signed = true
+	dsp.DecimateData(seg)
+	expectS := []RawType{3, 1, 65535, 65533, 65534, 0, 2, 0, 0, 0}
+	for i, e := range expectS {
+		if seg.rawData[i] != e {
+			t.Errorf("DecimateData signed -> seg[%d]=%d, want %d", i, seg.rawData[i], e)
+		}
+	}
+
+	// AnalyzeData on a signed record
+	d := []RawType{65535, 65535, 65535, 2, 5} // as ints: {-1, -1, -1, 2, 5}
+	rec := &DataRecord{data: d, presamples: 2}
+	records := []*DataRecord{rec}
+	type AnalyzeTests struct {
+		name   string
+		value  float64
+		expect float64
+	}
+
+	rec.signed = false
+	dsp.AnalyzeData(records)
+	testsU := []AnalyzeTests{
+		{"pretrigger mean", rec.pretrigMean, 65535.0},
+		{"peak", rec.peakValue, 0.0},
+		{"pulse average", rec.pulseAverage, -43687.666667},
+	}
+	for _, x := range testsU {
+		if math.Abs(x.value-x.expect) > 1e-5 {
+			t.Errorf("AnalyzeData unsigned -> %s = %f, want %f", x.name, x.value, x.expect)
+		}
+	}
+
+	rec.signed = true
+	dsp.AnalyzeData(records)
+	testsS := []AnalyzeTests{
+		{"pretrigger mean", rec.pretrigMean, -1.0},
+		{"peak", rec.peakValue, 6.0},
+		{"pulse average", rec.pulseAverage, 3.0},
+	}
+	for _, x := range testsS {
+		if math.Abs(x.value-x.expect) > 1e-5 {
+			t.Errorf("AnalyzeData signed -> %s = %f, want %f", x.name, x.value, x.expect)
+		}
+	}
+}
+
 func BenchmarkAnalyze(b *testing.B) {
 	benchmarks := []struct {
 		nsamples    int

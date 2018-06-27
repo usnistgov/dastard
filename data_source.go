@@ -30,6 +30,8 @@ type DataSource interface {
 	Outputs() []chan DataSegment
 	CloseOutputs()
 	Nchan() int
+	Signed() []bool
+	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
 	ComputeWritingState() WritingState
 	ChannelNames() []string
@@ -88,7 +90,8 @@ func Start(ds DataSource) error {
 type AnySource struct {
 	nchan        int      // how many channels to provide
 	chanNames    []string // one name per channel
-	sampleRate   float64  // samples per second
+	signed       []bool
+	sampleRate   float64 // samples per second
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	output       []chan DataSegment
@@ -236,6 +239,23 @@ func (ds *AnySource) Running() bool {
 	}
 }
 
+// Signed returns a per-channel value: whether data are signed ints.
+func (ds *AnySource) Signed() []bool {
+	if ds.signed == nil {
+		ds.signed = make([]bool, ds.nchan)
+	}
+	return ds.signed
+}
+
+// VoltsPerArb returns a per-channel value scaling raw into volts.
+func (ds *AnySource) VoltsPerArb() []float32 {
+	v := make([]float32, ds.nchan)
+	for i := 0; i < ds.nchan; i++ {
+		v[i] = 1. / 65535.0
+	}
+	return v
+}
+
 // setDefaultChannelNames defensively sets channel names of the appropriate length.
 // They should have been set in DataSource.Sample()
 func (ds *AnySource) setDefaultChannelNames() {
@@ -274,10 +294,14 @@ func (ds *AnySource) PrepareRun() error {
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	ds.runDone.Add(ds.nchan)
+	signed := ds.Signed()
+	vpa := ds.VoltsPerArb()
 	for channelNum, dataSegmentChan := range ds.output {
 		dsp := NewDataStreamProcessor(channelNum, ds.broker)
 		dsp.Name = ds.chanNames[channelNum]
 		dsp.SampleRate = ds.sampleRate
+		dsp.stream.signed = signed[channelNum]
+		dsp.stream.voltsPerArb = vpa[channelNum]
 		ds.processors[channelNum] = dsp
 
 		// TODO: don't just set these to arbitrary values
@@ -398,11 +422,12 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 // raw-physical units, first sample’s frame number and sample time. Not yet triggered.
 type DataSegment struct {
 	rawData         []RawType
+	signed          bool
 	framesPerSample int // Normally 1, but can be larger if decimated
 	firstFramenum   FrameIndex
 	firstTime       time.Time
 	framePeriod     time.Duration
-	// something about raw-physical conversion???
+	voltsPerArb     float32
 	// facts about the data source?
 }
 
@@ -467,8 +492,10 @@ type DataRecord struct {
 	data         []RawType
 	trigFrame    FrameIndex
 	trigTime     time.Time
+	signed       bool // do we interpret the data as signed values?
 	channelIndex int
 	presamples   int
+	voltsPerArb  float32 // "volts" or other physical unit per raw unit
 	sampPeriod   float32
 
 	// trigger type?

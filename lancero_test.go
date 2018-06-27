@@ -130,7 +130,19 @@ func TestMix(t *testing.T) {
 		}
 	}
 	if !passed {
-		t.Errorf("want all zeros, have\n%v", data)
+		t.Errorf("have %v, want all zeros", data)
 	}
 
+	// Check that overflows are clamped to proper range
+	err1 := []RawType{100, 0, 65436} // {100, 0, -100} as signed ints
+	mix = Mix{mixFraction: 1.0}
+	mix.lastFb = 65530
+	fb := []RawType{0, 50, 50}
+	expect = []RawType{65535, 0, 0}
+	mix.MixRetardFb(&fb, &err1)
+	for i, e := range expect {
+		if fb[i] != e {
+			t.Errorf("mix with overflows fb[%d]=%d, want %d", i, fb[i], e)
+		}
+	}
 }
