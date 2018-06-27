@@ -37,7 +37,8 @@ const (
 	bitsAdapterCtrlIEFlush  uint32 = 16 // Adapter control bit: flush buffer
 	bitsAdapterCtrlRunFlush uint32 = bitsAdapterCtrlRun | bitsAdapterCtrlIEFlush
 
-	HardMaxBufSize uint32 = 40 * (1 << 20) // Longest allowed adapter buffer
+	// HardMaxBufSize Longest allowed adapter buffer
+	HardMaxBufSize uint32 = 40 * (1 << 20)
 	// For latest value, look in driver lancero/Lancero-RELEASE/C/driver/lancero-base.c
 	// for the line that reads #define LANCERO_TRANSFER_MAX_BYTES (40 * (1<<20))
 )
@@ -183,6 +184,7 @@ func (a *adapter) inspect() uint32 {
 	available, _ := a.device.readRegister(adapterRBAD)
 	fill, _ := a.device.readRegister(adapterFILL)
 	threshold, err := a.device.readRegister(adapterRBTH)
+	log.Printf("lancero.adapter.inspect:")
 	log.Printf("writeIndex = 0x%08x, readIndex = 0x%08x  available = 0x%08x\n",
 		writeIndex, readIndex, available)
 	log.Printf("max filled = 0x%08x, threshold = 0x%08x\n", fill, threshold)
