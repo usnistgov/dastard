@@ -132,8 +132,6 @@ func (ls *LanceroSource) updateChanOrderMap() {
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + mixFraction*err
 func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
-	ls.runMutex.Lock()
-	defer ls.runMutex.Unlock()
 	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
 	}
