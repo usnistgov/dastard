@@ -343,8 +343,6 @@ func (ls *LanceroSource) StartRun() error {
 			}
 			bytes, err := lan.AvailableBuffers()
 			bytesRead += len(bytes)
-			// fmt.Println("len(bytes)", len(bytes))
-			// fmt.Println("err AvailableBuffers", err)
 			if err != nil {
 				return fmt.Errorf("error in AvailableBuffers: %v", err)
 			}
@@ -352,10 +350,6 @@ func (ls *LanceroSource) StartRun() error {
 				continue
 			}
 			firstWord, _, _, err := lancero.FindFrameBits(bytes)
-			// fmt.Println("firstword", firstWord)
-			// fmt.Println("err", err)
-			// fmt.Println(lancero.OdDashTX(bytes, 5))
-
 			if firstWord > 0 {
 				bytesToRelease := 4 * firstWord
 				log.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
@@ -371,7 +365,6 @@ func (ls *LanceroSource) StartRun() error {
 			return fmt.Errorf("read %v bytes, did %v iterations", bytesRead, i)
 		}
 	}
-	fmt.Println("return nil")
 	return nil
 }
 

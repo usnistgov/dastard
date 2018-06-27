@@ -71,7 +71,7 @@ func TestChannelOrder(t *testing.T) {
 	}
 }
 
-func TestNoHardware(t *testing.T) {
+func TestNoHardwareSource(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
 	ncolsSet = 1
 	nrowsSet = 4
@@ -109,32 +109,6 @@ func TestNoHardware(t *testing.T) {
 			t.Errorf("AvailableCards not populated corrects. AvailableCards %v", config.AvailableCards)
 		}
 	}
-
-	// This is essentially Start(source)
-	// if err := source.Sample(); err != nil {
-	// 	t.Error(err)
-	// }
-	//
-	// if err := source.PrepareRun(); err != nil {
-	// 	t.Error(err)
-	// }
-	//
-	// if err := source.StartRun(); err != nil {
-	// 	t.Error(err)
-	// }
-	//
-	// // Have the DataSource produce data until graceful stop.
-	// go func() {
-	// 	for i := 0; i < 100; i++ {
-	// 		if err := source.blockingRead(); err == io.EOF {
-	// 			break
-	// 		} else if err != nil {
-	// 			log.Printf("blockingRead returns Error: %s\n", err.Error())
-	// 			// break
-	// 		}
-	// 	}
-	// 	source.CloseOutputs()
-	// }()
 
 	if err := Start(source); err != nil {
 		source.Stop()

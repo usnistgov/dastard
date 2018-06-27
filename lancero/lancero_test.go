@@ -23,6 +23,9 @@ func TestLancero(t *testing.T) {
 	fmt.Printf("Found lancero devices %v\n", devs)
 	devnum := devs[0]
 	lan, err := NewLancero(devnum)
+	if err != nil {
+		t.Error(err)
+	}
 	defer lan.Close()
 	testLanceroerSubroutine(lan, t)
 }
@@ -89,7 +92,6 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 					spew.Println(buffer)
 					fmt.Println(q, p, n)
 					return 0, 0, 0, err
-					break
 				}
 				fmt.Println(q, p, bytesPerFrame, n, err)
 				nrows = (p - q) / n
