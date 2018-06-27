@@ -133,6 +133,7 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.activeSource == nil {
+		*reply = false
 		return fmt.Errorf("No source is active")
 	}
 	err := s.activeSource.ConfigureMixFraction(mfo.ProcessorIndex, mfo.MixFraction)

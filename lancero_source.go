@@ -138,7 +138,14 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 	if processorIndex%2 == 0 {
 		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", processorIndex)
 	}
-	ls.Mix[processorIndex] = Mix{mixFraction: mixFraction}
+	// Make this a goroutine so it can grab the lock whenever convenient, but after
+	// any possible errors have already been sent back to the RPC server. This lock
+	// is normally held most of the time by LanceroSource.blockingRead.
+	go func() {
+		ls.runMutex.Lock()
+		defer ls.runMutex.Unlock()
+		ls.Mix[processorIndex].mixFraction = mixFraction
+	}()
 	return nil
 }
 
