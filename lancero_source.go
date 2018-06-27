@@ -350,12 +350,13 @@ func (ls *LanceroSource) StartRun() error {
 				continue
 			}
 			firstWord, _, _, err := lancero.FindFrameBits(bytes)
-			if firstWord > 0 {
-				bytesToRelease := 4 * firstWord
-				log.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
-				lan.ReleaseBytes(bytesToRelease)
-			}
+			// should check for correct number of columns/rows again?
 			if err == nil {
+				if firstWord > 0 {
+					bytesToRelease := 4 * firstWord
+					log.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
+					lan.ReleaseBytes(bytesToRelease)
+				}
 				success = true
 				break
 			}
@@ -445,6 +446,10 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		}
 		nchanPrevDevices += nchan
 	}
+
+	// Should look for external trigger bits here, either once per card or once per column
+	// Maybe check for frame bits in stream?
+
 	// Now send these data downstream. Here we permute data into the expected
 	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
 	// Backtrack to find the time associated with the first sample.
