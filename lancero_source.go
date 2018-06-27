@@ -158,6 +158,10 @@ func (ls *LanceroSource) Sample() error {
 	}
 	ls.updateChanOrderMap()
 
+	ls.signed = make([]bool, ls.nchan)
+	for i := 0; i < ls.nchan; i += 2 {
+		ls.signed[i] = true
+	}
 	ls.chanNames = make([]string, ls.nchan)
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
@@ -464,15 +468,6 @@ func (ls *LanceroSource) stop() error {
 		}
 	}
 	return nil
-}
-
-// Signed returns a per-channel value: whether data are signed ints.
-func (ls *LanceroSource) Signed() []bool {
-	s := make([]bool, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		s[i] = true
-	}
-	return s
 }
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.

@@ -179,34 +179,25 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 }
 
 func TestDataSignedness(t *testing.T) {
+	// Make sure PrepareRun produces the right answers.
 	var ts TriangleSource
 	ts.nchan = 4
-	st := ts.Signed()
-	for i, s := range st {
-		if s {
-			t.Errorf("TriangleSource.Signed()[%d] is true, want false", i)
+	ts.PrepareRun()
+	for i, dsp := range ts.processors {
+		expect := false
+		if dsp.stream.signed != expect {
+			t.Errorf("LanceroSource.processors[%d].stream.signed is %t, want %t", i, dsp.stream.signed, expect)
 		}
 	}
+
+	// TODO: use a no-hardware source to test this!
 	var ls LanceroSource
 	ls.nchan = 4
-	st = ls.Signed()
-	for i, s := range st {
-		expect := (i % 2) == 0
-		if s != expect {
-			t.Errorf("LanceroSource.Signed()[%d] is %t, want %t", i, s, expect)
-		}
+	ls.signed = make([]bool, ls.nchan)
+	for i := 0; i < ls.nchan; i += 2 {
+		ls.signed[i] = true
 	}
-	// Make sure it works even when you hold the LanceroSource by its interface.
-	ds := DataSource(&ls)
-	st = ds.Signed()
-	for i, s := range st {
-		expect := (i % 2) == 0
-		if s != expect {
-			t.Errorf("DataSource(*LanceroSource).Signed()[%d] is %t, want %t", i, s, expect)
-		}
-	}
-	// Make sure it works when you run PrepareRun.
-	ds.PrepareRun()
+	ls.PrepareRun()
 	for i, dsp := range ls.processors {
 		expect := (i % 2) == 0
 		if dsp.stream.signed != expect {

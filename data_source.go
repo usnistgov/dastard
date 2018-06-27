@@ -90,7 +90,8 @@ func Start(ds DataSource) error {
 type AnySource struct {
 	nchan        int      // how many channels to provide
 	chanNames    []string // one name per channel
-	sampleRate   float64  // samples per second
+	signed       []bool
+	sampleRate   float64 // samples per second
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	output       []chan DataSegment
@@ -240,7 +241,10 @@ func (ds *AnySource) Running() bool {
 
 // Signed returns a per-channel value: whether data are signed ints.
 func (ds *AnySource) Signed() []bool {
-	return make([]bool, ds.nchan)
+	if ds.signed == nil {
+		ds.signed = make([]bool, ds.nchan)
+	}
+	return ds.signed
 }
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
