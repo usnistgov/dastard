@@ -263,6 +263,31 @@ func TestSingles(t *testing.T) {
 		expected = append(expected, FrameIndex(i))
 	}
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "AutoMultipleSegmentsB", expected)
+
+	// Test signed signals
+	for i := 0; i < len(raw); i++ {
+		raw[i] = 65530
+	}
+	for i := tframe; i < tframe+10; i++ {
+		raw[i] = bigval
+	}
+	for i := tframe2; i < tframe2+10; i++ {
+		raw[i] = smallval
+	}
+	nRepeat = 1
+	dsp.stream.signed = true
+	dsp.LevelTrigger = false
+	dsp.AutoTrigger = false
+	dsp.EdgeTrigger = true
+	dsp.EdgeRising = true
+	dsp.EdgeLevel = 100
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge signed", []FrameIndex{1000})
+
+	dsp.EdgeTrigger = false
+	dsp.LevelTrigger = true
+	dsp.LevelRising = true
+	dsp.LevelLevel = 100
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level signed", []FrameIndex{1000})
 }
 
 func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataStreamProcessor,

@@ -214,15 +214,18 @@ func messageSummaries(rec *DataRecord) [][]byte {
 // uint32: # of pre-trigger samples
 // uint32: # of samples, total
 // float32: sample period, in seconds (float)
-// float32: volts per arb conversion (float) (not implemented yet)
+// float32: volts per arb conversion (float)
 // uint64: trigger time, in ns since epoch 1970
 // uint64: trigger frame #
 // end of first message packet
-// data, each sample is uint16, length can vary (but for now is equal to # of samples which should be removed because it is redundant)
+// data, each sample is uint16, length given above
 func messageRecords(rec *DataRecord) [][]byte {
 
 	const headerVersion = uint8(0)
-	const dataType = uint8(3)
+	dataType := uint8(3)
+	if rec.signed {
+		dataType--
+	}
 	header := new(bytes.Buffer)
 	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
 	header.Write(getbytes.FromUint8(headerVersion))
@@ -230,7 +233,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
 	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
 	header.Write(getbytes.FromFloat32(rec.sampPeriod))
-	header.Write(getbytes.FromFloat32(0)) // todo make this meaningful, though doesn't seem like its needed with every pulse
+	header.Write(getbytes.FromFloat32(rec.voltsPerArb))
 	nano := rec.trigTime.UnixNano()
 	header.Write(getbytes.FromInt64(nano))
 	header.Write(getbytes.FromUint64(uint64(rec.trigFrame)))

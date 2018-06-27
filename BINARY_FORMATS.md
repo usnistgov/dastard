@@ -27,12 +27,12 @@ The header also contains little-endian values:
 Because the channel number makes up the first 2 bytes, ZMQ subscriber sockets can
 subscribe selectively to only certain channels.
 
-Data type code:
+Data type code: so far, only uint16 and int16 are allowed.
 
 * 0 = int8
 * 1 = uint8
 * 2 = int16
-* 3 = uint16 (*so far, only this type is allowed*)
+* 3 = uint16
 * 4 = int32
 * 5 = uint32
 * 6 = int64

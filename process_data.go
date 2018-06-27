@@ -123,8 +123,7 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.stream.AppendSegment(segment)
 	// records, secondaries := dsp.TriggerData()
 	records, _ := dsp.TriggerData()
-	dsp.AnalyzeData(records) // add analysis results to records in-place
-	// TODO: dsp.WriteData(records)
+	dsp.AnalyzeData(records)               // add analysis results to records in-place
 	dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
 }
 
@@ -138,21 +137,39 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 	Nout := (Nin - 1 + dsp.DecimateLevel) / dsp.DecimateLevel
 	if dsp.DecimateAvgMode {
 		level := dsp.DecimateLevel
-		for i := 0; i < Nout-1; i++ {
-			val := float64(data[i*level])
-			for j := 1; j < level; j++ {
-				val += float64(data[j+i*level])
+		cdata := make([]float64, Nout)
+		if segment.signed {
+			for i := 0; i < Nin; i++ {
+				j := i / level
+				cdata[j] += float64(int16(data[i]))
 			}
-			data[i] = RawType(val/float64(level) + 0.5)
+		} else {
+			for i := 0; i < Nin; i++ {
+				j := i / level
+				cdata[j] += float64(data[i])
+			}
 		}
-		val := float64(data[(Nout-1)*level])
-		count := 1.0
-		for j := (Nout-1)*level + 1; j < Nin; j++ {
-			val += float64(data[j])
-			count++
+		if Nout*dsp.DecimateLevel < Nin {
+			extra := Nin % level
+			cdata[Nout-1] *= float64(level) / float64(extra)
 		}
-		data[Nout-1] = RawType(val/count + 0.5)
+
+		if segment.signed {
+			for i := 0; i < Nout; i++ {
+				// Trick for rounding to int16: don't let any numbers be negative
+				// because float->int is a truncation operation. If we remove the
+				// +65536 below, then 0 will be a "rounding attractor".
+				data[i] = RawType(int16(cdata[i]/float64(level) + 65536 + 0.5))
+			}
+
+		} else {
+			for i := 0; i < Nout; i++ {
+				data[i] = RawType(cdata[i]/float64(level) + 0.5)
+			}
+		}
+
 	} else {
+		// Decimate by dropping data
 		for i := 0; i < Nout; i++ {
 			data[i] = data[i*dsp.DecimateLevel]
 		}
@@ -169,24 +186,35 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 	var modelFull mat.VecDense
 	var residual mat.VecDense
 	for _, rec := range records {
-		var val float64
-		for i := 0; i < rec.presamples; i++ {
-			val += float64(rec.data[i])
-		}
-		ptm := val / float64(rec.presamples)
-
-		max := rec.data[rec.presamples]
-		var sum, sum2 float64
-		for i := rec.presamples; i < len(rec.data); i++ {
-			val = float64(rec.data[i])
-			sum += val
-			sum2 += val * val
-			if rec.data[i] > max {
-				max = rec.data[i]
+		dataVec := *mat.NewVecDense(len(rec.data), make([]float64, len(rec.data)))
+		if rec.signed {
+			for i, v := range rec.data {
+				dataVec.SetVec(i, float64(int16(v)))
+			}
+		} else {
+			for i, v := range rec.data {
+				dataVec.SetVec(i, float64(v))
 			}
 		}
+
+		var val float64
+		for i := 0; i < rec.presamples; i++ {
+			val += dataVec.AtVec(i)
+		}
+		ptm := val / float64(rec.presamples)
 		rec.pretrigMean = ptm
-		rec.peakValue = float64(max) - rec.pretrigMean
+
+		max := ptm
+		var sum, sum2 float64
+		for i := rec.presamples; i < len(rec.data); i++ {
+			val = dataVec.AtVec(i)
+			sum += val
+			sum2 += val * val
+			if val > max {
+				max = val
+			}
+		}
+		rec.peakValue = max - ptm
 
 		N := float64(len(rec.data) - rec.presamples)
 		rec.pulseAverage = sum/N - ptm
@@ -201,10 +229,6 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			projectors := &dsp.projectors
 			basis := &dsp.basis
 
-			dataVec := *mat.NewVecDense(len(rec.data), make([]float64, len(rec.data)))
-			for i, v := range rec.data {
-				dataVec.SetVec(i, float64(v))
-			}
 			modelCoefs.MulVec(projectors, &dataVec)
 			modelFull.MulVec(basis, &modelCoefs)
 			residual.SubVec(&dataVec, &modelFull)
@@ -219,7 +243,6 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			rec.residualStdDev = stdDev(residualSlice)
 		}
 	}
-
 }
 
 // return the uncorrected std deviation of a float slice
