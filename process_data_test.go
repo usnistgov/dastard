@@ -196,6 +196,23 @@ func TestDataSignedness(t *testing.T) {
 			t.Errorf("LanceroSource.Signed()[%d] is %t, want %t", i, s, expect)
 		}
 	}
+	// Make sure it works even when you hold the LanceroSource by its interface.
+	ds := DataSource(&ls)
+	st = ds.Signed()
+	for i, s := range st {
+		expect := (i % 2) == 0
+		if s != expect {
+			t.Errorf("DataSource(*LanceroSource).Signed()[%d] is %t, want %t", i, s, expect)
+		}
+	}
+	// Make sure it works when you run PrepareRun.
+	ds.PrepareRun()
+	for i, dsp := range ls.processors {
+		expect := (i % 2) == 0
+		if dsp.stream.signed != expect {
+			t.Errorf("LanceroSource.processors[%d].stream.signed is %t, want %t", i, dsp.stream.signed, expect)
+		}
+	}
 
 	errsig := []RawType{3, 3, 1, 1, 65535, 65535, 65533, 65533,
 		65533, 65535, 65535, 1, 1, 3, 65535, 1, 65530, 6, 65500, 36}
