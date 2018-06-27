@@ -22,6 +22,7 @@ type DataPublisher struct {
 	writingPaused    bool
 }
 
+// SetPause sets the wile-writing pause state.
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.writingPaused = pause
 }
