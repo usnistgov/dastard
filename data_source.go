@@ -62,12 +62,15 @@ func Start(ds DataSource) error {
 	if err := ds.Sample(); err != nil {
 		return err
 	}
+
 	if err := ds.PrepareRun(); err != nil {
 		return err
 	}
+
 	if err := ds.StartRun(); err != nil {
 		return err
 	}
+
 	// Have the DataSource produce data until graceful stop.
 	go func() {
 		for {

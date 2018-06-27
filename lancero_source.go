@@ -7,8 +7,10 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"sort"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/usnistgov/dastard/lancero"
 )
 
@@ -24,7 +26,7 @@ type LanceroDevice struct {
 	frameSize   int // frame size, in bytes
 	adapRunning bool
 	collRunning bool
-	card        *lancero.Lancero
+	card        lancero.Lanceroer
 }
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
@@ -71,6 +73,16 @@ func (ls *LanceroSource) Delete() {
 	}
 }
 
+// used to make sure the same device isn't used twice
+func contains(s []*LanceroDevice, e *LanceroDevice) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
+
 // LanceroSourceConfig holds the arguments needed to call LanceroSource.Configure by RPC.
 // For now, we'll make the mask and card delay equal for all cards. That need not
 // be permanent, but I do think ClockMhz is necessarily the same for all cards.
@@ -83,13 +95,21 @@ type LanceroSourceConfig struct {
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
+// FiberMask must be identical across all cards, 0xFFFF uses all fibers, 0x0001 uses only fiber 0
+// ClockMhz must be identical arcross all cards, as of June 2018 it's always 125
+// CardDelay can have one value, which is shared across all cards, or must be one entry per card
+// ActiveCards is a slice of indicies into ls.devices to activate
+// AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMhz = config.ClockMhz
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
 		if dev == nil {
-			continue
+			return fmt.Errorf("i=%v, c=%v, device == nil", i, c)
+		}
+		if contains(ls.active, dev) {
+			return fmt.Errorf("attempt to use same device two times: i=%v, c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
 		}
 		ls.active = append(ls.active, dev)
 		if len(config.CardDelay) >= 1+i {
@@ -102,6 +122,7 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	for k := range ls.devices {
 		config.AvailableCards = append(config.AvailableCards, k)
 	}
+	sort.Ints(config.AvailableCards)
 	return nil
 }
 
@@ -132,20 +153,24 @@ func (ls *LanceroSource) updateChanOrderMap() {
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + mixFraction*err
 func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
-	ls.runMutex.Lock()
-	defer ls.runMutex.Unlock()
 	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
 	}
 	if processorIndex%2 == 0 {
 		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", processorIndex)
 	}
-	ls.Mix[processorIndex] = Mix{mixFraction: mixFraction}
+	// Make this a goroutine so it can grab the lock whenever convenient, but after
+	// any possible errors have already been sent back to the RPC server. This lock
+	// is normally held most of the time by LanceroSource.blockingRead.
+	go func() {
+		ls.runMutex.Lock()
+		defer ls.runMutex.Unlock()
+		ls.Mix[processorIndex].mixFraction = mixFraction
+	}()
 	return nil
 }
 
 // Sample determines key data facts by sampling some initial data.
-// It's a no-op for simulated (software) sources
 func (ls *LanceroSource) Sample() error {
 	ls.nchan = 0
 	for _, device := range ls.active {
@@ -172,6 +197,7 @@ func (ls *LanceroSource) Sample() error {
 
 func (device *LanceroDevice) sampleCard() error {
 	lan := device.card
+
 	if err := lan.ChangeRingBuffer(1200000, 400000); err != nil {
 		return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 	}
@@ -179,6 +205,8 @@ func (device *LanceroDevice) sampleCard() error {
 		return fmt.Errorf("failed to start lancero (driver problem): %v", err)
 	}
 	defer lan.StopAdapter()
+	log.Println("sampling card:")
+	log.Println(spew.Sdump(lan))
 	lan.InspectAdapter()
 
 	linePeriod := 1 // use dummy values for things we will learn by sampling data
@@ -200,7 +228,6 @@ func (device *LanceroDevice) sampleCard() error {
 	interruptCatcher := make(chan os.Signal, 1)
 	signal.Notify(interruptCatcher, os.Interrupt)
 	defer signal.Stop(interruptCatcher)
-
 	var bytesRead int
 	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
 	const tooManyIterations int = 100 // nor this many reads of the lancero
@@ -240,8 +267,7 @@ func (device *LanceroDevice) sampleCard() error {
 		q, p, n, err := lancero.FindFrameBits(buffer)
 		bytesPerFrame := 4 * (p - q)
 		if err != nil {
-			fmt.Println("Error in findFrameBits:", err)
-			break
+			return fmt.Errorf("Error in findFrameBits: %v", err)
 		}
 		device.ncols = n
 		device.nrows = (p - q) / n
@@ -249,7 +275,7 @@ func (device *LanceroDevice) sampleCard() error {
 		device.lsync = roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
 		device.frameSize = device.ncols * device.nrows * 4
 
-		fmt.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
+		log.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
 			device.nrows, periodNS, device.lsync)
 
 		lan.ReleaseBytes(totalBytes)
@@ -270,7 +296,6 @@ func (ls *LanceroSource) StartRun() error {
 
 	// Starting the source for all active cards has 3 steps per card.
 	for _, device := range ls.active {
-
 		// 1. Resize the ring buffer to hold up to 16,384 frames
 		if device.frameSize <= 0 {
 			device.frameSize = 128 // a random guess
@@ -289,7 +314,6 @@ func (ls *LanceroSource) StartRun() error {
 		if err := lan.ChangeRingBuffer(bufsize, thresh); err != nil {
 			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 		}
-
 		// 2. Start the adapter and collector components in firmware
 		const Timeout int = 2 // seconds
 		if err := lan.StartAdapter(Timeout); err != nil {
@@ -311,28 +335,44 @@ func (ls *LanceroSource) StartRun() error {
 			return fmt.Errorf("error in StartCollector: %v", err)
 		}
 		device.collRunning = true
-
 		// 3. Consume any possible fractional frames at the start of the buffer
-		for {
+		const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
+		const tooManyIterations int = 100 // nor this many reads of the lancero
+		var bytesRead int
+		var success bool
+		var i int
+		for i = 0; i < tooManyIterations; i++ {
+			if bytesRead >= tooManyBytes {
+				return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
+					bytesRead)
+			}
+
 			if _, _, err := lan.Wait(); err != nil {
 				return fmt.Errorf("error in Wait: %v", err)
 			}
 			bytes, err := lan.AvailableBuffers()
+			bytesRead += len(bytes)
 			if err != nil {
 				return fmt.Errorf("error in AvailableBuffers: %v", err)
 			}
 			if len(bytes) <= 0 {
 				continue
 			}
-
 			firstWord, _, _, err := lancero.FindFrameBits(bytes)
-			if err == nil && firstWord > 0 {
-				bytesToRelease := 4 * firstWord
-				// bytesToRelease += ((len(bytes) - 4*firstWord) / device.frameSize) * device.frameSize
-				fmt.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
-				lan.ReleaseBytes(bytesToRelease)
+			// should check for correct number of columns/rows again?
+			if err == nil {
+				if firstWord > 0 {
+					bytesToRelease := 4 * firstWord
+					log.Printf("First frame bit at word %d, so release %d of %d bytes\n", firstWord, bytesToRelease, len(bytes))
+					lan.ReleaseBytes(bytesToRelease)
+				}
+				success = true
 				break
 			}
+
+		}
+		if !success {
+			return fmt.Errorf("read %v bytes, did %v iterations", bytesRead, i)
 		}
 	}
 	return nil
@@ -373,7 +413,6 @@ func (ls *LanceroSource) blockingRead() error {
 }
 
 func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration) {
-
 	// Get 1 buffer per card, and compute which contains the fewest frames
 	framesUsed := math.MaxInt64
 	var buffers [][]RawType
@@ -391,10 +430,9 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		}
 	}
 	if framesUsed <= 0 {
-		fmt.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
+		log.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
 		return
 	}
-
 	// Consume framesUsed frames of data from each channel
 	datacopies := make([][]RawType, len(ls.output))
 
@@ -418,6 +456,9 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		nchanPrevDevices += nchan
 	}
 
+	// Should look for external trigger bits here, either once per card or once per column
+	// Maybe check for frame bits in stream?
+
 	// Now send these data downstream. Here we permute data into the expected
 	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
 	// Backtrack to find the time associated with the first sample.
@@ -431,6 +472,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			mix.MixRetardFb(&data, &errData)
 			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
 		}
+
 		seg := DataSegment{
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating
@@ -440,7 +482,6 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		ch <- seg
 	}
 	ls.nextFrameNum += FrameIndex(framesUsed)
-
 	// Inform the driver to release the data we just consumed
 	totalBytes := 0
 	for _, dev := range ls.active {
