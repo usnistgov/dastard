@@ -29,18 +29,6 @@ type Mix struct {
 // MixRetardFb mixes err into fbs, alters fbs in place to contain the mixed values
 // consecutive calls must be on consecutive data
 func (m *Mix) MixRetardFb(fbs *[]RawType, errs *[]RawType) {
-<<<<<<< HEAD
-	unmixed := make([]RawType, len(*fbs))
-	unmixed[0] = m.lastFb
-	copy(unmixed[1:], (*fbs)[0:len(unmixed)-1])
-	m.lastFb = (*fbs)[len(unmixed)-1]
-	const mask = ^RawType(0x03)
-	for j := 0; j < len(*fbs); j++ {
-		fb := unmixed[j] & mask
-		mixAmount := float64((*errs)[j]) * m.mixFraction
-		// Be careful not to overflow!
-		floatMixResult := mixAmount + float64(fb)
-=======
 	const mask = ^RawType(0x03)
 	for j := 0; j < len(*fbs); j++ {
 		fb := m.lastFb & mask
@@ -48,7 +36,6 @@ func (m *Mix) MixRetardFb(fbs *[]RawType, errs *[]RawType) {
 		// Be careful not to overflow!
 		floatMixResult := mixAmount + float64(fb)
 		m.lastFb = (*fbs)[j]
->>>>>>> master
 		if floatMixResult >= math.MaxUint16 {
 			(*fbs)[j] = math.MaxUint16
 		} else if floatMixResult < 0 {
@@ -57,8 +44,5 @@ func (m *Mix) MixRetardFb(fbs *[]RawType, errs *[]RawType) {
 			(*fbs)[j] = RawType(roundint(floatMixResult))
 		}
 	}
-<<<<<<< HEAD
-=======
 
->>>>>>> master
 }

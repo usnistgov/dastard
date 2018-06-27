@@ -59,26 +59,21 @@ func Start(ds DataSource) error {
 	if ds.Running() {
 		return fmt.Errorf("cannot Start() a source that's already Running()")
 	}
-	fmt.Println("a")
 	if err := ds.Sample(); err != nil {
 		return err
 	}
-	fmt.Println("b")
 
 	if err := ds.PrepareRun(); err != nil {
 		return err
 	}
-	fmt.Println("c")
 
 	if err := ds.StartRun(); err != nil {
 		return err
 	}
-	fmt.Println("d")
 
 	// Have the DataSource produce data until graceful stop.
 	go func() {
 		for {
-			fmt.Println("e")
 			if err := ds.blockingRead(); err == io.EOF {
 				break
 			} else if err != nil {

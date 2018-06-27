@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"testing"
-	"time"
 
 	"github.com/usnistgov/dastard/lancero"
 )
@@ -72,13 +71,12 @@ func TestChannelOrder(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 func TestNoHardware(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
 	ncolsSet = 1
 	nrowsSet = 4
 	linePeriodSet = 20
-	nLancero = 1
+	nLancero = 3
 	source := new(LanceroSource)
 	source.devices = make(map[int]*LanceroDevice, nLancero)
 	cardDelay := []int{0} // a single card delay value works for multiple cards
@@ -111,24 +109,50 @@ func TestNoHardware(t *testing.T) {
 			t.Errorf("AvailableCards not populated corrects. AvailableCards %v", config.AvailableCards)
 		}
 	}
+
+	// This is essentially Start(source)
+	// if err := source.Sample(); err != nil {
+	// 	t.Error(err)
+	// }
+	//
+	// if err := source.PrepareRun(); err != nil {
+	// 	t.Error(err)
+	// }
+	//
+	// if err := source.StartRun(); err != nil {
+	// 	t.Error(err)
+	// }
+	//
+	// // Have the DataSource produce data until graceful stop.
+	// go func() {
+	// 	for i := 0; i < 100; i++ {
+	// 		if err := source.blockingRead(); err == io.EOF {
+	// 			break
+	// 		} else if err != nil {
+	// 			log.Printf("blockingRead returns Error: %s\n", err.Error())
+	// 			// break
+	// 		}
+	// 	}
+	// 	source.CloseOutputs()
+	// }()
+
 	if err := Start(source); err != nil {
-		t.Error(err)
 		source.Stop()
-		return
+		t.Fatal(err)
 	}
 	defer source.Stop()
+
+	// end Start(source)
 	if err := source.ConfigureMixFraction(0, 1.0); err == nil {
 		t.Error("expected error for mixing on even channel")
 	}
 	if err := source.ConfigureMixFraction(1, 1.0); err != nil {
 		t.Error(err)
 	}
-	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
+	// time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
 
 }
 
-=======
->>>>>>> master
 func TestMix(t *testing.T) {
 	data := make([]RawType, 10)
 	errData := make([]RawType, len(data))

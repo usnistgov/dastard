@@ -125,23 +125,6 @@ func TestOdDashTX(t *testing.T) {
 	}
 }
 
-func TestOdDashTX(t *testing.T) {
-	b := make([]byte, 10000)
-	if s := OdDashTX(b, 15); len(s) != 281 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 281", s, len(s))
-	}
-	for i := range b {
-		b[i] = byte(i)
-	}
-	if s := OdDashTX(b, 15); len(s) != 1280 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 1280", s, len(s))
-	}
-	b = make([]byte, 0)
-	if s := OdDashTX(b, 15); len(s) != 181 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 181", s, len(s))
-	}
-}
-
 // Imperfect round to nearest integer
 func roundint(x float64) int {
 	return int(x + math.Copysign(0.5, x))
