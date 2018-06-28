@@ -44,6 +44,7 @@ type LanceroSource struct {
 // NewLanceroSource creates a new LanceroSource.
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
+	source.name = "Lancero"
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {

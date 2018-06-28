@@ -90,6 +90,7 @@ func Start(ds DataSource) error {
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
 	nchan        int      // how many channels to provide
+	name         string   // what kind of source is this?
 	chanNames    []string // one name per channel
 	signed       []bool
 	sampleRate   float64 // samples per second

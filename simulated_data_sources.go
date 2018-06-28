@@ -20,6 +20,7 @@ type TriangleSource struct {
 // NewTriangleSource creates a new TriangleSource.
 func NewTriangleSource() *TriangleSource {
 	ts := new(TriangleSource)
+	ts.name = "Triangle"
 	return ts
 }
 
@@ -116,6 +117,7 @@ type SimPulseSource struct {
 // NewSimPulseSource creates a new SimPulseSource with given size, speed.
 func NewSimPulseSource() *SimPulseSource {
 	ps := new(SimPulseSource)
+	ps.name = "SimPulse"
 	return ps
 }
 
