@@ -61,7 +61,7 @@ func (ts *TriangleSource) Sample() error {
 	ts.chanNames = make([]string, ts.nchan)
 	ts.signed = make([]bool, ts.nchan)
 	for i := 0; i < ts.nchan; i++ {
-		ts.chanNames[i] = fmt.Sprintf("tri%d", i+1)
+		ts.chanNames[i] = fmt.Sprintf("chan%d", i+1)
 	}
 	return nil
 }
@@ -165,7 +165,7 @@ func (sps *SimPulseSource) Sample() error {
 	sps.chanNames = make([]string, sps.nchan)
 	sps.signed = make([]bool, sps.nchan)
 	for i := 0; i < sps.nchan; i++ {
-		sps.chanNames[i] = fmt.Sprintf("sim%d", i+1)
+		sps.chanNames[i] = fmt.Sprintf("chan%d", i+1)
 	}
 	return nil
 }
