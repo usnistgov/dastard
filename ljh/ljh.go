@@ -63,6 +63,7 @@ type Writer struct {
 	RecordsWritten  int
 	DastardVersion  string
 	GitHash         string
+	SourceName      string
 
 	file   *os.File
 	writer *bufio.Writer
@@ -149,6 +150,7 @@ func (w *Writer) WriteHeader(firstRecord time.Time) error {
 Save File Format Version: 2.2.1
 Software Version: DASTARD version %s
 Software Git Hash: %s
+Data source: %s
 Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
@@ -161,7 +163,7 @@ Timebase: %f
 Number of rows: %d
 Number of columns: %d
 #End of Header
-`, w.DastardVersion, w.GitHash,
+`, w.DastardVersion, w.GitHash, w.SourceName,
 		w.Presamples, w.Samples, w.FramesPerSample, w.ChanNum, starttime, timestamp,
 		firstrec, w.Timebase, w.NumberOfRows, w.NumberOfColumns)
 	_, err := w.writer.WriteString(s)

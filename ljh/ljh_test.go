@@ -167,6 +167,16 @@ func TestWriter(t *testing.T) {
 		t.Errorf("WriterTest, RowCount Wrong, have %v, want %v", record.RowCount, 8888888)
 	}
 
+	if err1 := w.CreateFile(); err1 == nil {
+		t.Errorf("tried to create an existing file did not raise error")
+	}
+	w = Writer{FileName: "/doesnt_exist/notpermitted",
+		Samples:    100,
+		Presamples: 50}
+	if err1 := w.CreateFile(); err1 == nil {
+		t.Errorf("creation of unallowed file did not raise error")
+	}
+
 }
 
 func TestWriter3(t *testing.T) {

@@ -186,7 +186,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			// TODO: update nrows, ncols for a Lancero source
 			filename := fmt.Sprintf(filenamePattern, dsp.Name)
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, dsp.DecimateLevel,
-				timebase, Build.RunStart, nrows, ncols, filename)
+				timebase, Build.RunStart, nrows, ncols, filename, ds.name)
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
