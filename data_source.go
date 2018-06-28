@@ -40,6 +40,7 @@ type DataSource interface {
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
+	SetCoupling(CouplingStatus) error
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -418,6 +419,11 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 	for _, dsp := range ds.processors {
 		go dsp.ConfigurePulseLengths(nsamp, npre)
 	}
+	return nil
+}
+
+// SetCoupling is a no-op for generic data sources
+func (ds *AnySource) SetCoupling(status CouplingStatus) error {
 	return nil
 }
 

@@ -334,6 +334,44 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	return nil
 }
 
+type CouplingStatus int
+
+const (
+	NoCoupling CouplingStatus = iota + 1
+	FBToErr
+	ErrToFB
+)
+
+func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	*reply = true
+	c := NoCoupling
+	if *couple {
+		c = ErrToFB
+	}
+	err := s.activeSource.SetCoupling(c)
+	if err != nil {
+		*reply = false
+	}
+	return err
+}
+
+func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	*reply = true
+	c := NoCoupling
+	if *couple {
+		c = FBToErr
+	}
+	err := s.activeSource.SetCoupling(c)
+	if err != nil {
+		*reply = false
+	}
+	return err
+}
+
 func (s *SourceControl) broadcastHeartbeat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
