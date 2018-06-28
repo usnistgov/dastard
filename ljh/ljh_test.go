@@ -166,6 +166,8 @@ func TestWriter(t *testing.T) {
 	if record.RowCount != 8888888 {
 		t.Errorf("WriterTest, RowCount Wrong, have %v, want %v", record.RowCount, 8888888)
 	}
+	w.SourceName = "Lancero"
+	w.WriteHeader(time.Now())
 
 	if err1 := w.CreateFile(); err1 == nil {
 		t.Errorf("tried to create an existing file did not raise error")

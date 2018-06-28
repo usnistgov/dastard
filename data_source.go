@@ -182,11 +182,12 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				return fmt.Errorf("WriteControl Request:Start is not yet implemented when writing already running")
 			}
 			timebase := 1.0 / dsp.SampleRate
-			var nrows, ncols int // default to 0 x 0 array
+			var nrows, ncols, rownum, colnum int // default to 0 x 0 array
 			// TODO: update nrows, ncols for a Lancero source
 			filename := fmt.Sprintf(filenamePattern, dsp.Name)
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, dsp.DecimateLevel,
-				timebase, Build.RunStart, nrows, ncols, filename, ds.name)
+				timebase, Build.RunStart, nrows, ncols, rownum, colnum, filename,
+				ds.name, ds.chanNames[i])
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
