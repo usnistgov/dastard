@@ -254,10 +254,11 @@ func (device *LanceroDevice) sampleCard() error {
 				return err
 			}
 		}
-		// Don't use the first buffer or a too-small one, because you will get a
-		// bad estimate of waittime and thus of LSYNC.
+
+		// if dastard is getting lsync wrong, consider requireing a minimum buffer size
+		// or possibly appending a few buffers
 		totalBytes := len(buffer)
-		if i == 0 || len(buffer) < 45000 {
+		if i == 0 {
 			lan.ReleaseBytes(totalBytes)
 			bytesRead += totalBytes
 			continue
