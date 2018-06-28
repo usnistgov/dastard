@@ -86,14 +86,38 @@ func Start(ds DataSource) error {
 	return nil
 }
 
+// RowColCode holds an 8-byte summary of the row-column geometry
+type RowColCode uint64
+
+func (c RowColCode) row() int {
+	return int((uint64(c) >> 0) & 0xffff)
+}
+func (c RowColCode) col() int {
+	return int((uint64(c) >> 16) & 0xffff)
+}
+func (c RowColCode) rows() int {
+	return int((uint64(c) >> 32) & 0xffff)
+}
+func (c RowColCode) cols() int {
+	return int((uint64(c) >> 48) & 0xffff)
+}
+func rcCode(row, col, rows, cols int) RowColCode {
+	code := cols & 0xffff
+	code = code<<16 | (rows & 0xffff)
+	code = code<<16 | (col & 0xffff)
+	code = code<<16 | (row & 0xffff)
+	return RowColCode(code)
+}
+
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan        int      // how many channels to provide
-	name         string   // what kind of source is this?
-	chanNames    []string // one name per channel
-	signed       []bool
-	sampleRate   float64 // samples per second
+	nchan        int          // how many channels to provide
+	name         string       // what kind of source is this?
+	chanNames    []string     // one name per channel
+	rowColCodes  []RowColCode // one RowColCode per channel
+	signed       []bool       // is the raw data signed, one per channel
+	sampleRate   float64      // samples per second
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	output       []chan DataSegment
@@ -182,10 +206,17 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				return fmt.Errorf("WriteControl Request:Start is not yet implemented when writing already running")
 			}
 			timebase := 1.0 / dsp.SampleRate
-			var nrows, ncols, rownum, colnum int // default to 0 x 0 array
-			// TODO: update nrows, ncols for a Lancero source
+			rccode := ds.rowColCodes[i]
+			nrows := rccode.rows()
+			ncols := rccode.cols()
+			rownum := rccode.row()
+			colnum := rccode.col()
 			filename := fmt.Sprintf(filenamePattern, dsp.Name)
-			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, dsp.DecimateLevel,
+			fps := 1
+			if dsp.Decimate {
+				fps = dsp.DecimateLevel
+			}
+			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, Build.RunStart, nrows, ncols, rownum, colnum, filename,
 				ds.name, ds.chanNames[i])
 		}

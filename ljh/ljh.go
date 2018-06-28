@@ -165,6 +165,7 @@ Save File Format Version: 2.2.1
 Software Version: DASTARD version %s
 Software Git Hash: %s
 Data source: %s
+%s
 Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
@@ -175,11 +176,10 @@ Server Start Time: %s
 Timestamp offset (s): %.6f
 File First Record Time: %s
 Timebase: %f
-%s
 #End of Header
-`, w.DastardVersion, w.GitHash, w.SourceName,
+`, w.DastardVersion, w.GitHash, w.SourceName, rowColText,
 		w.Presamples, w.Samples, w.FramesPerSample, w.ChanNum, w.ChanName,
-		starttime, timestamp, firstrec, w.Timebase, rowColText,
+		starttime, timestamp, firstrec, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
