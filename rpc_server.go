@@ -347,6 +347,12 @@ const (
 func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	} else if s.status.SourceName != "Lancero" {
+		return fmt.Errorf("CoupleErrToFB only works for Lancero sources")
+	}
+
 	*reply = true
 	c := NoCoupling
 	if *couple {
@@ -364,6 +370,12 @@ func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
 func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	} else if s.status.SourceName != "Lancero" {
+		return fmt.Errorf("CoupleFBToErr only works for Lancero sources")
+	}
+
 	*reply = true
 	c := NoCoupling
 	if *couple {
