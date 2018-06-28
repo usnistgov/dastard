@@ -88,6 +88,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("it should be an error to configurePubSummariesSocket twice")
 	}
 
+	rec = &DataRecord{data: d, presamples: 4}
 	for i, signed := range []bool{false, true} {
 		(*rec).signed = signed
 		msg := messageRecords(rec)
