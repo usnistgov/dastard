@@ -31,7 +31,6 @@ type Mix struct {
 // The following ASSUMES that error signals are signed. That holds for Lancero
 // TDM systems, at least, and that is the only source that uses Mix.
 func (m *Mix) MixRetardFb(fbs *[]RawType, errs *[]RawType) {
-	lastElement := (*fbs)[len(*fbs)-1]
 	const mask = ^RawType(0x03)
 	if m.mixFraction == 0.0 {
 		for j := 0; j < len(*fbs); j++ {
