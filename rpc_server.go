@@ -428,7 +428,7 @@ func RunRPCServer(portrpc int) {
 		sourceControl.broadcastStatus()
 	}
 	var ws WritingState
-	err = viper.UnmarshalKey("writingstate", &ws)
+	err = viper.UnmarshalKey("writing", &ws)
 	if err == nil {
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", ws}
 	}
