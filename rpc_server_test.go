@@ -60,9 +60,6 @@ func TestServer(t *testing.T) {
 	}
 
 	// Test the viper config
-	if cn := viper.GetString("channelnames"); len(cn) > 0 {
-		t.Errorf("viper.GetString(%q) returns %s, want %s", "channelnames", cn, "")
-	}
 	if hp := viper.GetInt("harrypotter"); hp != harrypotter {
 		t.Errorf("viper.GetInt(%q) returns %d, want %d", "harrypotter", hp, harrypotter)
 	}
@@ -308,9 +305,8 @@ func setupViper() error {
 	// Set up different ports for testing than you'd use otherwise
 	setPortnumbers(33000)
 
-	// Check config saving. ChannelNames is NOT supposed to save
+	// Check config saving.
 	msg := make(map[string]interface{})
-	msg["ChannelNames"] = "blah"
 	msg["HarryPotter"] = harrypotter
 	saveState(msg)
 	return nil
