@@ -438,7 +438,9 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 // ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	for _, chnum := range state.ChanNumbers {
-		ds.processors[chnum].TriggerState = state.TriggerState
+		if chnum < ds.nchan { // Don't trust client to know this number!
+			ds.processors[chnum].TriggerState = state.TriggerState
+		}
 	}
 	return nil
 }
