@@ -44,6 +44,7 @@ type LanceroSource struct {
 // NewLanceroSource creates a new LanceroSource.
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
+	source.name = "Lancero"
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
@@ -187,6 +188,18 @@ func (ls *LanceroSource) Sample() error {
 	for i := 0; i < ls.nchan; i += 2 {
 		ls.signed[i] = true
 	}
+	ls.rowColCodes = make([]RowColCode, ls.nchan)
+	i := 0
+	for _, device := range ls.active {
+		cardNchan := device.ncols * device.nrows * 2
+		for j := 0; j < cardNchan; j += 2 {
+			col := j / (2 * device.nrows)
+			row := (j % (2 * device.nrows)) / 2
+			ls.rowColCodes[i+j] = rcCode(row, col, device.nrows, device.ncols)
+			ls.rowColCodes[i+j+1] = ls.rowColCodes[i+j]
+		}
+		i += cardNchan
+	}
 	ls.chanNames = make([]string, ls.nchan)
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
@@ -253,10 +266,11 @@ func (device *LanceroDevice) sampleCard() error {
 				return err
 			}
 		}
-		// Don't use the first buffer or a too-small one, because you will get a
-		// bad estimate of waittime and thus of LSYNC.
+
+		// if dastard is getting lsync wrong, consider requireing a minimum buffer size
+		// or possibly appending a few buffers
 		totalBytes := len(buffer)
-		if i == 0 || len(buffer) < 45000 {
+		if i == 0 {
 			lan.ReleaseBytes(totalBytes)
 			bytesRead += totalBytes
 			continue
@@ -471,8 +485,8 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
 			mix.MixRetardFb(&data, &errData)
 			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
-
 		}
+
 		seg := DataSegment{
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating

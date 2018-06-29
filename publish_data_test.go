@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"testing"
+	"time"
 )
 
 func TestPublishData(t *testing.T) {
@@ -17,7 +18,9 @@ func TestPublishData(t *testing.T) {
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
-	dp.SetLJH22(1, 4, len(d), 1, 1, 8, 1, "TestPublishData.ljh")
+	startTime := time.Now()
+	dp.SetLJH22(1, 4, len(d), 1, 1, startTime, 8, 1, 16, 3, 0,
+		"TestPublishData.ljh", "testSource", "chanX")
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
@@ -86,6 +89,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("it should be an error to configurePubSummariesSocket twice")
 	}
 
+	rec = &DataRecord{data: d, presamples: 4}
 	for i, signed := range []bool{false, true} {
 		(*rec).signed = signed
 		msg := messageRecords(rec)
@@ -147,6 +151,7 @@ func BenchmarkPublish(b *testing.B) {
 			b.SetBytes(int64(len(d) * 2 * len(records)))
 		}
 	}
+	startTime := time.Now()
 
 	b.Run("PubRecords", func(b *testing.B) {
 		dp := DataPublisher{}
@@ -162,7 +167,8 @@ func BenchmarkPublish(b *testing.B) {
 	})
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
-		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0,
+			"TestPublishData.ljh", "testSource", "chanX")
 		defer dp.RemoveLJH22()
 		slowPart(b, dp, records)
 	})
@@ -178,7 +184,8 @@ func BenchmarkPublish(b *testing.B) {
 		defer dp.RemovePubRecords()
 		dp.SetPubSummaries()
 		defer dp.RemovePubSummaries()
-		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0,
+			"TestPublishData.ljh", "testSource", "chanX")
 		defer dp.RemoveLJH22()
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
 		defer dp.RemoveLJH3()

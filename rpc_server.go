@@ -40,9 +40,9 @@ type SourceControl struct {
 func NewSourceControl() *SourceControl {
 	sc := new(SourceControl)
 	sc.heartbeats = make(chan Heartbeat)
-	sc.simPulses = new(SimPulseSource)
+	sc.simPulses = NewSimPulseSource()
 	sc.simPulses.heartbeats = sc.heartbeats
-	sc.triangle = new(TriangleSource)
+	sc.triangle = NewTriangleSource()
 	sc.triangle.heartbeats = sc.heartbeats
 	if lan, err := NewLanceroSource(); err == nil {
 		sc.lancero = lan
@@ -479,7 +479,7 @@ func RunRPCServer(portrpc int) {
 		sourceControl.broadcastStatus()
 	}
 	var ws WritingState
-	err = viper.UnmarshalKey("writingstate", &ws)
+	err = viper.UnmarshalKey("writing", &ws)
 	if err == nil {
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", ws}
 	}

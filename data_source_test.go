@@ -20,6 +20,24 @@ func TestChannelNames(t *testing.T) {
 			}
 		}
 	}
+
+	row := 3
+	col := 4
+	nrows := 5
+	ncols := 10
+	code := rcCode(row, col, nrows, ncols)
+	if code.row() != row {
+		t.Errorf("rcCode(%d,%d,%d,%d).row() = %d, want %d", row, col, nrows, ncols, code.row(), row)
+	}
+	if code.col() != col {
+		t.Errorf("rcCode(%d,%d,%d,%d).col() = %d, want %d", row, col, nrows, ncols, code.col(), col)
+	}
+	if code.rows() != nrows {
+		t.Errorf("rcCode(%d,%d,%d,%d).rows() = %d, want %d", row, col, nrows, ncols, code.rows(), nrows)
+	}
+	if code.cols() != ncols {
+		t.Errorf("rcCode(%d,%d,%d,%d).cols() = %d, want %d", row, col, nrows, ncols, code.cols(), ncols)
+	}
 }
 
 func TestWritingFiles(t *testing.T) {
@@ -50,6 +68,7 @@ func TestWritingFiles(t *testing.T) {
 	}
 
 	ds := AnySource{nchan: 4}
+	ds.rowColCodes = make([]RowColCode, ds.nchan)
 	ds.PrepareRun()
 	config := &WriteControlConfig{Request: "Pause", Path: tmp, FileType: "LJH2.2"}
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"time"
 	"unsafe"
 
 	"github.com/usnistgov/dastard/getbytes"
@@ -22,9 +23,15 @@ type DataPublisher struct {
 	writingPaused    bool
 }
 
-// SetPause sets the wile-writing pause state.
+// SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.writingPaused = pause
+	if dp.LJH22 != nil {
+		dp.LJH22.Flush()
+	}
+	if dp.LJH3 != nil {
+		dp.LJH3.Flush()
+	}
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -53,16 +60,27 @@ func (dp *DataPublisher) RemoveLJH3() {
 }
 
 // SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
-func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, Timebase float64, TimestampOffset float64,
-	NumberOfRows int, NumberOfColumns int, FileName string) {
+func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, FramesPerSample int,
+	Timebase float64, TimestampOffset time.Time,
+	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
+	FileName, sourceName, chanName string) {
 	w := ljh.Writer{ChanNum: ChanNum,
 		Presamples:      Presamples,
 		Samples:         Samples,
+		FramesPerSample: FramesPerSample,
 		Timebase:        Timebase,
 		TimestampOffset: TimestampOffset,
 		NumberOfRows:    NumberOfRows,
 		NumberOfColumns: NumberOfColumns,
-		FileName:        FileName}
+		NumberOfChans:   NumberOfChans,
+		FileName:        FileName,
+		DastardVersion:  Build.Version,
+		GitHash:         Build.Githash,
+		ChanName:        chanName,
+		SourceName:      sourceName,
+		ColumnNum:       colNum,
+		RowNum:          rowNum,
+	}
 	dp.LJH22 = &w
 	dp.writingPaused = false
 }
@@ -136,7 +154,7 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 				if err != nil {
 					return err
 				}
-				dp.LJH22.WriteHeader()
+				dp.LJH22.WriteHeader(record.trigTime)
 			}
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))

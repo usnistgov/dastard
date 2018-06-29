@@ -76,7 +76,7 @@ func TestNoHardwareSource(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
 	ncolsSet = 1
 	nrowsSet = 4
-	linePeriodSet = 20
+	linePeriodSet = 400 // don't make this too low, or test -race will fail
 	nLancero = 3
 	source := new(LanceroSource)
 	source.devices = make(map[int]*LanceroDevice, nLancero)
