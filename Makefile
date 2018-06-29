@@ -23,5 +23,6 @@ run: build
 	./$(BINARY_NAME)
 
 deps:
-	$(GOGET) github.com/markbates/goth
-	$(GOGET) github.com/markbates/pop
+	$(GOGET) -v -t ./...
+
+install: deps
