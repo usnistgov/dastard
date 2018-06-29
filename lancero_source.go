@@ -495,7 +495,6 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
 			mix.MixRetardFb(&data, &errData)
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
-
 		}
 
 		seg := DataSegment{

@@ -122,6 +122,30 @@ func TestTriangle(t *testing.T) {
 	if err := ts.Configure(&config); err == nil {
 		t.Errorf("TriangleSource can be configured with 0 channels, want error.")
 	}
+
+	// test maxval<minval errors
+	config = TriangleSourceConfig{
+		Nchan:      4,
+		SampleRate: 10000.0,
+		Min:        300,
+		Max:        200,
+	}
+	if err := ts.Configure(&config); err == nil {
+		t.Error("expected error for min>max")
+	}
+	// test maxval==minval
+	config = TriangleSourceConfig{
+		Nchan:      4,
+		SampleRate: 10000.0,
+		Min:        200,
+		Max:        200,
+	}
+	if err := ts.Configure(&config); err != nil {
+		t.Error(err)
+	}
+	if ts.cycleLen != 1 {
+		t.Errorf("have %v, want 1", ts.cycleLen)
+	}
 }
 
 func TestSimPulse(t *testing.T) {
