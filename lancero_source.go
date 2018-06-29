@@ -528,6 +528,9 @@ func (ls *LanceroSource) VoltsPerArb() []float32 {
 
 // SetCoupling set up the trigger broker to connect err->FB, FB->err, or neither
 func (ls *LanceroSource) SetCoupling(status CouplingStatus) error {
+	// Notice that status == NoCoupling will visit both else clauses in this
+	// function and therefore delete the connections from either sort of coupling.
+	// It is safe to call DeleteConnection on pairs that are unconnected.
 	if status == ErrToFB {
 		for i := 0; i < ls.nchan; i += 2 {
 			ls.broker.AddConnection(i, i+1)

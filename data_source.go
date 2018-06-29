@@ -422,9 +422,9 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 	return nil
 }
 
-// SetCoupling is a no-op for generic data sources
+// SetCoupling is not allowed for generic data sources
 func (ds *AnySource) SetCoupling(status CouplingStatus) error {
-	return nil
+	return fmt.Errorf("Generic data sources do not support FB/error coupling")
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)

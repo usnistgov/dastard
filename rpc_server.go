@@ -349,8 +349,6 @@ func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
 	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
-	} else if s.status.SourceName != "Lancero" {
-		return fmt.Errorf("CoupleErrToFB only works for Lancero sources")
 	}
 
 	*reply = true
@@ -372,8 +370,6 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
-	} else if s.status.SourceName != "Lancero" {
-		return fmt.Errorf("CoupleFBToErr only works for Lancero sources")
 	}
 
 	*reply = true
