@@ -477,7 +477,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 					fmt.Println("before", data[i], channum, ls.nextFrameNum, len(data), i)
 				}
 			}
-			fmt.Println("before2", data[0], data[len(data)-1], channum, ls.nextFrameNum, len(data), 0, mix.mixFraction, mix.lastFb)
+			// fmt.Println("before2", data[0], data[len(data)-1], channum, ls.nextFrameNum, len(data), 0, mix.mixFraction, mix.lastFb)
 			mix.MixRetardFb(&data, &errData)
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
 			for i := 0; i < len(data); i++ {
