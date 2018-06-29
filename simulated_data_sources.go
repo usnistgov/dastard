@@ -38,19 +38,27 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 	}
 	ts.runMutex.Lock()
 	defer ts.runMutex.Unlock()
+	if config.Min > config.Max {
+		return fmt.Errorf("have config.Min=%v > config.Max=%v, want Min<Max", config.Min, config.Max)
+	}
+	nrise := config.Max - config.Min
+	fmt.Println(nrise)
+	if nrise > 0 {
+		ts.cycleLen = 2 * int(nrise)
+		ts.onecycle = make([]RawType, ts.cycleLen)
+		var i RawType
+		for i = 0; i < nrise; i++ {
+			ts.onecycle[i] = config.Min + i
+			ts.onecycle[int(i)+int(nrise)] = config.Max - i
+		}
+	} else if nrise == 0 {
+		ts.cycleLen = 1
+		ts.onecycle = []RawType{config.Max}
+	}
 	ts.nchan = config.Nchan
 	ts.sampleRate = config.SampleRate
 	ts.minval = config.Min
 	ts.maxval = config.Max
-
-	nrise := ts.maxval - ts.minval
-	ts.cycleLen = 2 * int(nrise)
-	ts.onecycle = make([]RawType, ts.cycleLen)
-	var i RawType
-	for i = 0; i < nrise; i++ {
-		ts.onecycle[i] = ts.minval + i
-		ts.onecycle[int(i)+int(nrise)] = ts.maxval - i
-	}
 	cycleTime := float64(ts.cycleLen) / ts.sampleRate
 	ts.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
 	return nil
