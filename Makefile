@@ -12,7 +12,8 @@ build: $(BINARY_NAME)
 $(BINARY_NAME): *.go cmd/dastard/dastard.go
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
-test:
+# make test needs to install deps, or Travis will fail
+test: deps
 	$(GOTEST) -v ./...
 
 clean:
