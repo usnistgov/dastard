@@ -172,14 +172,14 @@ Total Samples: %d
 Number of samples per point: %d
 Channel: %d
 Channel name: %s
-Server Start Time: %s
 Timestamp offset (s): %.6f
-File First Record Time: %s
+Server Start Time: %s
+First Record Time: %s
 Timebase: %f
 #End of Header
 `, w.DastardVersion, w.GitHash, w.SourceName, rowColText,
 		w.Presamples, w.Samples, w.FramesPerSample, w.ChanNum, w.ChanName,
-		starttime, timestamp, firstrec, w.Timebase,
+		timestamp, starttime, firstrec, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
