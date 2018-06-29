@@ -58,6 +58,7 @@ type Writer struct {
 	TimestampOffset time.Time
 	NumberOfRows    int
 	NumberOfColumns int
+	NumberOfChans   int
 	HeaderWritten   bool
 	FileName        string
 	RecordsWritten  int
@@ -166,19 +167,20 @@ Software Version: DASTARD version %s
 Software Git Hash: %s
 Data source: %s
 %s
+Number of channels: %d
+Channel: %d
+Channel name: %s
 Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
 Number of samples per point: %d
-Channel: %d
-Channel name: %s
 Timestamp offset (s): %.6f
 Server Start Time: %s
 First Record Time: %s
 Timebase: %f
 #End of Header
-`, w.DastardVersion, w.GitHash, w.SourceName, rowColText,
-		w.Presamples, w.Samples, w.FramesPerSample, w.ChanNum, w.ChanName,
+`, w.DastardVersion, w.GitHash, w.SourceName, rowColText, w.NumberOfChans,
+		w.ChanNum, w.ChanName, w.Presamples, w.Samples, w.FramesPerSample,
 		timestamp, starttime, firstrec, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)

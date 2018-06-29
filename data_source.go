@@ -217,7 +217,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				fps = dsp.DecimateLevel
 			}
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, Build.RunStart, nrows, ncols, rownum, colnum, filename,
+				timebase, Build.RunStart, nrows, ncols, ds.nchan, rownum, colnum, filename,
 				ds.name, ds.chanNames[i])
 		}
 		ds.writingState.Active = true
