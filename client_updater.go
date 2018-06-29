@@ -75,16 +75,17 @@ func RunClientUpdater(portstatus int) {
 				publish(pubSocket, update, message)
 			}
 
-			// Check if update.tag is not in the no-save list and if the state
-			// has changed; if both, save the message after a delay.
+			// Check if the state has changed; if so, remember the message for later
+			// (we'll need to broadcast it when a new client asks for a SENDALL).
+			// If it's also NOT on the no-save list, save to Viper config file after a delay.
 			// The delay allows us to accumulate many near-simultaneous changes then
 			// save only once.
-			if _, ok := nosaveMessages[strings.ToLower((update.tag))]; !ok {
-				updateString := string(message)
-				if lastMessageStrings[update.tag] != updateString {
-					lastMessages[update.tag] = update.state
-					lastMessageStrings[update.tag] = updateString
+			updateString := string(message)
+			if lastMessageStrings[update.tag] != updateString {
+				lastMessages[update.tag] = update.state
+				lastMessageStrings[update.tag] = updateString
 
+				if _, ok := nosaveMessages[strings.ToLower((update.tag))]; !ok {
 					saveStateOnceTimer.Stop()
 					saveStateOnceTimer = time.NewTimer(saveDelayAfterChange)
 				}
