@@ -118,6 +118,7 @@ type AnySource struct {
 	chanNames    []string     // one name per channel
 	rowColCodes  []RowColCode // one RowColCode per channel
 	signed       []bool       // is the raw data signed, one per channel
+	voltsPerArb  []float32    // the physical units per arb, one per channel
 	sampleRate   float64      // samples per second
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
@@ -276,6 +277,8 @@ func (ds *AnySource) Running() bool {
 
 // Signed returns a per-channel value: whether data are signed ints.
 func (ds *AnySource) Signed() []bool {
+	// Objects containing an AnySource can override this, but default is here:
+	// all channels are unsigned.
 	if ds.signed == nil {
 		ds.signed = make([]bool, ds.nchan)
 	}
@@ -284,11 +287,14 @@ func (ds *AnySource) Signed() []bool {
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
 func (ds *AnySource) VoltsPerArb() []float32 {
-	v := make([]float32, ds.nchan)
-	for i := 0; i < ds.nchan; i++ {
-		v[i] = 1. / 65535.0
+	// Objects containing an AnySource can set this up, but here is the default
+	if ds.voltsPerArb == nil || len(ds.voltsPerArb) != ds.nchan {
+		ds.voltsPerArb = make([]float32, ds.nchan)
+		for i := 0; i < ds.nchan; i++ {
+			ds.voltsPerArb[i] = 1. / 65535.0
+		}
 	}
-	return v
+	return ds.voltsPerArb
 }
 
 // setDefaultChannelNames defensively sets channel names of the appropriate length.

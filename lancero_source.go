@@ -188,6 +188,15 @@ func (ls *LanceroSource) Sample() error {
 	for i := 0; i < ls.nchan; i += 2 {
 		ls.signed[i] = true
 	}
+	ls.voltsPerArb = make([]float32, ls.nchan)
+	const Nsamp float32 = 4.0 // TODO: what is Nsamp? 4 is typical but not guaranteed.
+	for i := 0; i < ls.nchan; i += 2 {
+		ls.voltsPerArb[i] = 1.0 / (4096. * Nsamp)
+	}
+	for i := 1; i < ls.nchan; i += 2 {
+		ls.voltsPerArb[i] = 1. / 65535.0
+	}
+
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	i := 0
 	for _, device := range ls.active {
@@ -525,19 +534,6 @@ func (ls *LanceroSource) stop() error {
 		}
 	}
 	return nil
-}
-
-// VoltsPerArb returns a per-channel value scaling raw into volts.
-func (ls *LanceroSource) VoltsPerArb() []float32 {
-	const Nsamp float32 = 4.0 // TODO: what is Nsamp? 4 is typical but not guaranteed.
-	v := make([]float32, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		v[i] = 1.0 / (4096. * Nsamp)
-	}
-	for i := 1; i < ls.nchan; i += 2 {
-		v[i] = 1. / 65535.0
-	}
-	return v
 }
 
 // SetCoupling set up the trigger broker to connect err->FB, FB->err, or neither
