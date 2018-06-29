@@ -190,7 +190,6 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 	interruptCatcher := make(chan os.Signal, 1)
 	signal.Notify(interruptCatcher, os.Interrupt)
 
-	var b bytes.Buffer
 	for {
 		select {
 		case <-interruptCatcher:
@@ -201,9 +200,6 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 				return
 			}
 			buffer, err = lan.AvailableBuffers()
-			if opt.oddashtx {
-				b.Write(buffer)
-			}
 			if opt.oddashtx {
 				fmt.Println(lancero.OdDashTX(buffer, 20))
 			}
