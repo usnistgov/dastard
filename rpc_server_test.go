@@ -60,9 +60,6 @@ func TestServer(t *testing.T) {
 	}
 
 	// Test the viper config
-	if cn := viper.GetString("channelnames"); len(cn) > 0 {
-		t.Errorf("viper.GetString(%q) returns %s, want %s", "channelnames", cn, "")
-	}
 	if hp := viper.GetInt("harrypotter"); hp != harrypotter {
 		t.Errorf("viper.GetInt(%q) returns %d, want %d", "harrypotter", hp, harrypotter)
 	}
@@ -181,13 +178,22 @@ func TestServer(t *testing.T) {
 		t.Errorf("SourceControl.ConfigureProjectorsBasis(\"%s\") returns !okay, want okay", sourceName)
 	}
 	mfo := MixFractionObject{0, 1.0}
-	if err := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err == nil {
+	if err1 := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err1 == nil {
 		t.Error("error on ConfigureMixFraction expected for non-mixable source")
 	}
 	tstate := FullTriggerState{ChanNumbers: []int{0, 1, 2}}
-	if err := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err != nil {
+	if err1 := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err1 != nil {
 		t.Error("error on ConfigureTriggers:", err)
 	}
+	for _, state := range []bool{false, true} {
+		if err1 := client.Call("SourceControl.CoupleFBToErr", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleFBToErr when non-Lancero source is active")
+		}
+		if err1 := client.Call("SourceControl.CoupleErrToFB", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleErrToFB when non-Lancero source is active")
+		}
+	}
+
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
@@ -210,17 +216,25 @@ func TestServer(t *testing.T) {
 
 	// here test all methods that expect an active source to make sure they error appropriatley
 	// otherwise you will get incomprehensible stack traces when they error unexpectedly
-	if err := client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay); err == nil {
+	if err1 := client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay); err1 == nil {
 		t.Error("expected error on ConfigureProjectorsBasiswhen no source is active")
 	}
-	if err := client.Call("SourceControl.Stop", sourceName, &okay); err == nil {
+	if err1 := client.Call("SourceControl.Stop", sourceName, &okay); err1 == nil {
 		t.Errorf("expected error stopping source when no source is active")
 	}
-	if err := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err == nil {
+	if err1 := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err1 == nil {
 		t.Error("expected error on ConfigureMixFraction when no source is active")
 	}
-	if err := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err == nil {
+	if err1 := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err1 == nil {
 		t.Error("expected error on ConfigureTriggers when no source is active")
+	}
+	for _, state := range []bool{false, true} {
+		if err1 := client.Call("SourceControl.CoupleFBToErr", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleFBToErr when no source is active")
+		}
+		if err1 := client.Call("SourceControl.CoupleErrToFB", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleErrToFB when no source is active")
+		}
 	}
 
 	// lancero source should fail
@@ -291,9 +305,8 @@ func setupViper() error {
 	// Set up different ports for testing than you'd use otherwise
 	setPortnumbers(33000)
 
-	// Check config saving. ChannelNames is NOT supposed to save
+	// Check config saving.
 	msg := make(map[string]interface{})
-	msg["ChannelNames"] = "blah"
 	msg["HarryPotter"] = harrypotter
 	saveState(msg)
 	return nil

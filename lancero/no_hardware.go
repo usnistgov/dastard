@@ -37,8 +37,9 @@ var idNumCounter int
 // NewNoHardware generates and returns a new Lancero object in test mode,
 // meaning it emulate a lancero without any hardware
 func NewNoHardware(ncols int, nrows int, linePeriod int) (*NoHardware, error) {
+	nanoSecondsPerLinePeriod := 8
 	lan := NoHardware{ncols: ncols, nrows: nrows, linePeriod: linePeriod,
-		nanoSecondsPerLinePeriod: 8, isOpen: true, lastReadTime: time.Now(),
+		nanoSecondsPerLinePeriod: nanoSecondsPerLinePeriod, isOpen: true, lastReadTime: time.Now(),
 		minTimeBetweenReads: 10 * time.Millisecond, idNum: idNumCounter}
 	idNumCounter++
 	return &lan, nil

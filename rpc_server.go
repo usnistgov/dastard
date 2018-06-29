@@ -40,9 +40,9 @@ type SourceControl struct {
 func NewSourceControl() *SourceControl {
 	sc := new(SourceControl)
 	sc.heartbeats = make(chan Heartbeat)
-	sc.simPulses = new(SimPulseSource)
+	sc.simPulses = NewSimPulseSource()
 	sc.simPulses.heartbeats = sc.heartbeats
-	sc.triangle = new(TriangleSource)
+	sc.triangle = NewTriangleSource()
 	sc.triangle.heartbeats = sc.heartbeats
 	if lan, err := NewLanceroSource(); err == nil {
 		sc.lancero = lan
@@ -334,6 +334,57 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	return nil
 }
 
+// CouplingStatus describes the status of FB / error coupling
+type CouplingStatus int
+
+const (
+	NoCoupling CouplingStatus = iota + 1 // FB and error aren't coupled
+	FBToErr                              // FB triggers cause secondary triggers in error channels
+	ErrToFB                              // Error triggers cause secondary triggers in FB channels
+)
+
+// CoupleErrToFB turns on or off coupling of Error -> FB
+func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+
+	*reply = true
+	c := NoCoupling
+	if *couple {
+		c = ErrToFB
+	}
+	err := s.activeSource.SetCoupling(c)
+	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
+	if err != nil {
+		*reply = false
+	}
+	return err
+}
+
+// CoupleFBToErr turns on or off coupling of FB -> Error
+func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+
+	*reply = true
+	c := NoCoupling
+	if *couple {
+		c = FBToErr
+	}
+	err := s.activeSource.SetCoupling(c)
+	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
+	if err != nil {
+		*reply = false
+	}
+	return err
+}
+
 func (s *SourceControl) broadcastHeartbeat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -428,7 +479,7 @@ func RunRPCServer(portrpc int) {
 		sourceControl.broadcastStatus()
 	}
 	var ws WritingState
-	err = viper.UnmarshalKey("writingstate", &ws)
+	err = viper.UnmarshalKey("writing", &ws)
 	if err == nil {
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", ws}
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/user"
@@ -9,6 +10,9 @@ import (
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
 )
+
+var githash = "githash not computed"
+var buildDate = "build date not computed"
 
 // verifyConfigFile checks that path/filename exists, and creates the directory
 // and file if it doesn't.
@@ -67,7 +71,21 @@ func setupViper() error {
 	return nil
 }
 
+var printVersion = flag.Bool("version", false, "print version and quit")
+
 func main() {
+	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems
+	dastard.Build.Date = buildDate
+	dastard.Build.Githash = githash
+
+	flag.Parse()
+	if *printVersion {
+		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
+		fmt.Printf("Git commit hash: %s\n", githash)
+		fmt.Printf("Build time: %s\n", buildDate)
+		os.Exit(0)
+	}
+
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
 		panic(err)

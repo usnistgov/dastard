@@ -40,6 +40,7 @@ type DataSource interface {
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
+	SetCoupling(CouplingStatus) error
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -49,14 +50,12 @@ func (ds *AnySource) ConfigureMixFraction(processorIndex int, mixFraction float6
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
-// Steps are:
-// 1. Sample: a per-source method that determines the # of channels and other internal
-//    facts that we need to know.
-// 2. PrepareRun: an AnySource method to do the actions that any source needs before
-//    starting the actual acquisition phase.
-// 3. StartRun: a per-source method to begin data acquisition, if relevant.
-// 4. Loop over calls to ds.blockingRead(), a per-source method that waits for data.
-//    When done with the loop, close all channels to DataStreamProcessor objects.
+// Steps are: 1) Sample: a per-source method that determines the # of channels and other
+// internal facts that we need to know.  2) PrepareRun: an AnySource method to do the
+// actions that any source needs before starting the actual acquisition phase.
+// 3) StartRun: a per-source method to begin data acquisition, if relevant.
+// 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
+// When done with the loop, close all channels to DataStreamProcessor objects.
 func Start(ds DataSource) error {
 	if ds.Running() {
 		return fmt.Errorf("cannot Start() a source that's already Running()")
@@ -88,13 +87,39 @@ func Start(ds DataSource) error {
 	return nil
 }
 
+// RowColCode holds an 8-byte summary of the row-column geometry
+type RowColCode uint64
+
+func (c RowColCode) row() int {
+	return int((uint64(c) >> 0) & 0xffff)
+}
+func (c RowColCode) col() int {
+	return int((uint64(c) >> 16) & 0xffff)
+}
+func (c RowColCode) rows() int {
+	return int((uint64(c) >> 32) & 0xffff)
+}
+func (c RowColCode) cols() int {
+	return int((uint64(c) >> 48) & 0xffff)
+}
+func rcCode(row, col, rows, cols int) RowColCode {
+	code := cols & 0xffff
+	code = code<<16 | (rows & 0xffff)
+	code = code<<16 | (col & 0xffff)
+	code = code<<16 | (row & 0xffff)
+	return RowColCode(code)
+}
+
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan        int      // how many channels to provide
-	chanNames    []string // one name per channel
-	signed       []bool
-	sampleRate   float64 // samples per second
+	nchan        int          // how many channels to provide
+	name         string       // what kind of source is this?
+	chanNames    []string     // one name per channel
+	rowColCodes  []RowColCode // one RowColCode per channel
+	signed       []bool       // is the raw data signed, one per channel
+	voltsPerArb  []float32    // the physical units per arb, one per channel
+	sampleRate   float64      // samples per second
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	output       []chan DataSegment
@@ -183,11 +208,19 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				return fmt.Errorf("WriteControl Request:Start is not yet implemented when writing already running")
 			}
 			timebase := 1.0 / dsp.SampleRate
-			var nrows, ncols int // default to 0 x 0 array
-			// TODO: update nrows, ncols for a Lancero source
+			rccode := ds.rowColCodes[i]
+			nrows := rccode.rows()
+			ncols := rccode.cols()
+			rownum := rccode.row()
+			colnum := rccode.col()
 			filename := fmt.Sprintf(filenamePattern, dsp.Name)
-			var timestampOffset float64 // TODO: figure this out
-			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, timebase, timestampOffset, nrows, ncols, filename)
+			fps := 1
+			if dsp.Decimate {
+				fps = dsp.DecimateLevel
+			}
+			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
+				timebase, Build.RunStart, nrows, ncols, ds.nchan, rownum, colnum, filename,
+				ds.name, ds.chanNames[i])
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
@@ -244,6 +277,8 @@ func (ds *AnySource) Running() bool {
 
 // Signed returns a per-channel value: whether data are signed ints.
 func (ds *AnySource) Signed() []bool {
+	// Objects containing an AnySource can override this, but default is here:
+	// all channels are unsigned.
 	if ds.signed == nil {
 		ds.signed = make([]bool, ds.nchan)
 	}
@@ -252,11 +287,14 @@ func (ds *AnySource) Signed() []bool {
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
 func (ds *AnySource) VoltsPerArb() []float32 {
-	v := make([]float32, ds.nchan)
-	for i := 0; i < ds.nchan; i++ {
-		v[i] = 1. / 65535.0
+	// Objects containing an AnySource can set this up, but here is the default
+	if ds.voltsPerArb == nil || len(ds.voltsPerArb) != ds.nchan {
+		ds.voltsPerArb = make([]float32, ds.nchan)
+		for i := 0; i < ds.nchan; i++ {
+			ds.voltsPerArb[i] = 1. / 65535.0
+		}
 	}
-	return v
+	return ds.voltsPerArb
 }
 
 // setDefaultChannelNames defensively sets channel names of the appropriate length.
@@ -400,7 +438,9 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 // ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	for _, chnum := range state.ChanNumbers {
-		ds.processors[chnum].TriggerState = state.TriggerState
+		if chnum < ds.nchan { // Don't trust client to know this number!
+			ds.processors[chnum].TriggerState = state.TriggerState
+		}
 	}
 	return nil
 }
@@ -419,6 +459,11 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 		go dsp.ConfigurePulseLengths(nsamp, npre)
 	}
 	return nil
+}
+
+// SetCoupling is not allowed for generic data sources
+func (ds *AnySource) SetCoupling(status CouplingStatus) error {
+	return fmt.Errorf("Generic data sources do not support FB/error coupling")
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)

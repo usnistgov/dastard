@@ -75,7 +75,9 @@ func RunClientUpdater(portstatus int) {
 				publish(pubSocket, update, message)
 			}
 
-			// Check if state has changed; if so, save it after a delay.
+			// Check if the state has changed; if so, remember the message for later
+			// (we'll need to broadcast it when a new client asks for a SENDALL).
+			// If it's also NOT on the no-save list, save to Viper config file after a delay.
 			// The delay allows us to accumulate many near-simultaneous changes then
 			// save only once.
 			updateString := string(message)
@@ -83,8 +85,10 @@ func RunClientUpdater(portstatus int) {
 				lastMessages[update.tag] = update.state
 				lastMessageStrings[update.tag] = updateString
 
-				saveStateOnceTimer.Stop()
-				saveStateOnceTimer = time.NewTimer(saveDelayAfterChange)
+				if _, ok := nosaveMessages[strings.ToLower((update.tag))]; !ok {
+					saveStateOnceTimer.Stop()
+					saveStateOnceTimer = time.NewTimer(saveDelayAfterChange)
+				}
 			}
 
 		case <-saveStateRegularlyTicker.C:
@@ -108,10 +112,9 @@ var nosaveMessages = map[string]struct{}{
 func saveState(lastMessages map[string]interface{}) {
 
 	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
+	// Note that the nosaveMessages don't get into the lastMessages map.
 	for k, v := range lastMessages {
-		if _, ok := nosaveMessages[strings.ToLower((k))]; !ok {
-			viper.Set(k, v)
-		}
+		viper.Set(k, v)
 	}
 
 	mainname := viper.ConfigFileUsed()

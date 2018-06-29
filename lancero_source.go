@@ -43,6 +43,7 @@ type LanceroSource struct {
 // NewLanceroSource creates a new LanceroSource.
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
+	source.name = "Lancero"
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
@@ -190,6 +191,27 @@ func (ls *LanceroSource) Sample() error {
 	for i := 0; i < ls.nchan; i += 2 {
 		ls.signed[i] = true
 	}
+	ls.voltsPerArb = make([]float32, ls.nchan)
+	const Nsamp float32 = 4.0 // TODO: what is Nsamp? 4 is typical but not guaranteed.
+	for i := 0; i < ls.nchan; i += 2 {
+		ls.voltsPerArb[i] = 1.0 / (4096. * Nsamp)
+	}
+	for i := 1; i < ls.nchan; i += 2 {
+		ls.voltsPerArb[i] = 1. / 65535.0
+	}
+
+	ls.rowColCodes = make([]RowColCode, ls.nchan)
+	i := 0
+	for _, device := range ls.active {
+		cardNchan := device.ncols * device.nrows * 2
+		for j := 0; j < cardNchan; j += 2 {
+			col := j / (2 * device.nrows)
+			row := (j % (2 * device.nrows)) / 2
+			ls.rowColCodes[i+j] = rcCode(row, col, device.nrows, device.ncols)
+			ls.rowColCodes[i+j+1] = ls.rowColCodes[i+j]
+		}
+		i += cardNchan
+	}
 	ls.chanNames = make([]string, ls.nchan)
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
@@ -256,10 +278,11 @@ func (device *LanceroDevice) sampleCard() error {
 				return err
 			}
 		}
-		// Don't use the first buffer or a too-small one, because you will get a
-		// bad estimate of waittime and thus of LSYNC.
+
+		// if dastard is getting lsync wrong, consider requireing a minimum buffer size
+		// or possibly appending a few buffers
 		totalBytes := len(buffer)
-		if i == 0 || len(buffer) < 45000 {
+		if i == 0 {
 			lan.ReleaseBytes(totalBytes)
 			bytesRead += totalBytes
 			continue
@@ -486,6 +509,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 				}
 			}
 		}
+
 		seg := DataSegment{
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating
@@ -526,15 +550,29 @@ func (ls *LanceroSource) stop() error {
 	return nil
 }
 
-// VoltsPerArb returns a per-channel value scaling raw into volts.
-func (ls *LanceroSource) VoltsPerArb() []float32 {
-	const Nsamp float32 = 4.0 // TODO: what is Nsamp? 4 is typical but not guaranteed.
-	v := make([]float32, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		v[i] = 1.0 / (4096. * Nsamp)
+// SetCoupling set up the trigger broker to connect err->FB, FB->err, or neither
+func (ls *LanceroSource) SetCoupling(status CouplingStatus) error {
+	// Notice that status == NoCoupling will visit both else clauses in this
+	// function and therefore delete the connections from either sort of coupling.
+	// It is safe to call DeleteConnection on pairs that are unconnected.
+	if status == ErrToFB {
+		for i := 0; i < ls.nchan; i += 2 {
+			ls.broker.AddConnection(i, i+1)
+		}
+	} else {
+		for i := 0; i < ls.nchan; i += 2 {
+			ls.broker.DeleteConnection(i, i+1)
+		}
 	}
-	for i := 1; i < ls.nchan; i += 2 {
-		v[i] = 1. / 65535.0
+
+	if status == FBToErr {
+		for i := 0; i < ls.nchan; i += 2 {
+			ls.broker.AddConnection(i+1, i)
+		}
+	} else {
+		for i := 0; i < ls.nchan; i += 2 {
+			ls.broker.DeleteConnection(i+1, i)
+		}
 	}
-	return v
+	return nil
 }
