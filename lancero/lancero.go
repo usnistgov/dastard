@@ -194,12 +194,13 @@ func OdDashTX(b []byte, maxLines int) string {
 	outBuffer.WriteString("framebit in fbkL\n")
 	outBuffer.WriteString("errLerrM fbkLfdbM errLerrM fbkLfdbM errLerrM fbkLfdbM errLerrM fbkLfdbM \n")
 	lines := 0
-	for i := 0; i < len(b) && lines < maxLines; i++ {
+	for i := 0; i+3 < len(b) && lines < maxLines; i += 4 {
+		encoder.Write([]byte{b[i+3]})
+		encoder.Write([]byte{b[i+2]})
+		encoder.Write([]byte{b[i+1]})
 		encoder.Write([]byte{b[i]})
-		if (i+1)%4 == 0 {
-			lineBuffer.WriteString(" ")
-		}
-		if (i+1)%32 == 0 {
+		lineBuffer.WriteString(" ")
+		if (i+4)%32 == 0 {
 			line = lineBuffer.String()
 			lineBuffer.Reset()
 			if strings.Compare(line, lastLine) == 0 {

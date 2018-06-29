@@ -21,6 +21,7 @@ type acquireOptions struct {
 	output            string
 	simulate          bool
 	verify            bool
+	oddashtx          bool
 }
 
 var opt acquireOptions
@@ -38,6 +39,7 @@ func parseOptions() error {
 	flag.StringVar(&opt.output, "o", "", "output filename")
 	flag.BoolVar(&opt.simulate, "s", false, "simulate data (if false, read from fibers)")
 	flag.BoolVar(&verify, "verify", true, "verify simulated data (set false if using many channels)")
+	flag.BoolVar(&opt.oddashtx, "oddashtx", false, "print od -tx like output")
 	flag.Parse()
 	opt.mask = uint32(imask)
 	opt.verify = opt.simulate && verify
@@ -198,6 +200,9 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 				return
 			}
 			buffer, err = lan.AvailableBuffers()
+			if opt.oddashtx {
+				fmt.Println(lancero.OdDashTX(buffer, 20))
+			}
 			totalBytes := len(buffer)
 			if err != nil {
 				return
@@ -230,6 +235,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			// Quit when read enough samples.
 			bytesRead += totalBytes
 			if opt.nSamples > 0 && opt.nSamples <= bytesRead/4 {
+
 				return
 			}
 
@@ -240,10 +246,12 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 					return
 				}
 			}
+
 			lan.ReleaseBytes(totalBytes)
 			log.Println()
 		}
 	}
+
 }
 
 func main() {

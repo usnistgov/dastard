@@ -36,8 +36,7 @@ type LanceroSource struct {
 	clockMhz          int
 	active            []*LanceroDevice
 	chan2readoutOrder []int
-	lastFbData        []RawType // used in mix calculation
-	Mix               []Mix
+	Mix               []*Mix
 	AnySource
 }
 
@@ -135,9 +134,11 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	for _, dev := range ls.active {
 		nChannelsAllCards += dev.ncols * dev.nrows * 2
 	}
-	ls.Mix = make([]Mix, nChannelsAllCards)
+	ls.Mix = make([]*Mix, nChannelsAllCards)
+	for i := 0; i < nChannelsAllCards; i++ {
+		ls.Mix[i] = &Mix{}
+	}
 	ls.chan2readoutOrder = make([]int, nChannelsAllCards)
-	ls.lastFbData = make([]RawType, nChannelsAllCards)
 	nchanPrevDevices := 0
 	for _, dev := range ls.active {
 		nchan := dev.ncols * dev.nrows * 2
@@ -412,7 +413,7 @@ func (ls *LanceroSource) blockingRead() error {
 		err       error
 	}
 	done := make(chan waiter)
-	dev := ls.active[0]
+	dev := ls.active[0] // we wait on only one device, distributeData will read from all
 	go func() {
 		timestamp, duration, err := dev.card.Wait()
 		done <- waiter{timestamp, duration, err}
@@ -493,7 +494,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			mix := ls.Mix[channum]
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
 			mix.MixRetardFb(&data, &errData)
-			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
+			//	MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
 		}
 
 		seg := DataSegment{

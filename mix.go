@@ -54,5 +54,4 @@ func (m *Mix) MixRetardFb(fbs *[]RawType, errs *[]RawType) {
 			(*fbs)[j] = RawType(roundint(floatMixResult))
 		}
 	}
-
 }
