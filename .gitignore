@@ -21,3 +21,4 @@ dastardtestlogfile
 *.ljh
 *.ljh3
 dastard
+!dastard/
