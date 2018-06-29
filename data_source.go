@@ -40,6 +40,7 @@ type DataSource interface {
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
+	SetCoupling(CouplingStatus) error
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -419,6 +420,11 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 		go dsp.ConfigurePulseLengths(nsamp, npre)
 	}
 	return nil
+}
+
+// SetCoupling is not allowed for generic data sources
+func (ds *AnySource) SetCoupling(status CouplingStatus) error {
+	return fmt.Errorf("Generic data sources do not support FB/error coupling")
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)

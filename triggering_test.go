@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-// TestBrokerConnections checks that we can connect/disconnect group triggers from the broker.
+// TestBrokerConnections checks that we can connect/disconnect group triggers
+// from the broker and the coupling of err and FB into each other for LanceroSources.
 func TestBrokerConnections(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
@@ -78,6 +79,61 @@ func TestBrokerConnections(t *testing.T) {
 	for i := 1; i < 4; i++ {
 		if !con[i] {
 			t.Errorf("TriggerBroker.Connections(0)[%d]==false, want true", i)
+		}
+	}
+
+	// Now test FB <-> err coupling. This works when broker is embedded in a
+	// LanceroSource.
+	broker = NewTriggerBroker(N)
+	var ls LanceroSource
+	ls.nchan = N
+	ls.broker = broker
+
+	// FBToErr
+	if err := ls.SetCoupling(FBToErr); err != nil {
+		t.Errorf("SetCoupling(FBToErr) failed: %v", err)
+	} else {
+		for src := 0; src < N; src++ {
+			for rx := 0; rx < N; rx++ {
+				expect := (src-rx) == 1 && src%2 == 1
+				c := broker.isConnected(src, rx)
+				if c != expect {
+					t.Errorf("After FB->Error isConnected(src=%d, rx=%d) is %t, want %t",
+						src, rx, c, expect)
+				}
+			}
+		}
+	}
+
+	// ErrToFB
+	if err := ls.SetCoupling(ErrToFB); err != nil {
+		t.Errorf("SetCoupling(ErrToFB) failed: %v", err)
+	} else {
+		for src := 0; src < N; src++ {
+			for rx := 0; rx < N; rx++ {
+				expect := (rx-src) == 1 && src%2 == 0
+				c := broker.isConnected(src, rx)
+				if c != expect {
+					t.Errorf("After Error->Fb isConnected(src=%d, rx=%d) is %t, want %t",
+						src, rx, c, expect)
+				}
+			}
+		}
+	}
+
+	// None
+	if err := ls.SetCoupling(NoCoupling); err != nil {
+		t.Errorf("SetCoupling(NoCoupling) failed: %v", err)
+	} else {
+		for src := 0; src < N; src++ {
+			for rx := 0; rx < N; rx++ {
+				expect := false
+				c := broker.isConnected(src, rx)
+				if c != expect {
+					t.Errorf("After NoCoupling isConnected(src=%d, rx=%d) is %t, want %t",
+						src, rx, c, expect)
+				}
+			}
 		}
 	}
 }

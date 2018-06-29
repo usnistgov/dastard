@@ -334,6 +334,57 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	return nil
 }
 
+// CouplingStatus describes the status of FB / error coupling
+type CouplingStatus int
+
+const (
+	NoCoupling CouplingStatus = iota + 1 // FB and error aren't coupled
+	FBToErr                              // FB triggers cause secondary triggers in error channels
+	ErrToFB                              // Error triggers cause secondary triggers in FB channels
+)
+
+// CoupleErrToFB turns on or off coupling of Error -> FB
+func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+
+	*reply = true
+	c := NoCoupling
+	if *couple {
+		c = ErrToFB
+	}
+	err := s.activeSource.SetCoupling(c)
+	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
+	if err != nil {
+		*reply = false
+	}
+	return err
+}
+
+// CoupleFBToErr turns on or off coupling of FB -> Error
+func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeSource == nil {
+		return fmt.Errorf("No source is active")
+	}
+
+	*reply = true
+	c := NoCoupling
+	if *couple {
+		c = FBToErr
+	}
+	err := s.activeSource.SetCoupling(c)
+	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
+	if err != nil {
+		*reply = false
+	}
+	return err
+}
+
 func (s *SourceControl) broadcastHeartbeat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

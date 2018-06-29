@@ -128,7 +128,8 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 	return broker
 }
 
-// AddConnection connects source -> receiver for group triggers
+// AddConnection connects source -> receiver for group triggers.
+// It is safe to add connections that already exist.
 func (broker *TriggerBroker) AddConnection(source, receiver int) error {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return fmt.Errorf("Could not add channel %d as a group receiver (nchannels=%d)",
@@ -140,7 +141,8 @@ func (broker *TriggerBroker) AddConnection(source, receiver int) error {
 	return nil
 }
 
-// DeleteConnection disconnects source -> receiver for group triggers
+// DeleteConnection disconnects source -> receiver for group triggers.
+// It is safe to delete connections whether they exist or not.
 func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return fmt.Errorf("Could not remove channel %d as a group receiver (nchannels=%d)",
