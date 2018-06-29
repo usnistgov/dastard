@@ -36,8 +36,7 @@ type LanceroSource struct {
 	clockMhz          int
 	active            []*LanceroDevice
 	chan2readoutOrder []int
-	lastFbData        []RawType // used in mix calculation
-	Mix               []Mix
+	Mix               []*Mix
 	AnySource
 }
 
@@ -134,9 +133,12 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	for _, dev := range ls.active {
 		nChannelsAllCards += dev.ncols * dev.nrows * 2
 	}
-	ls.Mix = make([]Mix, nChannelsAllCards)
+	ls.Mix = make([]*Mix, nChannelsAllCards)
+	for i := 0; i < nChannelsAllCards; i++ {
+		ls.Mix[i] = &Mix{}
+	}
+	fmt.Println("init the mix!!!")
 	ls.chan2readoutOrder = make([]int, nChannelsAllCards)
-	ls.lastFbData = make([]RawType, nChannelsAllCards)
 	nchanPrevDevices := 0
 	for _, dev := range ls.active {
 		nchan := dev.ncols * dev.nrows * 2
@@ -165,6 +167,7 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 	go func() {
 		ls.runMutex.Lock()
 		defer ls.runMutex.Unlock()
+		fmt.Println("changing mixFraction!")
 		ls.Mix[processorIndex].mixFraction = mixFraction
 	}()
 	return nil
@@ -389,7 +392,7 @@ func (ls *LanceroSource) blockingRead() error {
 		err       error
 	}
 	done := make(chan waiter)
-	dev := ls.active[0]
+	dev := ls.active[0] // we wait on only one device, distributeData will read from all
 	go func() {
 		timestamp, duration, err := dev.card.Wait()
 		done <- waiter{timestamp, duration, err}
@@ -469,9 +472,19 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		if channum%2 == 1 { // feedback channel needs more processing
 			mix := ls.Mix[channum]
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
+			for i := 0; i < len(data); i++ {
+				if data[i] != 16 && data[i] != 17 {
+					fmt.Println("before", data[i], channum, ls.nextFrameNum, len(data), i)
+				}
+			}
+			fmt.Println("before2", data[0], data[len(data)-1], channum, ls.nextFrameNum, len(data), 0, mix.mixFraction, mix.lastFb)
 			mix.MixRetardFb(&data, &errData)
-			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
-
+			//	MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
+			for i := 0; i < len(data); i++ {
+				if data[i] != 16 {
+					fmt.Println("after  ", data[i], data[len(data)-1], channum, ls.nextFrameNum, len(data), i, mix.mixFraction, mix.lastFb)
+				}
+			}
 		}
 		seg := DataSegment{
 			rawData:         data,
