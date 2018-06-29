@@ -1,7 +1,6 @@
 package dastard
 
 import (
-	"fmt"
 	"math"
 )
 
@@ -55,8 +54,5 @@ func (m *Mix) MixRetardFb(fbs *[]RawType, errs *[]RawType) {
 		} else {
 			(*fbs)[j] = RawType(roundint(floatMixResult))
 		}
-	}
-	if m.lastFb == 0 {
-		fmt.Println("last element", lastElement)
 	}
 }

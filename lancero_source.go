@@ -138,7 +138,6 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	for i := 0; i < nChannelsAllCards; i++ {
 		ls.Mix[i] = &Mix{}
 	}
-	fmt.Println("init the mix!!!")
 	ls.chan2readoutOrder = make([]int, nChannelsAllCards)
 	nchanPrevDevices := 0
 	for _, dev := range ls.active {
@@ -168,7 +167,6 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 	go func() {
 		ls.runMutex.Lock()
 		defer ls.runMutex.Unlock()
-		fmt.Println("changing mixFraction!")
 		ls.Mix[processorIndex].mixFraction = mixFraction
 	}()
 	return nil
@@ -495,19 +493,9 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		if channum%2 == 1 { // feedback channel needs more processing
 			mix := ls.Mix[channum]
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
-			for i := 0; i < len(data); i++ {
-				if data[i] != 16 && data[i] != 17 {
-					fmt.Println("before", data[i], channum, ls.nextFrameNum, len(data), i)
-				}
-			}
-			// fmt.Println("before2", data[0], data[len(data)-1], channum, ls.nextFrameNum, len(data), 0, mix.mixFraction, mix.lastFb)
 			mix.MixRetardFb(&data, &errData)
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
-			for i := 0; i < len(data); i++ {
-				if data[i] != 16 {
-					fmt.Println("after  ", data[i], data[len(data)-1], channum, ls.nextFrameNum, len(data), i, mix.mixFraction, mix.lastFb)
-				}
-			}
+
 		}
 
 		seg := DataSegment{

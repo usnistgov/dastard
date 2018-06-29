@@ -205,7 +205,6 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 				b.Write(buffer)
 			}
 			if opt.oddashtx {
-				fmt.Println("stuff")
 				fmt.Println(lancero.OdDashTX(buffer, 20))
 			}
 			totalBytes := len(buffer)
