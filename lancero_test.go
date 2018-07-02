@@ -49,11 +49,6 @@ func TestChannelOrder(t *testing.T) {
 		}
 	}
 
-	ls.Mix[0].lastFb = 27
-	if ls.Mix[0].lastFb != 27 {
-		t.Errorf("failed to set lastFb in place, have %v, want 27", ls.Mix[0].lastFb)
-	}
-
 	config.ActiveCards = []int{1}
 	ls.Configure(&config)
 	ls.updateChanOrderMap()
