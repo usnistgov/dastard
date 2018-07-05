@@ -104,6 +104,9 @@ type LanceroSourceConfig struct {
 // ActiveCards is a slice of indicies into ls.devices to activate
 // AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
+	ls.runMutex.Lock()
+	defer ls.runMutex.Unlock()
+
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMhz = config.ClockMhz
 	for i, c := range config.ActiveCards {
@@ -178,7 +181,7 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 	go func() {
 		ls.runMutex.Lock()
 		defer ls.runMutex.Unlock()
-		ls.Mix[processorIndex].mixFraction = mixFraction
+		ls.Mix[processorIndex].mixFraction = mixFraction / float64(ls.nsamp)
 	}()
 	return nil
 }
