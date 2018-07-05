@@ -202,7 +202,7 @@ func (ls *LanceroSource) Sample() error {
 	}
 	ls.voltsPerArb = make([]float32, ls.nchan)
 	for i := 0; i < ls.nchan; i += 2 {
-		ls.voltsPerArb[i] = 1.0 / (4096. * ls.nsamp)
+		ls.voltsPerArb[i] = 1.0 / (4096. * float32(ls.nsamp))
 	}
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1. / 65535.0
