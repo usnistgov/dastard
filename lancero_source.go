@@ -34,6 +34,7 @@ type LanceroSource struct {
 	devices           map[int]*LanceroDevice
 	ncards            int
 	clockMhz          int
+	nsamp             int
 	active            []*LanceroDevice
 	chan2readoutOrder []int
 	Mix               []*Mix
@@ -44,6 +45,7 @@ type LanceroSource struct {
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
 	source.name = "Lancero"
+	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
@@ -84,11 +86,12 @@ func contains(s []*LanceroDevice, e *LanceroDevice) bool {
 }
 
 // LanceroSourceConfig holds the arguments needed to call LanceroSource.Configure by RPC.
-// For now, we'll make the mask and card delay equal for all cards. That need not
+// For now, we'll make the FiberMask equal for all cards. That need not
 // be permanent, but I do think ClockMhz is necessarily the same for all cards.
 type LanceroSourceConfig struct {
 	FiberMask      uint32
 	ClockMhz       int
+	Nsamp          int
 	CardDelay      []int
 	ActiveCards    []int
 	AvailableCards []int
@@ -123,6 +126,14 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 		config.AvailableCards = append(config.AvailableCards, k)
 	}
 	sort.Ints(config.AvailableCards)
+
+	// Ignore nsamp if not positive
+	if config.Nsamp > 16 {
+		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires NSAMP<=16", config.Nsamp)
+	}
+	if config.Nsamp > 0 {
+		ls.nsamp = config.Nsamp
+	}
 	return nil
 }
 
@@ -190,9 +201,8 @@ func (ls *LanceroSource) Sample() error {
 		ls.signed[i] = true
 	}
 	ls.voltsPerArb = make([]float32, ls.nchan)
-	const Nsamp float32 = 4.0 // TODO: what is Nsamp? 4 is typical but not guaranteed.
 	for i := 0; i < ls.nchan; i += 2 {
-		ls.voltsPerArb[i] = 1.0 / (4096. * Nsamp)
+		ls.voltsPerArb[i] = 1.0 / (4096. * ls.nsamp)
 	}
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1. / 65535.0

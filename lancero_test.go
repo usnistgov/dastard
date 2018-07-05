@@ -107,8 +107,16 @@ func TestNoHardwareSource(t *testing.T) {
 	}
 	for i := 0; i < nLancero; i++ {
 		if config.ActiveCards[i] != config.AvailableCards[i] {
-			t.Errorf("AvailableCards not populated corrects. AvailableCards %v", config.AvailableCards)
+			t.Errorf("AvailableCards not populated correctly. AvailableCards %v", config.AvailableCards)
 		}
+	}
+	config.Nsamp = 499
+	if err := source.Configure(&config); err == nil {
+		t.Error("LanceroSource.Configure should fail with Nsamp>16")
+	}
+	config.Nsamp = 4
+	if err := source.Configure(&config); err != nil {
+		t.Error("LanceroSource.Configure fails:", err)
 	}
 
 	if err := Start(source); err != nil {
