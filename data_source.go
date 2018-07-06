@@ -355,9 +355,16 @@ func (ds *AnySource) PrepareRun() error {
 	}
 	// Use defaultTS for any channels not in the stored state.
 	// This will be needed any time you have more channels than in the
-	// last saved configuration.
-	defaultTS := TriggerState{AutoDelay: 250 * time.Millisecond,
-		LevelLevel: 4000, EdgeLevel: 100, EdgeRising: true}
+	// last saved configuration. All trigger types are disabled.
+	defaultTS := TriggerState{
+		AutoTrigger:  false,
+		AutoDelay:    250 * time.Millisecond,
+		EdgeTrigger:  false,
+		EdgeLevel:    100,
+		EdgeRising:   true,
+		LevelTrigger: false,
+		LevelLevel:   4000,
+	}
 
 	for channelNum, dataSegmentChan := range ds.output {
 		dsp := NewDataStreamProcessor(channelNum, ds.broker)
@@ -373,10 +380,6 @@ func (ds *AnySource) PrepareRun() error {
 		}
 		dsp.TriggerState = *ts
 
-		// TODO: don't just set decimation and samples/presamples to arbitrary values
-		dsp.Decimate = false
-		dsp.DecimateLevel = 2
-		dsp.DecimateAvgMode = true
 		dsp.NPresamples = 250
 		dsp.NSamples = 1000
 
