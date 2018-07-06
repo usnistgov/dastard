@@ -42,7 +42,6 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 		return fmt.Errorf("have config.Min=%v > config.Max=%v, want Min<Max", config.Min, config.Max)
 	}
 	nrise := config.Max - config.Min
-	fmt.Println(nrise)
 	if nrise > 0 {
 		ts.cycleLen = 2 * int(nrise)
 		ts.onecycle = make([]RawType, ts.cycleLen)
