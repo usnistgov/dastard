@@ -45,8 +45,8 @@ type DataSource interface {
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
 // don't need the mix
-func (ds *AnySource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
-	return fmt.Errorf("this source does not support Mix") // how to best provide name of source here?
+func (ds *AnySource) ConfigureMixFraction(channelIndex int, mixFraction float64) error {
+	return fmt.Errorf("source type %s does not support Mix", ds.name)
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -247,12 +247,12 @@ func (ds *AnySource) ComputeWritingState() WritingState {
 	return ds.writingState
 }
 
-// ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[processorsInd]
-func (ds *AnySource) ConfigureProjectorsBases(processorInd int, projectors mat.Dense, basis mat.Dense) error {
-	if processorInd >= len(ds.processors) || processorInd < 0 {
-		return fmt.Errorf("processorInd out of range, processorInd=%v, len(ds.processors)=%v", processorInd, len(ds.processors))
+// ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[channelIndex]
+func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense) error {
+	if channelIndex >= len(ds.processors) || channelIndex < 0 {
+		return fmt.Errorf("channelIndex out of range, channelIndex=%v, len(ds.processors)=%v", channelIndex, len(ds.processors))
 	}
-	dsp := ds.processors[processorInd]
+	dsp := ds.processors[channelIndex]
 	return dsp.SetProjectorsBasis(projectors, basis)
 }
 
