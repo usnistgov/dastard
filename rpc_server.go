@@ -127,8 +127,10 @@ type MixFractionObject struct {
 }
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
-// mix = fb + mixFraction*err
-// NOTE: only supported by LanceroSource
+// mix = fb + mixFraction*err/Nsamp
+// This MixFractionObject contains mix fractions as reported by autotune, where error/Nsamp
+// is used. Thus, we will internally store not MixFraction, but errorScale := MixFraction/Nsamp.
+// NOTE: only supported by LanceroSource.
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

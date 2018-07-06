@@ -101,14 +101,22 @@ func TestNoHardwareSource(t *testing.T) {
 		t.Error("expected error for re-using a device")
 	}
 	config = LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
-		ActiveCards: activeCards}
+		ActiveCards: activeCards, Nsamp: 1}
 	if err := source.Configure(&config); err != nil {
 		t.Error(err)
 	}
 	for i := 0; i < nLancero; i++ {
 		if config.ActiveCards[i] != config.AvailableCards[i] {
-			t.Errorf("AvailableCards not populated corrects. AvailableCards %v", config.AvailableCards)
+			t.Errorf("AvailableCards not populated correctly. AvailableCards %v", config.AvailableCards)
 		}
+	}
+	config.Nsamp = 499
+	if err := source.Configure(&config); err == nil {
+		t.Error("LanceroSource.Configure should fail with Nsamp>16")
+	}
+	config.Nsamp = 4
+	if err := source.Configure(&config); err != nil {
+		t.Error("LanceroSource.Configure fails:", err)
 	}
 
 	if err := Start(source); err != nil {
@@ -135,7 +143,7 @@ func TestMix(t *testing.T) {
 		errData[i] = RawType(i * 4)
 
 	}
-	mix := Mix{mixFraction: 0}
+	mix := Mix{errorScale: 0}
 	mix.MixRetardFb(&data, &errData)
 	passed := true
 	for i := range data {
@@ -146,7 +154,7 @@ func TestMix(t *testing.T) {
 	if !passed {
 		t.Errorf("want all zeros, have\n%v", data)
 	}
-	mix = Mix{mixFraction: 1}
+	mix = Mix{errorScale: 1}
 	mix.MixRetardFb(&data, &errData)
 	passed = true
 	for i := range data {
@@ -180,7 +188,7 @@ func TestMix(t *testing.T) {
 	for i := range data {
 		data[i] = RawType(i % 4)
 	}
-	mix = Mix{mixFraction: 0}
+	mix = Mix{errorScale: 0}
 	mix.MixRetardFb(&data, &errData)
 	passed = true
 	for i := range data {
@@ -194,7 +202,7 @@ func TestMix(t *testing.T) {
 
 	// Check that overflows are clamped to proper range
 	err1 := []RawType{100, 0, 65436} // {100, 0, -100} as signed ints
-	mix = Mix{mixFraction: 1.0}
+	mix = Mix{errorScale: 1.0}
 	mix.lastFb = 65530
 	fb := []RawType{0, 50, 50}
 	expect = []RawType{65535, 0, 0}
