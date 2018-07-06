@@ -130,13 +130,11 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	}
 	sort.Ints(config.AvailableCards)
 
-	// Ignore nsamp if not positive
-	if config.Nsamp > 16 {
-		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires NSAMP<=16", config.Nsamp)
+	// Error if Nsamp not in [1,16].
+	if config.Nsamp > 16 || config.Nsamp < 1 {
+		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", config.Nsamp)
 	}
-	if config.Nsamp > 0 {
-		ls.nsamp = config.Nsamp
-	}
+	ls.nsamp = config.Nsamp
 	return nil
 }
 
