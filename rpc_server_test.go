@@ -156,6 +156,11 @@ func TestServer(t *testing.T) {
 	time.Sleep(time.Millisecond * 400)
 	rows := 5
 	cols := 1000
+	size := SizeObject{Nsamp: cols, Npre: cols / 4}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &size, &okay)
+	if err != nil {
+		t.Error(err)
+	}
 	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
 	basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
 	projectorsBytes, err := projectors.MarshalBinary()
