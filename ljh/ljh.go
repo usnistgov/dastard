@@ -179,7 +179,7 @@ Number of samples per point: %d
 Timestamp offset (s): %.6f
 Server Start Time: %s
 First Record Time: %s
-Timebase: %f
+Timebase: %e
 #End of Header
 `, w.DastardVersion, w.GitHash, w.SourceName, rowColText, w.NumberOfChans,
 		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.Presamples, w.Samples, w.FramesPerSample,
