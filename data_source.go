@@ -117,6 +117,7 @@ type AnySource struct {
 	nchan        int          // how many channels to provide
 	name         string       // what kind of source is this?
 	chanNames    []string     // one name per channel
+	chanNumbers  []int        // names have format "prefixNumber", this is the number
 	rowColCodes  []RowColCode // one RowColCode per channel
 	signed       []bool       // is the raw data signed, one per channel
 	voltsPerArb  []float32    // the physical units per arb, one per channel
@@ -221,7 +222,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			}
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, Build.RunStart, nrows, ncols, ds.nchan, rownum, colnum, filename,
-				ds.name, ds.chanNames[i])
+				ds.name, ds.chanNames[i], ds.chanNumbers[i])
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
@@ -306,8 +307,10 @@ func (ds *AnySource) setDefaultChannelNames() {
 		return
 	}
 	ds.chanNames = make([]string, ds.nchan)
+	ds.chanNumbers = make([]int, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
 		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
+		ds.chanNumbers[i] = i
 	}
 }
 

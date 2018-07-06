@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -125,7 +126,15 @@ func TestNoHardwareSource(t *testing.T) {
 	}
 	defer source.Stop()
 
-	// end Start(source)
+	if source.chanNumbers[3] != 2 {
+		t.Errorf("have %v, want 2", source.chanNumbers[3])
+	}
+	if strings.Compare(source.chanNames[3], "chan2") != 0 {
+		t.Errorf("have %v, want chan2", source.chanNames[3])
+	}
+	if strings.Compare(source.chanNames[2], "err2") != 0 {
+		t.Errorf("have %v, want chan2", source.chanNames[3])
+	}
 	if err := source.ConfigureMixFraction(0, 1.0); err == nil {
 		t.Error("expected error for mixing on even channel")
 	}
