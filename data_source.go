@@ -45,8 +45,8 @@ type DataSource interface {
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
 // don't need the mix
-func (ds *AnySource) ConfigureMixFraction(channelIndexex int, mixFraction float64) error {
-	return fmt.Errorf("this source does not support Mix") // how to best provide name of source here?
+func (ds *AnySource) ConfigureMixFraction(channelIndex int, mixFraction float64) error {
+	return fmt.Errorf("source type %s does not support Mix", ds.name)
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.

@@ -34,7 +34,7 @@ type DataStreamProcessor struct {
 }
 
 // RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
-// Lock dsp.changeMutex before calling this function, it will not lock on it's own.
+// Lock dsp.changeMutex before calling this function, it will not lock on its own.
 func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
