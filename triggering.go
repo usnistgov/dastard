@@ -47,7 +47,6 @@ type TriggerState struct {
 	edgeMultiIPotential              FrameIndex
 	edgeMultiILastInspected          FrameIndex
 
-	// TODO:  Noise info.
 	// TODO: group source/rx info.
 }
 

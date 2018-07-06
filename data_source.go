@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -337,6 +338,24 @@ func (ds *AnySource) PrepareRun() error {
 	ds.runDone.Add(ds.nchan)
 	signed := ds.Signed()
 	vpa := ds.VoltsPerArb()
+
+	// Load last trigger state from config file
+	var fts []FullTriggerState
+	if err := viper.UnmarshalKey("trigger", &fts); err != nil {
+		// could not read trigger state from config file.
+		fts = []FullTriggerState{}
+	}
+	tsptrs := make([]*TriggerState, ds.nchan)
+	for _, ts := range fts {
+		for _, chnum := range ts.ChanNumbers {
+			if chnum < ds.nchan {
+				tsptrs[chnum] = &(ts.TriggerState)
+			}
+		}
+	}
+	defaultTS := TriggerState{AutoDelay: 250 * time.Millisecond,
+		LevelLevel: 4000, EdgeLevel: 100, EdgeRising: true}
+
 	for channelNum, dataSegmentChan := range ds.output {
 		dsp := NewDataStreamProcessor(channelNum, ds.broker)
 		dsp.Name = ds.chanNames[channelNum]
@@ -345,19 +364,18 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.stream.voltsPerArb = vpa[channelNum]
 		ds.processors[channelNum] = dsp
 
-		// TODO: don't just set these to arbitrary values
+		ts := defaultTS
+		if tsptrs[channelNum] != nil {
+			ts = *tsptrs[channelNum]
+		}
+		dsp.TriggerState = ts
+
+		// TODO: don't just set decimation and samples/presamples to arbitrary values
 		dsp.Decimate = false
-		dsp.DecimateLevel = 3
+		dsp.DecimateLevel = 2
 		dsp.DecimateAvgMode = true
-		dsp.LevelTrigger = false
-		dsp.LevelLevel = 4000
-		dsp.EdgeTrigger = true
-		dsp.EdgeLevel = 100
-		dsp.EdgeRising = true
-		dsp.NPresamples = 200
+		dsp.NPresamples = 250
 		dsp.NSamples = 1000
-		dsp.AutoTrigger = true
-		dsp.AutoDelay = 250 * time.Millisecond
 
 		// TODO: don't automatically turn on all record publishing.
 		dsp.SetPubRecords()
