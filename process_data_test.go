@@ -124,7 +124,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 1}
 	records = []*DataRecord{rec}
-	dsp.RemoveProjectorsBasis()
+	dsp.removeProjectorsBasis()
 	dsp.AnalyzeData(records)
 	expect = RTExpect{
 		ResidualStdDev: 0,
@@ -135,7 +135,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 0}
 	records = []*DataRecord{rec}
-	dsp.RemoveProjectorsBasis()
+	dsp.removeProjectorsBasis()
 	dsp.AnalyzeData(records)
 	expect = RTExpect{
 		ResidualStdDev: 0,

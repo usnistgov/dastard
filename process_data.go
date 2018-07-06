@@ -34,7 +34,8 @@ type DataStreamProcessor struct {
 }
 
 // RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
-func (dsp *DataStreamProcessor) RemoveProjectorsBasis() {
+// Lock dsp.changeMutex before calling this function, it will not lock on it's own.
+func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
 }
@@ -89,6 +90,7 @@ type DecimateState struct {
 }
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
+// Also removes any existing projectors and basis.
 func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	if nsamp <= npre+1 || npre < 3 {
 		return
@@ -98,6 +100,7 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
+	dsp.removeProjectorsBasis()
 }
 
 // ConfigureTrigger sets this stream's trigger state.
