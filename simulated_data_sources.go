@@ -52,8 +52,11 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 			ts.onecycle[int(i)+int(nrise)] = config.Max - i
 		}
 	} else if nrise == 0 {
-		ts.cycleLen = 1
-		ts.onecycle = []RawType{config.Max}
+		ts.cycleLen = roundint(ts.sampleRate/10) + 1 // aim for 10 cycles/second
+		ts.onecycle = make([]RawType, ts.cycleLen)
+		for i := range ts.onecycle {
+			ts.onecycle[i] = config.Max
+		}
 	}
 	ts.nchan = config.Nchan
 	ts.sampleRate = config.SampleRate
@@ -82,21 +85,22 @@ func (ts *TriangleSource) blockingRead() error {
 	defer ts.runMutex.Unlock()
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
+	var now time.Time
 	select {
 	case <-ts.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
-		now := time.Now()
+		now = time.Now()
 		if ts.heartbeats != nil {
 			dt := now.Sub(ts.lastread).Seconds()
 			mb := float64(ts.cycleLen*2*len(ts.output)) / 1e6
 			ts.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
 		}
-		ts.lastread = now
+		ts.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
 	}
 
 	// Backtrack to find the time associated with the first sample.
-	firstTime := ts.lastread.Add(-ts.timeperbuf)
+	firstTime := now.Add(-ts.timeperbuf) // use now here, this should acutually correspond to the time the data was read
 	for _, ch := range ts.output {
 		datacopy := make([]RawType, ts.cycleLen)
 		copy(datacopy, ts.onecycle)
@@ -165,7 +169,7 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 
 	cycleTime := float64(sps.cycleLen) / sps.sampleRate
 	sps.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
-	// log.Printf("made a simulated pulse source for %d channels.\n", nchan)
+	// log.Printf("made a simulated pulse source for %d channels.\n", sps.nchan)
 	// log.Printf("configured with wait time of %v\n", sps.timeperbuf)
 	return nil
 }
@@ -188,21 +192,22 @@ func (sps *SimPulseSource) blockingRead() error {
 	defer sps.runMutex.Unlock()
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
+	var now time.Time
 	select {
 	case <-sps.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
-		now := time.Now()
+		now = time.Now()
 		if sps.heartbeats != nil {
 			dt := now.Sub(sps.lastread).Seconds()
 			mb := float64(sps.cycleLen*2*len(sps.output)) / 1e6
 			sps.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
 		}
-		sps.lastread = now
+		sps.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
 	}
 
 	// Backtrack to find the time associated with the first sample.
-	firstTime := sps.lastread.Add(-sps.timeperbuf)
+	firstTime := now.Add(-sps.timeperbuf) // use now for accurate sample time
 	for _, ch := range sps.output {
 		datacopy := make([]RawType, sps.cycleLen)
 		copy(datacopy, sps.onecycle)

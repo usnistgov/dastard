@@ -143,8 +143,8 @@ func TestTriangle(t *testing.T) {
 	if err := ts.Configure(&config); err != nil {
 		t.Error(err)
 	}
-	if ts.cycleLen != 1 {
-		t.Errorf("have %v, want 1", ts.cycleLen)
+	if ts.cycleLen != 1001 {
+		t.Errorf("have %v, want 1001", ts.cycleLen)
 	}
 }
 
