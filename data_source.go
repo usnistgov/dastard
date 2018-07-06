@@ -380,9 +380,6 @@ func (ds *AnySource) PrepareRun() error {
 		}
 		dsp.TriggerState = *ts
 
-		dsp.NPresamples = 250
-		dsp.NSamples = 1000
-
 		// TODO: don't automatically turn on all record publishing.
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
