@@ -183,7 +183,7 @@ func FindFrameBits(b []byte) (int, int, int, error) {
 	return q / 4, p / 4, n, fmt.Errorf("b did not contain two frame starts")
 }
 
-// OdDashTX creates output like od -xt, used for debugging Lancero
+// OdDashTX creates output like od -tx4, used for debugging Lancero
 func OdDashTX(b []byte, maxLines int) string {
 	var lineBuffer, outBuffer bytes.Buffer
 	var line, lastLine string
@@ -192,7 +192,7 @@ func OdDashTX(b []byte, maxLines int) string {
 	outBuffer.WriteString(fmt.Sprintf("dumping %v bytes, output max lines %v\n", len(b), maxLines))
 	outBuffer.WriteString("L = least significant byte, M = most significant byte\n")
 	outBuffer.WriteString("framebit in fbkL\n")
-	outBuffer.WriteString("errLerrM fbkLfdbM errLerrM fbkLfdbM errLerrM fbkLfdbM errLerrM fbkLfdbM \n")
+	outBuffer.WriteString("fMfLeMeL fMfLeMeL fMfLeMeL fMfLeMeL fMfLeMeL fMfLeMeL fMfLeMeL fMfLeMeL \n")
 	outBuffer.WriteString("-------- -------- -------- -------- -------- -------- -------- -------- \n")
 	lines := 0
 	for i := 0; i+3 < len(b) && lines < maxLines; i += 4 {
