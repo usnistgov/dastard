@@ -142,7 +142,7 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 
 // updateChanOrderMap updates the map chan2readoutOrder based on the number
 // of columns and rows in each active device
-// also initializes mixFraction and lastFbData to correct length with all zeros
+// also initializes errorScale and lastFbData to correct length with all zeros
 func (ls *LanceroSource) updateChanOrderMap() {
 	nChannelsAllCards := int(0)
 	for _, dev := range ls.active {
@@ -167,7 +167,7 @@ func (ls *LanceroSource) updateChanOrderMap() {
 }
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
-// mix = fb + mixFraction*err
+// mix = fb + errorScale*err
 func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
 	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
@@ -181,7 +181,7 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 	go func() {
 		ls.runMutex.Lock()
 		defer ls.runMutex.Unlock()
-		ls.Mix[processorIndex].mixFraction = mixFraction / float64(ls.nsamp)
+		ls.Mix[processorIndex].errorScale = mixFraction / float64(ls.nsamp)
 	}()
 	return nil
 }
@@ -507,7 +507,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			mix := ls.Mix[channum]
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
 			mix.MixRetardFb(&data, &errData)
-			//	MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
+			//	MixRetardFb alters data in place to mix some of errData in based on mix.errorScale
 		}
 
 		seg := DataSegment{
