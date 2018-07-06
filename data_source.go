@@ -353,7 +353,9 @@ func (ds *AnySource) PrepareRun() error {
 			}
 		}
 	}
-	// use defaultTS for any channels not in the stored state
+	// Use defaultTS for any channels not in the stored state.
+	// This will be needed any time you have more channels than in the
+	// last saved configuration.
 	defaultTS := TriggerState{AutoDelay: 250 * time.Millisecond,
 		LevelLevel: 4000, EdgeLevel: 100, EdgeRising: true}
 
