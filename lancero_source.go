@@ -222,9 +222,12 @@ func (ls *LanceroSource) Sample() error {
 		i += cardNchan
 	}
 	ls.chanNames = make([]string, ls.nchan)
+	ls.chanNumbers = make([]int, ls.nchan)
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
 		ls.chanNames[i] = fmt.Sprintf("chan%d", 1+i/2)
+		ls.chanNumbers[i-1] = 1 + i/2
+		ls.chanNumbers[i] = 1 + i/2
 	}
 	return nil
 }

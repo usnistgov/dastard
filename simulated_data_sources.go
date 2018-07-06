@@ -70,10 +70,12 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 // It's a no-op for simulated (software) sources
 func (ts *TriangleSource) Sample() error {
 	ts.chanNames = make([]string, ts.nchan)
+	ts.chanNumbers = make([]int, ts.nchan)
 	ts.signed = make([]bool, ts.nchan)
 	ts.rowColCodes = make([]RowColCode, ts.nchan)
 	for i := 0; i < ts.nchan; i++ {
 		ts.chanNames[i] = fmt.Sprintf("chan%d", i+1)
+		ts.chanNumbers[i] = i + 1
 	}
 	return nil
 }
@@ -177,10 +179,12 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 // It's a no-op for simulated (software) sources
 func (sps *SimPulseSource) Sample() error {
 	sps.chanNames = make([]string, sps.nchan)
+	sps.chanNumbers = make([]int, sps.nchan)
 	sps.signed = make([]bool, sps.nchan)
 	sps.rowColCodes = make([]RowColCode, sps.nchan)
 	for i := 0; i < sps.nchan; i++ {
 		sps.chanNames[i] = fmt.Sprintf("chan%d", i+1)
+		sps.chanNumbers[i] = i + 1
 	}
 	return nil
 }
