@@ -346,13 +346,14 @@ func (ds *AnySource) PrepareRun() error {
 		fts = []FullTriggerState{}
 	}
 	tsptrs := make([]*TriggerState, ds.nchan)
-	for _, ts := range fts {
+	for i, ts := range fts {
 		for _, chnum := range ts.ChanNumbers {
 			if chnum < ds.nchan {
-				tsptrs[chnum] = &(ts.TriggerState)
+				tsptrs[chnum] = &(fts[i].TriggerState)
 			}
 		}
 	}
+	// use defaultTS for any channels not in the stored state
 	defaultTS := TriggerState{AutoDelay: 250 * time.Millisecond,
 		LevelLevel: 4000, EdgeLevel: 100, EdgeRising: true}
 
@@ -364,11 +365,11 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.stream.voltsPerArb = vpa[channelNum]
 		ds.processors[channelNum] = dsp
 
-		ts := defaultTS
-		if tsptrs[channelNum] != nil {
-			ts = *tsptrs[channelNum]
+		ts := tsptrs[channelNum]
+		if ts == nil {
+			ts = &defaultTS
 		}
-		dsp.TriggerState = ts
+		dsp.TriggerState = *ts
 
 		// TODO: don't just set decimation and samples/presamples to arbitrary values
 		dsp.Decimate = false
