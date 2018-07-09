@@ -27,12 +27,18 @@ func TestPublishData(t *testing.T) {
 	if dp.LJH22.RecordsWritten != 3 {
 		t.Fail()
 	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishData to increment numberWritten with LJH22 enabled")
+	}
 	if !dp.HasLJH22() {
 		t.Error("HasLJH22() false, want true")
 	}
 	dp.RemoveLJH22()
 	if dp.HasLJH22() {
 		t.Error("HasLJH22() true, want false")
+	}
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveLJH22 to set numberWritten to 0")
 	}
 
 	if dp.HasPubRecords() {
@@ -45,7 +51,9 @@ func TestPublishData(t *testing.T) {
 	}
 
 	dp.PublishData(records)
-
+	if dp.numberWritten != 0 {
+		t.Errorf("expected PublishData to not increment numberWritten with only PubRecords enabled")
+	}
 	dp.RemovePubRecords()
 	if dp.HasPubRecords() {
 		t.Error("HasPubRecords() true, want false")
@@ -74,10 +82,16 @@ func TestPublishData(t *testing.T) {
 	if dp.LJH3.RecordsWritten != 3 {
 		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
 	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishedData to increment numberWritten")
+	}
 	if !dp.HasLJH3() {
 		t.Error("HasLJH3() false, want true")
 	}
 	dp.RemoveLJH3()
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveLJH3 to set numberWritten to 0")
+	}
 	if dp.HasLJH3() {
 		t.Error("HasLJH3() true, want false")
 	}
