@@ -208,7 +208,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	*reply = (err == nil)
 	s.status.Npresamp = sizes.Npre
 	s.status.Nsamples = sizes.Nsamp
-	log.Printf("Result is okay=%t\n", *reply)
+	go s.broadcastStatus()
 	return err
 }
 
