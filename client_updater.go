@@ -103,9 +103,10 @@ func RunClientUpdater(portstatus int) {
 // nosaveMessages is a set of message names that you don't save, because they
 // contain no configuration that makes sense to preserve across runs of dastard.
 var nosaveMessages = map[string]struct{}{
-	"channelnames": {},
-	"alive":        {},
-	"triggerrate":  {},
+	"channelnames":  {},
+	"alive":         {},
+	"triggerrate":   {},
+	"numberwritten": {},
 }
 
 // saveState stores server configuration to the standard config file.
