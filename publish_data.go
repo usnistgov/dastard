@@ -183,9 +183,9 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	}
 	if dp.HasLJH22() || dp.HasLJH3() {
 		dp.numberWritten += len(records)
-		if dp.numberWrittenChan != nil {
-			dp.numberWrittenChan <- dp.numberWritten
-		}
+	}
+	if dp.numberWrittenChan != nil {
+		dp.numberWrittenChan <- dp.numberWritten
 	}
 	return nil
 }
