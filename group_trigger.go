@@ -186,6 +186,7 @@ func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 // Run runs in a goroutine to broker trigger frame #s from sources to receivers.
 // It runs in the pattern: get a message from each channel (about their triggered
 // frame numbers), then send a message to each channel (about their secondary triggers).
+// should be called in a goroutine
 func (broker *TriggerBroker) Run() {
 	for {
 		// get data from all PrimaryTrigs channels

@@ -16,11 +16,13 @@ import (
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
 // in each call to PublishData
 type DataPublisher struct {
-	PubRecordsChan   chan []*DataRecord
-	PubSummariesChan chan []*DataRecord
-	LJH22            *ljh.Writer
-	LJH3             *ljh.Writer3
-	writingPaused    bool
+	PubRecordsChan    chan []*DataRecord
+	PubSummariesChan  chan []*DataRecord
+	LJH22             *ljh.Writer
+	LJH3              *ljh.Writer3
+	writingPaused     bool
+	numberWritten     int      // integrates up the total number written, reset any time writing starts or stops
+	numberWrittenChan chan int // send the total number written to this channel after each write group
 }
 
 // SetPause changes the paused state to the given value of pause
@@ -44,6 +46,7 @@ func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 		FileName:        FileName}
 	dp.LJH3 = &w
 	dp.writingPaused = false
+	dp.numberWritten = 0
 }
 
 // HasLJH3 returns true if LJH3 is non-nil, eg if writing to LJH3 is occuring
@@ -57,6 +60,7 @@ func (dp *DataPublisher) RemoveLJH3() {
 		dp.LJH3.Close()
 	}
 	dp.LJH3 = nil
+	dp.numberWritten = 0
 }
 
 // SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -84,6 +88,7 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 	}
 	dp.LJH22 = &w
 	dp.writingPaused = false
+	dp.numberWritten = 0
 }
 
 // HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
@@ -97,6 +102,7 @@ func (dp *DataPublisher) RemoveLJH22() {
 		dp.LJH22.Close()
 	}
 	dp.LJH22 = nil
+	dp.numberWritten = 0
 }
 
 // HasPubRecords return true if publishing records on PortTrigs Pub is occuring
@@ -140,7 +146,7 @@ func (dp *DataPublisher) RemovePubSummaries() {
 }
 
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
-func (dp DataPublisher) PublishData(records []*DataRecord) error {
+func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
 	}
@@ -173,6 +179,12 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 			}
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
+		}
+	}
+	if dp.HasLJH22() || dp.HasLJH3() {
+		dp.numberWritten += len(records)
+		if dp.numberWrittenChan != nil {
+			dp.numberWrittenChan <- dp.numberWritten
 		}
 	}
 	return nil
@@ -331,4 +343,50 @@ func bytesToRawType(b []byte) []RawType {
 	header.Len /= ratio
 	data := *(*[]RawType)(unsafe.Pointer(&header))
 	return data
+}
+
+// PublishSync is used to synchronize the publication of number of records written
+type PublishSync struct {
+	numberWrittenChans []chan int
+	NumberWritten      []int
+	abort              chan struct{} // This can signal the Run() goroutine to stop
+}
+
+// NewPublishSync returns a *PublishSync for nchan channels
+func NewPublishSync(nchan int) *PublishSync {
+	numberWrittenChans := make([]chan int, nchan)
+	for i := 0; i < nchan; i++ {
+		numberWrittenChans[i] = make(chan int)
+	}
+	return &PublishSync{numberWrittenChans: numberWrittenChans, abort: make(chan struct{}),
+		NumberWritten: make([]int, nchan)}
+}
+
+// Run runs, collects number of records published, publishes summaries
+// should be called as a goroutine
+func (ps *PublishSync) Run() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		default:
+			// get data from all PrimaryTrigs channels
+			for i := 0; i < len(ps.numberWrittenChans); i++ {
+				select {
+				case <-ps.abort:
+					return
+				case n := <-ps.numberWrittenChans[i]:
+					ps.NumberWritten[i] = n
+				}
+			}
+		case <-ticker.C:
+			clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
+				state: ps} // only exported fields are serialized
+		}
+	}
+}
+
+// Stop causes the Run() goroutine to end at the next appropriate moment.
+func (ps *PublishSync) Stop() {
+	close(ps.abort)
 }

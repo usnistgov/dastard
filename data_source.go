@@ -128,6 +128,7 @@ type AnySource struct {
 	processors   []*DataStreamProcessor
 	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
 	broker       *TriggerBroker
+	publishSync  *PublishSync
 	noProcess    bool // Set true only for testing.
 	heartbeats   chan Heartbeat
 	writingState WritingState
@@ -330,6 +331,10 @@ func (ds *AnySource) PrepareRun() error {
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run()
 
+	// Start a PublishSync to publish the # of records written
+	ds.publishSync = NewPublishSync(ds.nchan)
+	go ds.publishSync.Run()
+
 	// Channels onto which we'll put data produced by this source
 	ds.output = make([]chan DataSegment, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
@@ -369,21 +374,21 @@ func (ds *AnySource) PrepareRun() error {
 		LevelLevel:   4000,
 	}
 
-	for channelNum, dataSegmentChan := range ds.output {
-		dsp := NewDataStreamProcessor(channelNum, ds.broker)
-		dsp.Name = ds.chanNames[channelNum]
+	for channelIndex, dataSegmentChan := range ds.output {
+		dsp := NewDataStreamProcessor(channelIndex, ds.broker, ds.publishSync.numberWrittenChans[channelIndex])
+		dsp.Name = ds.chanNames[channelIndex]
 		dsp.SampleRate = ds.sampleRate
-		dsp.stream.signed = signed[channelNum]
-		dsp.stream.voltsPerArb = vpa[channelNum]
-		ds.processors[channelNum] = dsp
+		dsp.stream.signed = signed[channelIndex]
+		dsp.stream.voltsPerArb = vpa[channelIndex]
+		ds.processors[channelIndex] = dsp
 
-		ts := tsptrs[channelNum]
+		ts := tsptrs[channelIndex]
 		if ts == nil {
 			ts = &defaultTS
 		}
 		dsp.TriggerState = *ts
 
-		// TODO: don't automatically turn on all record publishing.
+		// Publish Records and Summaries over ZMQ by default
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 
@@ -408,6 +413,8 @@ func (ds *AnySource) Stop() error {
 		close(ds.abortSelf)
 	}
 	ds.runDone.Wait()
+	ds.broker.Stop()
+	ds.publishSync.Stop()
 	return nil
 }
 
