@@ -5,9 +5,9 @@
 // bytes		type			meaning
 // 0-3      int32     recordSamples (could be calculated from nearest neighbor pulses in princple)
 // 4-7      int32     recordPreSamples (could be calculated from nearest neighbor pulses in princple)
-// 8-15     int64     rowcount
-// 16-23    int64     timestamp
-// 24-27    float32   pretriggerMean (really shouldn't be neccesary, just in case for now!)
+// 8-15     int64     framecount
+// 16-23    int64     timestamp from time.Time.UnixNano()
+// 24-27    float32   pretriggerMean (from raw data, not from modeled pulse, really shouldn't be neccesary, just in case for now!)
 // 28-31    float32   residualStdDev (in raw data space, not Mahalanobis distance)
 // 32-Z     float32   the NumberOfBases model coefficients of the pulse projected in to the model
 // Z = 31+4*NumberOfBases
@@ -137,7 +137,7 @@ func (w *Writer) WriteHeader() error {
 }
 
 // WriteRecord writes a record to the file
-func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, rowcount int64,
+func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, framecount int64,
 	timestamp int64, pretriggerMean float32, residualStdDev float32, data []float32) error {
 	if len(data) != w.NumberOfBases {
 		return fmt.Errorf("wrong number of bases, have %v, want %v", len(data), w.NumberOfBases)
@@ -148,7 +148,7 @@ func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, rowcou
 	if _, err := w.writer.Write(getbytes.FromInt32(int32(recordPreSamples))); err != nil {
 		return err
 	}
-	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(framecount)); err != nil {
 		return err
 	}
 	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {

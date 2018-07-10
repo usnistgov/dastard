@@ -227,6 +227,11 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			}
 			dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
 				float32(record.pretrigMean), float32(record.residualStdDev), modelCoefs)
+			// TODO:
+			// 1. work on RPC API to add OFF
+			// 2. make projectors actually get passed to SetOFF
+			// 3. test writing OFF in dastard
+			// 4. add trigger settings to header?
 		}
 	}
 	if dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF() {
