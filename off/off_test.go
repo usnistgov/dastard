@@ -29,35 +29,39 @@ func TestOff(t *testing.T) {
 			0, 0, 1,
 			0, 0, 0})
 
-	w := Writer{FileName: "off_test.off", Projectors: projectors, Basis: basis, NumberOfBases: nbases}
+	w := NewWriter("off_test.off", 0, "chan1", 1, 100, 200, 9.6e-6, projectors, basis, "dummy model for testing",
+		"DastardVersion Placeholder", "GitHash Placeholder", "SourceName Placeholder", TimeDivisionMultiplexingInfo{})
 	if err := w.CreateFile(); err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-	if w.HeaderWritten {
-		t.Error("HeaderWritten should be false, have", w.HeaderWritten)
+	if w.headerWritten {
+		t.Error("headerWritten should be false, have", w.headerWritten)
 	}
 	if err := w.WriteHeader(); err != nil {
 		t.Error(err)
 	}
-	if !w.HeaderWritten {
-		t.Error("HeaderWritten should be true, have", w.HeaderWritten)
+	if !w.headerWritten {
+		t.Error("headerWritten should be true, have", w.headerWritten)
+	}
+	if err := w.WriteHeader(); err == nil {
+		t.Errorf("expect error from writing header again")
 	}
 	w.Flush()
 	stat, _ := os.Stat("off_test.off")
 	sizeHeader := stat.Size()
-	if err := w.WriteRecord(0, 0, 0, make([]float32, 3)); err != nil {
+	if err := w.WriteRecord(0, 0, 0, 0, 0, 0, make([]float32, 3)); err != nil {
 		t.Error(err)
 	}
 	w.Flush()
 	stat, _ = os.Stat("off_test.off")
-	expectSize := sizeHeader + 8 + 8 + 8 + 3*4
+	expectSize := sizeHeader + 32 + 4*3
 	if stat.Size() != expectSize {
 		t.Errorf("wrong size, want %v, have %v", expectSize, stat.Size())
 	}
-	if w.RecordsWritten != 1 {
-		t.Error("wrong number of records written, want 1, have", w.RecordsWritten)
+	if w.recordsWritten != 1 {
+		t.Error("wrong number of records written, want 1, have", w.recordsWritten)
 	}
-	if err := w.WriteRecord(0, 0, 0, make([]float32, 10)); err == nil {
+	if err := w.WriteRecord(0, 0, 0, 0, 0, 0, make([]float32, 10)); err == nil {
 		t.Error("should have complained about wrong number of bases")
 	}
 	w.Close()
