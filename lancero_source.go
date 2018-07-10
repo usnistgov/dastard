@@ -284,7 +284,7 @@ func (device *LanceroDevice) sampleCard() error {
 			if err != nil {
 				return err
 			}
-			buffer, err = lan.AvailableBuffers()
+			buffer, _, err = lan.AvailableBuffers()
 
 			if err != nil {
 				return err
@@ -388,7 +388,7 @@ func (ls *LanceroSource) StartRun() error {
 			if _, _, err := lan.Wait(); err != nil {
 				return fmt.Errorf("error in Wait: %v", err)
 			}
-			bytes, err := lan.AvailableBuffers()
+			bytes, _, err := lan.AvailableBuffers()
 			bytesRead += len(bytes)
 			if err != nil {
 				return fmt.Errorf("error in AvailableBuffers: %v", err)
@@ -421,8 +421,11 @@ func (ls *LanceroSource) StartRun() error {
 func (ls *LanceroSource) blockingRead() error {
 	ls.runMutex.Lock()
 	defer ls.runMutex.Unlock()
+
+	// Wait on only one device (the first) to have enough data.
+	// Method distributeData will then read from all devices.
 	done := make(chan error)
-	dev := ls.active[0] // we wait on only one device, distributeData will read from all
+	dev := ls.active[0]
 	go func() {
 		_, _, err := dev.card.Wait()
 		done <- err
@@ -443,14 +446,17 @@ func (ls *LanceroSource) blockingRead() error {
 	return nil
 }
 
+// distributeData reads the raw data buffers from all devices in the LanceroSource
+// and distributes their data by copying into slices that go on channels, one
+// channel per data stream.
 func (ls *LanceroSource) distributeData() {
-	// Get 1 buffer per card, and compute which contains the fewest frames
+	// Get one buffer per card. Whichever contains the fewest frames will
+	// dictate how much data to process and what the timestamp is.
 	framesUsed := math.MaxInt64
 	var buffers [][]RawType
-	var lastTime time.Time
+	var lastSampleTime time.Time
 	for _, dev := range ls.active {
-		b, err := dev.card.AvailableBuffers()
-		thisDevRead := time.Now()
+		b, timeFix, err := dev.card.AvailableBuffers()
 		if err != nil {
 			log.Printf("Warning: AvailableBuffers failed")
 			return
@@ -460,25 +466,30 @@ func (ls *LanceroSource) distributeData() {
 		bframes := len(b) / dev.frameSize
 		if bframes < framesUsed {
 			framesUsed = bframes
-			lastTime = thisDevRead
+			lastSampleTime = timeFix
 		}
 	}
 	if framesUsed <= 0 {
 		log.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
 		return
 	}
-	timediff := lastTime.Sub(ls.lastread)
-	ls.lastread = lastTime
+	timediff := lastSampleTime.Sub(ls.lastread)
+	ls.lastread = lastSampleTime
 
 	// Consume framesUsed frames of data from each channel.
 	// Careful! This slice of slices will be in lancero READOUT order:
 	// r0c0, r0c1, r0c2, etc.
-
 	datacopies := make([][]RawType, len(ls.output))
 	for i := range ls.output {
 		datacopies[i] = make([]RawType, framesUsed)
 	}
 
+	// TODO: Check for frame bits being correctly placed in the stream?
+
+	// TODO: Look for external trigger bits here, either once per card or once per column
+
+	// This loop is the demultiplexing step. Loop over devices, then frames,
+	// then data streams.
 	nchanPrevDevices := 0
 	for ibuf, dev := range ls.active {
 		buffer := buffers[ibuf]
@@ -493,14 +504,19 @@ func (ls *LanceroSource) distributeData() {
 		nchanPrevDevices += nchan
 	}
 
-	// Should look for external trigger bits here, either once per card or once per column
-	// Maybe check for frame bits in stream?
+	// Inform the driver to release the data we just consumed
+	totalBytes := 0
+	for _, dev := range ls.active {
+		release := framesUsed * dev.frameSize
+		dev.card.ReleaseBytes(release)
+		totalBytes += release
+	}
 
 	// Now send these data downstream. Here we permute data into the expected
 	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
 	// Backtrack to find the time associated with the first sample.
-	segDuration := time.Duration((framesUsed - 1) * roundint(1e9/ls.sampleRate))
-	firstTime := lastTime.Add(-segDuration)
+	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
+	firstTime := lastSampleTime.Add(-segDuration)
 	for channum, ch := range ls.output {
 		data := datacopies[ls.chan2readoutOrder[channum]]
 		if channum%2 == 1 { // feedback channel needs more processing
@@ -519,13 +535,6 @@ func (ls *LanceroSource) distributeData() {
 		ch <- seg
 	}
 	ls.nextFrameNum += FrameIndex(framesUsed)
-	// Inform the driver to release the data we just consumed
-	totalBytes := 0
-	for _, dev := range ls.active {
-		release := framesUsed * dev.frameSize
-		dev.card.ReleaseBytes(release)
-		totalBytes += release
-	}
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 			Time: timediff.Seconds()}

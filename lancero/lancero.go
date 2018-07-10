@@ -25,7 +25,7 @@ type Lanceroer interface {
 	StartCollector(bool) error
 	StopCollector() error
 	Wait() (time.Time, time.Duration, error)
-	AvailableBuffers() ([]byte, error)
+	AvailableBuffers() ([]byte, time.Time, error)
 	ReleaseBytes(int) error
 	InspectAdapter() uint32
 }
@@ -124,7 +124,7 @@ func (lan *Lancero) Wait() (time.Time, time.Duration, error) {
 }
 
 // AvailableBuffers returns a COPY OF the ring buffer segment now ready for reading.
-func (lan *Lancero) AvailableBuffers() ([]byte, error) {
+func (lan *Lancero) AvailableBuffers() ([]byte, time.Time, error) {
 	return lan.adapter.availableBuffers()
 }
 
