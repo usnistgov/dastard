@@ -10,6 +10,7 @@ import (
 	"github.com/usnistgov/dastard/getbytes"
 	"github.com/usnistgov/dastard/ljh"
 	"github.com/usnistgov/dastard/off"
+	"gonum.org/v1/gonum/mat"
 
 	czmq "github.com/zeromq/goczmq"
 )
@@ -42,15 +43,18 @@ func (dp *DataPublisher) SetPause(pause bool) {
 }
 
 // SetOFF adds an OFF writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
-func (dp *DataPublisher) SetOFF(ChanNum int, Timebase float64,
-	NumberOfRows int, NumberOfColumns int, NumberOfBases int, FileName string) {
-	w := off.Writer{ChanNum: ChanNum,
-		Timebase:        Timebase,
-		NumberOfRows:    NumberOfRows,
+func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
+	Timebase float64, TimestampOffset time.Time,
+	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
+	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
+	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string) {
+	ReadoutInfo := off.TimeDivisionMultiplexingInfo{NumberOfRows: NumberOfRows,
 		NumberOfColumns: NumberOfColumns,
-		FileName:        FileName,
-		NumberOfBases:   NumberOfBases}
-	dp.OFF = &w
+		NumberOfChans:   NumberOfChans,
+		ColumnNum:       colNum, RowNum: rowNum}
+	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
+		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo)
+	dp.OFF = w
 }
 
 // HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
@@ -209,7 +213,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	}
 	if dp.HasOFF() {
 		for _, record := range records {
-			if !dp.OFF.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
+			if !dp.OFF.HeaderWritten() { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
 				err := dp.OFF.CreateFile()
 				if err != nil {
@@ -217,19 +221,15 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 				}
 				dp.OFF.WriteHeader()
 			}
-			nano := record.trigTime.UnixNano()
-			data := make([]uint16, len(record.data))
-			for i, v := range record.data {
-				data[i] = uint16(v)
-			}
 			modelCoefs := make([]float32, len(record.modelCoefs))
 			for i, v := range record.modelCoefs {
 				modelCoefs[i] = float32(v)
 			}
-			dp.OFF.WriteRecord(record.presamples+1, int64(record.trigFrame), int64(nano)/1000, modelCoefs)
+			dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
+				float32(record.pretrigMean), float32(record.residualStdDev), modelCoefs)
 		}
 	}
-	if dp.HasLJH22() || dp.HasLJH3() {
+	if dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF() {
 		dp.numberWritten += len(records)
 	}
 	if dp.numberWrittenChan != nil {

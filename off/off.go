@@ -59,6 +59,8 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	writer.ChannelIndex = ChannelIndex
 	writer.ChannelName = ChannelName
 	writer.ChannelNumberMatchingName = ChannelNumberMatchingName
+	writer.FileFormat = "OFF"
+	writer.FileFormatVersion = "0.1.0"
 	writer.MaxPresamples = MaxPresamples
 	writer.FramePeriodSeconds = FramePeriodSeconds
 	writer.NumberOfBases, _ = Projectors.Dims()
@@ -80,16 +82,16 @@ type ModelInfo struct {
 
 // ArrayJsoner aids in formatting arrays for writing to JSON
 type ArrayJsoner struct {
-	Float64ValuesBase64 string
-	Rows                int
-	Cols                int
+	RowMajorFloat64ValuesBase64 string
+	Rows                        int
+	Cols                        int
 }
 
 // NewArrayJsoner creates an ArrayJsoner from a mat.Dense
 func NewArrayJsoner(array *mat.Dense) *ArrayJsoner {
 	v := new(ArrayJsoner)
 	v.Rows, v.Cols = array.Dims()
-	v.Float64ValuesBase64 = base64.StdEncoding.EncodeToString(getbytes.FromSliceFloat64(array.RawMatrix().Data))
+	v.RowMajorFloat64ValuesBase64 = base64.StdEncoding.EncodeToString(getbytes.FromSliceFloat64(array.RawMatrix().Data))
 	return v
 }
 
@@ -108,6 +110,11 @@ type TimeDivisionMultiplexingInfo struct {
 	NumberOfChans   int
 	ColumnNum       int
 	RowNum          int
+}
+
+// HeaderWritten returns true if header has been written.
+func (w *Writer) HeaderWritten() bool {
+	return w.headerWritten
 }
 
 // WriteHeader writes a header to the file
