@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"testing"
+	"time"
 )
 
 func TestPublishData(t *testing.T) {
@@ -17,51 +18,61 @@ func TestPublishData(t *testing.T) {
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
-	dp.SetLJH22(1, 4, len(d), 1, 1, 8, 1, "TestPublishData.ljh")
+	startTime := time.Now()
+	dp.SetLJH22(1, 4, len(d), 1, 1, startTime, 8, 1, 16, 3, 0,
+		"TestPublishData.ljh", "testSource", "chanX", 1)
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
 	if dp.LJH22.RecordsWritten != 3 {
 		t.Fail()
 	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishData to increment numberWritten with LJH22 enabled")
+	}
 	if !dp.HasLJH22() {
-		t.Error("HasLJH22 want true, have", dp.HasLJH22())
+		t.Error("HasLJH22() false, want true")
 	}
 	dp.RemoveLJH22()
 	if dp.HasLJH22() {
-		t.Error("HasLJH22 want false, have", dp.HasLJH22())
+		t.Error("HasLJH22() true, want false")
+	}
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveLJH22 to set numberWritten to 0")
 	}
 
 	if dp.HasPubRecords() {
-		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
+		t.Error("HasPubRecords() true, want false")
 	}
 	dp.SetPubRecords()
 
 	if !dp.HasPubRecords() {
-		t.Error("HasPubRecords want true, have", dp.HasPubRecords())
+		t.Error("HasPubRecords() false, want true")
 	}
 
 	dp.PublishData(records)
-
+	if dp.numberWritten != 0 {
+		t.Errorf("expected PublishData to not increment numberWritten with only PubRecords enabled")
+	}
 	dp.RemovePubRecords()
 	if dp.HasPubRecords() {
-		t.Error("HasPubRecords want false, have", dp.HasPubRecords())
+		t.Error("HasPubRecords() true, want false")
 	}
 
 	if dp.HasPubSummaries() {
-		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+		t.Error("HasPubSummaries() true, want false")
 	}
 	dp.SetPubSummaries()
 
 	if !dp.HasPubSummaries() {
-		t.Error("HasPubSummaries want true, have", dp.HasPubSummaries())
+		t.Error("HasPubSummaries() false, want true")
 	}
 
 	dp.PublishData(records)
 
 	dp.RemovePubSummaries()
 	if dp.HasPubSummaries() {
-		t.Error("HasPubSummaries want false, have", dp.HasPubSummaries())
+		t.Error("HasPubSummaries() true, want false")
 	}
 
 	dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
@@ -71,13 +82,41 @@ func TestPublishData(t *testing.T) {
 	if dp.LJH3.RecordsWritten != 3 {
 		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
 	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishedData to increment numberWritten")
+	}
 	if !dp.HasLJH3() {
-		t.Error("HasLJH3 want true, have", dp.HasLJH3())
+		t.Error("HasLJH3() false, want true")
 	}
 	dp.RemoveLJH3()
-	if dp.HasLJH3() {
-		t.Error("HasLJH3 want false, have", dp.HasLJH3())
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveLJH3 to set numberWritten to 0")
 	}
+	if dp.HasLJH3() {
+		t.Error("HasLJH3() true, want false")
+	}
+
+	if err := configurePubRecordsSocket(); err == nil {
+		t.Error("it should be an error to configurePubRecordsSocket twice")
+	}
+	if err := configurePubSummariesSocket(); err == nil {
+		t.Error("it should be an error to configurePubSummariesSocket twice")
+	}
+
+	rec = &DataRecord{data: d, presamples: 4}
+	for i, signed := range []bool{false, true} {
+		(*rec).signed = signed
+		msg := messageRecords(rec)
+		header := msg[0]
+		dtype := header[3]
+		expect := []uint8{3, 2}
+		if dtype != expect[i] {
+			t.Errorf("messageRecords with signed=%t gives dtype=%d, want %d",
+				signed, dtype, expect[i])
+		}
+
+	}
+
 }
 
 func TestRawTypeToX(t *testing.T) {
@@ -86,19 +125,31 @@ func TestRawTypeToX(t *testing.T) {
 	encodedStr := hex.EncodeToString(b)
 	expectStr := "ffff0101cdab01ef45238967"
 	if encodedStr != expectStr {
-		t.Errorf("want %v, have %v", expectStr, encodedStr)
+		t.Errorf("hex.EncodeToString(rawTypeToBytes(d)) have %v, want %v", encodedStr, expectStr)
 	}
 	if len(b) != 2*len(d) {
-		t.Errorf("wrong length, have %v, want %v", len(b), len(d))
+		t.Errorf("rawTypeToBytes giveswrong length, have %v, want %v", len(b), len(d))
 	}
 	c := rawTypeToUint16(d)
 	expect := []uint16{0xFFFF, 0x0101, 0xABCD, 0xEF01, 0x2345, 0x6789}
+	if len(c) != len(expect) {
+		t.Errorf("rawTypeToUint16 length %d, want %d", len(c), len(expect))
+	}
 	for i, v := range expect {
 		if c[i] != v {
-			t.Errorf("want %v, have %v", v, c[i])
+			t.Errorf("rawTypeToUint16[%d] = %v, want %v", i, c[i], v)
 		}
 	}
 
+	d2 := bytesToRawType(b)
+	if len(d) != len(d2) {
+		t.Errorf("bytesToRawType length %d, want %d", len(d2), len(d))
+	}
+	for i, val := range d {
+		if d2[i] != val {
+			t.Errorf("bytesToRawType(b)[%d] = 0x%x, want 0x%x", i, d2[i], val)
+		}
+	}
 }
 
 func BenchmarkPublish(b *testing.B) {
@@ -114,6 +165,7 @@ func BenchmarkPublish(b *testing.B) {
 			b.SetBytes(int64(len(d) * 2 * len(records)))
 		}
 	}
+	startTime := time.Now()
 
 	b.Run("PubRecords", func(b *testing.B) {
 		dp := DataPublisher{}
@@ -129,7 +181,8 @@ func BenchmarkPublish(b *testing.B) {
 	})
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
-		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0,
+			"TestPublishData.ljh", "testSource", "chanX", 1)
 		defer dp.RemoveLJH22()
 		slowPart(b, dp, records)
 	})
@@ -145,7 +198,8 @@ func BenchmarkPublish(b *testing.B) {
 		defer dp.RemovePubRecords()
 		dp.SetPubSummaries()
 		defer dp.RemovePubSummaries()
-		dp.SetLJH22(0, 0, len(d), 0, 0, 0, 0, "TestPublishData.ljh")
+		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0,
+			"TestPublishData.ljh", "testSource", "chanX", 1)
 		defer dp.RemoveLJH22()
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
 		defer dp.RemoveLJH3()

@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/user"
 	"reflect"
+	"strings"
 	"time"
 
+	"github.com/spf13/viper"
 	czmq "github.com/zeromq/goczmq"
 )
 
@@ -21,9 +22,23 @@ type ClientUpdate struct {
 	state interface{}
 }
 
+func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
+	topic := reflect.TypeOf(update.state).String()
+	log.Printf("Message of type %s: %v\n", topic, string(message))
+
+	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
+	pubSocket.SendFrame(message, czmq.FlagNone)
+}
+
+var clientMessageChan chan ClientUpdate
+
+func init() {
+	clientMessageChan = make(chan ClientUpdate)
+}
+
 // RunClientUpdater forwards any message from its input channel to the ZMQ publisher socket
 // to publish any information that clients need to know.
-func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
+func RunClientUpdater(portstatus int) {
 	hostname := fmt.Sprintf("tcp://*:%d", portstatus)
 	pubSocket, err := czmq.NewPub(hostname)
 	if err != nil {
@@ -32,78 +47,100 @@ func RunClientUpdater(messages <-chan ClientUpdate, portstatus int) {
 	defer pubSocket.Destroy()
 
 	// Save the state to the standard saved-state file this often.
-	// TODO: change to time.Minute
-	savePeriod := time.Second * 3
-	saveStateTicker := time.NewTicker(savePeriod)
-	defer saveStateTicker.Stop()
+	savePeriod := time.Minute
+	saveStateRegularlyTicker := time.NewTicker(savePeriod)
+	defer saveStateRegularlyTicker.Stop()
+
+	// And also save state every time it's changed, but after a delay of this long.
+	saveDelayAfterChange := time.Second * 2
+	saveStateOnceTimer := time.NewTimer(saveDelayAfterChange)
 
 	// Here, store the last message of each type seen. Use when storing state.
-	lastMessages := make(map[string]string)
-
-	// Where do we store configuration dfiles?
-	u, err := user.Current()
-	if err != nil {
-		panic("user.Current error")
-	}
-	configDirname := u.HomeDir + "/.dastard/"
-	err = os.Mkdir(configDirname, os.FileMode(0775))
-	if err != nil && !os.IsExist(err) {
-		log.Println("Could not make ~/.dastard directory: ", err)
-		return
-	}
+	lastMessages := make(map[string]interface{})
+	lastMessageStrings := make(map[string]string)
 
 	for {
 		select {
-		case update := <-messages:
-			message, err := json.Marshal(update.state)
-			if err != nil {
+		case update := <-clientMessageChan:
+			if update.tag == "SENDALL" {
+				for k, v := range lastMessages {
+					publish(pubSocket, ClientUpdate{tag: k, state: v}, []byte(lastMessageStrings[k]))
+				}
 				continue
 			}
-			topic := reflect.TypeOf(update.state).String()
-			log.Printf("Here is message of type %s: %v\n", topic, string(message))
 
-			lastMessages[update.tag] = string(message)
-			pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
-			pubSocket.SendFrame(message, czmq.FlagNone)
-		case <-saveStateTicker.C:
-			saveState(configDirname, lastMessages)
+			// Send state to clients now.
+			message, err := json.Marshal(update.state)
+			if err == nil {
+				publish(pubSocket, update, message)
+			}
+
+			// Check if the state has changed; if so, remember the message for later
+			// (we'll need to broadcast it when a new client asks for a SENDALL).
+			// If it's also NOT on the no-save list, save to Viper config file after a delay.
+			// The delay allows us to accumulate many near-simultaneous changes then
+			// save only once.
+			updateString := string(message)
+			if lastMessageStrings[update.tag] != updateString {
+				lastMessages[update.tag] = update.state
+				lastMessageStrings[update.tag] = updateString
+
+				if _, ok := nosaveMessages[strings.ToLower((update.tag))]; !ok {
+					saveStateOnceTimer.Stop()
+					saveStateOnceTimer = time.NewTimer(saveDelayAfterChange)
+				}
+			}
+
+		case <-saveStateRegularlyTicker.C:
+			saveState(lastMessages)
+
+		case <-saveStateOnceTimer.C:
+			saveState(lastMessages)
 		}
 	}
 }
 
-func saveState(configDirname string, lastMessages map[string]string) {
-	fname := configDirname + "dastard.cfg"
-	tmpname := configDirname + "dastard.tmp"
-	bakname := configDirname + "dastard.cfg.bak"
-	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
+// nosaveMessages is a set of message names that you don't save, because they
+// contain no configuration that makes sense to preserve across runs of dastard.
+var nosaveMessages = map[string]struct{}{
+	"channelnames":  {},
+	"alive":         {},
+	"triggerrate":   {},
+	"numberwritten": {},
+}
 
-	fp, err := os.Create(tmpname)
+// saveState stores server configuration to the standard config file.
+func saveState(lastMessages map[string]interface{}) {
+
+	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
+	// Note that the nosaveMessages don't get into the lastMessages map.
+	for k, v := range lastMessages {
+		viper.Set(k, v)
+	}
+
+	mainname := viper.ConfigFileUsed()
+	tmpname := strings.Replace(mainname, ".yaml", ".tmp.yaml", 1)
+	bakname := mainname + ".bak"
+	err := viper.WriteConfigAs(tmpname)
 	if err != nil {
-		log.Println("Could not write dastard.cfg file: ", err)
+		log.Println("Could not store config file ", tmpname, ": ", err)
 		return
 	}
-	state, err := json.MarshalIndent(lastMessages, "", "    ")
-	if err != nil {
-		log.Println("Could not write convert dastard.cfg information to JSON: ", err)
-	} else {
-		fmt.Fprint(fp, string(state))
-	}
-	fp.Close()
 
 	// Move old config file to backup and new file to standard config name.
 	err = os.Remove(bakname)
 	if err != nil && !os.IsNotExist(err) {
-		log.Println("Could not remove backup file ", bakname, " even though it exists.")
-		log.Println(err)
+		log.Println("Could not remove backup file ", bakname, " even though it exists: ", err)
 		return
 	}
-	err = os.Rename(fname, bakname)
+	err = os.Rename(mainname, bakname)
 	if err != nil && !os.IsNotExist(err) {
 		log.Println("Could not save backup file: ", err)
 		return
 	}
-	err = os.Rename(tmpname, fname)
+	err = os.Rename(tmpname, mainname)
 	if err != nil {
-		log.Println("Could not update dastard.cfg file")
+		log.Printf("Could not update dastard config file %s", mainname)
 	}
+
 }

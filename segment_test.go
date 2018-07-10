@@ -181,7 +181,7 @@ func TestDecimation(t *testing.T) {
 			ch.DecimateAvgMode = useAvg
 			dcopy := make([]RawType, N)
 			copy(dcopy, data)
-			seg := &DataSegment{rawData: dcopy, framesPerSample: 1}
+			seg := &DataSegment{rawData: dcopy, framesPerSample: 1, signed: false}
 			ch.DecimateData(seg)
 			if seg.framesPerSample != decimation {
 				t.Errorf("DataChannel.DecimateData did not alter framesPerSample = %d, want %d",

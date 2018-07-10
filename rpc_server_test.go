@@ -1,17 +1,25 @@
 package dastard
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"os/user"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/viper"
+	"gonum.org/v1/gonum/mat"
 )
 
+const harrypotter int = 7
+
 func simpleClient() (*rpc.Client, error) {
-	serverAddress := fmt.Sprintf("localhost:%d", PortRPC)
+	serverAddress := fmt.Sprintf("localhost:%d", Ports.RPC)
 	retries := 5
 	wait := 10 * time.Millisecond
 	tries := 1
@@ -27,8 +35,9 @@ func simpleClient() (*rpc.Client, error) {
 	}
 }
 
-func TestOne(t *testing.T) {
+func TestServer(t *testing.T) {
 	client, err := simpleClient()
+	defer client.Close()
 	if err != nil {
 		t.Fatalf("Could not connect simpleClient() to RPC server")
 	}
@@ -50,7 +59,12 @@ func TestOne(t *testing.T) {
 		}
 	}
 
-	// Test a basic start and stop
+	// Test the viper config
+	if hp := viper.GetInt("harrypotter"); hp != harrypotter {
+		t.Errorf("viper.GetInt(%q) returns %d, want %d", "harrypotter", hp, harrypotter)
+	}
+
+	// Test a basic configuration
 	var okay bool
 	simConfig := SimPulseSourceConfig{
 		Nchan: 4, SampleRate: 10000.0, Pedestal: 3000.0,
@@ -71,12 +85,8 @@ func TestOne(t *testing.T) {
 		t.Errorf("Expected error calling SourceControl.Start(\"%s\") with wrong name, saw none", sourceName)
 	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
-	if err != nil {
-		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
-	}
-	if okay {
-		t.Errorf("SourceControl.Stop(\"%s\") returns okay, want !okay", sourceName)
+	if err == nil {
+		t.Errorf("expected error on Stopping when there is no active source")
 	}
 
 	// Try to start and stop with a sensible name
@@ -88,7 +98,25 @@ func TestOne(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
+	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	if err == nil {
+		t.Errorf("expected error when starting Source while a source is active")
+	}
+	dummy := ""
+	err = client.Call("SourceControl.SendAllStatus", &dummy, &okay)
+	if err != nil {
+		t.Error("Error calling SourceControl.SendAllStatus():", err)
+	}
 	time.Sleep(time.Millisecond * 400)
+	sizes := SizeObject{Nsamp: 800, Npre: 200}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	if err != nil {
+		t.Logf(err.Error())
+		t.Errorf("Error calling SourceControl.ConfigurePulseLengths(%v)", sizes)
+	}
+	if !okay {
+		t.Errorf("SourceControl.ConfigurePulseLengths(%v) returns !okay, want okay", sizes)
+	}
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Logf(err.Error())
@@ -96,6 +124,10 @@ func TestOne(t *testing.T) {
 	}
 	if !okay {
 		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
+	}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
+	if err == nil {
+		t.Errorf("Expected error calling SourceControl.ConfigurePulseLengths(%v) when source stopped, saw none", sizes)
 	}
 
 	// Configure, start, and stop a triangle server
@@ -122,11 +154,54 @@ func TestOne(t *testing.T) {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	time.Sleep(time.Millisecond * 400)
-	t.Log("Calling SourceControl.Stop")
+	rows := 5
+	cols := 1000
+	size := SizeObject{Nsamp: cols, Npre: cols / 4}
+	err = client.Call("SourceControl.ConfigurePulseLengths", &size, &okay)
+	if err != nil {
+		t.Error(err)
+	}
+	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
+	basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
+	projectorsBytes, err := projectors.MarshalBinary()
+	if err != nil {
+		t.Error(err)
+	}
+	basisBytes, err := basis.MarshalBinary()
+	if err != nil {
+		t.Error(err)
+	}
+	pbo := ProjectorsBasisObject{ProcessorIndex: 0,
+		ProjectorsBase64: base64.StdEncoding.EncodeToString(projectorsBytes),
+		BasisBase64:      base64.StdEncoding.EncodeToString(basisBytes)}
+
+	err = client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay)
+	if err != nil {
+		t.Error(err)
+	}
+	if !okay {
+		t.Errorf("SourceControl.ConfigureProjectorsBasis(\"%s\") returns !okay, want okay", sourceName)
+	}
+	mfo := MixFractionObject{0, 1.0}
+	if err1 := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err1 == nil {
+		t.Error("error on ConfigureMixFraction expected for non-mixable source")
+	}
+	tstate := FullTriggerState{ChanNumbers: []int{0, 1, 2}}
+	if err1 := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err1 != nil {
+		t.Error("error on ConfigureTriggers:", err)
+	}
+	for _, state := range []bool{false, true} {
+		if err1 := client.Call("SourceControl.CoupleFBToErr", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleFBToErr when non-Lancero source is active")
+		}
+		if err1 := client.Call("SourceControl.CoupleErrToFB", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleErrToFB when non-Lancero source is active")
+		}
+	}
+
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
-		t.Logf(err.Error())
-		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
+		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
 	}
 	if !okay {
 		t.Errorf("SourceControl.Stop(\"%s\") returns !okay, want okay", sourceName)
@@ -144,15 +219,113 @@ func TestOne(t *testing.T) {
 		t.Errorf("Expected error on server with SourceControl.ConfigureTriangleSource() when Nchan<1")
 	}
 
-	client.Close()
-	t.Log("Done with TestOne")
+	// here test all methods that expect an active source to make sure they error appropriatley
+	// otherwise you will get incomprehensible stack traces when they error unexpectedly
+	if err1 := client.Call("SourceControl.ConfigureProjectorsBasis", &pbo, &okay); err1 == nil {
+		t.Error("expected error on ConfigureProjectorsBasiswhen no source is active")
+	}
+	if err1 := client.Call("SourceControl.Stop", sourceName, &okay); err1 == nil {
+		t.Errorf("expected error stopping source when no source is active")
+	}
+	if err1 := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err1 == nil {
+		t.Error("expected error on ConfigureMixFraction when no source is active")
+	}
+	if err1 := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err1 == nil {
+		t.Error("expected error on ConfigureTriggers when no source is active")
+	}
+	for _, state := range []bool{false, true} {
+		if err1 := client.Call("SourceControl.CoupleFBToErr", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleFBToErr when no source is active")
+		}
+		if err1 := client.Call("SourceControl.CoupleErrToFB", &state, &okay); err1 == nil {
+			t.Error("expected error on CoupleErrToFB when no source is active")
+		}
+	}
+
+	// lancero source should fail
+	sourceName = "LanceroSource"
+	err = client.Call("SourceControl.Start", &sourceName, &okay)
+	if err != nil {
+		t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
+	}
+	if !okay {
+		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+	}
+}
+
+// verifyConfigFile checks that path/filename exists, and creates the directory
+// and file if it doesn't.
+func verifyConfigFile(path, filename string) error {
+	u, err := user.Current()
+	if err != nil {
+		return err
+	}
+	path = strings.Replace(path, "$HOME", u.HomeDir, 1)
+
+	// Create directory <path>, if needed
+	_, err = os.Stat(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		err = os.MkdirAll(path, 0775)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Create an empty file path/filename, if it doesn't exist.
+	fullname := fmt.Sprintf("%s/%s", path, filename)
+	_, err = os.Stat(fullname)
+	if os.IsNotExist(err) {
+		f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
+		if err != nil {
+			return err
+		}
+		f.Close()
+	}
+	return nil
+}
+
+// setupViper sets up the viper configuration manager: says where to find config
+// files and the filename and suffix. Sets some defaults.
+func setupViper() error {
+	viper.SetDefault("Verbose", false)
+
+	const path string = "$HOME/.dastard"
+	const filename string = "testconfig"
+	const suffix string = ".yaml"
+	if err := verifyConfigFile(path, filename+suffix); err != nil {
+		return err
+	}
+
+	viper.SetConfigName(filename)
+	viper.AddConfigPath(path)
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig() // Find and read the config file
+	if err != nil {             // Handle errors reading the config file
+		return fmt.Errorf("error reading config file: %s", err)
+	}
+
+	// Set up different ports for testing than you'd use otherwise
+	setPortnumbers(33000)
+
+	// Check config saving.
+	msg := make(map[string]interface{})
+	msg["HarryPotter"] = harrypotter
+	saveState(msg)
+	return nil
 }
 
 func TestMain(m *testing.M) {
+	// Find config file, creating it if needed, and read it.
+	if err := setupViper(); err != nil {
+		panic(err)
+	}
+
 	// call flag.Parse() here if TestMain uses flags
-	messageChan := make(chan ClientUpdate)
-	go RunClientUpdater(messageChan, PortStatus)
-	go RunRPCServer(messageChan, PortRPC)
+	go RunClientUpdater(Ports.Status)
+	go RunRPCServer(Ports.RPC)
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {

@@ -21,6 +21,7 @@ type acquireOptions struct {
 	output            string
 	simulate          bool
 	verify            bool
+	oddashtx          bool
 }
 
 var opt acquireOptions
@@ -38,6 +39,7 @@ func parseOptions() error {
 	flag.StringVar(&opt.output, "o", "", "output filename")
 	flag.BoolVar(&opt.simulate, "s", false, "simulate data (if false, read from fibers)")
 	flag.BoolVar(&verify, "verify", true, "verify simulated data (set false if using many channels)")
+	flag.BoolVar(&opt.oddashtx, "oddashtx", false, "print od -tx like output")
 	flag.Parse()
 	opt.mask = uint32(imask)
 	opt.verify = opt.simulate && verify
@@ -182,8 +184,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 	defer lan.StopCollector()
 	defer lan.InspectAdapter()
 
-	var buffers [][]byte
-	var totalBytes int
+	var buffer []byte
 
 	// Trap interrupts so we can cleanly exit the program
 	interruptCatcher := make(chan os.Signal, 1)
@@ -194,41 +195,39 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 		case <-interruptCatcher:
 			return
 		default:
-			err = lan.Wait()
+			_, _, err = lan.Wait()
 			if err != nil {
 				return
 			}
-			buffers, totalBytes, err = lan.AvailableBuffers()
+			buffer, err = lan.AvailableBuffers()
+			if opt.oddashtx {
+				fmt.Println(lancero.OdDashTX(buffer, 20))
+			}
+			totalBytes := len(buffer)
 			if err != nil {
 				return
 			}
-			log.Printf("Found %d buffers with %d total bytes", len(buffers), totalBytes)
-			if len(buffers) > 1 {
-				for _, b := range buffers {
-					log.Printf(" size %d,", len(b))
-				}
-			}
+			log.Printf("Found buffer with %d total bytes", totalBytes)
+			log.Printf(" size %d,", len(buffer))
 			log.Println()
 			lan.InspectAdapter()
 
 			if saveData {
 				bytesWritten := bytesRead
-				for _, b := range buffers {
-					if len(b) > 0 {
-						var n int
-						if len(b)+bytesWritten <= opt.nSamples*4 {
-							n, err = fd.Write(b)
-						} else {
-							nwrite := opt.nSamples*4 - bytesWritten
-							n, err = fd.Write(b[:nwrite])
-						}
-						if err != nil {
-							return
-						}
-						if n != len(b) {
-							err = fmt.Errorf("Wrote %d bytes, expected %d", n, len(b))
-							return
-						}
+				if len(buffer) > 0 {
+					var n int
+					if len(buffer)+bytesWritten <= opt.nSamples*4 {
+						n, err = fd.Write(buffer)
+					} else {
+						nwrite := opt.nSamples*4 - bytesWritten
+						n, err = fd.Write(buffer[:nwrite])
+					}
+					if err != nil {
+						return
+					}
+					if n != len(buffer) {
+						err = fmt.Errorf("Wrote %d bytes, expected %d", n, len(buffer))
+						return
 					}
 				}
 			}
@@ -236,22 +235,23 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			// Quit when read enough samples.
 			bytesRead += totalBytes
 			if opt.nSamples > 0 && opt.nSamples <= bytesRead/4 {
+
 				return
 			}
 
 			// Verify the simulated data, if simulated.
 			if opt.simulate && opt.verify {
-				for _, b := range buffers {
-					if ok := verifier.checkBuffer(b); !ok {
-						log.Println("Buffer did not verify.")
-						return
-					}
+				if ok := verifier.checkBuffer(buffer); !ok {
+					log.Println("Buffer did not verify.")
+					return
 				}
 			}
+
 			lan.ReleaseBytes(totalBytes)
 			log.Println()
 		}
 	}
+
 }
 
 func main() {

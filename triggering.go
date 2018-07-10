@@ -10,8 +10,12 @@ import (
 )
 
 type triggerList struct {
-	channum int
-	frames  []FrameIndex
+	channelIndex                  int
+	frames                        []FrameIndex
+	keyFrame                      FrameIndex
+	keyTime                       time.Time
+	sampleRate                    float64
+	lastFrameThatWillNeverTrigger FrameIndex
 }
 
 type edgeMultiStateType int
@@ -39,29 +43,30 @@ type TriggerState struct {
 	EdgeMultiMakeShortRecords        bool
 	EdgeMultiMakeContaminatedRecords bool
 	EdgeMultiVerifyNMonotone         int
-	EdgeMultiState                   edgeMultiStateType
-	EdgeMultiIPotential              FrameIndex
-	EdgeMultiILastInspected          FrameIndex
+	edgeMultiState                   edgeMultiStateType
+	edgeMultiIPotential              FrameIndex
+	edgeMultiILastInspected          FrameIndex
 
-	// TODO:  Noise info.
 	// TODO: group source/rx info.
 }
 
 // create a record using dsp.NPresamples and dsp.NSamples
 func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataRecord {
-	record := dsp.triggerAtSpecSamples(segment, i, dsp.NPresamples, dsp.NSamples)
+	record := dsp.triggerAtSpecificSamples(segment, i, dsp.NPresamples, dsp.NSamples)
 	return record
 }
 
 // create a record with NPresamples and NSamples passed as arguments
-func (dsp *DataStreamProcessor) triggerAtSpecSamples(segment *DataSegment, i int, NPresamples int, NSamples int) *DataRecord {
+func (dsp *DataStreamProcessor) triggerAtSpecificSamples(segment *DataSegment, i int, NPresamples int, NSamples int) *DataRecord {
 	data := make([]RawType, NSamples)
 	copy(data, segment.rawData[i-NPresamples:i+NSamples-NPresamples])
 	tf := segment.firstFramenum + FrameIndex(i)
 	tt := segment.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
-		channum: dsp.Channum, presamples: NPresamples, sampPeriod: sampPeriod}
+		channelIndex: dsp.channelIndex, signed: segment.signed,
+		voltsPerArb: segment.voltsPerArb,
+		presamples:  NPresamples, sampPeriod: sampPeriod}
 	return record
 }
 
@@ -167,10 +172,10 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 
 	var triggerInds []int
 	var iPotential, iLast, iFirst int
-	iPotential = int(dsp.EdgeMultiIPotential - segment.firstFramenum)
+	iPotential = int(dsp.edgeMultiIPotential - segment.firstFramenum)
 	iLast = ndata + dsp.NPresamples - dsp.NSamples + 1
-	if dsp.EdgeMultiState == verifying {
-		iFirst = dsp.NPresamples + int(dsp.EdgeMultiILastInspected-segment.firstFramenum)
+	if dsp.edgeMultiState == verifying {
+		iFirst = dsp.NPresamples + int(dsp.edgeMultiILastInspected-segment.firstFramenum)
 	} else {
 		iFirst = dsp.NPresamples
 	}
@@ -181,13 +186,13 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		panic(fmt.Sprintf("%v %v %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
 	}
 	for i := iFirst; i <= iLast; i++ {
-		switch dsp.EdgeMultiState {
+		switch dsp.edgeMultiState {
 		case searching:
 			diff := int32(raw[i]) - int32(raw[i-1])
 			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 				(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
 				iPotential = i
-				dsp.EdgeMultiState = verifying
+				dsp.edgeMultiState = verifying
 			}
 		case verifying:
 			// now we have a potenial trigger
@@ -212,14 +217,14 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 					}
 					triggerInds = append(triggerInds, iTrigger)
 				}
-				dsp.EdgeMultiState = searching
+				dsp.edgeMultiState = searching
 			} else if i-iPotential >= dsp.NSamples { // if it has been rising for a whole record, that won't be a useful pulse, so just to back to searching
-				dsp.EdgeMultiState = searching
+				dsp.edgeMultiState = searching
 			}
 		}
 	}
-	dsp.EdgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
-	dsp.EdgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
+	dsp.edgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
+	dsp.edgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
 	// fmt.Println("triggerInds", triggerInds)
 	var t, u, v, tFirst int
 	// t index of previous trigger
@@ -248,13 +253,13 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
 		//fmt.Println("i", i, "npre", npre, "npost", npost, "t", t, "u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 		if dsp.EdgeMultiMakeShortRecords {
-			newRecord := dsp.triggerAtSpecSamples(segment, u, npre, npre+npost)
+			newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
 			records = append(records, newRecord)
 		} else if dsp.EdgeMultiMakeContaminatedRecords {
-			newRecord := dsp.triggerAtSpecSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 			records = append(records, newRecord)
 		} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
-			newRecord := dsp.triggerAtSpecSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 			records = append(records, newRecord)
 		}
 
@@ -263,7 +268,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	if len(records) > 0 {
 		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
 	}
-	if dsp.EdgeMultiState == verifying {
+	if dsp.edgeMultiState == verifying {
 		// fmt.Println("dsp.NPresamples", dsp.NPresamples, "ndata", ndata, "iPotential", iPotential)
 		dsp.stream.TrimKeepingN(dsp.NPresamples + (ndata - iPotential) + 1) // +1 to account for maximum shift from kink model
 	} else {
@@ -280,8 +285,17 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 	raw := segment.rawData
 	ndata := len(raw)
 
+	// Solve the problem of signed data by shifting all values up by 2^15
+	if dsp.stream.signed {
+		raw = make([]RawType, ndata)
+		copy(raw, segment.rawData)
+		for i := 0; i < ndata; i++ {
+			raw[i] += 32768
+		}
+	}
+
 	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
-		diff := int32(raw[i]+raw[i-1]) - int32(raw[i-2]+raw[i-3])
+		diff := int32(raw[i]) + int32(raw[i-1]) - int32(raw[i-2]) - int32(raw[i-3])
 		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
 			newRecord := dsp.triggerAt(segment, i)
@@ -308,6 +322,17 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
 	}
 
+	// Solve the problem of signed data by shifting all values up by 2^15
+	threshold := dsp.LevelLevel
+	if dsp.stream.signed {
+		threshold += 32768
+		raw = make([]RawType, ndata)
+		copy(raw, segment.rawData)
+		for i := 0; i < ndata; i++ {
+			raw[i] += 32768
+		}
+	}
+
 	// Normal loop through all samples in triggerable range
 	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
 
@@ -322,11 +347,12 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
+			continue
 		}
 
 		// If you get here, a level trigger is permissible. Check for it.
-		if (dsp.LevelRising && raw[i] >= dsp.LevelLevel && raw[i-1] < dsp.LevelLevel) ||
-			(!dsp.LevelRising && raw[i] <= dsp.LevelLevel && raw[i-1] > dsp.LevelLevel) {
+		if (dsp.LevelRising && raw[i] >= threshold && raw[i-1] < threshold) ||
+			(!dsp.LevelRising && raw[i] <= threshold && raw[i-1] > threshold) {
 			newRecord := dsp.triggerAt(segment, i)
 			records = append(records, newRecord)
 		}
@@ -346,8 +372,8 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	npre := FrameIndex(dsp.NPresamples)
 
 	delaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
-	if delaySamples < 0 {
-		panic(fmt.Sprintf("delay samples=%v", delaySamples))
+	if delaySamples < nsamp {
+		delaySamples = nsamp
 	}
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
@@ -365,17 +391,13 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	// Loop through all potential trigger times.
 	for nextPotentialTrig+nsamp-npre < FrameIndex(ndata) {
 		if nextPotentialTrig+nsamp <= nextFoundTrig {
-			// auto trigger is allowed
+			// auto trigger is allowed: no conflict with previously found non-auto triggers
 			newRecord := dsp.triggerAt(segment, int(nextPotentialTrig))
 			records = append(records, newRecord)
-			if delaySamples >= nsamp {
-				nextPotentialTrig += delaySamples
-			} else {
-				nextPotentialTrig += nsamp
-			}
+			nextPotentialTrig += delaySamples
 
 		} else {
-			// auto trigger not allowed
+			// auto trigger not allowed: conflict with previously found non-auto triggers
 			nextPotentialTrig = nextFoundTrig + delaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
@@ -395,6 +417,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	if dsp.EdgeMulti {
 		// EdgeMulti does not play nice with other triggers!!
 		records = dsp.edgeMultiTriggerComputeAppend(records)
+		// TODO: need to make EdgeMulti compatible with group triggers.
+		// By returning here, we would cause everything to hang if any group trigger
+		// was turned on.
 		return
 	}
 
@@ -420,15 +445,20 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	// answer about when the secondary triggers are.
 
 	// Step 2a: prepare the primary trigger list from the DataRecord list
-	trigList := triggerList{channum: dsp.Channum}
+	trigList := triggerList{channelIndex: dsp.channelIndex}
 	trigList.frames = make([]FrameIndex, len(records))
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
 	}
+	trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
+	trigList.keyTime = dsp.stream.DataSegment.firstTime
+	trigList.sampleRate = dsp.SampleRate
+	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
+		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
 	dsp.Broker.PrimaryTrigs <- trigList
-	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.Channum]
+	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.channelIndex]
 	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
 		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
@@ -436,6 +466,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 
 	// leave one full possible trigger in the stream
 	// trigger algorithms should not inspect the last NSamples samples
+	// fmt.Printf("Trimmed. %7d samples remain (requested %7d)\n", dsp.stream.TrimKeepingN(dsp.NSamples), dsp.NSamples)
 	dsp.stream.TrimKeepingN(dsp.NSamples)
 	return
 }

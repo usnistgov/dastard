@@ -1,7 +1,7 @@
 package dastard
 
 import (
-	"log"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -11,7 +11,8 @@ import (
 
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
-	Channum              int
+	channelIndex         int
+	Name                 string
 	Broker               *TriggerBroker
 	NSamples             int
 	NPresamples          int
@@ -33,35 +34,35 @@ type DataStreamProcessor struct {
 }
 
 // RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
-func (dsp *DataStreamProcessor) RemoveProjectorsBasis() {
+// Lock dsp.changeMutex before calling this function, it will not lock on its own.
+func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
 }
 
-// SetProjectorsBasis sets .projectors and .basis to the arguments, panics if the sizes are not right
-func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) {
+// SetProjectorsBasis sets .projectors and .basis to the arguments, returns an error if the sizes are not right
+func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
+	dsp.changeMutex.Lock()
+	defer dsp.changeMutex.Unlock()
 	if dsp.NSamples != cols {
-		log.Println("projectors has wrong size, rows: ", rows, " cols: ", cols)
-		log.Println("should have cols: ", dsp.NSamples)
-		panic("")
+		return fmt.Errorf("projectors has wrong size, rows: %v, cols: %v, want cols: %v", rows, cols, dsp.NSamples)
 	}
 	brows, bcols := basis.Dims()
 	if bcols != nbases {
-		log.Println("basis has wrong size, has cols: ", bcols, "should have cols: ", nbases)
-		panic("")
+		return fmt.Errorf("basis has wrong size, has cols: %v, want: %v", bcols, nbases)
 	}
 	if brows != dsp.NSamples {
-		log.Println("basis has wrong size, has rows: ", brows, "should have rows: ", dsp.NSamples)
-		panic("")
+		return fmt.Errorf("basis has wrong size, has rows: %v, want: %v", brows, dsp.NSamples)
 	}
 	dsp.projectors = projectors
 	dsp.basis = basis
+	return nil
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
-func NewDataStreamProcessor(channum int, broker *TriggerBroker) *DataStreamProcessor {
+func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWrittenChan chan int) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
 	framesPerSample := 1
 	firstFrame := FrameIndex(0)
@@ -70,9 +71,10 @@ func NewDataStreamProcessor(channum int, broker *TriggerBroker) *DataStreamProce
 	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
 	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
 	npre := 256   // TODO: figure out what this ought to be, or make an argument
-	dsp := DataStreamProcessor{Channum: channum, Broker: broker,
+	dsp := DataStreamProcessor{channelIndex: channelIndex, Broker: broker,
 		stream: *stream, NSamples: nsamp, NPresamples: npre,
 	}
+	dsp.DataPublisher.numberWrittenChan = numberWrittenChan
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
@@ -89,6 +91,7 @@ type DecimateState struct {
 }
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
+// Also removes any existing projectors and basis.
 func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	if nsamp <= npre+1 || npre < 3 {
 		return
@@ -98,6 +101,7 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
+	dsp.removeProjectorsBasis()
 }
 
 // ConfigureTrigger sets this stream's trigger state.
@@ -121,14 +125,10 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	records, secondaries := dsp.TriggerData()
-	if len(records)+len(secondaries) > 0 {
-		// log.Printf("Chan %d Found %d triggered records, %d secondary records.\n",
-		// 	dsp.Channum, len(records), len(secondaries))
-	}
-	dsp.AnalyzeData(records) // add analysis results to records in-place
-	// TODO: dsp.WriteData(records)
-	dsp.DataPublisher.PublishData(records)
+	// records, secondaries := dsp.TriggerData()
+	records, _ := dsp.TriggerData()
+	dsp.AnalyzeData(records)               // add analysis results to records in-place
+	dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
 }
 
 // DecimateData decimates data in-place.
@@ -141,21 +141,39 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 	Nout := (Nin - 1 + dsp.DecimateLevel) / dsp.DecimateLevel
 	if dsp.DecimateAvgMode {
 		level := dsp.DecimateLevel
-		for i := 0; i < Nout-1; i++ {
-			val := float64(data[i*level])
-			for j := 1; j < level; j++ {
-				val += float64(data[j+i*level])
+		cdata := make([]float64, Nout)
+		if segment.signed {
+			for i := 0; i < Nin; i++ {
+				j := i / level
+				cdata[j] += float64(int16(data[i]))
 			}
-			data[i] = RawType(val/float64(level) + 0.5)
+		} else {
+			for i := 0; i < Nin; i++ {
+				j := i / level
+				cdata[j] += float64(data[i])
+			}
 		}
-		val := float64(data[(Nout-1)*level])
-		count := 1.0
-		for j := (Nout-1)*level + 1; j < Nin; j++ {
-			val += float64(data[j])
-			count++
+		if Nout*dsp.DecimateLevel < Nin {
+			extra := Nin % level
+			cdata[Nout-1] *= float64(level) / float64(extra)
 		}
-		data[Nout-1] = RawType(val/count + 0.5)
+
+		if segment.signed {
+			for i := 0; i < Nout; i++ {
+				// Trick for rounding to int16: don't let any numbers be negative
+				// because float->int is a truncation operation. If we remove the
+				// +65536 below, then 0 will be a "rounding attractor".
+				data[i] = RawType(int16(cdata[i]/float64(level) + 65536 + 0.5))
+			}
+
+		} else {
+			for i := 0; i < Nout; i++ {
+				data[i] = RawType(cdata[i]/float64(level) + 0.5)
+			}
+		}
+
 	} else {
+		// Decimate by dropping data
 		for i := 0; i < Nout; i++ {
 			data[i] = data[i*dsp.DecimateLevel]
 		}
@@ -172,24 +190,35 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 	var modelFull mat.VecDense
 	var residual mat.VecDense
 	for _, rec := range records {
-		var val float64
-		for i := 0; i < rec.presamples; i++ {
-			val += float64(rec.data[i])
-		}
-		ptm := val / float64(rec.presamples)
-
-		max := rec.data[rec.presamples]
-		var sum, sum2 float64
-		for i := rec.presamples; i < len(rec.data); i++ {
-			val = float64(rec.data[i])
-			sum += val
-			sum2 += val * val
-			if rec.data[i] > max {
-				max = rec.data[i]
+		dataVec := *mat.NewVecDense(len(rec.data), make([]float64, len(rec.data)))
+		if rec.signed {
+			for i, v := range rec.data {
+				dataVec.SetVec(i, float64(int16(v)))
+			}
+		} else {
+			for i, v := range rec.data {
+				dataVec.SetVec(i, float64(v))
 			}
 		}
+
+		var val float64
+		for i := 0; i < rec.presamples; i++ {
+			val += dataVec.AtVec(i)
+		}
+		ptm := val / float64(rec.presamples)
 		rec.pretrigMean = ptm
-		rec.peakValue = float64(max) - rec.pretrigMean
+
+		max := ptm
+		var sum, sum2 float64
+		for i := rec.presamples; i < len(rec.data); i++ {
+			val = dataVec.AtVec(i)
+			sum += val
+			sum2 += val * val
+			if val > max {
+				max = val
+			}
+		}
+		rec.peakValue = max - ptm
 
 		N := float64(len(rec.data) - rec.presamples)
 		rec.pulseAverage = sum/N - ptm
@@ -204,10 +233,6 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			projectors := &dsp.projectors
 			basis := &dsp.basis
 
-			dataVec := *mat.NewVecDense(len(rec.data), make([]float64, len(rec.data)))
-			for i, v := range rec.data {
-				dataVec.SetVec(i, float64(v))
-			}
 			modelCoefs.MulVec(projectors, &dataVec)
 			modelFull.MulVec(basis, &modelCoefs)
 			residual.SubVec(&dataVec, &modelFull)
@@ -222,7 +247,6 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			rec.residualStdDev = stdDev(residualSlice)
 		}
 	}
-
 }
 
 // return the uncorrected std deviation of a float slice

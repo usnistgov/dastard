@@ -20,9 +20,12 @@ func TestStdDev(t *testing.T) {
 		t.Errorf("stdDev returned incorrect result")
 	}
 	z := []float64{-1.0, 1.0}
-	zSstdDev := stdDev(z)
-	if zSstdDev != 1.0 {
+	zStdDev := stdDev(z)
+	if zStdDev != 1.0 {
 		t.Errorf("stdDev returned incorrect result")
+	}
+	if !math.IsNaN(stdDev([]float64{})) {
+		t.Error("stdDev should return NaN for a length-0 input")
 	}
 }
 
@@ -40,6 +43,21 @@ func TestAnalyze(t *testing.T) {
 		ModelCoefs:     nil,
 		PTM:            10.0, Avg: 5.0, Max: 10.0, RMS: 5.84522597225006}
 	testAnalyzeCheck(t, rec, expect, "Analyze A")
+
+	dsp.ConfigurePulseLengths(1, 0) // this is supposed to be ignored
+	if dsp.NPresamples != 4 || dsp.NSamples != len(d) {
+		t.Errorf("ConfigurePulseLengths(1,0) yields (%d, %d), want (%d, %d)",
+			dsp.NSamples, dsp.NPresamples, len(d), 4)
+	}
+
+	tstate := TriggerState{EdgeTrigger: true, EdgeLevel: 123}
+	dsp.ConfigureTrigger(tstate) // for fuller test coverage
+	if !dsp.EdgeTrigger {
+		t.Error("EdgeTrigger is off, want on")
+	}
+	if dsp.EdgeLevel != 123 {
+		t.Errorf("EdgeLevel = %d, want 123", dsp.EdgeLevel)
+	}
 }
 
 type RTExpect struct {
@@ -70,7 +88,9 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0, 1, 0,
 			0, 0, 1,
 			0, 0, 0})
-	dsp.SetProjectorsBasis(*projectors3, *basis3)
+	if err := dsp.SetProjectorsBasis(*projectors3, *basis3); err != nil {
+		t.Error(err)
+	}
 	dsp.AnalyzeData(records)
 
 	// residual should be [0,0,0,4]
@@ -90,7 +110,9 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0,
 			0,
 			0})
-	dsp.SetProjectorsBasis(*projectors1, *basis1)
+	if err := dsp.SetProjectorsBasis(*projectors1, *basis1); err != nil {
+		t.Error(err)
+	}
 	dsp.AnalyzeData(records)
 	// residual should be [0,2,3,4]
 	expect = RTExpect{
@@ -102,7 +124,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 1}
 	records = []*DataRecord{rec}
-	dsp.RemoveProjectorsBasis()
+	dsp.removeProjectorsBasis()
 	dsp.AnalyzeData(records)
 	expect = RTExpect{
 		ResidualStdDev: 0,
@@ -113,7 +135,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 0}
 	records = []*DataRecord{rec}
-	dsp.RemoveProjectorsBasis()
+	dsp.removeProjectorsBasis()
 	dsp.AnalyzeData(records)
 	expect = RTExpect{
 		ResidualStdDev: 0,
@@ -156,6 +178,99 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 	}
 }
 
+func TestDataSignedness(t *testing.T) {
+	// Make sure PrepareRun produces the right answers.
+	var ts TriangleSource
+	ts.nchan = 4
+	ts.PrepareRun()
+	for i, dsp := range ts.processors {
+		expect := false
+		if dsp.stream.signed != expect {
+			t.Errorf("LanceroSource.processors[%d].stream.signed is %t, want %t", i, dsp.stream.signed, expect)
+		}
+	}
+
+	// TODO: use a no-hardware source to test this!
+	var ls LanceroSource
+	ls.nchan = 4
+	ls.signed = make([]bool, ls.nchan)
+	for i := 0; i < ls.nchan; i += 2 {
+		ls.signed[i] = true
+	}
+	ls.PrepareRun()
+	for i, dsp := range ls.processors {
+		expect := (i % 2) == 0
+		if dsp.stream.signed != expect {
+			t.Errorf("LanceroSource.processors[%d].stream.signed is %t, want %t", i, dsp.stream.signed, expect)
+		}
+	}
+
+	errsig := []RawType{3, 3, 1, 1, 65535, 65535, 65533, 65533,
+		65533, 65535, 65535, 1, 1, 3, 65535, 1, 65530, 6, 65500, 36}
+	data := make([]RawType, len(errsig))
+	copy(data, errsig)
+	seg := &DataSegment{rawData: data}
+	dsp := NewDataStreamProcessor(0, nil, nil)
+	dsp.DecimateLevel = 2
+	dsp.Decimate = true
+	dsp.DecimateAvgMode = true
+	seg.signed = false
+	dsp.DecimateData(seg)
+	expectU := []RawType{3, 1, 65535, 65533, 65534, 32768, 2, 32768, 32768, 32768}
+	for i, e := range expectU {
+		if seg.rawData[i] != e {
+			t.Errorf("DecimateData unsigned-> seg[%d]=%d, want %d", i, seg.rawData[i], e)
+		}
+	}
+	data = make([]RawType, len(errsig))
+	copy(data, errsig)
+	seg = &DataSegment{rawData: data}
+	seg.signed = true
+	dsp.DecimateData(seg)
+	expectS := []RawType{3, 1, 65535, 65533, 65534, 0, 2, 0, 0, 0}
+	for i, e := range expectS {
+		if seg.rawData[i] != e {
+			t.Errorf("DecimateData signed -> seg[%d]=%d, want %d", i, seg.rawData[i], e)
+		}
+	}
+
+	// AnalyzeData on a signed record
+	d := []RawType{65535, 65535, 65535, 2, 5} // as ints: {-1, -1, -1, 2, 5}
+	rec := &DataRecord{data: d, presamples: 2}
+	records := []*DataRecord{rec}
+	type AnalyzeTests struct {
+		name   string
+		value  float64
+		expect float64
+	}
+
+	rec.signed = false
+	dsp.AnalyzeData(records)
+	testsU := []AnalyzeTests{
+		{"pretrigger mean", rec.pretrigMean, 65535.0},
+		{"peak", rec.peakValue, 0.0},
+		{"pulse average", rec.pulseAverage, -43687.666667},
+	}
+	for _, x := range testsU {
+		if math.Abs(x.value-x.expect) > 1e-5 {
+			t.Errorf("AnalyzeData unsigned -> %s = %f, want %f", x.name, x.value, x.expect)
+		}
+	}
+
+	rec.signed = true
+	dsp.AnalyzeData(records)
+	testsS := []AnalyzeTests{
+		{"pretrigger mean", rec.pretrigMean, -1.0},
+		{"peak", rec.peakValue, 6.0},
+		{"pulse average", rec.pulseAverage, 3.0},
+	}
+	for _, x := range testsS {
+		if math.Abs(x.value-x.expect) > 1e-5 {
+			t.Errorf("AnalyzeData signed -> %s = %f, want %f", x.name, x.value, x.expect)
+		}
+	}
+}
+
 func BenchmarkAnalyze(b *testing.B) {
 	benchmarks := []struct {
 		nsamples    int
@@ -189,7 +304,9 @@ func BenchmarkAnalyze(b *testing.B) {
 			if bm.nbases > 0 {
 				projectors := mat.NewDense(bm.nbases, bm.nsamples, make([]float64, bm.nbases*bm.nsamples))
 				basis := mat.NewDense(bm.nsamples, bm.nbases, make([]float64, bm.nbases*bm.nsamples))
-				dsp.SetProjectorsBasis(*projectors, *basis)
+				if err := dsp.SetProjectorsBasis(*projectors, *basis); err != nil {
+					b.Error(err)
+				}
 			}
 			b.ResetTimer()
 			dsp.AnalyzeData(records)

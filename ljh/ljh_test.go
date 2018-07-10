@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestRead(t *testing.T) {
@@ -25,7 +26,7 @@ func TestRead(t *testing.T) {
 		found int
 		want  int
 	}{
-		{"r.ChanNum", r.ChanNum, 11},
+		{"r.ChannelIndex", r.ChannelIndex, 11},
 		{"r.Presamples", r.Presamples, 256},
 		{"r.Samples", r.Samples, 1024},
 		{"r.VersionNumber", int(r.VersionNumber), int(Version2_2)},
@@ -119,7 +120,7 @@ func TestWriter(t *testing.T) {
 	if w.HeaderWritten {
 		t.Error("TestWriter: header written should be false")
 	}
-	err = w.WriteHeader()
+	err = w.WriteHeader(time.Now())
 	if !w.HeaderWritten {
 		t.Error("TestWriter: header written should be true")
 	}
@@ -164,6 +165,18 @@ func TestWriter(t *testing.T) {
 	}
 	if record.RowCount != 8888888 {
 		t.Errorf("WriterTest, RowCount Wrong, have %v, want %v", record.RowCount, 8888888)
+	}
+	w.SourceName = "Lancero"
+	w.WriteHeader(time.Now())
+
+	if err1 := w.CreateFile(); err1 == nil {
+		t.Errorf("tried to create an existing file did not raise error")
+	}
+	w = Writer{FileName: "/doesnt_exist/notpermitted",
+		Samples:    100,
+		Presamples: 50}
+	if err1 := w.CreateFile(); err1 == nil {
+		t.Errorf("creation of unallowed file did not raise error")
 	}
 
 }
@@ -226,7 +239,7 @@ func BenchmarkLJH22(b *testing.B) {
 		Samples:    1000,
 		Presamples: 50}
 	w.CreateFile()
-	w.WriteHeader()
+	w.WriteHeader(time.Now())
 	data := make([]uint16, 1000)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

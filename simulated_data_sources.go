@@ -20,6 +20,7 @@ type TriangleSource struct {
 // NewTriangleSource creates a new TriangleSource.
 func NewTriangleSource() *TriangleSource {
 	ts := new(TriangleSource)
+	ts.name = "Triangle"
 	return ts
 }
 
@@ -35,24 +36,31 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 	if config.Nchan < 1 {
 		return fmt.Errorf("TriangleSource.Configure() asked for %d channels, should be > 0", config.Nchan)
 	}
+	ts.runMutex.Lock()
+	defer ts.runMutex.Unlock()
+	if config.Min > config.Max {
+		return fmt.Errorf("have config.Min=%v > config.Max=%v, want Min<Max", config.Min, config.Max)
+	}
+	nrise := config.Max - config.Min
+	if nrise > 0 {
+		ts.cycleLen = 2 * int(nrise)
+		ts.onecycle = make([]RawType, ts.cycleLen)
+		var i RawType
+		for i = 0; i < nrise; i++ {
+			ts.onecycle[i] = config.Min + i
+			ts.onecycle[int(i)+int(nrise)] = config.Max - i
+		}
+	} else if nrise == 0 {
+		ts.cycleLen = roundint(ts.sampleRate/10) + 1 // aim for 10 cycles/second
+		ts.onecycle = make([]RawType, ts.cycleLen)
+		for i := range ts.onecycle {
+			ts.onecycle[i] = config.Max
+		}
+	}
 	ts.nchan = config.Nchan
 	ts.sampleRate = config.SampleRate
 	ts.minval = config.Min
 	ts.maxval = config.Max
-
-	ts.output = make([]chan DataSegment, ts.nchan)
-	for i := 0; i < ts.nchan; i++ {
-		ts.output[i] = make(chan DataSegment, 1)
-	}
-
-	nrise := ts.maxval - ts.minval
-	ts.cycleLen = 2 * int(nrise)
-	ts.onecycle = make([]RawType, ts.cycleLen)
-	var i RawType
-	for i = 0; i < nrise; i++ {
-		ts.onecycle[i] = ts.minval + i
-		ts.onecycle[int(i)+int(nrise)] = ts.maxval - i
-	}
 	cycleTime := float64(ts.cycleLen) / ts.sampleRate
 	ts.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
 	return nil
@@ -61,32 +69,51 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 // Sample determines key data facts by sampling some initial data.
 // It's a no-op for simulated (software) sources
 func (ts *TriangleSource) Sample() error {
-	return nil
-}
-
-// StartRun tells the hardware to switch into data streaming mode.
-// It's a no-op for simulated (software) sources
-func (ts *TriangleSource) StartRun() error {
+	ts.chanNames = make([]string, ts.nchan)
+	ts.chanNumbers = make([]int, ts.nchan)
+	ts.signed = make([]bool, ts.nchan)
+	ts.rowColCodes = make([]RowColCode, ts.nchan)
+	for i := 0; i < ts.nchan; i++ {
+		ts.chanNames[i] = fmt.Sprintf("chan%d", i+1)
+		ts.chanNumbers[i] = i + 1
+	}
 	return nil
 }
 
 // blockingRead blocks and then reads data when "enough" is ready.
 func (ts *TriangleSource) blockingRead() error {
+	ts.runMutex.Lock()
+	defer ts.runMutex.Unlock()
 	nextread := ts.lastread.Add(ts.timeperbuf)
 	waittime := time.Until(nextread)
+	var now time.Time
 	select {
 	case <-ts.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
-		ts.lastread = time.Now()
+		now = time.Now()
+		if ts.heartbeats != nil {
+			dt := now.Sub(ts.lastread).Seconds()
+			mb := float64(ts.cycleLen*2*len(ts.output)) / 1e6
+			ts.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
+		}
+		ts.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
 	}
 
+	// Backtrack to find the time associated with the first sample.
+	firstTime := now.Add(-ts.timeperbuf) // use now here, this should acutually correspond to the time the data was read
 	for _, ch := range ts.output {
 		datacopy := make([]RawType, ts.cycleLen)
 		copy(datacopy, ts.onecycle)
-		seg := DataSegment{rawData: datacopy, framesPerSample: 1}
+		seg := DataSegment{
+			rawData:         datacopy,
+			framesPerSample: 1,
+			firstFramenum:   ts.nextFrameNum,
+			firstTime:       firstTime,
+		}
 		ch <- seg
 	}
+	ts.nextFrameNum += FrameIndex(ts.cycleLen)
 
 	return nil
 }
@@ -104,8 +131,7 @@ type SimPulseSource struct {
 // NewSimPulseSource creates a new SimPulseSource with given size, speed.
 func NewSimPulseSource() *SimPulseSource {
 	ps := new(SimPulseSource)
-
-	// At this point, there are no invariants to enforce
+	ps.name = "SimPulse"
 	return ps
 }
 
@@ -126,11 +152,6 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	sps.nchan = config.Nchan
 	sps.sampleRate = config.SampleRate
 
-	sps.output = make([]chan DataSegment, sps.nchan)
-	for i := 0; i < sps.nchan; i++ {
-		sps.output[i] = make(chan DataSegment, 1)
-	}
-
 	sps.cycleLen = config.Nsamp
 	firstIdx := 5
 	sps.onecycle = make([]RawType, sps.cycleLen)
@@ -149,7 +170,7 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 
 	cycleTime := float64(sps.cycleLen) / sps.sampleRate
 	sps.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
-	// log.Printf("made a simulated pulse source for %d channels.\n", nchan)
+	// log.Printf("made a simulated pulse source for %d channels.\n", sps.nchan)
 	// log.Printf("configured with wait time of %v\n", sps.timeperbuf)
 	return nil
 }
@@ -157,35 +178,53 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 // Sample determines key data facts by sampling some initial data.
 // It's a no-op for simulated (software) sources
 func (sps *SimPulseSource) Sample() error {
-	return nil
-}
-
-// StartRun tells the hardware to switch into data streaming mode.
-// It's a no-op for simulated (software) sources
-func (sps *SimPulseSource) StartRun() error {
+	sps.chanNames = make([]string, sps.nchan)
+	sps.chanNumbers = make([]int, sps.nchan)
+	sps.signed = make([]bool, sps.nchan)
+	sps.rowColCodes = make([]RowColCode, sps.nchan)
+	for i := 0; i < sps.nchan; i++ {
+		sps.chanNames[i] = fmt.Sprintf("chan%d", i+1)
+		sps.chanNumbers[i] = i + 1
+	}
 	return nil
 }
 
 // blockingRead blocks and then reads data when "enough" is ready.
 func (sps *SimPulseSource) blockingRead() error {
+	sps.runMutex.Lock()
+	defer sps.runMutex.Unlock()
 	nextread := sps.lastread.Add(sps.timeperbuf)
 	waittime := time.Until(nextread)
+	var now time.Time
 	select {
 	case <-sps.abortSelf:
 		return io.EOF
 	case <-time.After(waittime):
-		sps.lastread = time.Now()
+		now = time.Now()
+		if sps.heartbeats != nil {
+			dt := now.Sub(sps.lastread).Seconds()
+			mb := float64(sps.cycleLen*2*len(sps.output)) / 1e6
+			sps.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
+		}
+		sps.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
 	}
 
+	// Backtrack to find the time associated with the first sample.
+	firstTime := now.Add(-sps.timeperbuf) // use now for accurate sample time
 	for _, ch := range sps.output {
 		datacopy := make([]RawType, sps.cycleLen)
 		copy(datacopy, sps.onecycle)
 		for i := 0; i < sps.cycleLen; i++ {
 			datacopy[i] += RawType(rand.Intn(21) - 10)
 		}
-		seg := DataSegment{rawData: datacopy, framesPerSample: 1}
+		seg := DataSegment{
+			rawData:         datacopy,
+			framesPerSample: 1,
+			firstFramenum:   sps.nextFrameNum,
+			firstTime:       firstTime,
+		}
 		ch <- seg
 	}
-
+	sps.nextFrameNum += FrameIndex(sps.cycleLen)
 	return nil
 }
