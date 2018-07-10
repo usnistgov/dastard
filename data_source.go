@@ -114,14 +114,15 @@ func rcCode(row, col, rows, cols int) RowColCode {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan        int          // how many channels to provide
-	name         string       // what kind of source is this?
-	chanNames    []string     // one name per channel
-	chanNumbers  []int        // names have format "prefixNumber", this is the number
-	rowColCodes  []RowColCode // one RowColCode per channel
-	signed       []bool       // is the raw data signed, one per channel
-	voltsPerArb  []float32    // the physical units per arb, one per channel
-	sampleRate   float64      // samples per second
+	nchan        int           // how many channels to provide
+	name         string        // what kind of source is this?
+	chanNames    []string      // one name per channel
+	chanNumbers  []int         // names have format "prefixNumber", this is the number
+	rowColCodes  []RowColCode  // one RowColCode per channel
+	signed       []bool        // is the raw data signed, one per channel
+	voltsPerArb  []float32     // the physical units per arb, one per channel
+	sampleRate   float64       // samples per second
+	samplePeriod time.Duration // time per sample
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	output       []chan DataSegment
@@ -544,10 +545,11 @@ func NewDataStream(data []RawType, framesPerSample int, firstFrame FrameIndex,
 // segment, not necessarily with the previous values.
 func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	framesNowInStream := FrameIndex(len(stream.rawData) * segment.framesPerSample)
+	timeNowInStream := time.Duration(framesNowInStream) * stream.framePeriod
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
 	stream.firstFramenum = segment.firstFramenum - framesNowInStream
-	stream.firstTime = segment.firstTime.Add(-time.Duration(framesNowInStream) * stream.framePeriod)
+	stream.firstTime = segment.firstTime.Add(-timeNowInStream)
 	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.samplesSeen += len(segment.rawData)
 }
@@ -561,8 +563,9 @@ func (stream *DataStream) TrimKeepingN(N int) int {
 	}
 	copy(stream.rawData[:N], stream.rawData[L-N:L])
 	stream.rawData = stream.rawData[:N]
-	stream.firstFramenum += FrameIndex(L - N)
-	stream.firstTime = stream.firstTime.Add(time.Duration(L-N) * stream.framePeriod)
+	deltaFrames := (L - N) * stream.framesPerSample
+	stream.firstFramenum += FrameIndex(deltaFrames)
+	stream.firstTime = stream.firstTime.Add(time.Duration(deltaFrames) * stream.framePeriod)
 	return N
 }
 

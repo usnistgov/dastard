@@ -195,6 +195,7 @@ func (ls *LanceroSource) Sample() error {
 		ls.nchan += device.ncols * device.nrows * 2
 		ls.sampleRate = float64(device.clockMhz) * 1e6 / float64(device.lsync*device.nrows)
 	}
+	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
 	ls.updateChanOrderMap()
 
 	ls.signed = make([]bool, ls.nchan)
@@ -529,6 +530,7 @@ func (ls *LanceroSource) distributeData() {
 		seg := DataSegment{
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating
+			framePeriod:     ls.samplePeriod,
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
 		}
