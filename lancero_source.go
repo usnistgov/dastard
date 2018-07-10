@@ -421,16 +421,11 @@ func (ls *LanceroSource) StartRun() error {
 func (ls *LanceroSource) blockingRead() error {
 	ls.runMutex.Lock()
 	defer ls.runMutex.Unlock()
-	type waiter struct {
-		timestamp time.Time
-		duration  time.Duration
-		err       error
-	}
-	done := make(chan waiter)
+	done := make(chan error)
 	dev := ls.active[0] // we wait on only one device, distributeData will read from all
 	go func() {
-		timestamp, duration, err := dev.card.Wait()
-		done <- waiter{timestamp, duration, err}
+		_, _, err := dev.card.Wait()
+		done <- err
 	}()
 
 	select {
@@ -439,23 +434,23 @@ func (ls *LanceroSource) blockingRead() error {
 			return err
 		}
 		return io.EOF
-	case result := <-done:
-		if result.err != nil {
-			return result.err
+	case err := <-done:
+		if err != nil {
+			return err
 		}
-		timediff := result.timestamp.Sub(ls.lastread)
-		ls.lastread = result.timestamp
-		ls.distributeData(result.timestamp, timediff)
+		ls.distributeData()
 	}
 	return nil
 }
 
-func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration) {
+func (ls *LanceroSource) distributeData() {
 	// Get 1 buffer per card, and compute which contains the fewest frames
 	framesUsed := math.MaxInt64
 	var buffers [][]RawType
+	var lastTime time.Time
 	for _, dev := range ls.active {
 		b, err := dev.card.AvailableBuffers()
+		thisDevRead := time.Now()
 		if err != nil {
 			log.Printf("Warning: AvailableBuffers failed")
 			return
@@ -465,17 +460,21 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 		bframes := len(b) / dev.frameSize
 		if bframes < framesUsed {
 			framesUsed = bframes
+			lastTime = thisDevRead
 		}
 	}
 	if framesUsed <= 0 {
 		log.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
 		return
 	}
-	// Consume framesUsed frames of data from each channel
-	datacopies := make([][]RawType, len(ls.output))
+	timediff := lastTime.Sub(ls.lastread)
+	ls.lastread = lastTime
 
+	// Consume framesUsed frames of data from each channel.
 	// Careful! This slice of slices will be in lancero READOUT order:
 	// r0c0, r0c1, r0c2, etc.
+
+	datacopies := make([][]RawType, len(ls.output))
 	for i := range ls.output {
 		datacopies[i] = make([]RawType, framesUsed)
 	}
@@ -500,15 +499,15 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	// Now send these data downstream. Here we permute data into the expected
 	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
 	// Backtrack to find the time associated with the first sample.
-	segDuration := time.Duration(framesUsed * roundint(1e9/ls.sampleRate))
-	firstTime := ls.lastread.Add(-segDuration)
+	segDuration := time.Duration((framesUsed - 1) * roundint(1e9/ls.sampleRate))
+	firstTime := lastTime.Add(-segDuration)
 	for channum, ch := range ls.output {
 		data := datacopies[ls.chan2readoutOrder[channum]]
 		if channum%2 == 1 { // feedback channel needs more processing
 			mix := ls.Mix[channum]
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
-			mix.MixRetardFb(&data, &errData)
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.errorScale
+			mix.MixRetardFb(&data, &errData)
 		}
 
 		seg := DataSegment{
@@ -529,7 +528,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 	}
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
-			Time: wait.Seconds()}
+			Time: timediff.Seconds()}
 	}
 }
 
