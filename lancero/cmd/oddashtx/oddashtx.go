@@ -55,7 +55,7 @@ func main() {
 			if err != nil {
 				return
 			}
-			buffer, err = lan.AvailableBuffers()
+			buffer, _, err = lan.AvailableBuffers()
 			bytesRead += len(buffer)
 			if err != nil {
 				return
