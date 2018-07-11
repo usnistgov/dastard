@@ -332,6 +332,10 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 		}
 		defer fp.Close()
 		fp.WriteString(*comment)
+		// Always end the comment file with a newline.
+		if !strings.HasSuffix(*comment, "\n") {
+			fp.WriteString("\n")
+		}
 	}
 	return nil
 }
