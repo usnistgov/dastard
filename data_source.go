@@ -169,6 +169,8 @@ func makeDirectory(basepath string) (string, error) {
 }
 
 // WriteControl changes the data writing start/stop/pause/unpause state
+// For WriteLJH22 == true and/or WriteLJH3 == true all channels will have writing enabled
+// For WriteOFF == true, only chanels with projectors set will have writing enabled
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	request := strings.ToUpper(config.Request)
 	if strings.HasPrefix(request, "PAUSE") {
@@ -206,6 +208,20 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		if err != nil {
 			return fmt.Errorf("Could not make directory: %s", err.Error())
 		}
+		if config.WriteOFF {
+			// throw an error if no channels have projectors set
+			// only channels with projectors set will have OFF files enabled
+			anyProjectorsSet := false
+			for _, dsp := range ds.processors {
+				if !(dsp.projectors.IsZero() || dsp.basis.IsZero()) {
+					anyProjectorsSet = true
+					break
+				}
+			}
+			if !anyProjectorsSet {
+				return fmt.Errorf("no projectors are loaded, OFF files require projectors")
+			}
+		}
 		for i, dsp := range ds.processors {
 			if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
 				return fmt.Errorf("Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
@@ -227,13 +243,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 					ds.name, ds.chanNames[i], ds.chanNumbers[i])
 			}
-			if config.WriteOFF {
-				// if dsp.projectors.IsZero() || dsp.basis.IsZero() {
-				// 	return fmt.Errorf("channelIndex %v has no valid projectors", i)
-				// }
-				// I'm worried about checking for projectors here because it would fail for error channels if
-				// you (quite reasonably) didn't set projectors for the error channels
-				// but I don't know what will happen if I let it get to off.Writer.WriteRecord it errors there
+			if config.WriteOFF && !dsp.projectors.IsZero() {
 				dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
@@ -250,6 +260,9 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	} else {
 		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive",
 			config.Request)
+	}
+	if ds.publishSync.writingChan != nil {
+		ds.publishSync.writingChan <- ds.writingState.Active && ds.writingState.Paused
 	}
 	return nil
 }

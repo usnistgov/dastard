@@ -405,6 +405,8 @@ func bytesToRawType(b []byte) []RawType {
 
 // PublishSync is used to synchronize the publication of number of records written
 type PublishSync struct {
+	writing            bool
+	writingChan        chan bool // send message here to set writing without race condition
 	numberWrittenChans []chan int
 	NumberWritten      []int
 	abort              chan struct{} // This can signal the Run() goroutine to stop
@@ -417,7 +419,7 @@ func NewPublishSync(nchan int) *PublishSync {
 		numberWrittenChans[i] = make(chan int)
 	}
 	return &PublishSync{numberWrittenChans: numberWrittenChans, abort: make(chan struct{}),
-		NumberWritten: make([]int, nchan)}
+		NumberWritten: make([]int, nchan), writingChan: make(chan bool)}
 }
 
 // Run runs, collects number of records published, publishes summaries
@@ -435,11 +437,14 @@ func (ps *PublishSync) Run() {
 					return
 				case n := <-ps.numberWrittenChans[i]:
 					ps.NumberWritten[i] = n
+				case ps.writing = <-ps.writingChan:
 				}
 			}
 		case <-ticker.C:
-			clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
-				state: ps} // only exported fields are serialized
+			if ps.writing {
+				clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
+					state: ps} // only exported fields are serialized
+			} // only send NUMBERWRITTEN messages when writing is occuring
 		}
 	}
 }

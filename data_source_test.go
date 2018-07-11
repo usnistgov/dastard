@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 func TestChannelNames(t *testing.T) {
@@ -103,6 +105,14 @@ func TestWritingFiles(t *testing.T) {
 			t.Errorf("WriteControl request %s failed on a writing file: %v", request, err)
 		}
 	}
+	// set projectors so that we can use WriterOFF = true
+	nbases := 1
+	nsamples := 1024
+	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
+	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
+	if err := ds.processors[0].SetProjectorsBasis(*projectors, *basis); err != nil {
+		t.Error(err)
+	}
 	config.Request = "Start"
 	config.WriteLJH22 = true
 	config.WriteOFF = true
@@ -115,6 +125,9 @@ func TestWritingFiles(t *testing.T) {
 	}
 	if !ds.processors[0].DataPublisher.HasOFF() {
 		t.Error("WriteOFF did not result in HasOFF")
+	}
+	if ds.processors[1].DataPublisher.HasOFF() {
+		t.Error("WriteOFF resulting in HasOFF for a channel without projectors")
 	}
 	if !ds.processors[0].DataPublisher.HasLJH3() {
 		t.Error("WriteLJH3 did not result in HasLJH3")
