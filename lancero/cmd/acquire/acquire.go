@@ -199,7 +199,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 			if err != nil {
 				return
 			}
-			buffer, err = lan.AvailableBuffers()
+			buffer, _, err = lan.AvailableBuffer()
 			if opt.oddashtx {
 				fmt.Println(lancero.OdDashTX(buffer, 20))
 			}

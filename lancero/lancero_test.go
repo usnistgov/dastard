@@ -79,7 +79,7 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 			if err != nil {
 				return 0, 0, 0, fmt.Errorf("lan.Wait: %v", err)
 			}
-			buffer, err := lan.AvailableBuffers()
+			buffer, _, err := lan.AvailableBuffer()
 			totalBytes := len(buffer)
 			// fmt.Printf("waittime: %v\n", waittime)
 			if err != nil {

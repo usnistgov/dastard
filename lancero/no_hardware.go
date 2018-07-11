@@ -109,28 +109,28 @@ func (lan *NoHardware) Wait() (time.Time, time.Duration, error) {
 	return now, now.Sub(lan.lastReadTime), nil
 }
 
-// AvailableBuffers some simulated data
+// AvailableBuffer returns some simulated data
 // size matches what you should get in 1 millisecond
 // all entries other than frame bits are zeros
-func (lan *NoHardware) AvailableBuffers() ([]byte, error) {
+func (lan *NoHardware) AvailableBuffer() ([]byte, time.Time, error) {
 	var buf bytes.Buffer
+	now := time.Now()
 	if !lan.isStarted {
-		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: not started: id %v", lan.idNum)
+		return buf.Bytes(), now, fmt.Errorf("err in NoHardware.AvailableBuffers: not started: id %v", lan.idNum)
 	}
 	if !lan.collectorStarted {
-		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: collector not started: id %v", lan.idNum)
+		return buf.Bytes(), now, fmt.Errorf("err in NoHardware.AvailableBuffers: collector not started: id %v", lan.idNum)
 	}
 	if !lan.isOpen {
-		return buf.Bytes(), fmt.Errorf("err in NoHardware.AvailableBuffers: not open: id %v", lan.idNum)
+		return buf.Bytes(), now, fmt.Errorf("err in NoHardware.AvailableBuffers: not open: id %v", lan.idNum)
 	}
-	now := time.Now()
 	sinceLastRead := now.Sub(lan.lastReadTime)
 	lan.lastReadTime = now
 	frameDurationNanoseconds := lan.linePeriod * lan.nanoSecondsPerLinePeriod * lan.nrows
 	frames := int(sinceLastRead.Nanoseconds()) / frameDurationNanoseconds
 	// fmt.Printf("id %v read at %v\n", lan.idNum, time.Now())
 	if sinceLastRead > 50*lan.minTimeBetweenReads {
-		return buf.Bytes(), fmt.Errorf("reads were %v apart, want < %v", sinceLastRead, 50*lan.minTimeBetweenReads)
+		return buf.Bytes(), now, fmt.Errorf("reads were %v apart, want < %v", sinceLastRead, 50*lan.minTimeBetweenReads)
 	}
 
 	for i := 0; i < frames; i++ { // i counts frames
@@ -149,7 +149,7 @@ func (lan *NoHardware) AvailableBuffers() ([]byte, error) {
 		}
 
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), now, nil
 }
 
 // ReleaseBytes increments bytesReleased

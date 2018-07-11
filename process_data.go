@@ -125,7 +125,6 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	// records, secondaries := dsp.TriggerData()
 	records, _ := dsp.TriggerData()
 	dsp.AnalyzeData(records)               // add analysis results to records in-place
 	dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
