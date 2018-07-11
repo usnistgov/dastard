@@ -137,7 +137,7 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 
 // Find total amount of available data and return a buffer (byte slice).
 // Returns the data buffer, the time fix of that buffer, and any possible error.
-func (a *adapter) availableBuffers() (buffer []byte, timefix time.Time, err error) {
+func (a *adapter) availableBuffer() (buffer []byte, timefix time.Time, err error) {
 	// Ask the hardware for the current write pointer and the bytes available.
 	// Note that "write pointer" is where the DRIVER is about to write to.
 	// It's important to put the time fix as close as possible to the time that

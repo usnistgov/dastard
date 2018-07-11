@@ -109,10 +109,10 @@ func (lan *NoHardware) Wait() (time.Time, time.Duration, error) {
 	return now, now.Sub(lan.lastReadTime), nil
 }
 
-// AvailableBuffers some simulated data
+// AvailableBuffer returns some simulated data
 // size matches what you should get in 1 millisecond
 // all entries other than frame bits are zeros
-func (lan *NoHardware) AvailableBuffers() ([]byte, time.Time, error) {
+func (lan *NoHardware) AvailableBuffer() ([]byte, time.Time, error) {
 	var buf bytes.Buffer
 	now := time.Now()
 	if !lan.isStarted {

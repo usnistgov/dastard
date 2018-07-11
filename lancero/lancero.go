@@ -25,7 +25,7 @@ type Lanceroer interface {
 	StartCollector(bool) error
 	StopCollector() error
 	Wait() (time.Time, time.Duration, error)
-	AvailableBuffers() ([]byte, time.Time, error)
+	AvailableBuffer() ([]byte, time.Time, error)
 	ReleaseBytes(int) error
 	InspectAdapter() uint32
 }
@@ -123,9 +123,14 @@ func (lan *Lancero) Wait() (time.Time, time.Duration, error) {
 	return lan.adapter.wait()
 }
 
-// AvailableBuffers returns a COPY OF the ring buffer segment now ready for reading.
-func (lan *Lancero) AvailableBuffers() ([]byte, time.Time, error) {
-	return lan.adapter.availableBuffers()
+// AvailableBuffer returns a COPY OF the ring buffer segment now ready for reading,
+// plus the best estimate of the time stamp taken immediately after the end of the
+// segment, and any error.
+// Because this returns a COPY, it is encouraged to call ReleaseBytes as soon as the
+// caller is sure how many bytes are to be released, even if the caller is not done
+// using the copy of the data.
+func (lan *Lancero) AvailableBuffer() ([]byte, time.Time, error) {
+	return lan.adapter.availableBuffer()
 }
 
 // ReleaseBytes instructed the ring buffer adapter to release nBytes bytes for over-writing.

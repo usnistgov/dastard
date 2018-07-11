@@ -285,7 +285,7 @@ func (device *LanceroDevice) sampleCard() error {
 			if err != nil {
 				return err
 			}
-			buffer, _, err = lan.AvailableBuffers()
+			buffer, _, err = lan.AvailableBuffer()
 
 			if err != nil {
 				return err
@@ -389,10 +389,10 @@ func (ls *LanceroSource) StartRun() error {
 			if _, _, err := lan.Wait(); err != nil {
 				return fmt.Errorf("error in Wait: %v", err)
 			}
-			bytes, _, err := lan.AvailableBuffers()
+			bytes, _, err := lan.AvailableBuffer()
 			bytesRead += len(bytes)
 			if err != nil {
-				return fmt.Errorf("error in AvailableBuffers: %v", err)
+				return fmt.Errorf("error in AvailableBuffer: %v", err)
 			}
 			if len(bytes) <= 0 {
 				continue
@@ -457,9 +457,9 @@ func (ls *LanceroSource) distributeData() {
 	var buffers [][]RawType
 	var lastSampleTime time.Time
 	for _, dev := range ls.active {
-		b, timeFix, err := dev.card.AvailableBuffers()
+		b, timeFix, err := dev.card.AvailableBuffer()
 		if err != nil {
-			log.Printf("Warning: AvailableBuffers failed")
+			log.Printf("Warning: AvailableBuffer failed")
 			return
 		}
 		buffers = append(buffers, bytesToRawType(b))
