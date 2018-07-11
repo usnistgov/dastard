@@ -34,10 +34,10 @@ type LanceroSource struct {
 	devices           map[int]*LanceroDevice
 	ncards            int
 	clockMhz          int
+	nsamp             int
 	active            []*LanceroDevice
 	chan2readoutOrder []int
-	lastFbData        []RawType // used in mix calculation
-	Mix               []Mix
+	Mix               []*Mix
 	AnySource
 }
 
@@ -45,6 +45,7 @@ type LanceroSource struct {
 func NewLanceroSource() (*LanceroSource, error) {
 	source := new(LanceroSource)
 	source.name = "Lancero"
+	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
@@ -85,11 +86,12 @@ func contains(s []*LanceroDevice, e *LanceroDevice) bool {
 }
 
 // LanceroSourceConfig holds the arguments needed to call LanceroSource.Configure by RPC.
-// For now, we'll make the mask and card delay equal for all cards. That need not
+// For now, we'll make the FiberMask equal for all cards. That need not
 // be permanent, but I do think ClockMhz is necessarily the same for all cards.
 type LanceroSourceConfig struct {
 	FiberMask      uint32
 	ClockMhz       int
+	Nsamp          int
 	CardDelay      []int
 	ActiveCards    []int
 	AvailableCards []int
@@ -102,6 +104,9 @@ type LanceroSourceConfig struct {
 // ActiveCards is a slice of indicies into ls.devices to activate
 // AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
+	ls.runMutex.Lock()
+	defer ls.runMutex.Unlock()
+
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMhz = config.ClockMhz
 	for i, c := range config.ActiveCards {
@@ -124,20 +129,28 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 		config.AvailableCards = append(config.AvailableCards, k)
 	}
 	sort.Ints(config.AvailableCards)
+
+	// Error if Nsamp not in [1,16].
+	if config.Nsamp > 16 || config.Nsamp < 1 {
+		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", config.Nsamp)
+	}
+	ls.nsamp = config.Nsamp
 	return nil
 }
 
 // updateChanOrderMap updates the map chan2readoutOrder based on the number
 // of columns and rows in each active device
-// also initializes mixFraction and lastFbData to correct length with all zeros
+// also initializes errorScale and lastFbData to correct length with all zeros
 func (ls *LanceroSource) updateChanOrderMap() {
 	nChannelsAllCards := int(0)
 	for _, dev := range ls.active {
 		nChannelsAllCards += dev.ncols * dev.nrows * 2
 	}
-	ls.Mix = make([]Mix, nChannelsAllCards)
+	ls.Mix = make([]*Mix, nChannelsAllCards)
+	for i := 0; i < nChannelsAllCards; i++ {
+		ls.Mix[i] = &Mix{}
+	}
 	ls.chan2readoutOrder = make([]int, nChannelsAllCards)
-	ls.lastFbData = make([]RawType, nChannelsAllCards)
 	nchanPrevDevices := 0
 	for _, dev := range ls.active {
 		nchan := dev.ncols * dev.nrows * 2
@@ -152,7 +165,7 @@ func (ls *LanceroSource) updateChanOrderMap() {
 }
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
-// mix = fb + mixFraction*err
+// mix = fb + errorScale*err
 func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
 	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
@@ -166,7 +179,7 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 	go func() {
 		ls.runMutex.Lock()
 		defer ls.runMutex.Unlock()
-		ls.Mix[processorIndex].mixFraction = mixFraction
+		ls.Mix[processorIndex].errorScale = mixFraction / float64(ls.nsamp)
 	}()
 	return nil
 }
@@ -188,6 +201,14 @@ func (ls *LanceroSource) Sample() error {
 	for i := 0; i < ls.nchan; i += 2 {
 		ls.signed[i] = true
 	}
+	ls.voltsPerArb = make([]float32, ls.nchan)
+	for i := 0; i < ls.nchan; i += 2 {
+		ls.voltsPerArb[i] = 1.0 / (4096. * float32(ls.nsamp))
+	}
+	for i := 1; i < ls.nchan; i += 2 {
+		ls.voltsPerArb[i] = 1. / 65535.0
+	}
+
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	i := 0
 	for _, device := range ls.active {
@@ -201,9 +222,12 @@ func (ls *LanceroSource) Sample() error {
 		i += cardNchan
 	}
 	ls.chanNames = make([]string, ls.nchan)
+	ls.chanNumbers = make([]int, ls.nchan)
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
 		ls.chanNames[i] = fmt.Sprintf("chan%d", 1+i/2)
+		ls.chanNumbers[i-1] = 1 + i/2
+		ls.chanNumbers[i] = 1 + i/2
 	}
 	return nil
 }
@@ -403,7 +427,7 @@ func (ls *LanceroSource) blockingRead() error {
 		err       error
 	}
 	done := make(chan waiter)
-	dev := ls.active[0]
+	dev := ls.active[0] // we wait on only one device, distributeData will read from all
 	go func() {
 		timestamp, duration, err := dev.card.Wait()
 		done <- waiter{timestamp, duration, err}
@@ -484,7 +508,7 @@ func (ls *LanceroSource) distributeData(timestamp time.Time, wait time.Duration)
 			mix := ls.Mix[channum]
 			errData := datacopies[ls.chan2readoutOrder[channum-1]]
 			mix.MixRetardFb(&data, &errData)
-			// MixRetardFb alters data in place to mix some of errData in based on mix.mixFraction
+			//	MixRetardFb alters data in place to mix some of errData in based on mix.errorScale
 		}
 
 		seg := DataSegment{
@@ -525,19 +549,6 @@ func (ls *LanceroSource) stop() error {
 		}
 	}
 	return nil
-}
-
-// VoltsPerArb returns a per-channel value scaling raw into volts.
-func (ls *LanceroSource) VoltsPerArb() []float32 {
-	const Nsamp float32 = 4.0 // TODO: what is Nsamp? 4 is typical but not guaranteed.
-	v := make([]float32, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		v[i] = 1.0 / (4096. * Nsamp)
-	}
-	for i := 1; i < ls.nchan; i += 2 {
-		v[i] = 1. / 65535.0
-	}
-	return v
 }
 
 // SetCoupling set up the trigger broker to connect err->FB, FB->err, or neither

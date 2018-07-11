@@ -26,7 +26,7 @@ func TestRead(t *testing.T) {
 		found int
 		want  int
 	}{
-		{"r.ChanNum", r.ChanNum, 11},
+		{"r.ChannelIndex", r.ChannelIndex, 11},
 		{"r.Presamples", r.Presamples, 256},
 		{"r.Samples", r.Samples, 1024},
 		{"r.VersionNumber", int(r.VersionNumber), int(Version2_2)},

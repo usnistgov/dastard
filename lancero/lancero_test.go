@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"strings"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -80,11 +81,11 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 			}
 			buffer, err := lan.AvailableBuffers()
 			totalBytes := len(buffer)
-			fmt.Printf("waittime: %v\n", waittime)
+			// fmt.Printf("waittime: %v\n", waittime)
 			if err != nil {
 				return 0, 0, 0, fmt.Errorf("lan.AvailableBuffers: %v", err)
 			}
-			fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
+			// fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
 			if totalBytes > 0 {
 				q, p, n, err := FindFrameBits(buffer)
 				bytesPerFrame := 4 * (p - q)
@@ -94,13 +95,13 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 					fmt.Println(q, p, n)
 					return 0, 0, 0, err
 				}
-				fmt.Println(q, p, bytesPerFrame, n, err)
+				// fmt.Println(q, p, bytesPerFrame, n, err)
 				nrows = (p - q) / n
 				ncols = n
-				fmt.Println("cols=", n, "rows=", nrows)
+				// fmt.Println("cols=", n, "rows=", nrows)
 				periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
 				linePeriod = roundint(float64(periodNS) / float64(nrows*8)) // 8 is nanoseconds per row
-				fmt.Printf("frame period %5d ns, linePeriod=%d\n", periodNS, linePeriod)
+				// fmt.Printf("frame period %5d ns, linePeriod=%d\n", periodNS, linePeriod)
 			}
 			// Quit when read enough samples.
 			bytesRead += totalBytes
@@ -113,18 +114,26 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 
 func TestOdDashTX(t *testing.T) {
 	b := make([]byte, 10000)
-	if s := OdDashTX(b, 15); len(s) != 281 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 281", s, len(s))
+	expect := 354
+	if s := OdDashTX(b, 15); len(s) != expect {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want %d", s, len(s), expect)
 	}
 	for i := range b {
 		b[i] = byte(i)
 	}
-	if s := OdDashTX(b, 15); len(s) != 1280 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 1280", s, len(s))
+	expect = 1353
+	if s := OdDashTX(b, 15); len(s) != expect {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want %d", s, len(s), expect)
 	}
 	b = make([]byte, 0)
-	if s := OdDashTX(b, 15); len(s) != 181 {
-		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want 181", s, len(s))
+	expect = 254
+	if s := OdDashTX(b, 15); len(s) != expect {
+		t.Errorf("have %v\n\n WRONG LENGTH, have %v, want %d", s, len(s), expect)
+	}
+	b = []byte{0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde,
+		0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde, 0xef, 0xbe, 0xad, 0xde}
+	if s := OdDashTX(b, 15); strings.Compare("deadbeef", s[255:263]) != 0 {
+		t.Errorf("have %v, want %v", s[255:263], "deadbeef")
 	}
 }
 

@@ -127,8 +127,10 @@ type MixFractionObject struct {
 }
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
-// mix = fb + mixFraction*err
-// NOTE: only supported by LanceroSource
+// mix = fb + mixFraction*err/Nsamp
+// This MixFractionObject contains mix fractions as reported by autotune, where error/Nsamp
+// is used. Thus, we will internally store not MixFraction, but errorScale := MixFraction/Nsamp.
+// NOTE: only supported by LanceroSource.
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -206,7 +208,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	*reply = (err == nil)
 	s.status.Npresamp = sizes.Npre
 	s.status.Nsamples = sizes.Nsamp
-	log.Printf("Result is okay=%t\n", *reply)
+	go s.broadcastStatus()
 	return err
 }
 
@@ -291,11 +293,13 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 }
 
 // WriteControlConfig object to control start/stop/pause of data writing
+// Path and FileType are ignored for any request other than Start
 type WriteControlConfig struct {
-	Request   string // "Start", "Stop", "Pause", or "Unpause"
-	Path      string // write in a new directory under this path
-	FileType  string // "LJH2.2", "LJH3", or ... ?
-	Rec2Write int
+	Request    string // "Start", "Stop", "Pause", or "Unpause"
+	Path       string // write in a new directory under this path
+	WriteLJH22 bool   // turn on one or more file formats
+	WriteOFF   bool
+	WriteLJH3  bool
 }
 
 // WriteControl requests start/stop/pause/unpause data writing
@@ -337,6 +341,7 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 // CouplingStatus describes the status of FB / error coupling
 type CouplingStatus int
 
+// Constants for use CoupleErrToFB (should be unexported?)
 const (
 	NoCoupling CouplingStatus = iota + 1 // FB and error aren't coupled
 	FBToErr                              // FB triggers cause secondary triggers in error channels

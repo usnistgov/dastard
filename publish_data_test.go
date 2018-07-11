@@ -6,13 +6,15 @@ import (
 	"encoding/hex"
 	"testing"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 func TestPublishData(t *testing.T) {
 
 	dp := DataPublisher{}
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
-	rec := &DataRecord{data: d, presamples: 4}
+	rec := &DataRecord{data: d, presamples: 4, modelCoefs: make([]float64, 3)}
 	records := []*DataRecord{rec, rec, rec}
 
 	if err := dp.PublishData(records); err != nil {
@@ -20,12 +22,15 @@ func TestPublishData(t *testing.T) {
 	}
 	startTime := time.Now()
 	dp.SetLJH22(1, 4, len(d), 1, 1, startTime, 8, 1, 16, 3, 0,
-		"TestPublishData.ljh", "testSource", "chanX")
+		"TestPublishData.ljh", "testSource", "chanX", 1)
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
 	if dp.LJH22.RecordsWritten != 3 {
 		t.Fail()
+	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishData to increment numberWritten with LJH22 enabled")
 	}
 	if !dp.HasLJH22() {
 		t.Error("HasLJH22() false, want true")
@@ -33,6 +38,9 @@ func TestPublishData(t *testing.T) {
 	dp.RemoveLJH22()
 	if dp.HasLJH22() {
 		t.Error("HasLJH22() true, want false")
+	}
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveLJH22 to set numberWritten to 0")
 	}
 
 	if dp.HasPubRecords() {
@@ -45,7 +53,9 @@ func TestPublishData(t *testing.T) {
 	}
 
 	dp.PublishData(records)
-
+	if dp.numberWritten != 0 {
+		t.Errorf("expected PublishData to not increment numberWritten with only PubRecords enabled")
+	}
 	dp.RemovePubRecords()
 	if dp.HasPubRecords() {
 		t.Error("HasPubRecords() true, want false")
@@ -72,14 +82,46 @@ func TestPublishData(t *testing.T) {
 		t.Error("failed to publish record")
 	}
 	if dp.LJH3.RecordsWritten != 3 {
-		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
+		t.Error("wrong number of RecordsWritten, want 3, have", dp.LJH3.RecordsWritten)
+	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishedData to increment numberWritten")
 	}
 	if !dp.HasLJH3() {
 		t.Error("HasLJH3() false, want true")
 	}
 	dp.RemoveLJH3()
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveLJH3 to set numberWritten to 0")
+	}
 	if dp.HasLJH3() {
 		t.Error("HasLJH3() true, want false")
+	}
+
+	nbases := 3
+	nsamples := 4
+	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
+	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
+	dp.SetOFF(0, 0, 0, 1, 1, time.Now(), 1, 1, 1, 1, 1, "TestPublishData.off", "sourceName",
+		"chanName", 1, projectors, basis, "ModelDescription")
+	if err := dp.PublishData(records); err != nil {
+		t.Error(err)
+	}
+	if dp.OFF.RecordsWritten() != 3 {
+		t.Error("wrong number of RecordsWritten, want 3, have", dp.OFF.RecordsWritten())
+	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishedData to increment numberWritten")
+	}
+	if !dp.HasOFF() {
+		t.Error("HasOFF() false, want true")
+	}
+	dp.RemoveOFF()
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveOFF to set numberWritten to 0")
+	}
+	if dp.HasOFF() {
+		t.Error("HasOFF() true, want false")
 	}
 
 	if err := configurePubRecordsSocket(); err == nil {
@@ -168,7 +210,7 @@ func BenchmarkPublish(b *testing.B) {
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0,
-			"TestPublishData.ljh", "testSource", "chanX")
+			"TestPublishData.ljh", "testSource", "chanX", 1)
 		defer dp.RemoveLJH22()
 		slowPart(b, dp, records)
 	})
@@ -185,7 +227,7 @@ func BenchmarkPublish(b *testing.B) {
 		dp.SetPubSummaries()
 		defer dp.RemovePubSummaries()
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0,
-			"TestPublishData.ljh", "testSource", "chanX")
+			"TestPublishData.ljh", "testSource", "chanX", 1)
 		defer dp.RemoveLJH22()
 		dp.SetLJH3(0, 0, 0, 0, "TestPublishData.ljh3")
 		defer dp.RemoveLJH3()

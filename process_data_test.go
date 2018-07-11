@@ -124,7 +124,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 1}
 	records = []*DataRecord{rec}
-	dsp.RemoveProjectorsBasis()
+	dsp.removeProjectorsBasis()
 	dsp.AnalyzeData(records)
 	expect = RTExpect{
 		ResidualStdDev: 0,
@@ -135,7 +135,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	d = []RawType{1, 2, 3}
 	rec = &DataRecord{data: d, presamples: 0}
 	records = []*DataRecord{rec}
-	dsp.RemoveProjectorsBasis()
+	dsp.removeProjectorsBasis()
 	dsp.AnalyzeData(records)
 	expect = RTExpect{
 		ResidualStdDev: 0,
@@ -210,7 +210,7 @@ func TestDataSignedness(t *testing.T) {
 	data := make([]RawType, len(errsig))
 	copy(data, errsig)
 	seg := &DataSegment{rawData: data}
-	dsp := NewDataStreamProcessor(0, nil)
+	dsp := NewDataStreamProcessor(0, nil, nil)
 	dsp.DecimateLevel = 2
 	dsp.Decimate = true
 	dsp.DecimateAvgMode = true

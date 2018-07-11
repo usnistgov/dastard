@@ -34,7 +34,8 @@ type DataStreamProcessor struct {
 }
 
 // RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
-func (dsp *DataStreamProcessor) RemoveProjectorsBasis() {
+// Lock dsp.changeMutex before calling this function, it will not lock on its own.
+func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
 }
@@ -61,7 +62,7 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
-func NewDataStreamProcessor(chnum int, broker *TriggerBroker) *DataStreamProcessor {
+func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWrittenChan chan int) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
 	framesPerSample := 1
 	firstFrame := FrameIndex(0)
@@ -70,9 +71,10 @@ func NewDataStreamProcessor(chnum int, broker *TriggerBroker) *DataStreamProcess
 	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
 	nsamp := 1024 // TODO: figure out what this ought to be, or make an argument
 	npre := 256   // TODO: figure out what this ought to be, or make an argument
-	dsp := DataStreamProcessor{channelIndex: chnum, Broker: broker,
+	dsp := DataStreamProcessor{channelIndex: channelIndex, Broker: broker,
 		stream: *stream, NSamples: nsamp, NPresamples: npre,
 	}
+	dsp.DataPublisher.numberWrittenChan = numberWrittenChan
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
@@ -89,6 +91,7 @@ type DecimateState struct {
 }
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
+// Also removes any existing projectors and basis.
 func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	if nsamp <= npre+1 || npre < 3 {
 		return
@@ -98,6 +101,7 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
+	dsp.removeProjectorsBasis()
 }
 
 // ConfigureTrigger sets this stream's trigger state.

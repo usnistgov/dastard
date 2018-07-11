@@ -9,6 +9,8 @@ import (
 
 	"github.com/usnistgov/dastard/getbytes"
 	"github.com/usnistgov/dastard/ljh"
+	"github.com/usnistgov/dastard/off"
+	"gonum.org/v1/gonum/mat"
 
 	czmq "github.com/zeromq/goczmq"
 )
@@ -16,39 +18,77 @@ import (
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
 // in each call to PublishData
 type DataPublisher struct {
-	PubRecordsChan   chan []*DataRecord
-	PubSummariesChan chan []*DataRecord
-	LJH22            *ljh.Writer
-	LJH3             *ljh.Writer3
-	writingPaused    bool
+	PubRecordsChan    chan []*DataRecord
+	PubSummariesChan  chan []*DataRecord
+	LJH22             *ljh.Writer
+	LJH3              *ljh.Writer3
+	OFF               *off.Writer
+	WritingPaused     bool
+	numberWritten     int      // integrates up the total number written, reset any time writing starts or stops
+	numberWrittenChan chan int // send the total number written to this channel after each write group
 }
 
 // SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
-	dp.writingPaused = pause
+	dp.WritingPaused = pause
 	if dp.LJH22 != nil {
 		dp.LJH22.Flush()
 	}
 	if dp.LJH3 != nil {
 		dp.LJH3.Flush()
 	}
+	if dp.OFF != nil {
+		dp.OFF.Flush()
+	}
+}
+
+// SetOFF adds an OFF writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
+func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
+	Timebase float64, TimestampOffset time.Time,
+	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
+	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
+	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string) {
+	ReadoutInfo := off.TimeDivisionMultiplexingInfo{NumberOfRows: NumberOfRows,
+		NumberOfColumns: NumberOfColumns,
+		NumberOfChans:   NumberOfChans,
+		ColumnNum:       colNum, RowNum: rowNum}
+	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
+		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo)
+	dp.OFF = w
+	dp.numberWritten = 0
+}
+
+// HasOFF returns true if OFF is non-nil, eg if writing to OFF is occuring
+func (dp *DataPublisher) HasOFF() bool {
+	return dp.OFF != nil
+}
+
+// RemoveOFF closes any existing OFF file and assign .OFF=nil
+func (dp *DataPublisher) RemoveOFF() {
+	if dp.OFF != nil {
+		dp.OFF.Close()
+	}
+	dp.OFF = nil
+	dp.numberWritten = 0
+
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
-func (dp *DataPublisher) SetLJH3(ChanNum int, Timebase float64,
+func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 	NumberOfRows int, NumberOfColumns int, FileName string) {
-	w := ljh.Writer3{ChanNum: ChanNum,
+	w := ljh.Writer3{ChannelIndex: ChannelIndex,
 		Timebase:        Timebase,
 		NumberOfRows:    NumberOfRows,
 		NumberOfColumns: NumberOfColumns,
 		FileName:        FileName}
 	dp.LJH3 = &w
-	dp.writingPaused = false
+	dp.WritingPaused = false
+	dp.numberWritten = 0
 }
 
 // HasLJH3 returns true if LJH3 is non-nil, eg if writing to LJH3 is occuring
 func (dp *DataPublisher) HasLJH3() bool {
-	return dp.LJH3 != nil && !dp.writingPaused
+	return dp.LJH3 != nil
 }
 
 // RemoveLJH3 closes existing LJH3 file and assign .LJH3=nil
@@ -57,37 +97,40 @@ func (dp *DataPublisher) RemoveLJH3() {
 		dp.LJH3.Close()
 	}
 	dp.LJH3 = nil
+	dp.numberWritten = 0
 }
 
 // SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
-func (dp *DataPublisher) SetLJH22(ChanNum int, Presamples int, Samples int, FramesPerSample int,
+func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
 	Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
-	FileName, sourceName, chanName string) {
-	w := ljh.Writer{ChanNum: ChanNum,
-		Presamples:      Presamples,
-		Samples:         Samples,
-		FramesPerSample: FramesPerSample,
-		Timebase:        Timebase,
-		TimestampOffset: TimestampOffset,
-		NumberOfRows:    NumberOfRows,
-		NumberOfColumns: NumberOfColumns,
-		NumberOfChans:   NumberOfChans,
-		FileName:        FileName,
-		DastardVersion:  Build.Version,
-		GitHash:         Build.Githash,
-		ChanName:        chanName,
-		SourceName:      sourceName,
-		ColumnNum:       colNum,
-		RowNum:          rowNum,
+	FileName, sourceName, chanName string, ChannelNumberMatchingName int) {
+	w := ljh.Writer{ChannelIndex: ChannelIndex,
+		Presamples:                Presamples,
+		Samples:                   Samples,
+		FramesPerSample:           FramesPerSample,
+		Timebase:                  Timebase,
+		TimestampOffset:           TimestampOffset,
+		NumberOfRows:              NumberOfRows,
+		NumberOfColumns:           NumberOfColumns,
+		NumberOfChans:             NumberOfChans,
+		FileName:                  FileName,
+		DastardVersion:            Build.Version,
+		GitHash:                   Build.Githash,
+		ChanName:                  chanName,
+		ChannelNumberMatchingName: ChannelNumberMatchingName,
+		SourceName:                sourceName,
+		ColumnNum:                 colNum,
+		RowNum:                    rowNum,
 	}
 	dp.LJH22 = &w
-	dp.writingPaused = false
+	dp.WritingPaused = false
+	dp.numberWritten = 0
 }
 
 // HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
 func (dp *DataPublisher) HasLJH22() bool {
-	return dp.LJH22 != nil && !dp.writingPaused
+	return dp.LJH22 != nil
 }
 
 // RemoveLJH22 closes existing LJH22 file and assign .LJH22=nil
@@ -96,6 +139,7 @@ func (dp *DataPublisher) RemoveLJH22() {
 		dp.LJH22.Close()
 	}
 	dp.LJH22 = nil
+	dp.numberWritten = 0
 }
 
 // HasPubRecords return true if publishing records on PortTrigs Pub is occuring
@@ -139,14 +183,14 @@ func (dp *DataPublisher) RemovePubSummaries() {
 }
 
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
-func (dp DataPublisher) PublishData(records []*DataRecord) error {
+func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
 	}
 	if dp.HasPubSummaries() {
 		dp.PubSummariesChan <- records
 	}
-	if dp.HasLJH22() {
+	if dp.HasLJH22() && !dp.WritingPaused {
 		for _, record := range records {
 			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
@@ -160,7 +204,7 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	if dp.HasLJH3() {
+	if dp.HasLJH3() && !dp.WritingPaused {
 		for _, record := range records {
 			if !dp.LJH3.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
@@ -173,6 +217,33 @@ func (dp DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+	}
+	if dp.HasOFF() && !dp.WritingPaused {
+		for _, record := range records {
+			if !dp.OFF.HeaderWritten() { // MATTER doesn't create ljh files until at least one record exists, let us do the same
+				// if the file doesn't exists yet, create it and write header
+				err := dp.OFF.CreateFile()
+				if err != nil {
+					return err
+				}
+				dp.OFF.WriteHeader()
+			}
+			modelCoefs := make([]float32, len(record.modelCoefs))
+			for i, v := range record.modelCoefs {
+				modelCoefs[i] = float32(v)
+			}
+			err := dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
+				float32(record.pretrigMean), float32(record.residualStdDev), modelCoefs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
+		dp.numberWritten += len(records)
+	}
+	if dp.numberWrittenChan != nil {
+		dp.numberWrittenChan <- dp.numberWritten
 	}
 	return nil
 }
@@ -330,4 +401,50 @@ func bytesToRawType(b []byte) []RawType {
 	header.Len /= ratio
 	data := *(*[]RawType)(unsafe.Pointer(&header))
 	return data
+}
+
+// PublishSync is used to synchronize the publication of number of records written
+type PublishSync struct {
+	numberWrittenChans []chan int
+	NumberWritten      []int
+	abort              chan struct{} // This can signal the Run() goroutine to stop
+}
+
+// NewPublishSync returns a *PublishSync for nchan channels
+func NewPublishSync(nchan int) *PublishSync {
+	numberWrittenChans := make([]chan int, nchan)
+	for i := 0; i < nchan; i++ {
+		numberWrittenChans[i] = make(chan int)
+	}
+	return &PublishSync{numberWrittenChans: numberWrittenChans, abort: make(chan struct{}),
+		NumberWritten: make([]int, nchan)}
+}
+
+// Run runs, collects number of records published, publishes summaries
+// should be called as a goroutine
+func (ps *PublishSync) Run() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		default:
+			// get data from all PrimaryTrigs channels
+			for i := 0; i < len(ps.numberWrittenChans); i++ {
+				select {
+				case <-ps.abort:
+					return
+				case n := <-ps.numberWrittenChans[i]:
+					ps.NumberWritten[i] = n
+				}
+			}
+		case <-ticker.C:
+			clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
+				state: ps} // only exported fields are serialized
+		}
+	}
+}
+
+// Stop causes the Run() goroutine to end at the next appropriate moment.
+func (ps *PublishSync) Stop() {
+	close(ps.abort)
 }

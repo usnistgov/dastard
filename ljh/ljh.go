@@ -34,7 +34,7 @@ const (
 
 // Reader is the interface for reading an LJH file
 type Reader struct {
-	ChanNum         int
+	ChannelIndex    int
 	Presamples      int
 	Samples         int
 	VersionNumber   VersionCode
@@ -50,24 +50,25 @@ type Reader struct {
 
 // Writer writes LJH2.2 files
 type Writer struct {
-	ChanNum         int
-	Presamples      int
-	Samples         int
-	FramesPerSample int
-	Timebase        float64
-	TimestampOffset time.Time
-	NumberOfRows    int
-	NumberOfColumns int
-	NumberOfChans   int
-	HeaderWritten   bool
-	FileName        string
-	RecordsWritten  int
-	DastardVersion  string
-	GitHash         string
-	SourceName      string
-	ChanName        string
-	ColumnNum       int
-	RowNum          int
+	ChannelIndex              int
+	Presamples                int
+	Samples                   int
+	FramesPerSample           int
+	Timebase                  float64
+	TimestampOffset           time.Time
+	NumberOfRows              int
+	NumberOfColumns           int
+	NumberOfChans             int
+	HeaderWritten             bool
+	FileName                  string
+	RecordsWritten            int
+	DastardVersion            string
+	GitHash                   string
+	SourceName                string
+	ChanName                  string
+	ChannelNumberMatchingName int
+	ColumnNum                 int
+	RowNum                    int
 
 	file   *os.File
 	writer *bufio.Writer
@@ -168,8 +169,9 @@ Software Git Hash: %s
 Data source: %s
 %s
 Number of channels: %d
-Channel: %d
 Channel name: %s
+Channel: %d
+ChannelIndex (in dastard): %d
 Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
@@ -177,10 +179,10 @@ Number of samples per point: %d
 Timestamp offset (s): %.6f
 Server Start Time: %s
 First Record Time: %s
-Timebase: %f
+Timebase: %e
 #End of Header
 `, w.DastardVersion, w.GitHash, w.SourceName, rowColText, w.NumberOfChans,
-		w.ChanNum, w.ChanName, w.Presamples, w.Samples, w.FramesPerSample,
+		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.Presamples, w.Samples, w.FramesPerSample,
 		timestamp, starttime, firstrec, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)
@@ -225,15 +227,17 @@ func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) err
 
 // Writer3 writes LJH3.0 files
 type Writer3 struct {
-	ChanNum         int
-	Timebase        float64
-	NumberOfRows    int
-	NumberOfColumns int
-	Row             int
-	Column          int
-	HeaderWritten   bool
-	FileName        string
-	RecordsWritten  int
+	ChannelIndex               int
+	ChannelName                string
+	ChannelNumberMatchingIndex int
+	Timebase                   float64
+	NumberOfRows               int
+	NumberOfColumns            int
+	Row                        int
+	Column                     int
+	HeaderWritten              bool
+	FileName                   string
+	RecordsWritten             int
 
 	file   *os.File
 	writer *bufio.Writer
@@ -305,12 +309,14 @@ func (w *Writer3) WriteRecord(firstRisingSample int32, rowcount int64, timestamp
 
 // Flush flushes buffered data to disk
 func (w Writer3) Flush() {
-	w.writer.Flush()
+	if w.writer != nil {
+		w.writer.Flush()
+	}
 }
 
 // Close closes the LJH3 file
 func (w Writer3) Close() {
-	w.writer.Flush()
+	w.Flush()
 	w.file.Close()
 }
 
@@ -354,8 +360,8 @@ header:
 		case extract(line, "Digitized Word Size in Bytes: %d", &r.WordSize):
 		case extract(line, "Presamples: %d", &r.Presamples):
 		case extract(line, "Total Samples: %d", &r.Samples):
-		case extract(line, "Channel: %d", &r.ChanNum):
-		case extract(line, "Channel: %d", &r.ChanNum):
+		case extract(line, "Channel: %d", &r.ChannelIndex):
+		case extract(line, "Channel: %d", &r.ChannelIndex):
 		case extractFloat(line, "Timestamp offset (s): %f", &r.TimestampOffset):
 		case extractFloat(line, "Timebase: %f", &r.Timebase):
 

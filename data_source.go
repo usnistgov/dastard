@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -45,8 +46,8 @@ type DataSource interface {
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
 // don't need the mix
-func (ds *AnySource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
-	return fmt.Errorf("this source does not support Mix") // how to best provide name of source here?
+func (ds *AnySource) ConfigureMixFraction(channelIndex int, mixFraction float64) error {
+	return fmt.Errorf("source type %s does not support Mix", ds.name)
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -116,8 +117,10 @@ type AnySource struct {
 	nchan        int          // how many channels to provide
 	name         string       // what kind of source is this?
 	chanNames    []string     // one name per channel
+	chanNumbers  []int        // names have format "prefixNumber", this is the number
 	rowColCodes  []RowColCode // one RowColCode per channel
 	signed       []bool       // is the raw data signed, one per channel
+	voltsPerArb  []float32    // the physical units per arb, one per channel
 	sampleRate   float64      // samples per second
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
@@ -125,6 +128,7 @@ type AnySource struct {
 	processors   []*DataStreamProcessor
 	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
 	broker       *TriggerBroker
+	publishSync  *PublishSync
 	noProcess    bool // Set true only for testing.
 	heartbeats   chan Heartbeat
 	writingState WritingState
@@ -182,6 +186,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	} else if strings.HasPrefix(request, "STOP") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.RemoveLJH22()
+			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
 		ds.writingState.Active = false
@@ -189,9 +194,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Filename = ""
 
 	} else if strings.HasPrefix(request, "START") {
-		if config.FileType != "LJH2.2" {
-			return fmt.Errorf("WriteControl FileType=%q, needs to be %q",
-				config.FileType, "LJH2.2")
+		if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
+			return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
 		}
 		// Write to the previous BasePath if config.Path is empty.
 		path := ds.writingState.BasePath
@@ -203,33 +207,50 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			return fmt.Errorf("Could not make directory: %s", err.Error())
 		}
 		for i, dsp := range ds.processors {
-			if dsp.DataPublisher.HasLJH22() {
-				return fmt.Errorf("WriteControl Request:Start is not yet implemented when writing already running")
+			if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
+				return fmt.Errorf("Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
+					dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 			}
 			timebase := 1.0 / dsp.SampleRate
 			rccode := ds.rowColCodes[i]
 			nrows := rccode.rows()
 			ncols := rccode.cols()
-			rownum := rccode.row()
-			colnum := rccode.col()
+			rowNum := rccode.row()
+			colNum := rccode.col()
 			filename := fmt.Sprintf(filenamePattern, dsp.Name)
 			fps := 1
 			if dsp.Decimate {
 				fps = dsp.DecimateLevel
 			}
-			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, Build.RunStart, nrows, ncols, ds.nchan, rownum, colnum, filename,
-				ds.name, ds.chanNames[i])
+			if config.WriteLJH22 {
+				dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
+					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+					ds.name, ds.chanNames[i], ds.chanNumbers[i])
+			}
+			if config.WriteOFF {
+				// if dsp.projectors.IsZero() || dsp.basis.IsZero() {
+				// 	return fmt.Errorf("channelIndex %v has no valid projectors", i)
+				// }
+				// I'm worried about checking for projectors here because it would fail for error channels if
+				// you (quite reasonably) didn't set projectors for the error channels
+				// but I don't know what will happen if I let it get to off.Writer.WriteRecord it errors there
+				dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
+					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
+					"model description not implemented. but it should be mean, average pulse, derivative of average pulse")
+			}
+			if config.WriteLJH3 {
+				dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, filename)
+			}
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
 		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*")
 	} else {
-		return fmt.Errorf("WriteControl config.Request=%q, need (Start,Stop,Pause,Unpause)",
+		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive",
 			config.Request)
 	}
-
 	return nil
 }
 
@@ -246,12 +267,12 @@ func (ds *AnySource) ComputeWritingState() WritingState {
 	return ds.writingState
 }
 
-// ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[processorsInd]
-func (ds *AnySource) ConfigureProjectorsBases(processorInd int, projectors mat.Dense, basis mat.Dense) error {
-	if processorInd >= len(ds.processors) || processorInd < 0 {
-		return fmt.Errorf("processorInd out of range, processorInd=%v, len(ds.processors)=%v", processorInd, len(ds.processors))
+// ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[channelIndex]
+func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense) error {
+	if channelIndex >= len(ds.processors) || channelIndex < 0 {
+		return fmt.Errorf("channelIndex out of range, channelIndex=%v, len(ds.processors)=%v", channelIndex, len(ds.processors))
 	}
-	dsp := ds.processors[processorInd]
+	dsp := ds.processors[channelIndex]
 	return dsp.SetProjectorsBasis(projectors, basis)
 }
 
@@ -276,6 +297,8 @@ func (ds *AnySource) Running() bool {
 
 // Signed returns a per-channel value: whether data are signed ints.
 func (ds *AnySource) Signed() []bool {
+	// Objects containing an AnySource can override this, but default is here:
+	// all channels are unsigned.
 	if ds.signed == nil {
 		ds.signed = make([]bool, ds.nchan)
 	}
@@ -284,11 +307,14 @@ func (ds *AnySource) Signed() []bool {
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
 func (ds *AnySource) VoltsPerArb() []float32 {
-	v := make([]float32, ds.nchan)
-	for i := 0; i < ds.nchan; i++ {
-		v[i] = 1. / 65535.0
+	// Objects containing an AnySource can set this up, but here is the default
+	if ds.voltsPerArb == nil || len(ds.voltsPerArb) != ds.nchan {
+		ds.voltsPerArb = make([]float32, ds.nchan)
+		for i := 0; i < ds.nchan; i++ {
+			ds.voltsPerArb[i] = 1. / 65535.0
+		}
 	}
-	return v
+	return ds.voltsPerArb
 }
 
 // setDefaultChannelNames defensively sets channel names of the appropriate length.
@@ -299,8 +325,10 @@ func (ds *AnySource) setDefaultChannelNames() {
 		return
 	}
 	ds.chanNames = make([]string, ds.nchan)
+	ds.chanNumbers = make([]int, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
 		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
+		ds.chanNumbers[i] = i
 	}
 }
 
@@ -320,6 +348,10 @@ func (ds *AnySource) PrepareRun() error {
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run()
 
+	// Start a PublishSync to publish the # of records written
+	ds.publishSync = NewPublishSync(ds.nchan)
+	go ds.publishSync.Run()
+
 	// Channels onto which we'll put data produced by this source
 	ds.output = make([]chan DataSegment, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
@@ -331,29 +363,49 @@ func (ds *AnySource) PrepareRun() error {
 	ds.runDone.Add(ds.nchan)
 	signed := ds.Signed()
 	vpa := ds.VoltsPerArb()
-	for channelNum, dataSegmentChan := range ds.output {
-		dsp := NewDataStreamProcessor(channelNum, ds.broker)
-		dsp.Name = ds.chanNames[channelNum]
+
+	// Load last trigger state from config file
+	var fts []FullTriggerState
+	if err := viper.UnmarshalKey("trigger", &fts); err != nil {
+		// could not read trigger state from config file.
+		fts = []FullTriggerState{}
+	}
+	tsptrs := make([]*TriggerState, ds.nchan)
+	for i, ts := range fts {
+		for _, chnum := range ts.ChanNumbers {
+			if chnum < ds.nchan {
+				tsptrs[chnum] = &(fts[i].TriggerState)
+			}
+		}
+	}
+	// Use defaultTS for any channels not in the stored state.
+	// This will be needed any time you have more channels than in the
+	// last saved configuration. All trigger types are disabled.
+	defaultTS := TriggerState{
+		AutoTrigger:  false,
+		AutoDelay:    250 * time.Millisecond,
+		EdgeTrigger:  false,
+		EdgeLevel:    100,
+		EdgeRising:   true,
+		LevelTrigger: false,
+		LevelLevel:   4000,
+	}
+
+	for channelIndex, dataSegmentChan := range ds.output {
+		dsp := NewDataStreamProcessor(channelIndex, ds.broker, ds.publishSync.numberWrittenChans[channelIndex])
+		dsp.Name = ds.chanNames[channelIndex]
 		dsp.SampleRate = ds.sampleRate
-		dsp.stream.signed = signed[channelNum]
-		dsp.stream.voltsPerArb = vpa[channelNum]
-		ds.processors[channelNum] = dsp
+		dsp.stream.signed = signed[channelIndex]
+		dsp.stream.voltsPerArb = vpa[channelIndex]
+		ds.processors[channelIndex] = dsp
 
-		// TODO: don't just set these to arbitrary values
-		dsp.Decimate = false
-		dsp.DecimateLevel = 3
-		dsp.DecimateAvgMode = true
-		dsp.LevelTrigger = false
-		dsp.LevelLevel = 4000
-		dsp.EdgeTrigger = true
-		dsp.EdgeLevel = 100
-		dsp.EdgeRising = true
-		dsp.NPresamples = 200
-		dsp.NSamples = 1000
-		dsp.AutoTrigger = true
-		dsp.AutoDelay = 250 * time.Millisecond
+		ts := tsptrs[channelIndex]
+		if ts == nil {
+			ts = &defaultTS
+		}
+		dsp.TriggerState = *ts
 
-		// TODO: don't automatically turn on all record publishing.
+		// Publish Records and Summaries over ZMQ by default
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 
@@ -378,6 +430,8 @@ func (ds *AnySource) Stop() error {
 		close(ds.abortSelf)
 	}
 	ds.runDone.Wait()
+	ds.broker.Stop()
+	ds.publishSync.Stop()
 	return nil
 }
 
@@ -432,7 +486,9 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 // ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	for _, chnum := range state.ChanNumbers {
-		ds.processors[chnum].TriggerState = state.TriggerState
+		if chnum < ds.nchan { // Don't trust client to know this number!
+			ds.processors[chnum].TriggerState = state.TriggerState
+		}
 	}
 	return nil
 }
