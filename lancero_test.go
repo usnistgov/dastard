@@ -79,6 +79,7 @@ func TestNoHardwareSource(t *testing.T) {
 	nrowsSet = 4
 	linePeriodSet = 400 // don't make this too low, or test -race will fail
 	nLancero = 3
+	ntes := ncolsSet * nrowsSet * nLancero
 	source := new(LanceroSource)
 	source.devices = make(map[int]*LanceroDevice, nLancero)
 	cardDelay := []int{0} // a single card delay value works for multiple cards
@@ -127,13 +128,13 @@ func TestNoHardwareSource(t *testing.T) {
 	defer source.Stop()
 
 	if source.chanNumbers[3] != 2 {
-		t.Errorf("have %v, want 2", source.chanNumbers[3])
+		t.Errorf("LanceroSource.chanNumbers[3] has %v, want 2", source.chanNumbers[3])
 	}
 	if strings.Compare(source.chanNames[3], "chan2") != 0 {
-		t.Errorf("have %v, want chan2", source.chanNames[3])
+		t.Errorf("LanceroSource.chanNames[3] has %v, want chan2", source.chanNames[3])
 	}
 	if strings.Compare(source.chanNames[2], "err2") != 0 {
-		t.Errorf("have %v, want chan2", source.chanNames[3])
+		t.Errorf("LanceroSource.chanNames[2] %v, want err2", source.chanNames[3])
 	}
 	if err := source.ConfigureMixFraction(0, 1.0); err == nil {
 		t.Error("expected error for mixing on even channel")
@@ -142,7 +143,6 @@ func TestNoHardwareSource(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
-
 }
 
 func TestMix(t *testing.T) {

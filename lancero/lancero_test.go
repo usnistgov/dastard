@@ -85,6 +85,7 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 			if err != nil {
 				return 0, 0, 0, fmt.Errorf("lan.AvailableBuffers: %v", err)
 			}
+			// fmt.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
 			if totalBytes > 0 {
 				q, p, n, err := FindFrameBits(buffer)
 				bytesPerFrame := 4 * (p - q)
