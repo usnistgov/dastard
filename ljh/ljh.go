@@ -309,12 +309,14 @@ func (w *Writer3) WriteRecord(firstRisingSample int32, rowcount int64, timestamp
 
 // Flush flushes buffered data to disk
 func (w Writer3) Flush() {
-	w.writer.Flush()
+	if w.writer != nil {
+		w.writer.Flush()
+	}
 }
 
 // Close closes the LJH3 file
 func (w Writer3) Close() {
-	w.writer.Flush()
+	w.Flush()
 	w.file.Close()
 }
 

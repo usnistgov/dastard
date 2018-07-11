@@ -293,11 +293,13 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 }
 
 // WriteControlConfig object to control start/stop/pause of data writing
+// Path and FileType are ignored for any request other than Start
 type WriteControlConfig struct {
-	Request   string // "Start", "Stop", "Pause", or "Unpause"
-	Path      string // write in a new directory under this path
-	FileType  string // "LJH2.2", "LJH3", or ... ?
-	Rec2Write int
+	Request    string // "Start", "Stop", "Pause", or "Unpause"
+	Path       string // write in a new directory under this path
+	WriteLJH22 bool   // turn on one or more file formats
+	WriteOFF   bool
+	WriteLJH3  bool
 }
 
 // WriteControl requests start/stop/pause/unpause data writing
@@ -308,9 +310,12 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	if s.activeSource == nil {
 		return nil
 	}
-	err := s.activeSource.WriteControl(config)
+	err, doneChan := s.activeSource.WriteControl(config)
 	*reply = (err != nil)
-	go s.broadcastWritingState()
+	go func() {
+		_ = <-doneChan
+		s.broadcastWritingState()
+	}()
 	return err
 }
 
@@ -339,6 +344,7 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 // CouplingStatus describes the status of FB / error coupling
 type CouplingStatus int
 
+// Constants for use CoupleErrToFB (should be unexported?)
 const (
 	NoCoupling CouplingStatus = iota + 1 // FB and error aren't coupled
 	FBToErr                              // FB triggers cause secondary triggers in error channels

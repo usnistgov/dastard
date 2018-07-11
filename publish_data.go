@@ -9,6 +9,8 @@ import (
 
 	"github.com/usnistgov/dastard/getbytes"
 	"github.com/usnistgov/dastard/ljh"
+	"github.com/usnistgov/dastard/off"
+	"gonum.org/v1/gonum/mat"
 
 	czmq "github.com/zeromq/goczmq"
 )
@@ -20,20 +22,55 @@ type DataPublisher struct {
 	PubSummariesChan  chan []*DataRecord
 	LJH22             *ljh.Writer
 	LJH3              *ljh.Writer3
-	writingPaused     bool
+	OFF               *off.Writer
+	WritingPaused     bool
 	numberWritten     int      // integrates up the total number written, reset any time writing starts or stops
 	numberWrittenChan chan int // send the total number written to this channel after each write group
 }
 
 // SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
-	dp.writingPaused = pause
+	dp.WritingPaused = pause
 	if dp.LJH22 != nil {
 		dp.LJH22.Flush()
 	}
 	if dp.LJH3 != nil {
 		dp.LJH3.Flush()
 	}
+	if dp.OFF != nil {
+		dp.OFF.Flush()
+	}
+}
+
+// SetOFF adds an OFF writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
+func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
+	Timebase float64, TimestampOffset time.Time,
+	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
+	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
+	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string) {
+	ReadoutInfo := off.TimeDivisionMultiplexingInfo{NumberOfRows: NumberOfRows,
+		NumberOfColumns: NumberOfColumns,
+		NumberOfChans:   NumberOfChans,
+		ColumnNum:       colNum, RowNum: rowNum}
+	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
+		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo)
+	dp.OFF = w
+	dp.numberWritten = 0
+}
+
+// HasOFF returns true if OFF is non-nil, eg if writing to OFF is occuring
+func (dp *DataPublisher) HasOFF() bool {
+	return dp.OFF != nil
+}
+
+// RemoveOFF closes any existing OFF file and assign .OFF=nil
+func (dp *DataPublisher) RemoveOFF() {
+	if dp.OFF != nil {
+		dp.OFF.Close()
+	}
+	dp.OFF = nil
+	dp.numberWritten = 0
+
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -45,13 +82,13 @@ func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 		NumberOfColumns: NumberOfColumns,
 		FileName:        FileName}
 	dp.LJH3 = &w
-	dp.writingPaused = false
+	dp.WritingPaused = false
 	dp.numberWritten = 0
 }
 
 // HasLJH3 returns true if LJH3 is non-nil, eg if writing to LJH3 is occuring
 func (dp *DataPublisher) HasLJH3() bool {
-	return dp.LJH3 != nil && !dp.writingPaused
+	return dp.LJH3 != nil
 }
 
 // RemoveLJH3 closes existing LJH3 file and assign .LJH3=nil
@@ -87,13 +124,13 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 		RowNum:                    rowNum,
 	}
 	dp.LJH22 = &w
-	dp.writingPaused = false
+	dp.WritingPaused = false
 	dp.numberWritten = 0
 }
 
 // HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
 func (dp *DataPublisher) HasLJH22() bool {
-	return dp.LJH22 != nil && !dp.writingPaused
+	return dp.LJH22 != nil
 }
 
 // RemoveLJH22 closes existing LJH22 file and assign .LJH22=nil
@@ -153,7 +190,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.HasPubSummaries() {
 		dp.PubSummariesChan <- records
 	}
-	if dp.HasLJH22() {
+	if dp.HasLJH22() && !dp.WritingPaused {
 		for _, record := range records {
 			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
@@ -167,7 +204,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	if dp.HasLJH3() {
+	if dp.HasLJH3() && !dp.WritingPaused {
 		for _, record := range records {
 			if !dp.LJH3.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
@@ -181,7 +218,28 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	if dp.HasLJH22() || dp.HasLJH3() {
+	if dp.HasOFF() && !dp.WritingPaused {
+		for _, record := range records {
+			if !dp.OFF.HeaderWritten() { // MATTER doesn't create ljh files until at least one record exists, let us do the same
+				// if the file doesn't exists yet, create it and write header
+				err := dp.OFF.CreateFile()
+				if err != nil {
+					return err
+				}
+				dp.OFF.WriteHeader()
+			}
+			modelCoefs := make([]float32, len(record.modelCoefs))
+			for i, v := range record.modelCoefs {
+				modelCoefs[i] = float32(v)
+			}
+			err := dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
+				float32(record.pretrigMean), float32(record.residualStdDev), modelCoefs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
 		dp.numberWritten += len(records)
 	}
 	if dp.numberWrittenChan != nil {
@@ -347,6 +405,8 @@ func bytesToRawType(b []byte) []RawType {
 
 // PublishSync is used to synchronize the publication of number of records written
 type PublishSync struct {
+	writing            bool
+	writingChan        chan bool // send message here to set writing without race condition
 	numberWrittenChans []chan int
 	NumberWritten      []int
 	abort              chan struct{} // This can signal the Run() goroutine to stop
@@ -359,7 +419,7 @@ func NewPublishSync(nchan int) *PublishSync {
 		numberWrittenChans[i] = make(chan int)
 	}
 	return &PublishSync{numberWrittenChans: numberWrittenChans, abort: make(chan struct{}),
-		NumberWritten: make([]int, nchan)}
+		NumberWritten: make([]int, nchan), writingChan: make(chan bool)}
 }
 
 // Run runs, collects number of records published, publishes summaries
@@ -377,11 +437,14 @@ func (ps *PublishSync) Run() {
 					return
 				case n := <-ps.numberWrittenChans[i]:
 					ps.NumberWritten[i] = n
+				case ps.writing = <-ps.writingChan:
 				}
 			}
 		case <-ticker.C:
-			clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
-				state: ps} // only exported fields are serialized
+			if ps.writing {
+				clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
+					state: ps} // only exported fields are serialized
+			} // only send NUMBERWRITTEN messages when writing is occuring
 		}
 	}
 }
