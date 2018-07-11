@@ -59,6 +59,8 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 	}
 	ts.nchan = config.Nchan
 	ts.sampleRate = config.SampleRate
+	ts.samplePeriod = time.Duration(roundint(1e9 / ts.sampleRate))
+
 	ts.minval = config.Min
 	ts.maxval = config.Max
 	cycleTime := float64(ts.cycleLen) / ts.sampleRate
@@ -108,6 +110,7 @@ func (ts *TriangleSource) blockingRead() error {
 		seg := DataSegment{
 			rawData:         datacopy,
 			framesPerSample: 1,
+			framePeriod:     ts.samplePeriod,
 			firstFramenum:   ts.nextFrameNum,
 			firstTime:       firstTime,
 		}
@@ -151,6 +154,7 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	}
 	sps.nchan = config.Nchan
 	sps.sampleRate = config.SampleRate
+	sps.samplePeriod = time.Duration(roundint(1e9 / sps.sampleRate))
 
 	sps.cycleLen = config.Nsamp
 	firstIdx := 5
@@ -220,6 +224,7 @@ func (sps *SimPulseSource) blockingRead() error {
 		seg := DataSegment{
 			rawData:         datacopy,
 			framesPerSample: 1,
+			framePeriod:     sps.samplePeriod,
 			firstFramenum:   sps.nextFrameNum,
 			firstTime:       firstTime,
 		}
