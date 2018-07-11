@@ -310,9 +310,12 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	if s.activeSource == nil {
 		return nil
 	}
-	err := s.activeSource.WriteControl(config)
+	err, doneChan := s.activeSource.WriteControl(config)
 	*reply = (err != nil)
-	go s.broadcastWritingState()
+	go func() {
+		_ = <-doneChan
+		s.broadcastWritingState()
+	}()
 	return err
 }
 
