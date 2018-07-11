@@ -346,7 +346,7 @@ func setupViper() error {
 	}
 
 	// Set up different ports for testing than you'd use otherwise
-	setPortnumbers(33000)
+	setPortnumbers(33300)
 
 	// Write output files in a temporary file
 	ws := WritingState{BasePath: "/tmp"}

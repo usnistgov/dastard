@@ -145,11 +145,13 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 
 // ConfigureTriggers configures the trigger state for 1 or more channels.
 func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
 	err := s.activeSource.ChangeTriggerState(state)
-	s.broadcastTriggerState()
+	go s.broadcastTriggerState()
 	*reply = (err == nil)
 	return err
 }
@@ -310,15 +312,9 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	if s.activeSource == nil {
 		return nil
 	}
-	fmt.Printf("About to call WriteControl %v\n", *config)
-	doneChan, err := s.activeSource.WriteControl(config)
+	err := s.activeSource.WriteControl(config)
 	*reply = (err != nil)
-	go func() {
-		fmt.Printf("waiting for WriteControl to finish\n")
-		_ = <-doneChan
-		fmt.Printf("Done waitin for WriteControl to finish\n")
-		s.broadcastWritingState()
-	}()
+	go s.broadcastWritingState()
 	return err
 }
 
@@ -506,7 +502,7 @@ func RunRPCServer(portrpc int) {
 		for {
 			select {
 			case <-ticker:
-				sourceControl.broadcastHeartbeat()
+				go sourceControl.broadcastHeartbeat()
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.DataMB += h.DataMB
 				sourceControl.totalData.Time += h.Time
