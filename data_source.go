@@ -186,6 +186,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	} else if strings.HasPrefix(request, "STOP") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.RemoveLJH22()
+			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
 		ds.writingState.Active = false
@@ -193,9 +194,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Filename = ""
 
 	} else if strings.HasPrefix(request, "START") {
-		if config.FileType != "LJH2.2" {
-			return fmt.Errorf("WriteControl FileType=%q, needs to be %q",
-				config.FileType, "LJH2.2")
+		if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
+			return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
 		}
 		// Write to the previous BasePath if config.Path is empty.
 		path := ds.writingState.BasePath
@@ -207,33 +207,50 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			return fmt.Errorf("Could not make directory: %s", err.Error())
 		}
 		for i, dsp := range ds.processors {
-			if dsp.DataPublisher.HasLJH22() {
-				return fmt.Errorf("WriteControl Request:Start is not yet implemented when writing already running")
+			if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
+				return fmt.Errorf("Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
+					dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 			}
 			timebase := 1.0 / dsp.SampleRate
 			rccode := ds.rowColCodes[i]
 			nrows := rccode.rows()
 			ncols := rccode.cols()
-			rownum := rccode.row()
-			colnum := rccode.col()
+			rowNum := rccode.row()
+			colNum := rccode.col()
 			filename := fmt.Sprintf(filenamePattern, dsp.Name)
 			fps := 1
 			if dsp.Decimate {
 				fps = dsp.DecimateLevel
 			}
-			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, Build.RunStart, nrows, ncols, ds.nchan, rownum, colnum, filename,
-				ds.name, ds.chanNames[i], ds.chanNumbers[i])
+			if config.WriteLJH22 {
+				dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
+					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+					ds.name, ds.chanNames[i], ds.chanNumbers[i])
+			}
+			if config.WriteOFF {
+				// if dsp.projectors.IsZero() || dsp.basis.IsZero() {
+				// 	return fmt.Errorf("channelIndex %v has no valid projectors", i)
+				// }
+				// I'm worried about checking for projectors here because it would fail for error channels if
+				// you (quite reasonably) didn't set projectors for the error channels
+				// but I don't know what will happen if I let it get to off.Writer.WriteRecord it errors there
+				dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
+					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
+					"model description not implemented. but it should be mean, average pulse, derivative of average pulse")
+			}
+			if config.WriteLJH3 {
+				dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, filename)
+			}
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
 		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*")
 	} else {
-		return fmt.Errorf("WriteControl config.Request=%q, need (Start,Stop,Pause,Unpause)",
+		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive",
 			config.Request)
 	}
-
 	return nil
 }
 

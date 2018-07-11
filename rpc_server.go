@@ -293,10 +293,13 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 }
 
 // WriteControlConfig object to control start/stop/pause of data writing
+// Path and FileType are ignored for any request other than Start
 type WriteControlConfig struct {
-	Request  string // "Start", "Stop", "Pause", or "Unpause"
-	Path     string // write in a new directory under this path
-	FileType string // "LJH2.2", "LJH3", or ... ?
+	Request    string // "Start", "Stop", "Pause", or "Unpause"
+	Path       string // write in a new directory under this path
+	WriteLJH22 bool   // turn on one or more file formats
+	WriteOFF   bool
+	WriteLJH3  bool
 }
 
 // WriteControl requests start/stop/pause/unpause data writing

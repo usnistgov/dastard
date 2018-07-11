@@ -174,12 +174,14 @@ func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, framec
 
 // Flush flushes the write buffer
 func (w Writer) Flush() {
-	w.writer.Flush()
+	if w.writer != nil {
+		w.writer.Flush()
+	}
 }
 
 // Close closes the file, it flushes the bufio.Writer first
 func (w Writer) Close() {
-	w.writer.Flush()
+	w.Flush()
 	w.file.Close()
 }
 

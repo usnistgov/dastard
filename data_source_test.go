@@ -70,7 +70,7 @@ func TestWritingFiles(t *testing.T) {
 	ds := AnySource{nchan: 4}
 	ds.rowColCodes = make([]RowColCode, ds.nchan)
 	ds.PrepareRun()
-	config := &WriteControlConfig{Request: "Pause", Path: tmp, FileType: "LJH2.2"}
+	config := &WriteControlConfig{Request: "Pause", Path: tmp, WriteLJH22: true}
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {
 		config.Request = request
 		if err := ds.WriteControl(config); err != nil {
@@ -82,12 +82,12 @@ func TestWritingFiles(t *testing.T) {
 		t.Errorf("WriteControl request %s should fail, but didn't", config.Request)
 	}
 	config.Request = "Start"
-	config.FileType = "notvalid"
+	config.WriteLJH22 = false
 	if err := ds.WriteControl(config); err == nil {
-		t.Errorf("WriteControl request Start with nonvalid filetype should fail, but didn't")
+		t.Errorf("WriteControl request Start with no valid filetype should fail, but didn't")
 	}
 
-	config.FileType = "LJH2.2"
+	config.WriteLJH22 = true
 	config.Path = "/notvalid/because/permissions"
 	if err := ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request Start with nonvalid path should fail, but didn't")
@@ -102,5 +102,34 @@ func TestWritingFiles(t *testing.T) {
 		if err := ds.WriteControl(config); err != nil {
 			t.Errorf("WriteControl request %s failed on a writing file: %v", request, err)
 		}
+	}
+	config.Request = "Start"
+	config.WriteLJH22 = true
+	config.WriteOFF = true
+	config.WriteLJH3 = true
+	if err := ds.WriteControl(config); err != nil {
+		t.Errorf("%v\n%v", err, config.Request)
+	}
+	if !ds.processors[0].DataPublisher.HasLJH22() {
+		t.Error("WriteLJH22 did not result in HasLJH22")
+	}
+	if !ds.processors[0].DataPublisher.HasOFF() {
+		t.Error("WriteOFF did not result in HasOFF")
+	}
+	if !ds.processors[0].DataPublisher.HasLJH3() {
+		t.Error("WriteLJH3 did not result in HasLJH3")
+	}
+	config.Request = "Stop"
+	if err := ds.WriteControl(config); err != nil {
+		t.Errorf("%v\n%v", err, config.Request)
+	}
+	if ds.processors[0].DataPublisher.HasLJH22() {
+		t.Error("Stop did not result in !HasLJH22")
+	}
+	if ds.processors[0].DataPublisher.HasOFF() {
+		t.Error("Stop did not result in !HasOFF")
+	}
+	if ds.processors[0].DataPublisher.HasLJH3() {
+		t.Error("Stop did not result in !HasLJH3")
 	}
 }
