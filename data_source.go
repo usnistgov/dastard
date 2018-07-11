@@ -40,7 +40,7 @@ type DataSource interface {
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(int, float64) error
-	WriteControl(*WriteControlConfig) (error, chan struct{})
+	WriteControl(*WriteControlConfig) (chan struct{}, error)
 	SetCoupling(CouplingStatus) error
 }
 
@@ -174,8 +174,8 @@ func makeDirectory(basepath string) (string, error) {
 // For WriteOFF == true, only chanels with projectors set will have writing enabled
 // the function first checks for errors, then launched a goroutine with a lock
 // to actually change state, the last thing the goroutine does is close the returned channel
-// (closed channels always return the zero value immediatley, so it can be used for waiting until the writing state is changed)
-func (ds *AnySource) WriteControl(config *WriteControlConfig) (error, chan struct{}) {
+// (closed channels always return the zero value immediately, so it can be used for waiting until the writing state is changed)
+func (ds *AnySource) WriteControl(config *WriteControlConfig) (chan struct{}, error) {
 	request := strings.ToUpper(config.Request)
 	var filenamePattern, path string
 	doneChan := make(chan struct{})
@@ -183,13 +183,14 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) (error, chan struc
 	// first check for possible errors, then launch the rest in a goroutine
 	if strings.HasPrefix(request, "START") {
 		if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
-			return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false"), doneChan
+			return doneChan, fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
 		}
 
 		for _, dsp := range ds.processors {
 			if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
-				return fmt.Errorf("Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
-					dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3()), doneChan
+				return doneChan, fmt.Errorf(
+					"Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
+					dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 			}
 		}
 
@@ -200,7 +201,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) (error, chan struc
 		var err error
 		filenamePattern, err = makeDirectory(path)
 		if err != nil {
-			return fmt.Errorf("Could not make directory: %s", err.Error()), doneChan
+			return doneChan, fmt.Errorf("Could not make directory: %s", err.Error())
 		}
 		if config.WriteOFF {
 			// throw an error if no channels have projectors set
@@ -213,14 +214,14 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) (error, chan struc
 				}
 			}
 			if !anyProjectorsSet {
-				return fmt.Errorf("no projectors are loaded, OFF files require projectors"), doneChan
+				return doneChan, fmt.Errorf("no projectors are loaded, OFF files require projectors")
 			}
 		}
 	}
 	if !(strings.HasPrefix(request, "START") || strings.HasPrefix(request, "STOP") ||
 		strings.HasPrefix(request, "PAUSE") || strings.HasPrefix(request, "UNPAUSE")) {
-		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive",
-			config.Request), doneChan
+		return doneChan, fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive",
+			config.Request)
 	}
 
 	// do all actualy changes in a goroutine with a lock, close doneChan when done for synchronization
@@ -289,7 +290,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) (error, chan struc
 		}
 		close(doneChan)
 	}()
-	return nil, doneChan
+	return doneChan, nil
 }
 
 // WritingState monitors the state of file writing.

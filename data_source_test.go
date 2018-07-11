@@ -77,38 +77,38 @@ func TestWritingFiles(t *testing.T) {
 	var err error
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {
 		config.Request = request
-		if err, doneChan = ds.WriteControl(config); err != nil {
+		if doneChan, err = ds.WriteControl(config); err != nil {
 			t.Errorf("WriteControl request %s failed on a non-writing file: %v", request, err)
 		}
 		_ = <-doneChan // wait for actual work of WriteControl to finish
 
 	}
 	config.Request = "notvalid"
-	if err, doneChan = ds.WriteControl(config); err == nil {
+	if doneChan, err = ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request %s should fail, but didn't", config.Request)
 	}
 	_ = <-doneChan // wait for actual work of WriteControl to finish
 	config.Request = "Start"
 	config.WriteLJH22 = false
-	if err, doneChan = ds.WriteControl(config); err == nil {
+	if doneChan, err = ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request Start with no valid filetype should fail, but didn't")
 	}
 	_ = <-doneChan // wait for actual work of WriteControl to finish
 	config.WriteLJH22 = true
 	config.Path = "/notvalid/because/permissions"
-	if err, doneChan = ds.WriteControl(config); err == nil {
+	if doneChan, err = ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request Start with nonvalid path should fail, but didn't")
 	}
 	_ = <-doneChan // wait for actual work of WriteControl to finish
 
 	config.Path = tmp
-	if err, doneChan = ds.WriteControl(config); err != nil {
+	if doneChan, err = ds.WriteControl(config); err != nil {
 		t.Errorf("WriteControl request %s failed: %v", config.Request, err)
 	}
 	_ = <-doneChan // wait for actual work of WriteControl to finish
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {
 		config.Request = request
-		if err, doneChan = ds.WriteControl(config); err != nil {
+		if doneChan, err = ds.WriteControl(config); err != nil {
 			t.Errorf("WriteControl request %s failed on a writing file: %v", request, err)
 		}
 		_ = <-doneChan // wait for actual work of WriteControl to finish
@@ -125,7 +125,7 @@ func TestWritingFiles(t *testing.T) {
 	config.WriteLJH22 = true
 	config.WriteOFF = true
 	config.WriteLJH3 = true
-	if err, doneChan = ds.WriteControl(config); err != nil {
+	if doneChan, err = ds.WriteControl(config); err != nil {
 		t.Errorf("%v\n%v", err, config.Request)
 	}
 	_ = <-doneChan // wait for actual work of WriteControl to finish
@@ -142,7 +142,7 @@ func TestWritingFiles(t *testing.T) {
 		t.Error("WriteLJH3 did not result in HasLJH3")
 	}
 	config.Request = "Stop"
-	if err, doneChan = ds.WriteControl(config); err != nil {
+	if doneChan, err = ds.WriteControl(config); err != nil {
 		t.Errorf("%v\n%v", err, config.Request)
 	}
 	_ = <-doneChan // wait for actual work of WriteControl to finish
