@@ -310,10 +310,13 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	if s.activeSource == nil {
 		return nil
 	}
+	fmt.Printf("About to call WriteControl %v\n", *config)
 	doneChan, err := s.activeSource.WriteControl(config)
 	*reply = (err != nil)
 	go func() {
+		fmt.Printf("waiting for WriteControl to finish\n")
 		_ = <-doneChan
+		fmt.Printf("Done waitin for WriteControl to finish\n")
 		s.broadcastWritingState()
 	}()
 	return err
@@ -337,6 +340,10 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 		}
 		defer fp.Close()
 		fp.WriteString(*comment)
+		// Always end the comment file with a newline.
+		if !strings.HasSuffix(*comment, "\n") {
+			fp.WriteString("\n")
+		}
 	}
 	return nil
 }
@@ -344,11 +351,12 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 // CouplingStatus describes the status of FB / error coupling
 type CouplingStatus int
 
-// Constants for use CoupleErrToFB (should be unexported?)
+// Specific allowed values for status of FB / error coupling
 const (
-	NoCoupling CouplingStatus = iota + 1 // FB and error aren't coupled
-	FBToErr                              // FB triggers cause secondary triggers in error channels
-	ErrToFB                              // Error triggers cause secondary triggers in FB channels
+	// FB and error aren't coupled
+	NoCoupling CouplingStatus = iota + 1
+	FBToErr                   // FB triggers cause secondary triggers in error channels
+	ErrToFB                   // Error triggers cause secondary triggers in FB channels
 )
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
