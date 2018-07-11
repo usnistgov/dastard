@@ -171,6 +171,9 @@ func makeDirectory(basepath string) (string, error) {
 // WriteControl changes the data writing start/stop/pause/unpause state
 // For WriteLJH22 == true and/or WriteLJH3 == true all channels will have writing enabled
 // For WriteOFF == true, only chanels with projectors set will have writing enabled
+// the function first checks for errors, then launched a goroutine with a lock
+// to actually change state, the last thing the goroutine does is close the returned channel
+// (closed channels always return the zero value immediatley, so it can be used for waiting until the writing state is changed)
 func (ds *AnySource) WriteControl(config *WriteControlConfig) (error, chan struct{}) {
 	request := strings.ToUpper(config.Request)
 	var filenamePattern, path string
