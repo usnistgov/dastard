@@ -3,6 +3,7 @@ package dastard
 import (
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -198,6 +199,42 @@ func TestServer(t *testing.T) {
 			t.Error("expected error on CoupleErrToFB when non-Lancero source is active")
 		}
 	}
+	path, err := ioutil.TempDir("", "dastard_test")
+	if err != nil {
+		t.Fatal("Could not open temporary directory")
+	}
+	defer os.RemoveAll(path)
+	wconfig := WriteControlConfig{Request: "Start", Path: path, FileType: "LJH2.2", Rec2Write: 10}
+	if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
+		t.Error("SourceControl.WriteComment error:", err1)
+	}
+	comment := "hello"
+	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
+		t.Error("SourceControl.WriteComment error while writing:", err1)
+	}
+	wconfig.Request = "Stop"
+	if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
+		t.Error("SourceControl.WriteComment error:", err1)
+	}
+	// Check that comment.txt file exists and has a newline appended
+	date := time.Now().Format("20060102")
+	fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
+	file, err := os.Open(fname)
+	defer file.Close()
+	if err != nil {
+		t.Errorf("Could not open comment file %q", fname)
+	} else {
+		b := make([]byte, 1+len(comment))
+		_, err := file.Read(b)
+		if err != nil {
+			t.Error("file.Read failed on comment file", err)
+		} else if string(b) != "hello\n" {
+			t.Errorf("comment.txt file contains %q, want %q", b, "hello\n")
+		}
+	}
+	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
+		t.Error("SourceControl.WriteComment error after source stoped:", err1)
+	}
 
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
@@ -309,6 +346,10 @@ func setupViper() error {
 
 	// Set up different ports for testing than you'd use otherwise
 	setPortnumbers(33000)
+
+	// Write output files in a temporary file
+	ws := WritingState{BasePath: "/tmp"}
+	viper.Set("writing", ws)
 
 	// Check config saving.
 	msg := make(map[string]interface{})

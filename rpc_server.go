@@ -343,10 +343,12 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 // CouplingStatus describes the status of FB / error coupling
 type CouplingStatus int
 
+// Specific allowed values for status of FB / error coupling
 const (
-	NoCoupling CouplingStatus = iota + 1 // FB and error aren't coupled
-	FBToErr                              // FB triggers cause secondary triggers in error channels
-	ErrToFB                              // Error triggers cause secondary triggers in FB channels
+	// FB and error aren't coupled
+	NoCoupling CouplingStatus = iota + 1
+	FBToErr                   // FB triggers cause secondary triggers in error channels
+	ErrToFB                   // Error triggers cause secondary triggers in FB channels
 )
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
