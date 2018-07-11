@@ -65,4 +65,10 @@ func TestOff(t *testing.T) {
 		t.Error("should have complained about wrong number of bases")
 	}
 	w.Close()
+	if w.RecordsWritten() != w.recordsWritten {
+		t.Error()
+	}
+	if w.HeaderWritten() != w.headerWritten {
+		t.Error()
+	}
 }

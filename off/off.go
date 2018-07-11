@@ -117,6 +117,11 @@ func (w *Writer) HeaderWritten() bool {
 	return w.headerWritten
 }
 
+// RecordsWritten return the nunber of records written.
+func (w *Writer) RecordsWritten() int {
+	return w.recordsWritten
+}
+
 // WriteHeader writes a header to the file
 func (w *Writer) WriteHeader() error {
 	if w.headerWritten {

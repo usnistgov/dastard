@@ -55,6 +55,7 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
 		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo)
 	dp.OFF = w
+	dp.numberWritten = 0
 }
 
 // HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
@@ -64,6 +65,8 @@ func (dp *DataPublisher) HasOFF() bool {
 func (dp *DataPublisher) RemoveOFF() {
 	dp.OFF.Close()
 	dp.OFF = nil
+	dp.numberWritten = 0
+
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -225,13 +228,16 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			for i, v := range record.modelCoefs {
 				modelCoefs[i] = float32(v)
 			}
-			dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
+			err := dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
 				float32(record.pretrigMean), float32(record.residualStdDev), modelCoefs)
+			if err != nil {
+				return err
+			}
 			// TODO:
 			// 1. work on RPC API to add OFF
 			// 2. make projectors actually get passed to SetOFF
-			// 3. test writing OFF in dastard
-			// 4. add trigger settings to header?
+			// 3. test writing OFF in dastard [DONE]
+			// 4. add trigger settings to header? [WE NEVER USE THIS IN LJH, PASS]
 		}
 	}
 	if dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF() {

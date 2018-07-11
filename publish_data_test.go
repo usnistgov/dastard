@@ -6,13 +6,15 @@ import (
 	"encoding/hex"
 	"testing"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 func TestPublishData(t *testing.T) {
 
 	dp := DataPublisher{}
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
-	rec := &DataRecord{data: d, presamples: 4}
+	rec := &DataRecord{data: d, presamples: 4, modelCoefs: make([]float64, 3)}
 	records := []*DataRecord{rec, rec, rec}
 
 	if err := dp.PublishData(records); err != nil {
@@ -80,7 +82,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("failed to publish record")
 	}
 	if dp.LJH3.RecordsWritten != 3 {
-		t.Error("wrong number of RecordsWritten, want 1, have", dp.LJH3.RecordsWritten)
+		t.Error("wrong number of RecordsWritten, want 3, have", dp.LJH3.RecordsWritten)
 	}
 	if dp.numberWritten != 3 {
 		t.Errorf("expected PublishedData to increment numberWritten")
@@ -94,6 +96,32 @@ func TestPublishData(t *testing.T) {
 	}
 	if dp.HasLJH3() {
 		t.Error("HasLJH3() true, want false")
+	}
+
+	nbases := 3
+	nsamples := 4
+	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
+	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
+	dp.SetOFF(0, 0, 0, 1, 1, time.Now(), 1, 1, 1, 1, 1, "TestPublishData.off", "sourceName",
+		"chanName", 1, projectors, basis, "ModelDescription")
+	if err := dp.PublishData(records); err != nil {
+		t.Error(err)
+	}
+	if dp.OFF.RecordsWritten() != 3 {
+		t.Error("wrong number of RecordsWritten, want 3, have", dp.OFF.RecordsWritten())
+	}
+	if dp.numberWritten != 3 {
+		t.Errorf("expected PublishedData to increment numberWritten")
+	}
+	if !dp.HasOFF() {
+		t.Error("HasOFF() false, want true")
+	}
+	dp.RemoveOFF()
+	if dp.numberWritten != 0 {
+		t.Errorf("expected RemoveOFF to set numberWritten to 0")
+	}
+	if dp.HasOFF() {
+		t.Error("HasOFF() true, want false")
 	}
 
 	if err := configurePubRecordsSocket(); err == nil {
