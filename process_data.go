@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -129,7 +130,7 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.AnalyzeData(records)                      // add analysis results to records in-place
 	err := dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
 
@@ -230,7 +231,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
 			if cols != len(rec.data) {
-				panic("projections for variable length records not implemented")
+				log.Fatal("projections for variable length records not implemented")
 			}
 			projectors := &dsp.projectors
 			basis := &dsp.basis

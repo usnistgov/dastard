@@ -233,7 +233,7 @@ func (broker *TriggerBroker) Run() {
 					duration = message.duration
 				}
 				if message.hiTime.Nanosecond() != hiTime.Nanosecond() || message.duration.Nanoseconds() != duration.Nanoseconds() {
-					panic("trigger messages not in sync")
+					log.Fatal("trigger messages not in sync")
 				}
 				countsSeen[j] = message.countsSeen
 			}
