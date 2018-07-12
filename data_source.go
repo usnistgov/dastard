@@ -28,7 +28,6 @@ type DataSource interface {
 	Stop() error
 	Running() bool
 	blockingRead() error
-	//Outputs() []chan DataSegment
 	CloseOutputs()
 	Nchan() int
 	Signed() []bool
@@ -472,14 +471,6 @@ func (ds *AnySource) Stop() error {
 	ds.publishSync.Stop()
 	return nil
 }
-
-// // Outputs returns the slice of channels that carry buffers of data for downstream processing.
-// func (ds *AnySource) Outputs() []chan DataSegment {
-// 	// Don't run this if PrepareRun or other sensitive sections are running
-// 	ds.runMutex.Lock()
-// 	defer ds.runMutex.Unlock()
-// 	return ds.output
-// }
 
 // CloseOutputs closes all channels that carry buffers of data for downstream processing.
 func (ds *AnySource) CloseOutputs() {
