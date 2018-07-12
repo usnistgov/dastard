@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -493,8 +494,11 @@ func RunRPCServer(portrpc int) {
 	var ws WritingState
 	err = viper.UnmarshalKey("writing", &ws)
 	if err == nil {
-		sourceControl.clientUpdates <- ClientUpdate{"WRITING", ws}
+		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
+		// other info like Active: true could be wrong, and is not useful
+		sourceControl.clientUpdates <- ClientUpdate{"WRITING", wsSend}
 	}
+	spew.Dump(ws)
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
 	go func() {
