@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/viper"
@@ -32,7 +31,6 @@ type SourceControl struct {
 	clientUpdates chan<- ClientUpdate
 	totalData     Heartbeat
 	heartbeats    chan Heartbeat
-	mu            sync.Mutex // Serialize RPC commands and status broadcasts
 }
 
 // NewSourceControl creates a new SourceControl object with correctly initialized
@@ -86,8 +84,6 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 
 // ConfigureTriangleSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
 	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
@@ -98,8 +94,6 @@ func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, repl
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
 	s.clientUpdates <- ClientUpdate{"SIMPULSE", args}
@@ -110,8 +104,6 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 
 // ConfigureLanceroSource configures the lancero cards.
 func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	log.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
 	err := s.lancero.Configure(args)
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
@@ -132,8 +124,6 @@ type MixFractionObject struct {
 // is used. Thus, we will internally store not MixFraction, but errorScale := MixFraction/Nsamp.
 // NOTE: only supported by LanceroSource.
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		*reply = false
 		return fmt.Errorf("No source is active")
@@ -145,8 +135,6 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 
 // ConfigureTriggers configures the trigger state for 1 or more channels.
 func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -165,8 +153,6 @@ type ProjectorsBasisObject struct {
 
 // ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
 func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -200,8 +186,6 @@ type SizeObject struct {
 
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
@@ -216,8 +200,6 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource != nil {
 		return fmt.Errorf("activeSource is not nil, want nil (you should call Stop)")
 	}
@@ -243,8 +225,6 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	go func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
 		s.status.Running = true
 		if err := Start(s.activeSource); err != nil {
 			s.status.Running = false
@@ -275,8 +255,6 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -306,8 +284,6 @@ type WriteControlConfig struct {
 
 // WriteControl requests start/stop/pause/unpause data writing
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	*reply = true
 	if s.activeSource == nil {
 		return nil
@@ -320,8 +296,6 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 
 // WriteComment writes the comment to comment.txt
 func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	*reply = true
 	if s.activeSource == nil || len(*comment) == 0 {
 		return nil
@@ -357,8 +331,6 @@ const (
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
 func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -378,8 +350,6 @@ func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
 
 // CoupleFBToErr turns on or off coupling of FB -> Error
 func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
@@ -398,8 +368,6 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	// Check whether the "active" source actually stopped on its own
 	if s.activeSource != nil && !s.activeSource.Running() {
 		s.activeSource = nil
@@ -412,8 +380,6 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	// Check whether the "active" source actually stopped on its own
 	if s.activeSource != nil && !s.activeSource.Running() {
 		s.activeSource = nil
@@ -423,8 +389,6 @@ func (s *SourceControl) broadcastStatus() {
 }
 
 func (s *SourceControl) broadcastWritingState() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource != nil && s.status.Running {
 		state := s.activeSource.ComputeWritingState()
 		s.clientUpdates <- ClientUpdate{"WRITING", state}
@@ -432,8 +396,6 @@ func (s *SourceControl) broadcastWritingState() {
 }
 
 func (s *SourceControl) broadcastTriggerState() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource != nil && s.status.Running {
 		state := s.activeSource.ComputeFullTriggerState()
 		log.Printf("TriggerState: %v\n", state)
@@ -442,8 +404,6 @@ func (s *SourceControl) broadcastTriggerState() {
 }
 
 func (s *SourceControl) broadcastChannelNames() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ChannelNames()
 		log.Printf("chanNames: %v\n", configs)
