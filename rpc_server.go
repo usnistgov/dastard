@@ -145,11 +145,13 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 
 // ConfigureTriggers configures the trigger state for 1 or more channels.
 func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
 	err := s.activeSource.ChangeTriggerState(state)
-	s.broadcastTriggerState()
+	go s.broadcastTriggerState()
 	*reply = (err == nil)
 	return err
 }
@@ -310,12 +312,9 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	if s.activeSource == nil {
 		return nil
 	}
-	doneChan, err := s.activeSource.WriteControl(config)
+	err := s.activeSource.WriteControl(config)
 	*reply = (err != nil)
-	go func() {
-		_ = <-doneChan
-		s.broadcastWritingState()
-	}()
+	go s.broadcastWritingState()
 	return err
 }
 
@@ -337,6 +336,10 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 		}
 		defer fp.Close()
 		fp.WriteString(*comment)
+		// Always end the comment file with a newline.
+		if !strings.HasSuffix(*comment, "\n") {
+			fp.WriteString("\n")
+		}
 	}
 	return nil
 }
@@ -344,11 +347,12 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 // CouplingStatus describes the status of FB / error coupling
 type CouplingStatus int
 
-// Constants for use CoupleErrToFB (should be unexported?)
+// Specific allowed values for status of FB / error coupling
 const (
-	NoCoupling CouplingStatus = iota + 1 // FB and error aren't coupled
-	FBToErr                              // FB triggers cause secondary triggers in error channels
-	ErrToFB                              // Error triggers cause secondary triggers in FB channels
+	// FB and error aren't coupled
+	NoCoupling CouplingStatus = iota + 1
+	FBToErr                   // FB triggers cause secondary triggers in error channels
+	ErrToFB                   // Error triggers cause secondary triggers in FB channels
 )
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
@@ -498,7 +502,7 @@ func RunRPCServer(portrpc int) {
 		for {
 			select {
 			case <-ticker:
-				sourceControl.broadcastHeartbeat()
+				go sourceControl.broadcastHeartbeat()
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.DataMB += h.DataMB
 				sourceControl.totalData.Time += h.Time
