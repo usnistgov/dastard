@@ -146,7 +146,7 @@ func (ds *AnySource) StartRun() error {
 // makeDirectory creates directory of the form basepath/20060102/000 where
 // the 3-digit subdirectory counts separate file-writing occasions.
 // It also returns the formatting code for use in an Sprintf call
-// basepath/20060102/000/20060102_run000_%s.ljh and an error, if any.
+// basepath/20060102/000/20060102_run000_%s.%s and an error, if any.
 func makeDirectory(basepath string) (string, error) {
 	if len(basepath) == 0 {
 		return "", fmt.Errorf("BasePath is the empty string")
@@ -163,7 +163,7 @@ func makeDirectory(basepath string) (string, error) {
 			if err2 := os.MkdirAll(thisDir, 0755); err2 != nil {
 				return "", err
 			}
-			return fmt.Sprintf("%s/%s_run%4.4d_%%s.ljh", thisDir, today, i), nil
+			return fmt.Sprintf("%s/%s_run%4.4d_%%s.%%s", thisDir, today, i), nil
 		}
 	}
 	return "", fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)
@@ -258,30 +258,32 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			ncols := rccode.cols()
 			rowNum := rccode.row()
 			colNum := rccode.col()
-			filename := fmt.Sprintf(filenamePattern, dsp.Name)
 			fps := 1
 			if dsp.Decimate {
 				fps = dsp.DecimateLevel
 			}
 			if config.WriteLJH22 {
+				filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
 				dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
 					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 					ds.name, ds.chanNames[i], ds.chanNumbers[i])
 			}
 			if config.WriteOFF && !dsp.projectors.IsZero() {
+				filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
 				dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
 					"model description not implemented. but it should be mean, average pulse, derivative of average pulse")
 			}
 			if config.WriteLJH3 {
+				filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
 				dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, filename)
 			}
 		}
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
-		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*")
+		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*", "ljh")
 	}
 	if ds.publishSync.writingChan != nil {
 		ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused
