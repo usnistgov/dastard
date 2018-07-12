@@ -73,51 +73,55 @@ func TestWritingFiles(t *testing.T) {
 	ds.rowColCodes = make([]RowColCode, ds.nchan)
 	ds.PrepareRun()
 	config := &WriteControlConfig{Request: "Pause", Path: tmp, WriteLJH22: true}
-	var err error
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {
 		config.Request = request
-		if err = ds.WriteControl(config); err != nil {
+		if err := ds.WriteControl(config); err != nil {
 			t.Errorf("WriteControl request %s failed on a non-writing file: %v", request, err)
 		}
 	}
 	config.Request = "notvalid"
-	if err = ds.WriteControl(config); err == nil {
+	if err := ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request %s should fail, but didn't", config.Request)
 	}
 	config.Request = "Start"
 	config.WriteLJH22 = false
-	if err = ds.WriteControl(config); err == nil {
+	if err := ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request Start with no valid filetype should fail, but didn't")
 	}
 	config.WriteLJH22 = true
 	config.Path = "/notvalid/because/permissions"
-	if err = ds.WriteControl(config); err == nil {
+	if err := ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request Start with nonvalid path should fail, but didn't")
 	}
 
 	config.Path = tmp
-	if err = ds.WriteControl(config); err != nil {
+	if err := ds.WriteControl(config); err != nil {
 		t.Errorf("WriteControl request %s failed: %v", config.Request, err)
 	}
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {
 		config.Request = request
-		if err = ds.WriteControl(config); err != nil {
+		if err := ds.WriteControl(config); err != nil {
 			t.Errorf("WriteControl request %s failed on a writing file: %v", request, err)
 		}
 	}
 	// set projectors so that we can use WriterOFF = true
+	config.WriteOFF = true
+	config.Request = "start"
+	if err := ds.WriteControl(config); err == nil {
+		t.Errorf("expected error for asking to WriteOFF with no projectors set\n%v", config.Request)
+	}
 	nbases := 1
 	nsamples := 1024
 	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
 	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
-	if err1 := ds.processors[0].SetProjectorsBasis(*projectors, *basis); err != nil {
-		t.Error(err1)
+	if err := ds.processors[0].SetProjectorsBasis(*projectors, *basis); err != nil {
+		t.Error("failed to SetProjectors", err)
 	}
 	config.Request = "Start"
 	config.WriteLJH22 = true
 	config.WriteOFF = true
 	config.WriteLJH3 = true
-	if err = ds.WriteControl(config); err != nil {
+	if err := ds.WriteControl(config); err != nil {
 		t.Errorf("%v\n%v", err, config.Request)
 	}
 	if !ds.processors[0].DataPublisher.HasLJH22() {
@@ -132,8 +136,31 @@ func TestWritingFiles(t *testing.T) {
 	if !ds.processors[0].DataPublisher.HasLJH3() {
 		t.Error("WriteLJH3 did not result in HasLJH3")
 	}
+	config.Request = "PAUSE"
+	if err := ds.WriteControl(config); err != nil {
+		t.Errorf("%v\n%v", err, config.Request)
+	}
+	config.Request = "UnPAUSE "
+	if err := ds.WriteControl(config); err == nil {
+		t.Errorf("expected error for length==8, %v", config.Request)
+	}
+	config.Request = "UnPAUSEZZZZ"
+	if err := ds.WriteControl(config); err == nil {
+		t.Errorf("expected error for 8th character not equal to a space, %v", config.Request)
+	}
+	config.Request = "UnPAUSE AQ7"
+	if err := ds.WriteControl(config); err != nil {
+		t.Error(err)
+	}
+	stat, statErr := ds.writingState.experimentStateFile.Stat()
+	if statErr != nil {
+		t.Error(statErr)
+	}
+	if stat.Size() != 54 {
+		t.Errorf("have file size %v, expected 54", stat.Size())
+	}
 	config.Request = "Stop"
-	if err = ds.WriteControl(config); err != nil {
+	if err := ds.WriteControl(config); err != nil {
 		t.Errorf("%v\n%v", err, config.Request)
 	}
 	if ds.processors[0].DataPublisher.HasLJH22() {
@@ -145,4 +172,5 @@ func TestWritingFiles(t *testing.T) {
 	if ds.processors[0].DataPublisher.HasLJH3() {
 		t.Error("Stop did not result in !HasLJH3")
 	}
+
 }
