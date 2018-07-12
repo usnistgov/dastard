@@ -449,7 +449,7 @@ func RunRPCServer(portrpc int, block bool) {
 		for {
 			select {
 			case <-ticker:
-				go sourceControl.broadcastHeartbeat()
+				sourceControl.broadcastHeartbeat()
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.DataMB += h.DataMB
 				sourceControl.totalData.Time += h.Time
