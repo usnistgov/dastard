@@ -328,7 +328,7 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	}
 	ws := s.activeSource.ComputeWritingState()
 	if ws.Active {
-		dir := path.Dir(ws.filenamePattern)
+		dir := path.Dir(ws.FilenamePattern)
 		commentName := path.Join(dir, "comment.txt")
 		fp, err := os.Create(commentName)
 		if err != nil {

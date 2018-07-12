@@ -280,7 +280,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		}
 		ds.writingState.Active = false
 		ds.writingState.Paused = false
-		ds.writingState.filenamePattern = ""
+		ds.writingState.FilenamePattern = ""
 		if ds.writingState.experimentStateFile != nil {
 			ds.writingState.experimentStateFile.Close()
 		}
@@ -322,7 +322,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
-		ds.writingState.filenamePattern = filenamePattern
+		ds.writingState.FilenamePattern = filenamePattern
 		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	}
 	if ds.publishSync.writingChan != nil {
@@ -336,7 +336,7 @@ type WritingState struct {
 	Active                       bool
 	Paused                       bool
 	BasePath                     string
-	filenamePattern              string
+	FilenamePattern              string
 	experimentStateFile          *os.File
 	ExperimentStateFilename      string
 	ExperimentStateLabel         string
