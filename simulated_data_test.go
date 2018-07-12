@@ -26,14 +26,13 @@ func TestTriangle(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
-	outputs := ds.Outputs()
-	if len(outputs) != config.Nchan {
-		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
+	if len(ts.output) != config.Nchan {
+		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(ts.output), config.Nchan)
 	}
 
 	// Check first segment per source.
 	n := int(config.Max - config.Min)
-	for i, ch := range outputs {
+	for i, ch := range ts.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != 2*n {
@@ -52,7 +51,7 @@ func TestTriangle(t *testing.T) {
 		}
 	}
 	// Check second segment per source.
-	for i, ch := range outputs {
+	for i, ch := range ts.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != 2*n {
@@ -167,12 +166,11 @@ func TestSimPulse(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
-	outputs := ds.Outputs()
-	if len(outputs) != config.Nchan {
-		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
+	if len(ps.output) != config.Nchan {
+		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(ps.output), config.Nchan)
 	}
 	// Check first segment per source.
-	for i, ch := range outputs {
+	for i, ch := range ps.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != config.Nsamp {
@@ -198,7 +196,7 @@ func TestSimPulse(t *testing.T) {
 		}
 	}
 	// Check second segment per source.
-	for i, ch := range outputs {
+	for i, ch := range ps.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != config.Nsamp {
