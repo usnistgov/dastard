@@ -438,6 +438,8 @@ func (ps *PublishSync) Run() {
 				case n := <-ps.numberWrittenChans[i]:
 					ps.NumberWritten[i] = n
 				case ps.writing = <-ps.writingChan:
+				case <-time.After(5 * time.Second):
+					panic("PublishSync got stuck")
 				}
 			}
 		case <-ticker.C:
