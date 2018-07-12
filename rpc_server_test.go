@@ -367,7 +367,7 @@ func TestMain(m *testing.M) {
 	}
 
 	go RunClientUpdater(Ports.Status)
-	RunRPCServer(Ports.RPC)
+	RunRPCServer(Ports.RPC, false)
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {

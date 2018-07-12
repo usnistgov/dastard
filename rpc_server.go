@@ -403,7 +403,8 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 }
 
 // RunRPCServer sets up and run a permanent JSON-RPC server.
-func RunRPCServer(portrpc int) {
+// if block, it will block until Ctrl-C and gracefully shut down
+func RunRPCServer(portrpc int, block bool) {
 
 	// Set up objects to handle remote calls
 	sourceControl := NewSourceControl()
@@ -489,12 +490,12 @@ func RunRPCServer(portrpc int) {
 		}
 	}()
 
-	go func() {
+	if block {
 		// Finally, handle ctrl-C gracefully
 		interruptCatcher := make(chan os.Signal, 1)
 		signal.Notify(interruptCatcher, os.Interrupt)
 		<-interruptCatcher
 		dummy := "dummy"
 		sourceControl.Stop(&dummy, &okay)
-	}()
+	}
 }

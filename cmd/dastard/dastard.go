@@ -93,5 +93,6 @@ func main() {
 	}
 
 	go dastard.RunClientUpdater(dastard.Ports.Status)
-	dastard.RunRPCServer(dastard.Ports.RPC)
+	dastard.RunRPCServer(dastard.Ports.RPC, true)
+
 }
