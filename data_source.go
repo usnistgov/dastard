@@ -283,7 +283,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
-		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*")
+		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*", "ljh")
 	}
 	if ds.publishSync.writingChan != nil {
 		ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused
