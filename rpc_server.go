@@ -194,7 +194,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	*reply = (err == nil)
 	s.status.Npresamp = sizes.Npre
 	s.status.Nsamples = sizes.Nsamp
-	go s.broadcastStatus()
+	s.broadcastStatus()
 	return err
 }
 
@@ -224,31 +224,27 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	}
 
 	log.Printf("Starting data source named %s\n", *sourceName)
-	go func() {
-		s.status.Running = true
-		if err := Start(s.activeSource); err != nil {
-			s.status.Running = false
-			s.activeSource = nil
-			return
+	s.status.Running = true
+	if err := Start(s.activeSource); err != nil {
+		s.status.Running = false
+		s.activeSource = nil
+		return err
+	}
+	s.status.Nchannels = s.activeSource.Nchan()
+	if ls, ok := s.activeSource.(*LanceroSource); ok {
+		s.status.Ncol = make([]int, ls.ncards)
+		s.status.Nrow = make([]int, ls.ncards)
+		for i, device := range ls.active {
+			s.status.Ncol[i] = device.ncols
+			s.status.Nrow[i] = device.nrows
 		}
-		s.status.Nchannels = s.activeSource.Nchan()
-		if ls, ok := s.activeSource.(*LanceroSource); ok {
-			s.status.Ncol = make([]int, ls.ncards)
-			s.status.Nrow = make([]int, ls.ncards)
-			for i, device := range ls.active {
-				s.status.Ncol[i] = device.ncols
-				s.status.Nrow[i] = device.nrows
-			}
-		} else {
-			s.status.Ncol = make([]int, 0)
-			s.status.Nrow = make([]int, 0)
-		}
-		// The following can't run without holding the s.mu lock, so they need
-		// to be launched in separate goroutines.
-		go s.broadcastStatus()
-		go s.broadcastTriggerState()
-		go s.broadcastChannelNames()
-	}()
+	} else {
+		s.status.Ncol = make([]int, 0)
+		s.status.Nrow = make([]int, 0)
+	}
+	s.broadcastStatus()
+	s.broadcastTriggerState()
+	s.broadcastChannelNames()
 	*reply = true
 	return nil
 }
@@ -259,15 +255,13 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 		return fmt.Errorf("No source is active")
 	}
 	log.Printf("Stopping data source\n")
-	if s.activeSource != nil {
-		s.activeSource.Stop()
-		s.status.Running = false
-		s.activeSource = nil
-		*reply = true
-	}
+	s.activeSource.Stop()
+	s.status.Running = false
+	s.activeSource = nil
+	*reply = true
 	// The following can't run without holding the s.mu lock, so it needs
 	// to be launched in a separate goroutine.
-	go s.broadcastStatus()
+	s.broadcastStatus()
 	*reply = true
 	return nil
 }
@@ -368,11 +362,6 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
-	// Check whether the "active" source actually stopped on its own
-	if s.activeSource != nil && !s.activeSource.Running() {
-		s.activeSource = nil
-		s.status.Running = false
-	}
 	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.DataMB = 0
@@ -380,11 +369,6 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
-	// Check whether the "active" source actually stopped on its own
-	if s.activeSource != nil && !s.activeSource.Running() {
-		s.activeSource = nil
-		s.status.Running = false
-	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
@@ -473,9 +457,12 @@ func RunRPCServer(portrpc int) {
 	}()
 
 	// Now launch the connection handler and accept connections.
+
 	go func() {
 		server := rpc.NewServer()
-		server.Register(sourceControl)
+		if err := server.Register(sourceControl); err != nil {
+			log.Fatal(err)
+		}
 		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 		port := fmt.Sprintf(":%d", portrpc)
 		listener, err := net.Listen("tcp", port)
@@ -502,10 +489,12 @@ func RunRPCServer(portrpc int) {
 		}
 	}()
 
-	// Finally, handle ctrl-C gracefully
-	interruptCatcher := make(chan os.Signal, 1)
-	signal.Notify(interruptCatcher, os.Interrupt)
-	<-interruptCatcher
-	dummy := "dummy"
-	sourceControl.Stop(&dummy, &okay)
+	go func() {
+		// Finally, handle ctrl-C gracefully
+		interruptCatcher := make(chan os.Signal, 1)
+		signal.Notify(interruptCatcher, os.Interrupt)
+		<-interruptCatcher
+		dummy := "dummy"
+		sourceControl.Stop(&dummy, &okay)
+	}()
 }
