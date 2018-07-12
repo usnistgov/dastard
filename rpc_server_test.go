@@ -362,7 +362,7 @@ func setupViper() error {
 func TestMain(m *testing.M) {
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	// call flag.Parse() here if TestMain uses flags

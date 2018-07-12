@@ -645,7 +645,7 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 
 	records = dsp.edgeTriggerComputeAppend(records)
 	if len(records) != 0 {
-		panic("")
+		b.Fatal("")
 	}
 
 }
@@ -678,7 +678,7 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 
 	records = dsp.levelTriggerComputeAppend(records)
 	if len(records) != 0 {
-		panic("")
+		b.Fatal("")
 	}
 
 }

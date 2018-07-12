@@ -384,7 +384,7 @@ func BenchmarkMatMul(b *testing.B) {
 		name := fmt.Sprintf("MulVec(%v,%v)*(%v,%v)", bm.rA, bm.cA, bm.rB, bm.cB)
 		b.Run(name, func(b *testing.B) {
 			if bm.cB != 1 {
-				panic("cB should be 1")
+				b.Fatal("cB should be 1")
 			}
 			A := mat.NewDense(bm.rA, bm.cA, make([]float64, bm.rA*bm.cA))
 			B := mat.NewVecDense(bm.rB, make([]float64, bm.rB*bm.cB))

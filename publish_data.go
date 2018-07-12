@@ -3,6 +3,7 @@ package dastard
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"reflect"
 	"time"
 	"unsafe"
@@ -368,7 +369,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 				message := converter(record)
 				err := pubSocket.SendMessage(message)
 				if err != nil {
-					panic("zmq send error")
+					log.Fatal("zmq send error")
 				}
 			}
 		}
@@ -439,7 +440,7 @@ func (ps *PublishSync) Run() {
 					ps.NumberWritten[i] = n
 				case ps.writing = <-ps.writingChan:
 				case <-time.After(5 * time.Second):
-					panic("PublishSync got stuck")
+					log.Fatal("PublishSync got stuck")
 				}
 			}
 		case <-ticker.C:
