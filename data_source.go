@@ -178,8 +178,9 @@ func makeDirectory(basepath string) (string, error) {
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	request := strings.ToUpper(config.Request)
 	var filenamePattern, path string
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
+	// ds.runMutex.Lock()
+	// defer ds.runMutex.Unlock()
+	// this seems like a good idea, but doesn't actually prevent race conditions, and leads to deadlocks
 
 	// first check for possible errors, then take the lock and do the work
 	if strings.HasPrefix(request, "START") {
