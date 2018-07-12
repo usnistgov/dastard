@@ -61,8 +61,8 @@ func TestWritingFiles(t *testing.T) {
 		t.Error(err2)
 	} else if !strings.HasPrefix(dir2, tmp) {
 		t.Errorf("Writing in path %s, which should be a prefix of %s", tmp, dir2)
-	} else if !strings.HasSuffix(dir2, "run0001_%s.ljh") {
-		t.Errorf("makeDirectory produces %s, of which %q should be a suffix", dir2, "run0001_%s.ljh")
+	} else if !strings.HasSuffix(dir2, "run0001_%s.%s") {
+		t.Errorf("makeDirectory produces %s, of which %q should be a suffix", dir2, "run0001_%s.%s")
 	}
 
 	if _, err := makeDirectory("/notallowed"); err == nil {
