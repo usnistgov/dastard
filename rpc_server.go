@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -498,7 +497,6 @@ func RunRPCServer(portrpc int) {
 		// other info like Active: true could be wrong, and is not useful
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", wsSend}
 	}
-	spew.Dump(ws)
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
 	go func() {
@@ -529,7 +527,17 @@ func RunRPCServer(portrpc int) {
 				log.Fatal("accept error: " + err.Error())
 			} else {
 				log.Printf("new connection established\n")
-				go server.ServeCodec(jsonrpc.NewServerCodec(conn))
+				go func() { // this is equivalent to ServeCodec, except all requests are
+					// handled SYNCHRONOUSLY, so sourceControl doesn't need a lock
+					codec := jsonrpc.NewServerCodec(conn)
+					for {
+						err := server.ServeRequest(codec)
+						if err != nil {
+							log.Printf("server stopped: %v", err)
+							break
+						}
+					}
+				}()
 			}
 		}
 	}()
