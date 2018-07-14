@@ -14,13 +14,15 @@ type Pixel struct {
 
 // Map represents an entire array of pixel locations
 type Map struct {
-	Spacing int
-	Pixels  []Pixel
+	Spacing  int
+	Pixels   []Pixel
+	Filename string
 }
 
 func readMap(filename string) (*Map, error) {
 	m := new(Map)
 	m.Pixels = make([]Pixel, 0)
+	m.Filename = filename
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -46,4 +48,28 @@ func readMap(filename string) (*Map, error) {
 		}
 		m.Pixels = append(m.Pixels, p)
 	}
+}
+
+type MapServer struct {
+	m             *Map
+	clientUpdates chan<- ClientUpdate
+}
+
+func newMapServer() *MapServer {
+	return new(MapServer)
+}
+
+func (ms *MapServer) Load(filename *string, reply *bool) error {
+	m, err := readMap(*filename)
+	*reply = err == nil
+	if err != nil {
+		return err
+	}
+	ms.m = m
+	ms.broadcastMap()
+	return nil
+}
+
+func (ms *MapServer) broadcastMap() {
+	ms.clientUpdates <- ClientUpdate{"MAP", ms.m}
 }

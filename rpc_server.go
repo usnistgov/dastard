@@ -411,6 +411,9 @@ func RunRPCServer(portrpc int, block bool) {
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = clientMessageChan
 
+	mapServer := newMapServer()
+	mapServer.clientUpdates = clientMessageChan
+
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects.
 	var okay bool
@@ -462,6 +465,9 @@ func RunRPCServer(portrpc int, block bool) {
 	go func() {
 		server := rpc.NewServer()
 		if err := server.Register(sourceControl); err != nil {
+			log.Fatal(err)
+		}
+		if err := server.Register(mapServer); err != nil {
 			log.Fatal(err)
 		}
 		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
