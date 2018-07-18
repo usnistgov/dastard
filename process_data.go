@@ -77,10 +77,8 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWritt
 	}
 	dsp.DataPublisher.numberWrittenChan = numberWrittenChan
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
-	dsp.projectors.Reset()
-	dsp.basis.Reset()
-	// dsp.basis has zero value
-	// dsp.projectors has zero value
+	dsp.projectors.Reset()              // dsp.projectors is set to zero value
+	dsp.basis.Reset()                   // dsp.basis is set to zero value
 	return &dsp
 }
 
@@ -94,12 +92,9 @@ type DecimateState struct {
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
 // Also removes any existing projectors and basis.
 func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
-	if nsamp <= npre+1 || npre < 3 {
-		return
-	}
+	// if nsamp or npre is invalid, panic, do not silently ignore
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
-
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
 	dsp.removeProjectorsBasis()
