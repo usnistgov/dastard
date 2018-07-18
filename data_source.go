@@ -78,8 +78,7 @@ func Start(ds DataSource) error {
 			if err := ds.blockingRead(); err == io.EOF {
 				break
 			} else if err != nil {
-				log.Printf("blockingRead returns Error: %s\n", err.Error())
-				// break
+				log.Fatal(fmt.Sprintf("blockingRead returns Error: %s\n", err.Error()))
 			}
 		}
 		ds.CloseOutputs()
@@ -409,9 +408,9 @@ func (ds *AnySource) PrepareRun() error {
 	}
 	tsptrs := make([]*TriggerState, ds.nchan)
 	for i, ts := range fts {
-		for _, chnum := range ts.ChanNumbers {
-			if chnum < ds.nchan {
-				tsptrs[chnum] = &(fts[i].TriggerState)
+		for _, channelIndex := range ts.ChannelIndicies {
+			if channelIndex < ds.nchan {
+				tsptrs[channelIndex] = &(fts[i].TriggerState)
 			}
 		}
 	}
@@ -446,7 +445,7 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 
-		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[chnum]
+		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[channelIndex]
 		// channel is closed, depending on ds.noProcess (which is false except for testing)
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
@@ -485,7 +484,7 @@ func (ds *AnySource) CloseOutputs() {
 
 // FullTriggerState used to collect channels that share the same TriggerState
 type FullTriggerState struct {
-	ChanNumbers []int
+	ChannelIndicies []int
 	TriggerState
 }
 
@@ -506,16 +505,19 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 	// Now "unroll" that map into a vector of FullTriggerState objects
 	fts := []FullTriggerState{}
 	for k, v := range result {
-		fts = append(fts, FullTriggerState{ChanNumbers: v, TriggerState: k})
+		fts = append(fts, FullTriggerState{ChannelIndicies: v, TriggerState: k})
 	}
 	return fts
 }
 
 // ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
-	for _, chnum := range state.ChanNumbers {
-		if chnum < ds.nchan { // Don't trust client to know this number!
-			ds.processors[chnum].TriggerState = state.TriggerState
+	if state.ChannelIndicies == nil || len(state.ChannelIndicies) < 1 {
+		return fmt.Errorf("got ConfigureTriggers with no valid ChannelIndicies")
+	}
+	for _, channelIndex := range state.ChannelIndicies {
+		if channelIndex < ds.nchan { // Don't trust client to know this number!
+			ds.processors[channelIndex].TriggerState = state.TriggerState
 		}
 	}
 	return nil
