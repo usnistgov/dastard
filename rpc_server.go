@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -114,11 +115,11 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 
 // MixFractionObject is the RPC-usable structure for ConfigureMixFraction
 type MixFractionObject struct {
-	ProcessorIndex int
-	MixFraction    float64
+	ChannelIndex int
+	MixFraction  float64
 }
 
-// ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
+// ConfigureMixFraction sets the MixFraction for the channel associated with ChannelIndex
 // mix = fb + mixFraction*err/Nsamp
 // This MixFractionObject contains mix fractions as reported by autotune, where error/Nsamp
 // is used. Thus, we will internally store not MixFraction, but errorScale := MixFraction/Nsamp.
@@ -128,7 +129,7 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 		*reply = false
 		return fmt.Errorf("No source is active")
 	}
-	err := s.activeSource.ConfigureMixFraction(mfo.ProcessorIndex, mfo.MixFraction)
+	err := s.activeSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
 	*reply = (err == nil)
 	return err
 }
@@ -138,15 +139,16 @@ func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) 
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
+	fmt.Printf("GOT ConfigureTriggers: %v", spew.Sdump(state))
 	err := s.activeSource.ChangeTriggerState(state)
-	go s.broadcastTriggerState()
+	s.broadcastTriggerState()
 	*reply = (err == nil)
 	return err
 }
 
 // ProjectorsBasisObject is the RPC-usable structure for ConfigureProjectorsBases
 type ProjectorsBasisObject struct {
-	ProcessorIndex   int
+	ChannelIndex     int
 	ProjectorsBase64 string
 	BasisBase64      string
 }
@@ -171,7 +173,7 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 	if err := basis.UnmarshalBinary(basisBytes); err != nil {
 		return err
 	}
-	if err := s.activeSource.ConfigureProjectorsBases(pbo.ProcessorIndex, projectors, basis); err != nil {
+	if err := s.activeSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis); err != nil {
 		return err
 	}
 	*reply = true
