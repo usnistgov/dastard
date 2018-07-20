@@ -161,7 +161,7 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	sps.onecycle = make([]RawType, sps.cycleLen)
 
 	ampl := []float64{config.Amplitude, -config.Amplitude}
-	exprate := []float64{.999, .98}
+	exprate := []float64{.99, .96}
 	value := config.Pedestal
 	for i := 0; i < sps.cycleLen; i++ {
 		if i >= firstIdx {

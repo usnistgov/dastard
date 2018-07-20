@@ -188,8 +188,8 @@ func TestSimPulse(t *testing.T) {
 		if min != RawType(config.Pedestal+0.5-10) {
 			t.Errorf("SimPulseSource minimum value is %d, expect %d", min, RawType(config.Pedestal+0.5))
 		}
-		if max <= RawType(config.Pedestal+config.Amplitude*0.5) {
-			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(config.Pedestal+config.Amplitude*0.5))
+		if max <= RawType(config.Pedestal+config.Amplitude*0.4) {
+			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(config.Pedestal+config.Amplitude*0.4))
 		}
 		if segment.firstFramenum != 0 {
 			t.Errorf("SimPulseSource first segment, output %d gives firstFramenum %d, want 0", i, segment.firstFramenum)
