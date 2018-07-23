@@ -24,8 +24,9 @@ type ClientUpdate struct {
 
 func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	topic := reflect.TypeOf(update.state).String()
-	log.Printf("Message of type %s: %v\n", topic, string(message))
-
+	if topic != "TRIGGERRATE" {
+		log.Printf("SEND Message of type %s: %v\n", topic, string(message))
+	}
 	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
 	pubSocket.SendFrame(message, czmq.FlagNone)
 }

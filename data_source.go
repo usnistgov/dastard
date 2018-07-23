@@ -249,8 +249,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Filename = ""
 
 	} else if strings.HasPrefix(request, "START") {
+		channelsWithOff := 0
 		for i, dsp := range ds.processors {
-
 			timebase := 1.0 / dsp.SampleRate
 			rccode := ds.rowColCodes[i]
 			nrows := rccode.rows()
@@ -273,6 +273,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
 					"model description not implemented. but it should be mean, average pulse, derivative of average pulse")
+				channelsWithOff++
 			}
 			if config.WriteLJH3 {
 				filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
@@ -283,6 +284,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
 		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*", "ljh")
+		fmt.Printf("%v/%v channels have OFF writing enabled", channelsWithOff, len(ds.processors))
 	}
 	if ds.publishSync.writingChan != nil {
 		ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused
