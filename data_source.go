@@ -284,7 +284,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
 		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*", "ljh")
-		fmt.Printf("%v/%v channels have OFF writing enabled", channelsWithOff, len(ds.processors))
+		log.Printf("%v/%v channels have OFF writing enabled\n", channelsWithOff, len(ds.processors))
 	}
 	if ds.publishSync.writingChan != nil {
 		ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused

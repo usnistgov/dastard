@@ -48,7 +48,7 @@ func main() {
 	for bytesRead < 1000000 {
 		select {
 		case <-interruptCatcher:
-			fmt.Println("caught interrupt")
+			log.Println("caught interrupt")
 			return
 		default:
 			_, _, err = lan.Wait()
@@ -60,7 +60,7 @@ func main() {
 			if err != nil {
 				return
 			}
-			fmt.Println(lancero.OdDashTX(buffer, 10))
+			log.Println(lancero.OdDashTX(buffer, 10))
 		}
 	}
 }

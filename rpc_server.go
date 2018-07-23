@@ -139,7 +139,7 @@ func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) 
 	if s.activeSource == nil {
 		return fmt.Errorf("No source is active")
 	}
-	fmt.Printf("GOT ConfigureTriggers: %v", spew.Sdump(state))
+	log.Printf("GOT ConfigureTriggers: %v", spew.Sdump(state))
 	err := s.activeSource.ChangeTriggerState(state)
 	s.broadcastTriggerState()
 	*reply = (err == nil)
