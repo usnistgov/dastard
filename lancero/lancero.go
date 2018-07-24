@@ -233,6 +233,6 @@ func OdDashTX(b []byte, maxLines int) string {
 }
 
 // SetLogOutput calls log.SetOutput from within Lancero
-func SetLogOoutput(w io.Writer) {
+func SetLogOutput(w io.Writer) {
 	log.SetOutput(w)
 }

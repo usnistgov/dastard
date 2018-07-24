@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/usnistgov/dastard/lancero"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -361,13 +362,6 @@ func setupViper() error {
 }
 
 func TestMain(m *testing.M) {
-	// Find config file, creating it if needed, and read it.
-	if err := setupViper(); err != nil {
-		log.Fatal(err)
-	}
-
-	go RunClientUpdater(Ports.Status)
-	RunRPCServer(Ports.RPC, false)
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {
@@ -375,6 +369,15 @@ func TestMain(m *testing.M) {
 	}
 	defer f.Close()
 	log.SetOutput(f)
+	lancero.SetLogOutput(f)
+
+	// Find config file, creating it if needed, and read it.
+	if err := setupViper(); err != nil {
+		log.Fatal(err)
+	}
+
+	go RunClientUpdater(Ports.Status)
+	RunRPCServer(Ports.RPC, false)
 
 	// run tests
 	os.Exit(m.Run())
