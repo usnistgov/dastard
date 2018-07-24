@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/usnistgov/dastard/lancero"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -171,7 +172,7 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	pbo := ProjectorsBasisObject{ProcessorIndex: 0,
+	pbo := ProjectorsBasisObject{ChannelIndex: 0,
 		ProjectorsBase64: base64.StdEncoding.EncodeToString(projectorsBytes),
 		BasisBase64:      base64.StdEncoding.EncodeToString(basisBytes)}
 
@@ -186,7 +187,7 @@ func TestServer(t *testing.T) {
 	if err1 := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err1 == nil {
 		t.Error("error on ConfigureMixFraction expected for non-mixable source")
 	}
-	tstate := FullTriggerState{ChanNumbers: []int{0, 1, 2}}
+	tstate := FullTriggerState{ChannelIndicies: []int{0, 1, 2}}
 	if err1 := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err1 != nil {
 		t.Error("error on ConfigureTriggers:", err)
 	}
@@ -361,13 +362,6 @@ func setupViper() error {
 }
 
 func TestMain(m *testing.M) {
-	// Find config file, creating it if needed, and read it.
-	if err := setupViper(); err != nil {
-		log.Fatal(err)
-	}
-
-	go RunClientUpdater(Ports.Status)
-	RunRPCServer(Ports.RPC, false)
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {
@@ -375,6 +369,15 @@ func TestMain(m *testing.M) {
 	}
 	defer f.Close()
 	log.SetOutput(f)
+	lancero.SetLogOutput(f)
+
+	// Find config file, creating it if needed, and read it.
+	if err := setupViper(); err != nil {
+		log.Fatal(err)
+	}
+
+	go RunClientUpdater(Ports.Status)
+	RunRPCServer(Ports.RPC, false)
 
 	// run tests
 	os.Exit(m.Run())

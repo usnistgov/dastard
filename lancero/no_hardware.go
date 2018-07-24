@@ -128,7 +128,7 @@ func (lan *NoHardware) AvailableBuffer() ([]byte, time.Time, error) {
 	lan.lastReadTime = now
 	frameDurationNanoseconds := lan.linePeriod * lan.nanoSecondsPerLinePeriod * lan.nrows
 	frames := int(sinceLastRead.Nanoseconds()) / frameDurationNanoseconds
-	// fmt.Printf("id %v read at %v\n", lan.idNum, time.Now())
+	// log.Printf("id %v read at %v\n", lan.idNum, time.Now())
 	if sinceLastRead > 50*lan.minTimeBetweenReads {
 		return buf.Bytes(), now, fmt.Errorf("reads were %v apart, want < %v", sinceLastRead, 50*lan.minTimeBetweenReads)
 	}
