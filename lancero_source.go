@@ -38,6 +38,7 @@ type LanceroSource struct {
 	active            []*LanceroDevice
 	chan2readoutOrder []int
 	Mix               []*Mix
+	blockingReadCount int
 	AnySource
 }
 
@@ -186,6 +187,7 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 
 // Sample determines key data facts by sampling some initial data.
 func (ls *LanceroSource) Sample() error {
+	ls.blockingReadCount = 0
 	ls.nchan = 0
 	for _, device := range ls.active {
 		err := device.sampleCard()
@@ -269,8 +271,9 @@ func (device *LanceroDevice) sampleCard() error {
 	var bytesRead int
 	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
 	const tooManyIterations int = 100 // nor this many reads of the lancero
+	nIgnore := 3
 	for i := 0; i < tooManyIterations; i++ {
-		if bytesRead >= tooManyBytes && i > 1 { // we ignore first buffer, so make sure we've seen 2
+		if bytesRead >= tooManyBytes && i > nIgnore { // we ignore first buffer, so make sure we've seen 2
 			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
 				bytesRead)
 		}
@@ -295,7 +298,7 @@ func (device *LanceroDevice) sampleCard() error {
 		// if dastard is getting lsync wrong, consider requireing a minimum buffer size
 		// or possibly appending a few buffers
 		totalBytes := len(buffer)
-		if i == 0 {
+		if i < nIgnore {
 			lan.ReleaseBytes(totalBytes)
 			bytesRead += totalBytes
 			continue
@@ -440,15 +443,19 @@ func (ls *LanceroSource) blockingRead() error {
 		if err != nil {
 			return err
 		}
-		ls.distributeData()
+		err1 := ls.distributeData()
+		if err1 != nil {
+			return err1
+		}
 	}
+	ls.blockingReadCount++ // set to 0 in SampleCard
 	return nil
 }
 
 // distributeData reads the raw data buffers from all devices in the LanceroSource
 // and distributes their data by copying into slices that go on channels, one
 // channel per data stream.
-func (ls *LanceroSource) distributeData() {
+func (ls *LanceroSource) distributeData() error {
 	// Get one buffer per card. Whichever contains the fewest frames will
 	// dictate how much data to process and what the timestamp is.
 	framesUsed := math.MaxInt64
@@ -458,7 +465,7 @@ func (ls *LanceroSource) distributeData() {
 		b, timeFix, err := dev.card.AvailableBuffer()
 		if err != nil {
 			log.Printf("Warning: AvailableBuffer failed")
-			return
+			return err
 		}
 		buffers = append(buffers, bytesToRawType(b))
 
@@ -468,13 +475,29 @@ func (ls *LanceroSource) distributeData() {
 			lastSampleTime = timeFix
 		}
 	}
-	if framesUsed <= 0 {
-		log.Printf("Nothing to consume, buffer[0] size: %d samples\n", len(buffers[0]))
-		return
-	}
 	timediff := lastSampleTime.Sub(ls.lastread)
 	ls.lastread = lastSampleTime
-
+	// check for changes in nrow, ncol and lsync
+	for ibuf, dev := range ls.active {
+		buffer := buffers[ibuf]
+		q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer))
+		if err != nil {
+			return fmt.Errorf("Error in findFrameBits: %v", err)
+		}
+		ncols := n
+		nrows := (p - q) / n
+		periodNS := timediff.Nanoseconds() / int64(framesUsed)
+		lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
+		if ncols != dev.ncols || nrows != dev.nrows || lsync != dev.lsync || framesUsed <= 0 {
+			fmt.Printf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v, blockingReadCount %v\n",
+				ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount)
+			if ls.blockingReadCount > 1 {
+				// lsync calculation fails on first few reads so don't error
+				return fmt.Errorf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v",
+					ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync)
+			}
+		}
+	}
 	// Consume framesUsed frames of data from each channel.
 	// Careful! This slice of slices will be in lancero READOUT order:
 	// r0c0, r0c1, r0c2, etc.
@@ -482,10 +505,6 @@ func (ls *LanceroSource) distributeData() {
 	for i := range ls.output {
 		datacopies[i] = make([]RawType, framesUsed)
 	}
-
-	// TODO: Check for frame bits being correctly placed in the stream?
-
-	// TODO: Check for missing data
 
 	// TODO: Look for external trigger bits here, either once per card or once per column
 
@@ -547,6 +566,7 @@ func (ls *LanceroSource) distributeData() {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 			Time: timediff.Seconds()}
 	}
+	return nil
 }
 
 // stop ends the data streaming on all active lancero devices.

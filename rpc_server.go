@@ -261,8 +261,6 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	s.status.Running = false
 	s.activeSource = nil
 	*reply = true
-	// The following can't run without holding the s.mu lock, so it needs
-	// to be launched in a separate goroutine.
 	s.broadcastStatus()
 	*reply = true
 	return nil
@@ -319,10 +317,9 @@ type CouplingStatus int
 
 // Specific allowed values for status of FB / error coupling
 const (
-	// FB and error aren't coupled
-	NoCoupling CouplingStatus = iota + 1
-	FBToErr                   // FB triggers cause secondary triggers in error channels
-	ErrToFB                   // Error triggers cause secondary triggers in FB channels
+	NoCoupling CouplingStatus = iota + 1 // NoCoupling turns off FB + error coupling
+	FBToErr                              // FB triggers cause secondary triggers in error channels
+	ErrToFB                              // Error triggers cause secondary triggers in FB channels
 )
 
 // CoupleErrToFB turns on or off coupling of Error -> FB

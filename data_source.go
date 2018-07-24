@@ -76,12 +76,16 @@ func Start(ds DataSource) error {
 	go func() {
 		for {
 			if err := ds.blockingRead(); err == io.EOF {
-				break
+				// EOF error should occur after abortSelf has been closed
+				// ds.CloseOutputs() // why is this here, ds.Stop also calls CloseOutputs
+				return
 			} else if err != nil {
-				log.Fatal(fmt.Sprintf("blockingRead returns Error: %s\n", err.Error()))
+				// other errors indicate a problem with source, need to close down
+				fmt.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
+				ds.Stop() // will cause next call to ds.blockingRead to return io.EOF
 			}
 		}
-		ds.CloseOutputs()
+
 	}()
 	return nil
 }
@@ -464,12 +468,16 @@ func (ds *AnySource) PrepareRun() error {
 
 // Stop ends the data supply.
 func (ds *AnySource) Stop() error {
-	if ds.Running() {
-		close(ds.abortSelf)
+	if ds.abortSelf != nil {
+		select {
+		case <-ds.abortSelf:
+		default:
+			close(ds.abortSelf)
+		}
 	}
-	ds.runDone.Wait()
 	ds.broker.Stop()
 	ds.publishSync.Stop()
+	ds.CloseOutputs()
 	return nil
 }
 
@@ -477,7 +485,6 @@ func (ds *AnySource) Stop() error {
 func (ds *AnySource) CloseOutputs() {
 	ds.runMutex.Lock()
 	defer ds.runMutex.Unlock()
-
 	for _, ch := range ds.output {
 		close(ch)
 	}
