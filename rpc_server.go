@@ -151,6 +151,7 @@ type ProjectorsBasisObject struct {
 	ChannelIndex     int
 	ProjectorsBase64 string
 	BasisBase64      string
+	ModelDescription string
 }
 
 // ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
@@ -173,7 +174,7 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 	if err := basis.UnmarshalBinary(basisBytes); err != nil {
 		return err
 	}
-	if err := s.activeSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis); err != nil {
+	if err := s.activeSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription); err != nil {
 		return err
 	}
 	*reply = true

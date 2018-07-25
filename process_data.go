@@ -22,6 +22,7 @@ type DataStreamProcessor struct {
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
 	projectors           mat.Dense
+	modelDescription     string
 	// realtime analysis is disable if projectors .IsZero
 	// otherwise projectors must be size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
@@ -39,10 +40,12 @@ type DataStreamProcessor struct {
 func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
+	var s string
+	dsp.modelDescription = s
 }
 
 // SetProjectorsBasis sets .projectors and .basis to the arguments, returns an error if the sizes are not right
-func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) error {
+func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense, modelDescription string) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
 	dsp.changeMutex.Lock()
@@ -59,6 +62,7 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 	}
 	dsp.projectors = projectors
 	dsp.basis = basis
+	dsp.modelDescription = modelDescription
 	return nil
 }
 

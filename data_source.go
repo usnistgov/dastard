@@ -36,7 +36,7 @@ type DataSource interface {
 	ComputeWritingState() WritingState
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
-	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
+	ConfigureProjectorsBases(int, mat.Dense, mat.Dense, string) error
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
@@ -272,7 +272,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
-					"model description not implemented. but it should be mean, average pulse, derivative of average pulse")
+					dsp.modelDescription)
 				channelsWithOff++
 			}
 			if config.WriteLJH3 {
@@ -306,12 +306,12 @@ func (ds *AnySource) ComputeWritingState() WritingState {
 }
 
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[channelIndex]
-func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense) error {
+func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense, modelDescription string) error {
 	if channelIndex >= len(ds.processors) || channelIndex < 0 {
 		return fmt.Errorf("channelIndex out of range, channelIndex=%v, len(ds.processors)=%v", channelIndex, len(ds.processors))
 	}
 	dsp := ds.processors[channelIndex]
-	return dsp.SetProjectorsBasis(projectors, basis)
+	return dsp.SetProjectorsBasis(projectors, basis, modelDescription)
 }
 
 // Nchan returns the current number of valid channels in the data source.
