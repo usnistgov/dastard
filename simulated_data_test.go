@@ -108,10 +108,10 @@ func TestTriangle(t *testing.T) {
 	cols := 500
 	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
 	basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
-	if err := dsp.SetProjectorsBasis(*projectors, *basis); err != nil {
+	if err := dsp.SetProjectorsBasis(*projectors, *basis, "test model"); err != nil {
 		t.Error(err)
 	}
-	if err := ts.ConfigureProjectorsBases(1, *projectors, *basis); err != nil {
+	if err := ts.ConfigureProjectorsBases(1, *projectors, *basis, "test model"); err != nil {
 		t.Error(err)
 	}
 	ds.Stop()
