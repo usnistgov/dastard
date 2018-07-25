@@ -264,8 +264,6 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	s.status.Running = false
 	s.activeSource = nil
 	*reply = true
-	// The following can't run without holding the s.mu lock, so it needs
-	// to be launched in a separate goroutine.
 	s.broadcastStatus()
 	*reply = true
 	return nil
