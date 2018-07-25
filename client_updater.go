@@ -80,7 +80,6 @@ func RunClientUpdater(statusport int) {
 			// Send state to clients now.
 			message, err := json.Marshal(update.state)
 			if err == nil {
-				fmt.Printf("Publishing %s message\n", update.tag)
 				publish(pubSocket, update, message)
 			}
 
