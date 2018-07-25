@@ -55,13 +55,14 @@ func NewSourceControl() *SourceControl {
 
 // ServerStatus the status that SourceControl reports to clients.
 type ServerStatus struct {
-	Running    bool
-	SourceName string
-	Nchannels  int
-	Nsamples   int
-	Npresamp   int
-	Ncol       []int
-	Nrow       []int
+	Running                bool
+	SourceName             string
+	Nchannels              int
+	Nsamples               int
+	Npresamp               int
+	Ncol                   []int
+	Nrow                   []int
+	ChannelsWithProjectors []int
 	// TODO: maybe bytes/sec data rate...?
 }
 
@@ -177,6 +178,7 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 	if err := s.activeSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription); err != nil {
 		return err
 	}
+
 	*reply = true
 	return nil
 }
@@ -287,7 +289,7 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	}
 	err := s.activeSource.WriteControl(config)
 	*reply = (err != nil)
-	go s.broadcastWritingState()
+	s.broadcastWritingState()
 	return err
 }
 
@@ -372,6 +374,9 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
+	if s.activeSource != nil {
+		s.status.ChannelsWithProjectors = s.activeSource.ChannelsWithProjectors()
+	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 

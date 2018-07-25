@@ -66,6 +66,11 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 	return nil
 }
 
+// HasProjectors return true if projectors are loaded
+func (dsp *DataStreamProcessor) HasProjectors() bool {
+	return !dsp.projectors.IsZero()
+}
+
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
 func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWrittenChan chan int) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
@@ -99,9 +104,11 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	// if nsamp or npre is invalid, panic, do not silently ignore
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
+	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
+		dsp.removeProjectorsBasis()
+	}
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
-	dsp.removeProjectorsBasis()
 }
 
 // ConfigureTrigger sets this stream's trigger state.
@@ -226,7 +233,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		rec.pulseAverage = sum/N - ptm
 		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
 		rec.pulseRMS = math.Sqrt(meanSquare)
-		if !dsp.projectors.IsZero() {
+		if dsp.HasProjectors() {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
 			if cols != len(rec.data) {

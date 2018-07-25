@@ -41,6 +41,7 @@ type DataSource interface {
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
+	ChannelsWithProjectors() []int
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -312,6 +313,18 @@ func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.D
 	}
 	dsp := ds.processors[channelIndex]
 	return dsp.SetProjectorsBasis(projectors, basis, modelDescription)
+}
+
+// ChannelsWithProjectors returns a list of the ChannelIndicies of channels that have projectors loaded
+func (ds *AnySource) ChannelsWithProjectors() []int {
+	result := make([]int, 0)
+	for channelIndex := 0; channelIndex < len(ds.processors); channelIndex++ {
+		dsp := ds.processors[channelIndex]
+		if dsp.HasProjectors() {
+			result = append(result, channelIndex)
+		}
+	}
+	return result
 }
 
 // Nchan returns the current number of valid channels in the data source.
