@@ -484,8 +484,10 @@ func RunRPCServer(portrpc int, block bool) {
 				log.Fatal("accept error: " + err.Error())
 			} else {
 				log.Printf("new connection established\n")
-				go func() { // this is equivalent to ServeCodec, except all requests are
-					// handled SYNCHRONOUSLY, so sourceControl doesn't need a lock
+				go func() { // this is equivalent to ServeCodec, except all requests from a single connection
+					// are handled SYNCHRONOUSLY, so sourceControl doesn't need a lock
+					// requests from multiple connections are still asynchronous, but we could add slice of
+					// connections and loop over it instead of launch a goroutine per connection
 					codec := jsonrpc.NewServerCodec(conn)
 					for {
 						err := server.ServeRequest(codec)
