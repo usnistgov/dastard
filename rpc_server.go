@@ -419,6 +419,9 @@ func RunRPCServer(portrpc int, block bool) {
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = clientMessageChan
 
+	// Signal clients that there's a new Dastard running
+	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
+
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects.
 	var okay bool
