@@ -126,6 +126,7 @@ var nosaveMessages = map[string]struct{}{
 // saveState stores server configuration to the standard config file.
 func saveState(lastMessages map[string]interface{}) {
 
+	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
 	// Note that the nosaveMessages don't get into the lastMessages map.
 	for k, v := range lastMessages {
 		viper.Set(k, v)
