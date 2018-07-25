@@ -245,7 +245,7 @@ func BenchmarkLJH22(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err := w.WriteRecord(8888888, 127, data)
 		if err != nil {
-			panic(fmt.Sprint(err))
+			b.Fatal(fmt.Sprint(err))
 		}
 		b.SetBytes(int64(2 * len(data)))
 	}
@@ -259,7 +259,7 @@ func BenchmarkLJH3(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err := w.WriteRecord(0, 0, 0, data)
 		if err != nil {
-			panic(fmt.Sprint(err))
+			b.Fatal(fmt.Sprint(err))
 		}
 		b.SetBytes(int64(2 * len(data)))
 	}
@@ -271,7 +271,7 @@ func BenchmarkFileWrite(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := f.Write(data)
 		if err != nil {
-			panic(fmt.Sprint(err))
+			b.Fatal(fmt.Sprint(err))
 		}
 		b.SetBytes(int64(len(data)))
 	}
@@ -286,7 +286,7 @@ func BenchmarkBufIOWrite(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := w.Write(data)
 		if err != nil {
-			panic(fmt.Sprint(err))
+			b.Fatal(fmt.Sprint(err))
 		}
 		b.SetBytes(int64(len(data)))
 	}

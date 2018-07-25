@@ -26,14 +26,13 @@ func TestTriangle(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
-	outputs := ds.Outputs()
-	if len(outputs) != config.Nchan {
-		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
+	if len(ts.output) != config.Nchan {
+		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(ts.output), config.Nchan)
 	}
 
 	// Check first segment per source.
 	n := int(config.Max - config.Min)
-	for i, ch := range outputs {
+	for i, ch := range ts.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != 2*n {
@@ -52,7 +51,7 @@ func TestTriangle(t *testing.T) {
 		}
 	}
 	// Check second segment per source.
-	for i, ch := range outputs {
+	for i, ch := range ts.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != 2*n {
@@ -109,10 +108,10 @@ func TestTriangle(t *testing.T) {
 	cols := 500
 	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
 	basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
-	if err := dsp.SetProjectorsBasis(*projectors, *basis); err != nil {
+	if err := dsp.SetProjectorsBasis(*projectors, *basis, "test model"); err != nil {
 		t.Error(err)
 	}
-	if err := ts.ConfigureProjectorsBases(1, *projectors, *basis); err != nil {
+	if err := ts.ConfigureProjectorsBases(1, *projectors, *basis, "test model"); err != nil {
 		t.Error(err)
 	}
 	ds.Stop()
@@ -167,12 +166,11 @@ func TestSimPulse(t *testing.T) {
 	if err := Start(ds); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
-	outputs := ds.Outputs()
-	if len(outputs) != config.Nchan {
-		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(outputs), config.Nchan)
+	if len(ps.output) != config.Nchan {
+		t.Errorf("SimPulseSource.Ouputs() returns %d channels, want %d", len(ps.output), config.Nchan)
 	}
 	// Check first segment per source.
-	for i, ch := range outputs {
+	for i, ch := range ps.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != config.Nsamp {
@@ -190,15 +188,15 @@ func TestSimPulse(t *testing.T) {
 		if min != RawType(config.Pedestal+0.5-10) {
 			t.Errorf("SimPulseSource minimum value is %d, expect %d", min, RawType(config.Pedestal+0.5))
 		}
-		if max <= RawType(config.Pedestal+config.Amplitude*0.5) {
-			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(config.Pedestal+config.Amplitude*0.5))
+		if max <= RawType(config.Pedestal+config.Amplitude*0.4) {
+			t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(config.Pedestal+config.Amplitude*0.4))
 		}
 		if segment.firstFramenum != 0 {
 			t.Errorf("SimPulseSource first segment, output %d gives firstFramenum %d, want 0", i, segment.firstFramenum)
 		}
 	}
 	// Check second segment per source.
-	for i, ch := range outputs {
+	for i, ch := range ps.output {
 		segment := <-ch
 		data := segment.rawData
 		if len(data) != config.Nsamp {

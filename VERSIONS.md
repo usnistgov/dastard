@@ -1,5 +1,11 @@
 ## DASTARD Versions
 
+**0.1.0** July 13, 2018.
+* Ready for acquiring LJH (and maybe OFF) files with triggering.
+
+**0.0.2** July 2018.
+* Still improving to reach useful configuration
+
 **0.0.1** July 2018.
 * Fix irregular data rates for simulated sources due to latencies.
 

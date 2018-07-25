@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -269,7 +270,7 @@ func (w *Writer3) WriteHeader() error {
 			Row: w.Row, Column: w.Column}}
 	s, err := json.MarshalIndent(h, "", "    ")
 	if err != nil {
-		panic("MarshallIndent error")
+		log.Fatal("MarshallIndent error")
 	}
 
 	if _, err := w.writer.Write(s); err != nil {

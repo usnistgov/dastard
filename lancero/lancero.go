@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"log"
 	"strings"
 	"time"
 )
@@ -228,4 +230,9 @@ func OdDashTX(b []byte, maxLines int) string {
 		outBuffer.WriteString(fmt.Sprintf("* (%v identical lines)", repeatCount))
 	}
 	return outBuffer.String()
+}
+
+// SetLogOutput calls log.SetOutput from within Lancero
+func SetLogOutput(w io.Writer) {
+	log.SetOutput(w)
 }

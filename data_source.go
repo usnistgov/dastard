@@ -28,7 +28,6 @@ type DataSource interface {
 	Stop() error
 	Running() bool
 	blockingRead() error
-	Outputs() []chan DataSegment
 	CloseOutputs()
 	Nchan() int
 	Signed() []bool
@@ -37,12 +36,13 @@ type DataSource interface {
 	ComputeWritingState() WritingState
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
-	ConfigureProjectorsBases(int, mat.Dense, mat.Dense) error
+	ConfigureProjectorsBases(int, mat.Dense, mat.Dense, string) error
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
 	SetExperimentStateLabel(string) error
+	ChannelsWithProjectors() []int
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -80,8 +80,7 @@ func Start(ds DataSource) error {
 			if err := ds.blockingRead(); err == io.EOF {
 				break
 			} else if err != nil {
-				log.Printf("blockingRead returns Error: %s\n", err.Error())
-				// break
+				log.Fatal(fmt.Sprintf("blockingRead returns Error: %s\n", err.Error()))
 			}
 		}
 		ds.CloseOutputs()
@@ -201,8 +200,9 @@ func makeDirectory(basepath string) (string, error) {
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	request := strings.ToUpper(config.Request)
 	var filenamePattern, path string
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
+	// ds.runMutex.Lock()
+	// defer ds.runMutex.Unlock()
+	// this seems like a good idea, but doesn't actually prevent race conditions, and leads to deadlocks
 
 	// first check for possible errors, then take the lock and do the work
 	if strings.HasPrefix(request, "START") {
@@ -289,8 +289,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.ExperimentStateLabelUnixNano = 0
 
 	} else if strings.HasPrefix(request, "START") {
+		channelsWithOff := 0
 		for i, dsp := range ds.processors {
-
 			timebase := 1.0 / dsp.SampleRate
 			rccode := ds.rowColCodes[i]
 			nrows := rccode.rows()
@@ -312,7 +312,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
-					"model description not implemented. but it should be mean, average pulse, derivative of average pulse")
+					dsp.modelDescription)
+				channelsWithOff++
 			}
 			if config.WriteLJH3 {
 				filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
@@ -349,12 +350,24 @@ func (ds *AnySource) ComputeWritingState() WritingState {
 }
 
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[channelIndex]
-func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense) error {
+func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense, modelDescription string) error {
 	if channelIndex >= len(ds.processors) || channelIndex < 0 {
 		return fmt.Errorf("channelIndex out of range, channelIndex=%v, len(ds.processors)=%v", channelIndex, len(ds.processors))
 	}
 	dsp := ds.processors[channelIndex]
-	return dsp.SetProjectorsBasis(projectors, basis)
+	return dsp.SetProjectorsBasis(projectors, basis, modelDescription)
+}
+
+// ChannelsWithProjectors returns a list of the ChannelIndicies of channels that have projectors loaded
+func (ds *AnySource) ChannelsWithProjectors() []int {
+	result := make([]int, 0)
+	for channelIndex := 0; channelIndex < len(ds.processors); channelIndex++ {
+		dsp := ds.processors[channelIndex]
+		if dsp.HasProjectors() {
+			result = append(result, channelIndex)
+		}
+	}
+	return result
 }
 
 // Nchan returns the current number of valid channels in the data source.
@@ -453,9 +466,9 @@ func (ds *AnySource) PrepareRun() error {
 	}
 	tsptrs := make([]*TriggerState, ds.nchan)
 	for i, ts := range fts {
-		for _, chnum := range ts.ChanNumbers {
-			if chnum < ds.nchan {
-				tsptrs[chnum] = &(fts[i].TriggerState)
+		for _, channelIndex := range ts.ChannelIndicies {
+			if channelIndex < ds.nchan {
+				tsptrs[channelIndex] = &(fts[i].TriggerState)
 			}
 		}
 	}
@@ -490,7 +503,7 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 
-		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[chnum]
+		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[channelIndex]
 		// channel is closed, depending on ds.noProcess (which is false except for testing)
 		go func(ch <-chan DataSegment) {
 			defer ds.runDone.Done()
@@ -516,14 +529,6 @@ func (ds *AnySource) Stop() error {
 	return nil
 }
 
-// Outputs returns the slice of channels that carry buffers of data for downstream processing.
-func (ds *AnySource) Outputs() []chan DataSegment {
-	// Don't run this if PrepareRun or other sensitive sections are running
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
-	return ds.output
-}
-
 // CloseOutputs closes all channels that carry buffers of data for downstream processing.
 func (ds *AnySource) CloseOutputs() {
 	ds.runMutex.Lock()
@@ -532,13 +537,12 @@ func (ds *AnySource) CloseOutputs() {
 	for _, ch := range ds.output {
 		close(ch)
 	}
-	// ds.output = make([]chan DataSegment, 0)
 	ds.output = nil
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState
 type FullTriggerState struct {
-	ChanNumbers []int
+	ChannelIndicies []int
 	TriggerState
 }
 
@@ -559,16 +563,19 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 	// Now "unroll" that map into a vector of FullTriggerState objects
 	fts := []FullTriggerState{}
 	for k, v := range result {
-		fts = append(fts, FullTriggerState{ChanNumbers: v, TriggerState: k})
+		fts = append(fts, FullTriggerState{ChannelIndicies: v, TriggerState: k})
 	}
 	return fts
 }
 
 // ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
-	for _, chnum := range state.ChanNumbers {
-		if chnum < ds.nchan { // Don't trust client to know this number!
-			ds.processors[chnum].TriggerState = state.TriggerState
+	if state.ChannelIndicies == nil || len(state.ChannelIndicies) < 1 {
+		return fmt.Errorf("got ConfigureTriggers with no valid ChannelIndicies")
+	}
+	for _, channelIndex := range state.ChannelIndicies {
+		if channelIndex < ds.nchan { // Don't trust client to know this number!
+			ds.processors[channelIndex].TriggerState = state.TriggerState
 		}
 	}
 	return nil

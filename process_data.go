@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ type DataStreamProcessor struct {
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
 	projectors           mat.Dense
+	modelDescription     string
 	// realtime analysis is disable if projectors .IsZero
 	// otherwise projectors must be size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
@@ -38,10 +40,12 @@ type DataStreamProcessor struct {
 func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
+	var s string
+	dsp.modelDescription = s
 }
 
 // SetProjectorsBasis sets .projectors and .basis to the arguments, returns an error if the sizes are not right
-func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) error {
+func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense, modelDescription string) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
 	dsp.changeMutex.Lock()
@@ -58,7 +62,13 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 	}
 	dsp.projectors = projectors
 	dsp.basis = basis
+	dsp.modelDescription = modelDescription
 	return nil
+}
+
+// HasProjectors return true if projectors are loaded
+func (dsp *DataStreamProcessor) HasProjectors() bool {
+	return !dsp.projectors.IsZero()
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
@@ -76,10 +86,8 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWritt
 	}
 	dsp.DataPublisher.numberWrittenChan = numberWrittenChan
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
-	dsp.projectors.Reset()
-	dsp.basis.Reset()
-	// dsp.basis has zero value
-	// dsp.projectors has zero value
+	dsp.projectors.Reset()              // dsp.projectors is set to zero value
+	dsp.basis.Reset()                   // dsp.basis is set to zero value
 	return &dsp
 }
 
@@ -93,15 +101,14 @@ type DecimateState struct {
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
 // Also removes any existing projectors and basis.
 func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
-	if nsamp <= npre+1 || npre < 3 {
-		return
-	}
+	// if nsamp or npre is invalid, panic, do not silently ignore
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
-
+	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
+		dsp.removeProjectorsBasis()
+	}
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
-	dsp.removeProjectorsBasis()
 }
 
 // ConfigureTrigger sets this stream's trigger state.
@@ -126,8 +133,11 @@ func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
 	records, _ := dsp.TriggerData()
-	dsp.AnalyzeData(records)               // add analysis results to records in-place
-	dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
+	dsp.AnalyzeData(records)                      // add analysis results to records in-place
+	err := dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // DecimateData decimates data in-place.
@@ -223,11 +233,11 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		rec.pulseAverage = sum/N - ptm
 		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
 		rec.pulseRMS = math.Sqrt(meanSquare)
-		if !dsp.projectors.IsZero() {
+		if dsp.HasProjectors() {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
 			if cols != len(rec.data) {
-				panic("projections for variable length records not implemented")
+				log.Fatal("projections for variable length records not implemented")
 			}
 			projectors := &dsp.projectors
 			basis := &dsp.basis

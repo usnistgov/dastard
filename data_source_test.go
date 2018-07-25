@@ -114,8 +114,8 @@ func TestWritingFiles(t *testing.T) {
 	nsamples := 1024
 	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
 	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
-	if err := ds.processors[0].SetProjectorsBasis(*projectors, *basis); err != nil {
-		t.Error("failed to SetProjectors", err)
+	if err1 := ds.processors[0].SetProjectorsBasis(*projectors, *basis, "test model"); err1 != nil {
+		t.Error(err1)
 	}
 	config.Request = "Start"
 	config.WriteLJH22 = true

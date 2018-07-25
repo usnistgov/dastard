@@ -24,8 +24,9 @@ type ClientUpdate struct {
 
 func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	topic := reflect.TypeOf(update.state).String()
-	log.Printf("Message of type %s: %v\n", topic, string(message))
-
+	if topic != "TRIGGERRATE" {
+		log.Printf("SEND Message of type %s: %v\n", topic, string(message))
+	}
 	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
 	pubSocket.SendFrame(message, czmq.FlagNone)
 }
@@ -33,18 +34,25 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 var clientMessageChan chan ClientUpdate
 
 func init() {
-	clientMessageChan = make(chan ClientUpdate)
+	clientMessageChan = make(chan ClientUpdate, 10)
 }
 
 // RunClientUpdater forwards any message from its input channel to the ZMQ publisher socket
 // to publish any information that clients need to know.
-func RunClientUpdater(portstatus int) {
-	hostname := fmt.Sprintf("tcp://*:%d", portstatus)
+func RunClientUpdater(statusport int) {
+	hostname := fmt.Sprintf("tcp://*:%d", statusport)
 	pubSocket, err := czmq.NewPub(hostname)
 	if err != nil {
 		return
 	}
 	defer pubSocket.Destroy()
+
+	// The ZMQ middleware will need some time for existing SUBscribers (and their
+	// subscription topics) to be hooked up to this new PUBlisher.
+	// The result is that the first few messages will be dropped, including the
+	// NEWDASTARD one. By sleeping a fraction of a second, we can avoid this
+	// dropped-message problem most of the time (though there's no guarantee).
+	time.Sleep(250 * time.Millisecond)
 
 	// Save the state to the standard saved-state file this often.
 	savePeriod := time.Minute
@@ -73,6 +81,11 @@ func RunClientUpdater(portstatus int) {
 			message, err := json.Marshal(update.state)
 			if err == nil {
 				publish(pubSocket, update, message)
+			}
+
+			// Don't save NEWDASTARD messages--they don't contain state
+			if update.tag == "NEWDASTARD" {
+				continue
 			}
 
 			// Check if the state has changed; if so, remember the message for later
@@ -107,6 +120,7 @@ var nosaveMessages = map[string]struct{}{
 	"alive":         {},
 	"triggerrate":   {},
 	"numberwritten": {},
+	"newdastard":    {},
 }
 
 // saveState stores server configuration to the standard config file.

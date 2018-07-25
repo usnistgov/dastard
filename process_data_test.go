@@ -44,12 +44,6 @@ func TestAnalyze(t *testing.T) {
 		PTM:            10.0, Avg: 5.0, Max: 10.0, RMS: 5.84522597225006}
 	testAnalyzeCheck(t, rec, expect, "Analyze A")
 
-	dsp.ConfigurePulseLengths(1, 0) // this is supposed to be ignored
-	if dsp.NPresamples != 4 || dsp.NSamples != len(d) {
-		t.Errorf("ConfigurePulseLengths(1,0) yields (%d, %d), want (%d, %d)",
-			dsp.NSamples, dsp.NPresamples, len(d), 4)
-	}
-
 	tstate := TriggerState{EdgeTrigger: true, EdgeLevel: 123}
 	dsp.ConfigureTrigger(tstate) // for fuller test coverage
 	if !dsp.EdgeTrigger {
@@ -88,7 +82,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0, 1, 0,
 			0, 0, 1,
 			0, 0, 0})
-	if err := dsp.SetProjectorsBasis(*projectors3, *basis3); err != nil {
+	if err := dsp.SetProjectorsBasis(*projectors3, *basis3, "test model"); err != nil {
 		t.Error(err)
 	}
 	dsp.AnalyzeData(records)
@@ -110,7 +104,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0,
 			0,
 			0})
-	if err := dsp.SetProjectorsBasis(*projectors1, *basis1); err != nil {
+	if err := dsp.SetProjectorsBasis(*projectors1, *basis1, "test model"); err != nil {
 		t.Error(err)
 	}
 	dsp.AnalyzeData(records)
@@ -304,7 +298,7 @@ func BenchmarkAnalyze(b *testing.B) {
 			if bm.nbases > 0 {
 				projectors := mat.NewDense(bm.nbases, bm.nsamples, make([]float64, bm.nbases*bm.nsamples))
 				basis := mat.NewDense(bm.nsamples, bm.nbases, make([]float64, bm.nbases*bm.nsamples))
-				if err := dsp.SetProjectorsBasis(*projectors, *basis); err != nil {
+				if err := dsp.SetProjectorsBasis(*projectors, *basis, "test model"); err != nil {
 					b.Error(err)
 				}
 			}
@@ -384,7 +378,7 @@ func BenchmarkMatMul(b *testing.B) {
 		name := fmt.Sprintf("MulVec(%v,%v)*(%v,%v)", bm.rA, bm.cA, bm.rB, bm.cB)
 		b.Run(name, func(b *testing.B) {
 			if bm.cB != 1 {
-				panic("cB should be 1")
+				b.Fatal("cB should be 1")
 			}
 			A := mat.NewDense(bm.rA, bm.cA, make([]float64, bm.rA*bm.cA))
 			B := mat.NewVecDense(bm.rB, make([]float64, bm.rB*bm.cB))

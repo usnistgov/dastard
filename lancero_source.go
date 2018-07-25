@@ -422,7 +422,6 @@ func (ls *LanceroSource) StartRun() error {
 func (ls *LanceroSource) blockingRead() error {
 	ls.runMutex.Lock()
 	defer ls.runMutex.Unlock()
-
 	// Wait on only one device (the first) to have enough data.
 	// Method distributeData will then read from all devices.
 	done := make(chan error)
@@ -431,7 +430,6 @@ func (ls *LanceroSource) blockingRead() error {
 		_, _, err := dev.card.Wait()
 		done <- err
 	}()
-
 	select {
 	case <-ls.abortSelf:
 		if err := ls.stop(); err != nil {
@@ -487,19 +485,26 @@ func (ls *LanceroSource) distributeData() {
 
 	// TODO: Check for frame bits being correctly placed in the stream?
 
+	// TODO: Check for missing data
+
 	// TODO: Look for external trigger bits here, either once per card or once per column
 
-	// This loop is the demultiplexing step. Loop over devices, then frames,
-	// then data streams.
+	// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
+	// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
+	// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
+	// this loop handles 10938 frames in 20.5 ms on 687horton, aka aka 1.9 us/frame
+	// the previous loop handles 52000 frames in 253 ms, aka 4.8 us/frame
+	// when running more than 2 lancero cards, even this version may not keep up reliably
 	nchanPrevDevices := 0
 	for ibuf, dev := range ls.active {
 		buffer := buffers[ibuf]
 		nchan := dev.ncols * dev.nrows * 2
-		idx := 0
-		for j := 0; j < framesUsed; j++ {
-			for i := 0; i < nchan; i++ {
-				datacopies[i+nchanPrevDevices][j] = buffer[idx]
-				idx++
+		for i := 0; i < nchan; i++ {
+			dc := datacopies[i+nchanPrevDevices]
+			idx := i
+			for j := 0; j < framesUsed; j++ {
+				dc[j] = buffer[idx]
+				idx += nchan
 			}
 		}
 		nchanPrevDevices += nchan
@@ -536,6 +541,7 @@ func (ls *LanceroSource) distributeData() {
 		}
 		ch <- seg
 	}
+
 	ls.nextFrameNum += FrameIndex(framesUsed)
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,

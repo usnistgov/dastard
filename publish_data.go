@@ -3,6 +3,7 @@ package dastard
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"reflect"
 	"time"
 	"unsafe"
@@ -203,6 +204,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		dp.LJH22.Flush()
 	}
 	if dp.HasLJH3() && !dp.WritingPaused {
 		for _, record := range records {
@@ -217,6 +219,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		dp.LJH3.Flush()
 	}
 	if dp.HasOFF() && !dp.WritingPaused {
 		for _, record := range records {
@@ -238,6 +241,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 				return err
 			}
 		}
+		dp.OFF.Flush()
 	}
 	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
 		dp.numberWritten += len(records)
@@ -353,10 +357,14 @@ func configurePubSummariesSocket() (err error) {
 // *** This looks like it could be replaced by PubChanneler, but tests show terrible performance with Channeler ***
 func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
 	const publishChannelDepth = 500
-	// The following could could be a PubChanneler
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
+	pubSocket.SetSndhwm(3000) // not really sure how to choose this
+	// but at 8x30 TDM we have 480 channels, so we can only cache
+	// about 2 messages per channel at the default of 1000
+	// I think I was missing packets when using easyClient set to autotrigger
+	// with 0 delay and 5000 sample records as 160ns row time
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +376,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 				message := converter(record)
 				err := pubSocket.SendMessage(message)
 				if err != nil {
-					panic("zmq send error")
+					log.Fatal("zmq send error")
 				}
 			}
 		}
@@ -438,6 +446,8 @@ func (ps *PublishSync) Run() {
 				case n := <-ps.numberWrittenChans[i]:
 					ps.NumberWritten[i] = n
 				case ps.writing = <-ps.writingChan:
+				case <-time.After(5 * time.Second):
+					log.Fatal("PublishSync got stuck")
 				}
 			}
 		case <-ticker.C:

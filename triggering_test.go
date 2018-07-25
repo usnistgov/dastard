@@ -362,24 +362,34 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 		secondaries = append(secondaries, s...)
 	}
 	if len(primaries) != len(expectedFrames) {
-		t.Errorf("%s trigger found %d triggers, want %d", trigname, len(primaries), len(expectedFrames))
+		t.Errorf("%s: have %v triggers, want %v triggers", trigname, len(primaries), len(expectedFrames))
+		fmt.Print("found ")
+		for _, p := range primaries {
+			fmt.Printf("%v,", p.trigFrame)
+		}
+		fmt.Println()
+		fmt.Print("found ")
+		for _, v := range expectedFrames {
+			fmt.Printf("%v,", v)
+		}
+		fmt.Println()
 	}
 	if len(secondaries) != 0 {
-		t.Errorf("%s trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
+		t.Errorf("%s: trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
 	}
 	for i, pt := range primaries {
 		if i < len(expectedFrames) {
 			if pt.trigFrame != expectedFrames[i] {
-				t.Errorf("%s trigger[%d] at frame %d, want %d", trigname, i, pt.trigFrame, expectedFrames[i])
+				t.Errorf("%s: trigger[%d] at frame %d, want %d", trigname, i, pt.trigFrame, expectedFrames[i])
 			}
 		}
 	}
 
-	// Check the data samples for the first trigger
+	// Check the data samples for the first trigger match raw, for samples where raw is long enough
 	if len(primaries) != 0 && len(expectedFrames) != 0 {
 		pt := primaries[0]
 		offset := int(expectedFrames[0]) - dsp.NPresamples
-		for i := 0; i < len(pt.data); i++ {
+		for i := 0; i < len(pt.data) && i+offset < len(raw); i++ {
 			expect := raw[i+offset]
 			if pt.data[i] != expect {
 				t.Errorf("%s trigger[0] found data[%d]=%d, want %d", trigname, i,
@@ -458,7 +468,6 @@ func TestEdgeMulti(t *testing.T) {
 	go broker.Run()
 	defer broker.Stop()
 	dsp := NewDataStreamProcessor(0, broker, nil)
-	nRepeat := 1
 
 	//kink model parameters
 	var a, b, c float64
@@ -489,6 +498,7 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.EdgeLevel = 10000
 	dsp.EdgeMultiVerifyNMonotone = 5
 	// should yield a single edge trigger
+	nRepeat := 1
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high", []FrameIndex{})
 	dsp.EdgeLevel = 1
 	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
@@ -549,6 +559,27 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.LastEdgeMultiTrigger = 0   // need to reset this each time
 	dsp.edgeMultiState = searching // need to reset this after E
 	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
+
+	dsp.LastEdgeMultiTrigger = 0 // need to reset this each time
+	dsp.NSamples = 30
+	dsp.NPresamples = 25
+	dsp.EdgeMultiMakeContaminatedRecords = true
+	dsp.EdgeLevel = 0
+	dsp.EdgeMultiVerifyNMonotone = 0
+
+	rawG := make([]RawType, 10)
+	for i := 0; i < len(rawG); i++ {
+		rawG[i] = RawType(i % 2)
+	}
+	nRepeatG := 20
+	expectG := make([]FrameIndex, 0)
+	for i := dsp.NPresamples + 2; i < len(rawG)*nRepeatG-(dsp.NSamples-dsp.NPresamples); i += 2 {
+		expectG = append(expectG, FrameIndex(i))
+	}
+
+	// spew.Dump(dsp.TriggerState)
+	_, _ = testTriggerSubroutine(t, rawG, nRepeatG, dsp, "EdgeMulti G: make lots of contaminated records", expectG)
+
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
@@ -645,7 +676,7 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 
 	records = dsp.edgeTriggerComputeAppend(records)
 	if len(records) != 0 {
-		panic("")
+		b.Fatal("no records")
 	}
 
 }
@@ -678,7 +709,7 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 
 	records = dsp.levelTriggerComputeAppend(records)
 	if len(records) != 0 {
-		panic("")
+		b.Fatal("no records")
 	}
 
 }

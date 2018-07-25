@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/user"
 	"strings"
@@ -88,9 +89,9 @@ func main() {
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	go dastard.RunClientUpdater(dastard.Ports.Status)
-	dastard.RunRPCServer(dastard.Ports.RPC)
+	dastard.RunRPCServer(dastard.Ports.RPC, true)
 }
