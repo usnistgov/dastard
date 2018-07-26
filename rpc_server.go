@@ -274,7 +274,8 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	return nil
 }
 
-// observeSourceStop modifies s to make future messag
+// observeSourceStop modifies s to be correct after a source has stopped
+// it is either called in Stop() or in another routine which notices activeSource.Running() is false
 func (s *SourceControl) observeSourceStop() {
 	s.status.Running = false
 	s.activeSource = nil
