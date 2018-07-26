@@ -26,6 +26,7 @@ type SourceControl struct {
 	simPulses *SimPulseSource
 	triangle  *TriangleSource
 	lancero   *LanceroSource
+	erroring  *ErroringSource
 	// TODO: Add sources for ROACH, Abaco
 	activeSource DataSource
 
@@ -49,6 +50,7 @@ func NewSourceControl() *SourceControl {
 		sc.lancero.heartbeats = sc.heartbeats
 
 	}
+	sc.erroring = NewErroringSource()
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
 	return sc
@@ -223,6 +225,10 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.activeSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
+	case "ERRORINGSOURCE":
+		s.activeSource = DataSource(s.erroring)
+		s.status.SourceName = "Erroring"
+
 	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
@@ -262,11 +268,25 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	}
 	log.Printf("Stopping data source\n")
 	s.activeSource.Stop()
-	s.status.Running = false
-	s.activeSource = nil
+	s.observeSourceStop()
 	*reply = true
 	s.broadcastStatus()
 	*reply = true
+	return nil
+}
+
+// observeSourceStop modifies s to make future messag
+func (s *SourceControl) observeSourceStop() {
+	s.status.Running = false
+	s.activeSource = nil
+}
+
+// WaitForStopTestingOnly will block until the running data source is finished and s.activeSource == nil
+func (s *SourceControl) WaitForStopTestingOnly(dummy *string, reply *bool) error {
+	for s.activeSource != nil {
+		s.activeSource.Wait()
+		time.Sleep(1 * time.Millisecond)
+	}
 	return nil
 }
 
@@ -335,10 +355,9 @@ type CouplingStatus int
 
 // Specific allowed values for status of FB / error coupling
 const (
-	// FB and error aren't coupled
-	NoCoupling CouplingStatus = iota + 1
-	FBToErr                   // FB triggers cause secondary triggers in error channels
-	ErrToFB                   // Error triggers cause secondary triggers in FB channels
+	NoCoupling CouplingStatus = iota + 1 // NoCoupling turns off FB + error coupling
+	FBToErr                              // FB triggers cause secondary triggers in error channels
+	ErrToFB                              // Error triggers cause secondary triggers in FB channels
 )
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
@@ -380,6 +399,9 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.observeSourceStop()
+	}
 	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.DataMB = 0
@@ -387,6 +409,9 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.observeSourceStop()
+	}
 	if s.activeSource != nil {
 		s.status.ChannelsWithProjectors = s.activeSource.ChannelsWithProjectors()
 	}
@@ -486,17 +511,17 @@ func RunRPCServer(portrpc int, block bool) {
 	go func() {
 		server := rpc.NewServer()
 		if err := server.Register(sourceControl); err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
 		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 		port := fmt.Sprintf(":%d", portrpc)
 		listener, err := net.Listen("tcp", port)
 		if err != nil {
-			log.Fatal("listen error:", err)
+			panic(fmt.Sprint("listen error:", err))
 		}
 		for {
 			if conn, err := listener.Accept(); err != nil {
-				log.Fatal("accept error: " + err.Error())
+				panic("accept error: " + err.Error())
 			} else {
 				log.Printf("new connection established\n")
 				go func() { // this is equivalent to ServeCodec, except all requests from a single connection
