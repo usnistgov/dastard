@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -272,7 +273,7 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 // WriteControlConfig object to control start/stop/pause of data writing
 // Path and FileType are ignored for any request other than Start
 type WriteControlConfig struct {
-	Request    string // "Start", "Stop", "Pause", or "Unpause", or "Unpause x" where x is a 1+ length experiment state label
+	Request    string // "Start", "Stop", "Pause", or "Unpause", or "Unpause label"
 	Path       string // write in a new directory under this path
 	WriteLJH22 bool   // turn on one or more file formats
 	WriteOFF   bool
@@ -299,9 +300,8 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	}
 	ws := s.activeSource.ComputeWritingState()
 	if ws.Active {
-		dir := path.Dir(ws.FilenamePattern)
-		commentName := path.Join(dir, "comment.txt")
-		fp, err := os.Create(commentName)
+		commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
+		fp, err := os.Create(commentFilename)
 		if err != nil {
 			return err
 		}
