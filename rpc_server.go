@@ -55,13 +55,14 @@ func NewSourceControl() *SourceControl {
 
 // ServerStatus the status that SourceControl reports to clients.
 type ServerStatus struct {
-	Running    bool
-	SourceName string
-	Nchannels  int
-	Nsamples   int
-	Npresamp   int
-	Ncol       []int
-	Nrow       []int
+	Running                bool
+	SourceName             string
+	Nchannels              int
+	Nsamples               int
+	Npresamp               int
+	Ncol                   []int
+	Nrow                   []int
+	ChannelsWithProjectors []int
 	// TODO: maybe bytes/sec data rate...?
 }
 
@@ -151,6 +152,7 @@ type ProjectorsBasisObject struct {
 	ChannelIndex     int
 	ProjectorsBase64 string
 	BasisBase64      string
+	ModelDescription string
 }
 
 // ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
@@ -173,9 +175,10 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 	if err := basis.UnmarshalBinary(basisBytes); err != nil {
 		return err
 	}
-	if err := s.activeSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis); err != nil {
+	if err := s.activeSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription); err != nil {
 		return err
 	}
+
 	*reply = true
 	return nil
 }
@@ -261,8 +264,6 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	s.status.Running = false
 	s.activeSource = nil
 	*reply = true
-	// The following can't run without holding the s.mu lock, so it needs
-	// to be launched in a separate goroutine.
 	s.broadcastStatus()
 	*reply = true
 	return nil
@@ -286,7 +287,7 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	}
 	err := s.activeSource.WriteControl(config)
 	*reply = (err != nil)
-	go s.broadcastWritingState()
+	s.broadcastWritingState()
 	return err
 }
 
@@ -371,6 +372,9 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
+	if s.activeSource != nil {
+		s.status.ChannelsWithProjectors = s.activeSource.ChannelsWithProjectors()
+	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
@@ -415,6 +419,9 @@ func RunRPCServer(portrpc int, block bool) {
 
 	mapServer := newMapServer()
 	mapServer.clientUpdates = clientMessageChan
+
+	// Signal clients that there's a new Dastard running
+	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
 
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects.
@@ -483,8 +490,10 @@ func RunRPCServer(portrpc int, block bool) {
 				log.Fatal("accept error: " + err.Error())
 			} else {
 				log.Printf("new connection established\n")
-				go func() { // this is equivalent to ServeCodec, except all requests are
-					// handled SYNCHRONOUSLY, so sourceControl doesn't need a lock
+				go func() { // this is equivalent to ServeCodec, except all requests from a single connection
+					// are handled SYNCHRONOUSLY, so sourceControl doesn't need a lock
+					// requests from multiple connections are still asynchronous, but we could add slice of
+					// connections and loop over it instead of launch a goroutine per connection
 					codec := jsonrpc.NewServerCodec(conn)
 					for {
 						err := server.ServeRequest(codec)

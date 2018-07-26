@@ -204,6 +204,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		dp.LJH22.Flush()
 	}
 	if dp.HasLJH3() && !dp.WritingPaused {
 		for _, record := range records {
@@ -218,6 +219,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		dp.LJH3.Flush()
 	}
 	if dp.HasOFF() && !dp.WritingPaused {
 		for _, record := range records {
@@ -239,6 +241,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 				return err
 			}
 		}
+		dp.OFF.Flush()
 	}
 	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
 		dp.numberWritten += len(records)

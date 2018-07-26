@@ -22,6 +22,7 @@ type DataStreamProcessor struct {
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
 	projectors           mat.Dense
+	modelDescription     string
 	// realtime analysis is disable if projectors .IsZero
 	// otherwise projectors must be size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
@@ -39,10 +40,12 @@ type DataStreamProcessor struct {
 func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 	dsp.projectors.Reset()
 	dsp.basis.Reset()
+	var s string
+	dsp.modelDescription = s
 }
 
 // SetProjectorsBasis sets .projectors and .basis to the arguments, returns an error if the sizes are not right
-func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense) error {
+func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense, modelDescription string) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
 	dsp.changeMutex.Lock()
@@ -59,7 +62,13 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 	}
 	dsp.projectors = projectors
 	dsp.basis = basis
+	dsp.modelDescription = modelDescription
 	return nil
+}
+
+// HasProjectors return true if projectors are loaded
+func (dsp *DataStreamProcessor) HasProjectors() bool {
+	return !dsp.projectors.IsZero()
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
@@ -95,9 +104,11 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	// if nsamp or npre is invalid, panic, do not silently ignore
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
+	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
+		dsp.removeProjectorsBasis()
+	}
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
-	dsp.removeProjectorsBasis()
 }
 
 // ConfigureTrigger sets this stream's trigger state.
@@ -222,7 +233,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		rec.pulseAverage = sum/N - ptm
 		meanSquare := sum2/N - 2*ptm*(sum/N) + ptm*ptm
 		rec.pulseRMS = math.Sqrt(meanSquare)
-		if !dsp.projectors.IsZero() {
+		if dsp.HasProjectors() {
 			rows, cols := dsp.projectors.Dims()
 			nbases := rows
 			if cols != len(rec.data) {
