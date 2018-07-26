@@ -468,13 +468,10 @@ func (ds *AnySource) PrepareRun() error {
 
 // Stop ends the data supply.
 func (ds *AnySource) Stop() error {
-	if ds.abortSelf != nil {
-		select {
-		case <-ds.abortSelf:
-		default:
-			close(ds.abortSelf)
-		}
+	if !ds.Running() {
+		return fmt.Errorf("Anysource not running, cannot stop")
 	}
+	close(ds.abortSelf)
 	ds.broker.Stop()
 	ds.publishSync.Stop()
 	ds.CloseOutputs()
