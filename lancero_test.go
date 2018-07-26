@@ -1,7 +1,6 @@
 package dastard
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -88,8 +87,7 @@ func TestNoHardwareSource(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		dev := LanceroDevice{card: lan}
-		dev.devnum = i
+		dev := LanceroDevice{card: lan, devnum: i}
 		source.devices[i] = &dev
 		activeCards[i] = i
 		source.ncards++
@@ -129,10 +127,10 @@ func TestNoHardwareSource(t *testing.T) {
 	if source.chanNumbers[3] != 2 {
 		t.Errorf("LanceroSource.chanNumbers[3] has %v, want 2", source.chanNumbers[3])
 	}
-	if strings.Compare(source.chanNames[3], "chan2") != 0 {
+	if source.chanNames[3] != "chan2" {
 		t.Errorf("LanceroSource.chanNames[3] has %v, want chan2", source.chanNames[3])
 	}
-	if strings.Compare(source.chanNames[2], "err2") != 0 {
+	if source.chanNames[2] != "err2" {
 		t.Errorf("LanceroSource.chanNames[2] %v, want err2", source.chanNames[3])
 	}
 	if err := source.ConfigureMixFraction(0, 1.0); err == nil {
@@ -142,6 +140,10 @@ func TestNoHardwareSource(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
+	// these tests get lsync right at first, but while data is being processed
+	// the lsync is not right. about half the time I run the test there are 3 blocking reads
+	// at which point the lancero source shuts down due to it seeing lsync change
+	// then Stop() will error but the err value is not checked so it doesn't cause a test failure
 }
 
 func TestMix(t *testing.T) {

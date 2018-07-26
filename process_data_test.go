@@ -177,6 +177,7 @@ func TestDataSignedness(t *testing.T) {
 	var ts TriangleSource
 	ts.nchan = 4
 	ts.PrepareRun()
+	defer ts.Stop()
 	for i, dsp := range ts.processors {
 		expect := false
 		if dsp.stream.signed != expect {
@@ -192,6 +193,7 @@ func TestDataSignedness(t *testing.T) {
 		ls.signed[i] = true
 	}
 	ls.PrepareRun()
+	defer ls.Stop()
 	for i, dsp := range ls.processors {
 		expect := (i % 2) == 0
 		if dsp.stream.signed != expect {

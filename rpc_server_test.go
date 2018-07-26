@@ -361,11 +361,36 @@ func setupViper() error {
 	return nil
 }
 
+func TestErroringSourceRPC(t *testing.T) {
+	client, errClient := simpleClient()
+	defer client.Close()
+	if errClient != nil {
+		t.Fatal(errClient)
+	}
+	sourceName := "ERRORINGSOURCE"
+	dummy := ""
+	okay := false
+	for i := 0; i < 5; i++ {
+		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
+			t.Error(err)
+		}
+		if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
+			t.Error("expected error")
+		}
+		if err := client.Call("SourceControl.WaitForStopTestingOnly", &dummy, &okay); err != nil {
+			t.Error(err)
+		}
+		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
+			t.Error("expected error")
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {
-		log.Fatalf("error opening file: %v", err)
+		panic(fmt.Sprintf("error opening file: %v", err))
 	}
 	defer f.Close()
 	log.SetOutput(f)
@@ -373,7 +398,7 @@ func TestMain(m *testing.M) {
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	go RunClientUpdater(Ports.Status)
