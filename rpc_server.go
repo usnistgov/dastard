@@ -361,6 +361,9 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
+	if s.activeSource != nil {
+		s.status.Running = s.activeSource.Running() // check for source stopping on its own, eg lancero source stops for server state change
+	}
 	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.DataMB = 0
@@ -368,6 +371,9 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
+	if s.activeSource != nil {
+		s.status.Running = s.activeSource.Running() // check for source stopping on its own, eg lancero source stops for server state change
+	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
