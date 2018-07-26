@@ -72,6 +72,7 @@ func TestWritingFiles(t *testing.T) {
 	ds := AnySource{nchan: 4}
 	ds.rowColCodes = make([]RowColCode, ds.nchan)
 	ds.PrepareRun()
+	defer ds.Stop()
 	config := &WriteControlConfig{Request: "Pause", Path: tmp, WriteLJH22: true}
 	var err error
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {

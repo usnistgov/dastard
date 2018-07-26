@@ -89,7 +89,7 @@ func main() {
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	go dastard.RunClientUpdater(dastard.Ports.Status)

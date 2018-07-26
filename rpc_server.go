@@ -25,6 +25,7 @@ type SourceControl struct {
 	simPulses *SimPulseSource
 	triangle  *TriangleSource
 	lancero   *LanceroSource
+	erroring  *ErroringSource
 	// TODO: Add sources for ROACH, Abaco
 	activeSource DataSource
 
@@ -48,6 +49,7 @@ func NewSourceControl() *SourceControl {
 		sc.lancero.heartbeats = sc.heartbeats
 
 	}
+	sc.erroring = NewErroringSource()
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
 	return sc
@@ -219,13 +221,17 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.activeSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
+	case "ERRORINGSOURCE":
+		s.activeSource = DataSource(s.erroring)
+		s.status.SourceName = "Erroring"
+
 	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
 	}
 
-	log.Printf("Starting data source named %s\n", *sourceName)
+	fmt.Printf("Starting data source named %s\n", *sourceName)
 	s.status.Running = true
 	if err := Start(s.activeSource); err != nil {
 		s.status.Running = false
@@ -263,6 +269,15 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	*reply = true
 	s.broadcastStatus()
 	*reply = true
+	return nil
+}
+
+// WaitForStopTestingOnly will block until the running data source is finished and s.activeSource == nil
+func (s *SourceControl) WaitForStopTestingOnly(dummy *string, reply *bool) error {
+	for s.activeSource != nil {
+		s.activeSource.Wait()
+		time.Sleep(1 * time.Millisecond)
+	}
 	return nil
 }
 
@@ -361,8 +376,9 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
-	if s.activeSource != nil {
-		s.status.Running = s.activeSource.Running() // check for source stopping on its own, eg lancero source stops for server state change
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.status.Running = false
+		s.activeSource = nil
 	}
 	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
@@ -371,8 +387,9 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
-	if s.activeSource != nil {
-		s.status.Running = s.activeSource.Running() // check for source stopping on its own, eg lancero source stops for server state change
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.status.Running = false
+		s.activeSource = nil
 	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
@@ -467,17 +484,17 @@ func RunRPCServer(portrpc int, block bool) {
 	go func() {
 		server := rpc.NewServer()
 		if err := server.Register(sourceControl); err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
 		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 		port := fmt.Sprintf(":%d", portrpc)
 		listener, err := net.Listen("tcp", port)
 		if err != nil {
-			log.Fatal("listen error:", err)
+			panic(fmt.Sprint("listen error:", err))
 		}
 		for {
 			if conn, err := listener.Accept(); err != nil {
-				log.Fatal("accept error: " + err.Error())
+				panic("accept error: " + err.Error())
 			} else {
 				log.Printf("new connection established\n")
 				go func() { // this is equivalent to ServeCodec, except all requests are

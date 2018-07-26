@@ -41,6 +41,13 @@ type DataSource interface {
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
+	Wait() error
+}
+
+// Wait returns when the source run is done, aka the source is stopped
+func (ds *AnySource) Wait() error {
+	ds.runDone.Wait()
+	return nil
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -75,13 +82,15 @@ func Start(ds DataSource) error {
 	// Have the DataSource produce data until graceful stop.
 	go func() {
 		for {
+			// fmt.Println("calling blockingRead")
 			if err := ds.blockingRead(); err == io.EOF {
+				log.Println("blockingRead returns io.EOF, more stopping the source")
 				// EOF error should occur after abortSelf has been closed
 				// ds.CloseOutputs() // why is this here, ds.Stop also calls CloseOutputs
 				return
 			} else if err != nil {
 				// other errors indicate a problem with source, need to close down
-				fmt.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
+				log.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
 				ds.Stop() // will cause next call to ds.blockingRead to return io.EOF
 			}
 		}
