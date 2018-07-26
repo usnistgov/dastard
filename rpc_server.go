@@ -267,12 +267,17 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	}
 	log.Printf("Stopping data source\n")
 	s.activeSource.Stop()
-	s.status.Running = false
-	s.activeSource = nil
+	s.observeSourceStop()
 	*reply = true
 	s.broadcastStatus()
 	*reply = true
 	return nil
+}
+
+// observeSourceStop modifies s to make future messag
+func (s *SourceControl) observeSourceStop() {
+	s.status.Running = false
+	s.activeSource = nil
 }
 
 // WaitForStopTestingOnly will block until the running data source is finished and s.activeSource == nil
@@ -380,10 +385,7 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 
 func (s *SourceControl) broadcastHeartbeat() {
 	if s.activeSource != nil && !s.activeSource.Running() {
-		s.status.Running = false
-		s.activeSource = nil
-		s.status.ChannelsWithProjectors = make([]int, 0)
-
+		s.observeSourceStop()
 	}
 	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
@@ -393,9 +395,7 @@ func (s *SourceControl) broadcastHeartbeat() {
 
 func (s *SourceControl) broadcastStatus() {
 	if s.activeSource != nil && !s.activeSource.Running() {
-		s.status.Running = false
-		s.activeSource = nil
-		s.status.ChannelsWithProjectors = make([]int, 0)
+		s.observeSourceStop()
 	}
 	if s.activeSource != nil {
 		s.status.ChannelsWithProjectors = s.activeSource.ChannelsWithProjectors()
