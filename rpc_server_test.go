@@ -214,32 +214,49 @@ func TestServer(t *testing.T) {
 	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
 		t.Error("SourceControl.WriteComment error while writing:", err1)
 	}
+	stateLabelArg := StateLabelConfig{Label: "testlabel"}
+	if err1 := client.Call("SourceControl.SetExperimentStateLabel", &stateLabelArg, &okay); err1 != nil {
+		t.Error(err1)
+	}
 	wconfig.Request = "Stop"
 	if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
 		t.Error("SourceControl.WriteControl STOP error:", err1)
 	}
 	// Check that comment.txt file exists and has a newline appended
-	date := time.Now().Format("20060102")
-	fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
-	file, err := os.Open(fname)
-	defer file.Close()
-	if err != nil {
-		t.Errorf("Could not open comment file %q", fname)
-	} else {
-		b := make([]byte, 1+len(comment))
-		_, err2 := file.Read(b)
-		if err2 != nil {
-			t.Error("file.Read failed on comment file", err2)
-		} else if string(b) != "hello\n" {
-			t.Errorf("comment.txt file contains %q, want %q", b, "hello\n")
+	if true { // prevent variables from persisting
+		date := time.Now().Format("20060102")
+		fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
+		file, err0 := os.Open(fname)
+		defer file.Close()
+		if err0 != nil {
+			t.Errorf("Could not open comment file %q", fname)
+		} else {
+			b := make([]byte, 1+len(comment))
+			_, err2 := file.Read(b)
+			if err2 != nil {
+				t.Error("file.Read failed on comment file", err2)
+			} else if string(b) != "hello\n" {
+				t.Errorf("comment.txt file contains %q, want %q", b, "hello\n")
+			}
+		}
+	}
+	// Check that experiment_state file exists
+	if true { // prevent variables from persisting
+		date := time.Now().Format("20060102")
+		fname := fmt.Sprintf("%s/%s/0000/%s_run0000_experiment_state.txt", path, date, date)
+		file, err0 := os.Open(fname)
+		defer file.Close()
+		if err0 != nil {
+			t.Error(err0)
 		}
 	}
 	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
 		t.Error("SourceControl.WriteComment error after source stoped:", err1)
 	}
-
-	err = client.Call("SourceControl.Stop", sourceName, &okay)
-	if err != nil {
+	if err1 := client.Call("SourceControl.SetExperimentStateLabel", &stateLabelArg, &okay); err1 == nil {
+		t.Error("expected error after STOP")
+	}
+	if err = client.Call("SourceControl.Stop", sourceName, &okay); err != nil {
 		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
 	}
 	if !okay {

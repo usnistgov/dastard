@@ -63,7 +63,7 @@ type ServerStatus struct {
 	Npresamp               int
 	Ncol                   []int
 	Nrow                   []int
-	ChannelsWithProjectors []int
+	ChannelsWithProjectors []int // move this to something than reports mix also? and experimentStateLabel
 	// TODO: maybe bytes/sec data rate...?
 }
 
@@ -290,6 +290,21 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	*reply = (err != nil)
 	s.broadcastWritingState()
 	return err
+}
+
+type StateLabelConfig struct {
+	Label string
+}
+
+// SetExperimentStateLabel sets the experiment state label in the _experiment_state file
+func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply *bool) error {
+	if s.activeSource == nil {
+		return fmt.Errorf("no active source")
+	}
+	if err := s.activeSource.SetExperimentStateLabel(config.Label); err != nil {
+		return err
+	}
+	return nil
 }
 
 // WriteComment writes the comment to comment.txt
