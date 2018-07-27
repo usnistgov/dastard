@@ -389,7 +389,8 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	if len(primaries) != 0 && len(expectedFrames) != 0 {
 		pt := primaries[0]
 		offset := int(expectedFrames[0]) - dsp.NPresamples
-		for i := 0; i < len(pt.data) && i+offset < len(raw); i++ {
+		for i := 0; i < len(pt.data) && i+offset < len(raw) && offset >= 0; i++ {
+			// fmt.Printf("i %v, offset %v, i+offset %v, len(raw) %v\n", i, offset, i+offset, len(raw))
 			expect := raw[i+offset]
 			if pt.data[i] != expect {
 				t.Errorf("%s trigger[0] found data[%d]=%d, want %d", trigname, i,
@@ -577,8 +578,24 @@ func TestEdgeMulti(t *testing.T) {
 		expectG = append(expectG, FrameIndex(i))
 	}
 
-	// spew.Dump(dsp.TriggerState)
 	_, _ = testTriggerSubroutine(t, rawG, nRepeatG, dsp, "EdgeMulti G: make lots of contaminated records", expectG)
+
+	dsp.EdgeMulti = true
+	dsp.EdgeMultiNoise = true
+	dsp.EdgeLevel = math.MaxInt32 // don't ever add to TriggerInds
+	dsp.NSamples = 100
+	dsp.NPresamples = 50
+	dsp.LastEdgeMultiTrigger = 0
+	dsp.edgeMultiState = searching
+	nRepeatH := 2
+	rawH := make([]RawType, 500)
+	_, _ = testTriggerSubroutine(t, rawH, nRepeatH, dsp, "EdgeMulti H: EdgeMultiNoise basic", []FrameIndex{100, 200, 300, 400, 500, 600, 700, 800, 900})
+
+	nRepeatI := 100
+	rawI := make([]RawType, 10)
+	dsp.LastEdgeMultiTrigger = -100
+	_, _ = testTriggerSubroutine(t, rawI, nRepeatI, dsp, "EdgeMulti I: EdgeMultiNoise basic, segments shorter than records",
+		[]FrameIndex{100, 200, 300, 400, 500, 600, 700, 800, 900})
 
 }
 
