@@ -550,7 +550,6 @@ func TestEdgeMulti(t *testing.T) {
 		}
 		kinkListFrameIndexE[i] = FrameIndex(kint)
 	}
-	fmt.Println("rawE", rawE)
 	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
 	nRepeatE := 3
 	// here we attempt to trigger around a segment boundary
@@ -598,15 +597,16 @@ func TestEdgeMulti(t *testing.T) {
 	_, _ = testTriggerSubroutine(t, rawI, nRepeatI, dsp, "EdgeMulti I: EdgeMultiNoise basic, segments shorter than records",
 		[]FrameIndex{200, 300, 400, 500, 600, 700, 800, 900})
 
-	// dsp.NSamples = 10
-	// dsp.NPresamples = 5
-	// dsp.EdgeLevel = 1
-	// nRepeatJ := 5
-	// rawJ := make([]RawType, 40)
-	// rawJ[20] = 1
-	// dsp.LastEdgeMultiTrigger = 0
-	// _, _ = testTriggerSubroutine(t, rawI, nRepeatI, dsp, "EdgeMulti J: EdgeMultiNoise basic, segments shorter than records",
-	// 	[]FrameIndex{100, 200, 300, 400, 500, 600, 700, 800, 900})
+	dsp.NSamples = 10
+	dsp.NPresamples = 5
+	dsp.EdgeLevel = 1
+	nRepeatJ := 2
+	rawJ := make([]RawType, 100)
+	rawJ[50] = 1
+	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.LastEdgeMultiTrigger = 20  // make first noise trigger a round number
+	_, _ = testTriggerSubroutine(t, rawJ, nRepeatJ, dsp, "EdgeMulti J: EdgeMultiNoise avoiding edge triggers",
+		[]FrameIndex{30, 40, 60, 70, 80, 90, 100, 110, 120, 130, 140, 160, 170, 180, 190})
 
 }
 

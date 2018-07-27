@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -319,10 +318,10 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		}
 	}
 	if dsp.EdgeMultiNoise {
-		fmt.Println("triggerInds")
-		spew.Dump(triggerInds)
-		fmt.Printf("iLast %v, iFirst %v, dsp.EdgeMultiNoise %v, segment.firstFramenum %v, len(raw) %v, dsp.LastEdgeMultiTrigger %v\n",
-			iLast, iFirst, dsp.EdgeMultiNoise, segment.firstFramenum, len(raw), dsp.LastEdgeMultiTrigger)
+		// fmt.Println("triggerInds")
+		// spew.Dump(triggerInds)
+		// fmt.Printf("iLast %v, iFirst %v, dsp.EdgeMultiNoise %v, segment.firstFramenum %v, len(raw) %v, dsp.LastEdgeMultiTrigger %v\n",
+		// iLast, iFirst, dsp.EdgeMultiNoise, segment.firstFramenum, len(raw), dsp.LastEdgeMultiTrigger)
 		// AutoTrigger
 		if dsp.EdgeMultiNoise && iLast >= iFirst {
 			delaySamples := roundint(dsp.AutoDelay.Seconds() * dsp.SampleRate)
@@ -338,45 +337,45 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 
 			// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
 			nextPotentialTrig := int(dsp.LastEdgeMultiTrigger-segment.firstFramenum) + delaySamples
-			fmt.Printf("nextPotentialTrig %v = dsp.LastEdgeMultiTrigger %v - segment.firstFramenum %v + delaySamples %v\n",
-				nextPotentialTrig, dsp.LastEdgeMultiTrigger, segment.firstFramenum, delaySamples)
+			// fmt.Printf("nextPotentialTrig %v = dsp.LastEdgeMultiTrigger %v - segment.firstFramenum %v + delaySamples %v\n",
+			// nextPotentialTrig, dsp.LastEdgeMultiTrigger, segment.firstFramenum, delaySamples)
 			if nextPotentialTrig < dsp.NPresamples+1 {
 				nextPotentialTrig = dsp.NPresamples + 1
 			}
 
 			// Loop through all potential trigger times.
 			lastSampleOfNextPotentialTrig := nextPotentialTrig + dsp.NSamples - dsp.NPresamples - 1
-			fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig, "lastIThatCantEdgeTrigger", lastIThatCantEdgeTrigger)
+			// fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig, "lastIThatCantEdgeTrigger", lastIThatCantEdgeTrigger)
 			for lastSampleOfNextPotentialTrig <= lastIThatCantEdgeTrigger { // can't go all the way to ndata
-				fmt.Printf("iLast %v, iFirst %v, nextPotentialTrig %v, delaySamples %v, nextFoundTrig %v, lastIThatCantEdgeTrigger %v, segment.firstFramenum %v, len(raw) %v\n",
-					iLast, iFirst, nextPotentialTrig, delaySamples, nextFoundTrig, lastIThatCantEdgeTrigger, segment.firstFramenum, len(raw))
-				fmt.Printf("potential trigger at %v, i=%v-%v, FrameIndex=%v-%v\n", nextPotentialTrig,
-					nextPotentialTrig-dsp.NPresamples, nextPotentialTrig+dsp.NSamples-dsp.NPresamples-1,
-					nextPotentialTrig-dsp.NPresamples+int(segment.firstFramenum), nextPotentialTrig+dsp.NSamples-dsp.NPresamples+int(segment.firstFramenum)-1)
+				// fmt.Printf("iLast %v, iFirst %v, nextPotentialTrig %v, delaySamples %v, nextFoundTrig %v, lastIThatCantEdgeTrigger %v, segment.firstFramenum %v, len(raw) %v\n",
+				// 	iLast, iFirst, nextPotentialTrig, delaySamples, nextFoundTrig, lastIThatCantEdgeTrigger, segment.firstFramenum, len(raw))
+				// fmt.Printf("potential trigger at %v, i=%v-%v, FrameIndex=%v-%v\n", nextPotentialTrig,
+				// nextPotentialTrig-dsp.NPresamples, nextPotentialTrig+dsp.NSamples-dsp.NPresamples-1,
+				// nextPotentialTrig-dsp.NPresamples+int(segment.firstFramenum), nextPotentialTrig+dsp.NSamples-dsp.NPresamples+int(segment.firstFramenum)-1)
 				if nextPotentialTrig+dsp.NSamples <= nextFoundTrig {
 					// auto trigger is allowed: no conflict with previously found non-auto triggers
 					newRecord := dsp.triggerAt(segment, nextPotentialTrig)
 					records = append(records, newRecord)
-					fmt.Println("trigger accepted")
+					// fmt.Println("trigger accepted")
 					// fmt.Printf("trigger at %v, i=%v-%v, FrameIndex=%v-%v\n", nextPotentialTrig,
 					// 	newRecord.FirstSampleFrame()-segment.firstFramenum, newRecord.LastSampleFrame()-segment.firstFramenum,
 					// 	newRecord.FirstSampleFrame(), newRecord.LastSampleFrame())
 					nextPotentialTrig += delaySamples
 				} else {
-					fmt.Println("trigger rejected")
+					// fmt.Println("trigger rejected")
 					// auto trigger not allowed: conflict with previously found non-auto triggers
 					nextPotentialTrig = nextFoundTrig + delaySamples
 					idxNextTrig++
 					if nFoundTrigs > idxNextTrig {
-						fmt.Println("increment from next edgeTrigger")
+						// fmt.Println("increment from next edgeTrigger")
 						nextFoundTrig = triggerInds[idxNextTrig]
 					} else {
-						fmt.Println("no more edgeTriggers")
+						// fmt.Println("no more edgeTriggers")
 						nextFoundTrig = math.MaxInt64
 					}
 				}
 				lastSampleOfNextPotentialTrig = nextPotentialTrig + dsp.NSamples - dsp.NPresamples - 1
-				fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig)
+				// fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig)
 			}
 			if iLast >= iFirst {
 				dsp.stream.TrimKeepingN(2*dsp.NSamples + 1) // +1 to account for maximum shift from kink model
