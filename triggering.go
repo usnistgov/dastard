@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -40,6 +41,7 @@ type TriggerState struct {
 	EdgeLevel   int32
 
 	EdgeMulti                        bool
+	EdgeMultiNoise                   bool
 	EdgeMultiMakeShortRecords        bool
 	EdgeMultiMakeContaminatedRecords bool
 	EdgeMultiVerifyNMonotone         int
@@ -227,68 +229,142 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 				dsp.edgeMultiState = searching
 			}
 		}
-		// dsp.edgeMultiILastInspected = FrameIndex(i) + segment.firstFramenum // dont do in loop, left as the model for correctness
 	}
 	if iLast >= iFirst {
 		dsp.edgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
 	}
+
 	dsp.edgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
+
+	var lastIThatCantEdgeTrigger int
+	if dsp.edgeMultiState == searching {
+		lastIThatCantEdgeTrigger = int(dsp.edgeMultiILastInspected-segment.firstFramenum) - 1
+	} else if dsp.edgeMultiState == verifying {
+		lastIThatCantEdgeTrigger = iPotential - 1
+	}
+
 	// fmt.Println("triggerInds", triggerInds)
-	var t, u, v, tFirst int
-	// t index of previous trigger
-	// u index of current trigger
-	// v index of next trigger
-	if dsp.LastEdgeMultiTrigger > 0 {
-		tFirst = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
-	} else {
-		tFirst = -dsp.NSamples
-	}
-	for i := 0; i < len(triggerInds); i++ {
-		u = triggerInds[i]
-		if i == len(triggerInds)-1 {
-			v = iLast
+
+	if !dsp.EdgeMultiNoise {
+		var t, u, v, tFirst int
+		// t index of previous trigger
+		// u index of current trigger
+		// v index of next trigger
+		if dsp.LastEdgeMultiTrigger > 0 {
+			tFirst = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
 		} else {
-			v = triggerInds[i+1]
+			tFirst = -dsp.NSamples
 		}
-		if i == 0 {
-			t = tFirst
+		for i := 0; i < len(triggerInds); i++ {
+			u = triggerInds[i]
+			if i == len(triggerInds)-1 {
+				v = iLast
+			} else {
+				v = triggerInds[i+1]
+			}
+			if i == 0 {
+				t = tFirst
 
-		} else {
-			t = triggerInds[i-1]
+			} else {
+				t = triggerInds[i-1]
+			}
+			lastNPost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
+			npre := min(dsp.NPresamples, int(u-t-lastNPost))
+			npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
+			// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
+			// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
+			if dsp.EdgeMultiMakeShortRecords {
+				newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
+				records = append(records, newRecord)
+			} else if dsp.EdgeMultiMakeContaminatedRecords {
+				newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+				records = append(records, newRecord)
+			} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
+				newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+				records = append(records, newRecord)
+			}
 		}
-		lastNPost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
-		npre := min(dsp.NPresamples, int(u-t-lastNPost))
-		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
-		// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
-		// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
-		if dsp.EdgeMultiMakeShortRecords {
-			newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
-			records = append(records, newRecord)
-		} else if dsp.EdgeMultiMakeContaminatedRecords {
-			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
-			records = append(records, newRecord)
-		} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
-			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
-			records = append(records, newRecord)
+		if iLast >= iFirst {
+			if dsp.edgeMultiState == verifying {
+				// fmt.Println("dsp.NPresamples", dsp.NPresamples, "ndata", ndata, "iPotential", iPotential)
+				extraSamplesToKeep := (ndata - iPotential) + 1 // +1 to account for maximum shift from kink model
+				if extraSamplesToKeep < 0 {
+					panic("negaive extraSamplestoKeep")
+				}
+				dsp.stream.TrimKeepingN(dsp.NPresamples + extraSamplesToKeep)
+			} else {
+				dsp.stream.TrimKeepingN(dsp.NPresamples + 1) // +1 to account for maximum shift from kink model
+			}
 		}
-
 	}
-
 	if len(records) > 0 {
 		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
 	}
-	if iLast >= iFirst {
-		if dsp.edgeMultiState == verifying {
-			// fmt.Println("dsp.NPresamples", dsp.NPresamples, "ndata", ndata, "iPotential", iPotential)
-			extraSamplesToKeep := (ndata - iPotential) + 1 // +1 to account for maximum shift from kink model
-			if extraSamplesToKeep < 0 {
-				panic("negaive extraSamplestoKeep")
+	if dsp.EdgeMultiNoise {
+		fmt.Println("triggerInds")
+		spew.Dump(triggerInds)
+		fmt.Printf("iLast %v, iFirst %v, dsp.EdgeMultiNoise %v, segment.firstFramenum %v, len(raw) %v\n",
+			iLast, iFirst, dsp.EdgeMultiNoise, segment.firstFramenum, len(raw))
+		// AutoTrigger
+		if dsp.EdgeMultiNoise && iLast >= iFirst {
+			delaySamples := roundint(dsp.AutoDelay.Seconds() * dsp.SampleRate)
+			if delaySamples < dsp.NSamples {
+				delaySamples = dsp.NSamples
 			}
-			dsp.stream.TrimKeepingN(dsp.NPresamples + extraSamplesToKeep)
-		} else {
-			dsp.stream.TrimKeepingN(dsp.NPresamples + 1) // +1 to account for maximum shift from kink model
+			idxNextTrig := 0
+			nFoundTrigs := len(triggerInds)
+			nextFoundTrig := math.MaxInt64
+			if nFoundTrigs > 0 {
+				nextFoundTrig = triggerInds[idxNextTrig]
+			}
+
+			// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
+			nextPotentialTrig := int(dsp.LastEdgeMultiTrigger-segment.firstFramenum) + delaySamples
+			if nextPotentialTrig < dsp.NPresamples+1 {
+				nextPotentialTrig = dsp.NPresamples + 1
+			}
+
+			// Loop through all potential trigger times.
+			lastSampleOfNextPotentialTrig := nextPotentialTrig + dsp.NSamples - dsp.NPresamples - 1
+			fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig, "lastIThatCantEdgeTrigger", lastIThatCantEdgeTrigger)
+			for lastSampleOfNextPotentialTrig <= lastIThatCantEdgeTrigger { // can't go all the way to ndata
+				fmt.Printf("iLast %v, iFirst %v, nextPotentialTrig %v, delaySamples %v, nextFoundTrig %v, lastIThatCantEdgeTrigger %v, segment.firstFramenum %v, len(raw) %v\n",
+					iLast, iFirst, nextPotentialTrig, delaySamples, nextFoundTrig, lastIThatCantEdgeTrigger, segment.firstFramenum, len(raw))
+				fmt.Printf("potential trigger at %v, i=%v-%v, FrameIndex=%v-%v\n", nextPotentialTrig,
+					nextPotentialTrig-dsp.NPresamples, nextPotentialTrig+dsp.NSamples-dsp.NPresamples-1,
+					nextPotentialTrig-dsp.NPresamples+int(segment.firstFramenum), nextPotentialTrig+dsp.NSamples-dsp.NPresamples+int(segment.firstFramenum)-1)
+				if nextPotentialTrig+dsp.NSamples <= nextFoundTrig {
+					// auto trigger is allowed: no conflict with previously found non-auto triggers
+					newRecord := dsp.triggerAt(segment, nextPotentialTrig)
+					records = append(records, newRecord)
+					fmt.Println("trigger accepted")
+					// fmt.Printf("trigger at %v, i=%v-%v, FrameIndex=%v-%v\n", nextPotentialTrig,
+					// 	newRecord.FirstSampleFrame()-segment.firstFramenum, newRecord.LastSampleFrame()-segment.firstFramenum,
+					// 	newRecord.FirstSampleFrame(), newRecord.LastSampleFrame())
+					nextPotentialTrig += delaySamples
+				} else {
+					fmt.Println("trigger rejected")
+					// auto trigger not allowed: conflict with previously found non-auto triggers
+					nextPotentialTrig = nextFoundTrig + delaySamples
+					idxNextTrig++
+					if nFoundTrigs > idxNextTrig {
+						fmt.Println("increment nextFoundTrig")
+						nextFoundTrig = triggerInds[idxNextTrig]
+					} else {
+						fmt.Println("no more trigs")
+						nextFoundTrig = math.MaxInt64
+					}
+				}
+				lastSampleOfNextPotentialTrig = nextPotentialTrig + dsp.NSamples - dsp.NPresamples - 1
+				fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig)
+			}
+			if iLast >= iFirst {
+				dsp.stream.TrimKeepingN(dsp.NPresamples + 1) // +1 to account for maximum shift from kink model
+			}
 		}
+
 	}
+
 	// fmt.Printf("return %v of %v possible record. len(dsp.stream.rawData) %v\n", len(records), len(triggerInds), len(dsp.stream.rawData))
 	return records
 }
