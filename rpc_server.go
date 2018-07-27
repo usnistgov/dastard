@@ -317,6 +317,7 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	return err
 }
 
+// StateLabelConfig is the argument type of SetExperimentStateLabel
 type StateLabelConfig struct {
 	Label string
 }
