@@ -180,7 +180,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	if dsp.edgeMultiState == verifying {
 		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
 	} else {
-		iFirst = dsp.NPresamples + 1 // +1 to account for maximum shift from kink model
+		iFirst = 2*dsp.NSamples + 1 // +1 to account for maximum shift from kink model
 	}
 	// fmt.Println()
 	// fmt.Println("dsp.channelIndex", dsp.channelIndex, "segment.firstFramenum", segment.firstFramenum, "dsp.edgeMultiIPotential", dsp.edgeMultiIPotential)
@@ -268,12 +268,16 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			} else {
 				t = triggerInds[i-1]
 			}
+			fmt.Printf("dsp.LastEdgeMultiTrigger %v, tFirst %v\n", dsp.LastEdgeMultiTrigger, tFirst)
 			lastNPost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
 			npre := min(dsp.NPresamples, int(u-t-lastNPost))
 			npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
 			// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
 			// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 			if dsp.EdgeMultiMakeShortRecords {
+				fmt.Printf("short trigger at u %v\n", u)
+				fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
+					"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 				newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
 				records = append(records, newRecord)
 			} else if dsp.EdgeMultiMakeContaminatedRecords {
@@ -291,20 +295,17 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 				if extraSamplesToKeep < 0 {
 					panic("negaive extraSamplestoKeep")
 				}
-				dsp.stream.TrimKeepingN(dsp.NPresamples + extraSamplesToKeep)
+				dsp.stream.TrimKeepingN(2*dsp.NSamples + extraSamplesToKeep)
 			} else {
-				dsp.stream.TrimKeepingN(dsp.NPresamples + 1) // +1 to account for maximum shift from kink model
+				dsp.stream.TrimKeepingN(2*dsp.NSamples + 1) // +1 to account for maximum shift from kink model
 			}
 		}
-	}
-	if len(records) > 0 {
-		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
 	}
 	if dsp.EdgeMultiNoise {
 		fmt.Println("triggerInds")
 		spew.Dump(triggerInds)
-		fmt.Printf("iLast %v, iFirst %v, dsp.EdgeMultiNoise %v, segment.firstFramenum %v, len(raw) %v\n",
-			iLast, iFirst, dsp.EdgeMultiNoise, segment.firstFramenum, len(raw))
+		fmt.Printf("iLast %v, iFirst %v, dsp.EdgeMultiNoise %v, segment.firstFramenum %v, len(raw) %v, dsp.LastEdgeMultiTrigger %v\n",
+			iLast, iFirst, dsp.EdgeMultiNoise, segment.firstFramenum, len(raw), dsp.LastEdgeMultiTrigger)
 		// AutoTrigger
 		if dsp.EdgeMultiNoise && iLast >= iFirst {
 			delaySamples := roundint(dsp.AutoDelay.Seconds() * dsp.SampleRate)
@@ -359,12 +360,14 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 				fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig)
 			}
 			if iLast >= iFirst {
-				dsp.stream.TrimKeepingN(dsp.NPresamples + 1) // +1 to account for maximum shift from kink model
+				dsp.stream.TrimKeepingN(2*dsp.NSamples + 1) // +1 to account for maximum shift from kink model
 			}
 		}
 
 	}
-
+	if len(records) > 0 {
+		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
+	}
 	// fmt.Printf("return %v of %v possible record. len(dsp.stream.rawData) %v\n", len(records), len(triggerInds), len(dsp.stream.rawData))
 	return records
 }
