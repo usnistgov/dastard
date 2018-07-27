@@ -87,6 +87,7 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWritt
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors.Reset()              // dsp.projectors is set to zero value
 	dsp.basis.Reset()                   // dsp.basis is set to zero value
+	dsp.inspectStartingAtSample6()      // set up edgeMulti in known state
 	return &dsp
 }
 

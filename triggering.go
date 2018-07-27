@@ -52,6 +52,17 @@ type TriggerState struct {
 	// TODO: group source/rx info.
 }
 
+// modify dsp to have it start looking for triggers at sample 6
+// can't be sample 0 because we look back in time by up to 6 samples
+// for kink fit
+func (dsp *DataStreamProcessor) inspectStartingAtSample6() {
+	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
+	dsp.edgeMultiState = verifying
+	dsp.edgeMultiILastInspected = 6
+	dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4
+	dsp.edgeMultiIPotential = 6
+}
+
 // create a record using dsp.NPresamples and dsp.NSamples
 func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataRecord {
 	record := dsp.triggerAtSpecificSamples(segment, i, dsp.NPresamples, dsp.NSamples)
