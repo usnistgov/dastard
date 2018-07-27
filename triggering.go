@@ -56,6 +56,7 @@ type TriggerState struct {
 // can't be sample 0 because we look back in time by up to 6 samples
 // for kink fit
 func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
+	fmt.Println("edgeMultiSetIntialState")
 	dsp.edgeMultiInternalSearchState = initial
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
@@ -190,9 +191,6 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 // 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeLevel, EdgeRising, EdgeMultiVerifyNMonotone, AutoDelay
 // will not produce pulse containing records, just the autotrigger that fit in around them
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
-	if !dsp.EdgeTrigger {
-		return records
-	}
 	segment := &dsp.stream.DataSegment
 	raw := segment.rawData
 	ndata := len(raw)
@@ -205,21 +203,30 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	case verifying:
 		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
 	case searching:
-		iFirst = 2*dsp.NSamples + 1 // +1 to account for maximum shift from kink model
+		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
 	case initial:
-		iFirst = 6
-		dsp.edgeMultiInternalSearchState = searching
+		iFirst = dsp.NPresamples
+		if iFirst < 6 {
+			iFirst = 6
+		}
 	}
+
 	// fmt.Println()
 	// fmt.Println("dsp.channelIndex", dsp.channelIndex, "segment.firstFramenum", segment.firstFramenum, "dsp.edgeMultiIPotential", dsp.edgeMultiIPotential)
 	// fmt.Println("dsp.edgeMultiInternalSearchState", dsp.edgeMultiInternalSearchState, "dsp.edgeMultiILastInspected", dsp.edgeMultiILastInspected, "dsp.EdgeMultiVerifyNMonotone", dsp.EdgeMultiVerifyNMonotone)
 	// fmt.Println("iPotential", iPotential, "iFirst", iFirst, "iLast", iLast, "len(raw)", len(raw), "dsp.NPresamples", dsp.NPresamples)
 	if dsp.EdgeMultiVerifyNMonotone+3 > dsp.NSamples-dsp.NPresamples {
-		panic(fmt.Sprintf("%v %v %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
+		panic(fmt.Sprintf("dsp.EdgeMultiVerifyNMonotone %v, dsp.NSamples %v, dsp.NPreSamples %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
+	}
+	if !(dsp.EdgeRising || dsp.EdgeFalling) {
+		panic("need one of EdgeRising and EdgeFalling")
 	}
 	for i := iFirst; i <= iLast; i++ {
 		// fmt.Printf("i=%v, i_frame=%v\n", i, i+int(segment.firstFramenum))
+		// dsp.edgeMultiILastInspected = FrameIndex(i) + segment.firstFramenum
 		switch dsp.edgeMultiInternalSearchState {
+		case initial:
+			dsp.edgeMultiInternalSearchState = searching
 		case searching:
 			diff := int32(raw[i]) - int32(raw[i-1])
 			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
@@ -270,8 +277,6 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	} else if dsp.edgeMultiInternalSearchState == verifying {
 		lastIThatCantEdgeTrigger = iPotential - 1
 	}
-
-	// fmt.Println("triggerInds", triggerInds)
 
 	if !dsp.EdgeMultiNoise {
 		var t, u, v, tFirst int

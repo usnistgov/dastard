@@ -561,7 +561,6 @@ func TestEdgeMulti(t *testing.T) {
 	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
 
 	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
-	dsp.edgeMultiInternalSearchState = searching
 	dsp.NSamples = 30
 	dsp.NPresamples = 25
 	dsp.EdgeMultiMakeContaminatedRecords = true
@@ -574,7 +573,7 @@ func TestEdgeMulti(t *testing.T) {
 	}
 	nRepeatG := 20
 	expectG := make([]FrameIndex, 0)
-	for i := 2*dsp.NSamples + 1; i < len(rawG)*nRepeatG-(dsp.NSamples-dsp.NPresamples); i += 2 {
+	for i := dsp.NPresamples + 2; i < len(rawG)*nRepeatG-(dsp.NSamples-dsp.NPresamples); i += 2 {
 		expectG = append(expectG, FrameIndex(i))
 	}
 	_, _ = testTriggerSubroutine(t, rawG, nRepeatG, dsp, "EdgeMulti G: make lots of contaminated records", expectG)
