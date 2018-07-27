@@ -211,6 +211,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 					xdataf := make([]float64, 10)
 					ydataf := make([]float64, 10)
 					for j := 0; j < 10; j++ {
+						fmt.Printf("j %v, iPotential %v, j+iPotential-6 %v, i %v\n", j, iPotential, j+iPotential-6, i)
 						xdataf[j] = float64(j + iPotential - 6) // look at samples from i-6 to i+3
 						ydataf[j] = float64(raw[j+iPotential-6])
 					}

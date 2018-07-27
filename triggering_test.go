@@ -462,13 +462,15 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Edge + Level 6", []FrameIndex{1000, 6000, 9050})
 }
 
-// modify dsp to have it start looking for triggers at sample 1
-// can't be sample 0 because we look back in time by one sample
-func inspectStartingAtSample1(dsp *DataStreamProcessor) {
+// modify dsp to have it start looking for triggers at sample 6
+// can't be sample 0 because we look back in time by up to 6 samples
+// for kink fit
+func inspectStartingAtSample6(dsp *DataStreamProcessor) {
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.edgeMultiState = verifying
-	dsp.edgeMultiILastInspected = 0
+	dsp.edgeMultiILastInspected = 6
 	dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4
+	dsp.edgeMultiIPotential = 6
 }
 
 func TestEdgeMulti(t *testing.T) {
@@ -511,14 +513,14 @@ func TestEdgeMulti(t *testing.T) {
 	nRepeat := 1
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high", []FrameIndex{})
 	dsp.EdgeLevel = 1
-	inspectStartingAtSample1(dsp) // call this between each edgeMulti test
+	inspectStartingAtSample6(dsp) // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, but triggers that are too short are not recordized
 	// the kinks that occur at fractional samples will end up the rounded value
 	// ideally 200.1 should trigger at 201, but since we only check k values in 0.5 step increments, we miss it
 	// my tests suggest testing at 0.5 step increments is ok on real data (eg a set of data from the Raven backup array test in 2018)
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti B: make only full length records", []FrameIndex{100, 200, 301, 401, 700})
 	dsp.EdgeMultiMakeContaminatedRecords = true
-	inspectStartingAtSample1(dsp) // call this between each edgeMulti test
+	inspectStartingAtSample6(dsp) // call this between each edgeMulti test
 
 	// here we will find all triggers in trigInds, and contaminated records will be created
 	primaries, _ := testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti C: MakeContaminatedRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
@@ -529,7 +531,7 @@ func TestEdgeMulti(t *testing.T) {
 	}
 	dsp.EdgeMultiMakeContaminatedRecords = false
 	dsp.EdgeMultiMakeShortRecords = true
-	inspectStartingAtSample1(dsp) // call this between each edgeMulti test
+	inspectStartingAtSample6(dsp) // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, and short records will be created
 	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti D: MakeShortRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
@@ -559,53 +561,52 @@ func TestEdgeMulti(t *testing.T) {
 		}
 		kinkListFrameIndexE[i] = FrameIndex(kint)
 	}
-	// fmt.Println("rawE", rawE)
-	// inspectStartingAtSample1(dsp) // call this between each edgeMulti test
-	// nRepeatE := 3
-	// // here we attempt to trigger around a segment boundary
-	// _, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
-	//
-	// dsp.NSamples = 15
-	// dsp.NPresamples = 6
-	// dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4 // need to reset this each time
-	// dsp.edgeMultiState = searching                // need to reset this after E
-	// _, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
+	fmt.Println("rawE", rawE)
+	inspectStartingAtSample6(dsp) // call this between each edgeMulti test
+	nRepeatE := 3
+	// here we attempt to trigger around a segment boundary
+	_, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
 
-	// inspectStartingAtSample1(dsp) // call this between each edgeMulti test
-	// dsp.NSamples = 30
-	// dsp.NPresamples = 25
-	// dsp.EdgeMultiMakeContaminatedRecords = true
-	// dsp.EdgeLevel = 0
-	// dsp.EdgeMultiVerifyNMonotone = 0
-	//
-	// rawG := make([]RawType, 10)
-	// for i := 0; i < len(rawG); i++ {
-	// 	rawG[i] = RawType(i % 2)
-	// }
-	// nRepeatG := 20
-	// expectG := make([]FrameIndex, 0)
-	// for i := dsp.NPresamples + 2; i < len(rawG)*nRepeatG-(dsp.NSamples-dsp.NPresamples); i += 2 {
-	// 	expectG = append(expectG, FrameIndex(i))
-	// }
-	//
-	// _, _ = testTriggerSubroutine(t, rawG, nRepeatG, dsp, "EdgeMulti G: make lots of contaminated records", expectG)
+	dsp.NSamples = 15
+	dsp.NPresamples = 6
+	inspectStartingAtSample6(dsp) // call this between each edgeMulti test
+	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
 
-	// dsp.EdgeMulti = true
-	// dsp.EdgeMultiNoise = true
-	// dsp.EdgeLevel = math.MaxInt32 // don't ever add to TriggerInds
-	// dsp.NSamples = 100
-	// dsp.NPresamples = 50
-	// dsp.LastEdgeMultiTrigger = 0
-	// dsp.edgeMultiState = searching
-	// nRepeatH := 2
-	// rawH := make([]RawType, 500)
-	// _, _ = testTriggerSubroutine(t, rawH, nRepeatH, dsp, "EdgeMulti H: EdgeMultiNoise basic", []FrameIndex{100, 200, 300, 400, 500, 600, 700, 800, 900})
-	//
-	// nRepeatI := 25
-	// rawI := make([]RawType, 40)
-	// dsp.LastEdgeMultiTrigger = 0
-	// _, _ = testTriggerSubroutine(t, rawI, nRepeatI, dsp, "EdgeMulti I: EdgeMultiNoise basic, segments shorter than records",
-	// 	[]FrameIndex{100, 200, 300, 400, 500, 600, 700, 800, 900})
+	inspectStartingAtSample6(dsp) // call this between each edgeMulti test
+	dsp.edgeMultiState = searching
+	dsp.NSamples = 30
+	dsp.NPresamples = 25
+	dsp.EdgeMultiMakeContaminatedRecords = true
+	dsp.EdgeLevel = 0
+	dsp.EdgeMultiVerifyNMonotone = 0
+
+	rawG := make([]RawType, 10)
+	for i := 0; i < len(rawG); i++ {
+		rawG[i] = RawType(i % 2)
+	}
+	nRepeatG := 20
+	expectG := make([]FrameIndex, 0)
+	for i := 2*dsp.NSamples + 1; i < len(rawG)*nRepeatG-(dsp.NSamples-dsp.NPresamples); i += 2 {
+		expectG = append(expectG, FrameIndex(i))
+	}
+	_, _ = testTriggerSubroutine(t, rawG, nRepeatG, dsp, "EdgeMulti G: make lots of contaminated records", expectG)
+
+	dsp.EdgeMulti = true
+	dsp.EdgeMultiNoise = true
+	dsp.EdgeLevel = math.MaxInt32 // don't ever add to TriggerInds
+	dsp.NSamples = 100
+	dsp.NPresamples = 50
+	dsp.LastEdgeMultiTrigger = 0
+	dsp.edgeMultiState = searching
+	nRepeatH := 2
+	rawH := make([]RawType, 500)
+	_, _ = testTriggerSubroutine(t, rawH, nRepeatH, dsp, "EdgeMulti H: EdgeMultiNoise basic", []FrameIndex{100, 200, 300, 400, 500, 600, 700, 800, 900})
+
+	nRepeatI := 25
+	rawI := make([]RawType, 40)
+	dsp.LastEdgeMultiTrigger = 0
+	_, _ = testTriggerSubroutine(t, rawI, nRepeatI, dsp, "EdgeMulti I: EdgeMultiNoise basic, segments shorter than records",
+		[]FrameIndex{100, 200, 300, 400, 500, 600, 700, 800, 900})
 
 }
 
