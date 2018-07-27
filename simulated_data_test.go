@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -230,5 +231,23 @@ func TestSimPulse(t *testing.T) {
 	config.Nchan = 0
 	if err := ps.Configure(&config); err == nil {
 		t.Errorf("SimPulseSource can be configured with 0 channels.")
+	}
+}
+
+func TestErroringSource(t *testing.T) {
+	es := NewErroringSource()
+	ds := DataSource(es)
+	for i := 0; i < 5; i++ {
+		// start the source, wait for it to end due to error, repeat
+		if err := Start(ds); err != nil {
+			t.Fatalf(fmt.Sprintf("%v", err))
+		}
+		es.runDone.Wait()
+		if es.Running() {
+			t.Error("want false")
+		}
+		if es.nBlockingReads != (i+1)*2 {
+			t.Errorf("have %v, want %v", es.nBlockingReads, (i+1)*2)
+		}
 	}
 }

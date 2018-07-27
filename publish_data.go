@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"math/rand"
 	"reflect"
 	"time"
 	"unsafe"
@@ -376,7 +377,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 				message := converter(record)
 				err := pubSocket.SendMessage(message)
 				if err != nil {
-					log.Fatal("zmq send error")
+					panic("zmq send error")
 				}
 			}
 		}
@@ -418,6 +419,7 @@ type PublishSync struct {
 	numberWrittenChans []chan int
 	NumberWritten      []int
 	abort              chan struct{} // This can signal the Run() goroutine to stop
+	id                 int
 }
 
 // NewPublishSync returns a *PublishSync for nchan channels
@@ -426,13 +428,15 @@ func NewPublishSync(nchan int) *PublishSync {
 	for i := 0; i < nchan; i++ {
 		numberWrittenChans[i] = make(chan int)
 	}
+	id := rand.Int() % 1000
 	return &PublishSync{numberWrittenChans: numberWrittenChans, abort: make(chan struct{}),
-		NumberWritten: make([]int, nchan), writingChan: make(chan bool)}
+		NumberWritten: make([]int, nchan), writingChan: make(chan bool), id: id}
 }
 
 // Run runs, collects number of records published, publishes summaries
 // should be called as a goroutine
 func (ps *PublishSync) Run() {
+	log.Println("PublishSync Run() id", ps.id)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -447,7 +451,7 @@ func (ps *PublishSync) Run() {
 					ps.NumberWritten[i] = n
 				case ps.writing = <-ps.writingChan:
 				case <-time.After(5 * time.Second):
-					log.Fatal("PublishSync got stuck")
+					panic(fmt.Sprintf("PublishSync got stuck id %v", ps.id))
 				}
 			}
 		case <-ticker.C:
@@ -462,4 +466,5 @@ func (ps *PublishSync) Run() {
 // Stop causes the Run() goroutine to end at the next appropriate moment.
 func (ps *PublishSync) Stop() {
 	close(ps.abort)
+	log.Println("PublishSync.Stop() id", ps.id)
 }

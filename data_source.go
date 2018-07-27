@@ -41,7 +41,15 @@ type DataSource interface {
 	ConfigureMixFraction(int, float64) error
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
+	SetExperimentStateLabel(string) error
 	ChannelsWithProjectors() []int
+	Wait() error
+}
+
+// Wait returns when the source run is done, aka the source is stopped
+func (ds *AnySource) Wait() error {
+	ds.runDone.Wait()
+	return nil
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -76,13 +84,19 @@ func Start(ds DataSource) error {
 	// Have the DataSource produce data until graceful stop.
 	go func() {
 		for {
+			// fmt.Println("calling blockingRead")
 			if err := ds.blockingRead(); err == io.EOF {
-				break
+				log.Println("blockingRead returns io.EOF, more stopping the source")
+				// EOF error should occur after abortSelf has been closed
+				// ds.CloseOutputs() // why is this here, ds.Stop also calls CloseOutputs
+				return
 			} else if err != nil {
-				log.Fatal(fmt.Sprintf("blockingRead returns Error: %s\n", err.Error()))
+				// other errors indicate a problem with source, need to close down
+				log.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
+				ds.Stop() // will cause next call to ds.blockingRead to return io.EOF
 			}
 		}
-		ds.CloseOutputs()
+
 	}()
 	return nil
 }
@@ -142,6 +156,31 @@ func (ds *AnySource) StartRun() error {
 	return nil
 }
 
+// SetExperimentStateLabel writes to a file with name like _experiment_state.txt
+// the file is created upon the first call to this function for a given file writing
+func (ds *AnySource) SetExperimentStateLabel(stateLabel string) error {
+	if ds.writingState.experimentStateFile == nil {
+		// create state file if neccesary
+		var err error
+		ds.writingState.experimentStateFile, err = os.Create(ds.writingState.ExperimentStateFilename)
+		if err != nil {
+			return err
+		}
+		// write header
+		_, err1 := ds.writingState.experimentStateFile.WriteString("# unix time in nanoseconds, state label")
+		if err1 != nil {
+			return err
+		}
+	}
+	ds.writingState.ExperimentStateLabel = stateLabel
+	ds.writingState.ExperimentStateLabelUnixNano = time.Now().Nanosecond()
+	_, err := ds.writingState.experimentStateFile.WriteString(fmt.Sprintf("%v, %v\n", ds.writingState.ExperimentStateLabelUnixNano, stateLabel))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // makeDirectory creates directory of the form basepath/20060102/000 where
 // the 3-digit subdirectory counts separate file-writing occasions.
 // It also returns the formatting code for use in an Sprintf call
@@ -171,9 +210,6 @@ func makeDirectory(basepath string) (string, error) {
 // WriteControl changes the data writing start/stop/pause/unpause state
 // For WriteLJH22 == true and/or WriteLJH3 == true all channels will have writing enabled
 // For WriteOFF == true, only chanels with projectors set will have writing enabled
-// the function first checks for errors, then launched a goroutine with a lock
-// to actually change state, the last thing the goroutine does is close the returned channel
-// (closed channels always return the zero value immediately, so it can be used for waiting until the writing state is changed)
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	request := strings.ToUpper(config.Request)
 	var filenamePattern, path string
@@ -218,15 +254,19 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				return fmt.Errorf("no projectors are loaded, OFF files require projectors")
 			}
 		}
+	} else if strings.HasPrefix(request, "UNPAUSE") && len(config.Request) > 7 {
+		// validate format of command "UNPAUSE label"
+		if config.Request[7:8] != " " || len(config.Request) == 8 {
+			return fmt.Errorf("request format invalid. got::\n%v\nwant someting like: \"UNPAUSE label\"", config.Request)
+		}
 	}
 	if !(strings.HasPrefix(request, "START") || strings.HasPrefix(request, "STOP") ||
 		strings.HasPrefix(request, "PAUSE") || strings.HasPrefix(request, "UNPAUSE")) {
-		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive",
+		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive. \"UNPAUSE label\" is also ok",
 			config.Request)
 	}
 
 	// Hold the lock before doing actual changes
-
 	if strings.HasPrefix(request, "PAUSE") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(true)
@@ -236,6 +276,12 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	} else if strings.HasPrefix(request, "UNPAUSE") {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(false)
+		}
+		if len(config.Request) > 7 { // "UNPAUSE label" format already validated
+			stateLabel := config.Request[8:]
+			if err := ds.SetExperimentStateLabel(stateLabel); err != nil {
+				return err
+			}
 		}
 		ds.writingState.Paused = false
 
@@ -247,7 +293,13 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		}
 		ds.writingState.Active = false
 		ds.writingState.Paused = false
-		ds.writingState.Filename = ""
+		ds.writingState.FilenamePattern = ""
+		if ds.writingState.experimentStateFile != nil {
+			ds.writingState.experimentStateFile.Close()
+		}
+		ds.writingState.ExperimentStateFilename = ""
+		ds.writingState.ExperimentStateLabel = ""
+		ds.writingState.ExperimentStateLabelUnixNano = 0
 
 	} else if strings.HasPrefix(request, "START") {
 		channelsWithOff := 0
@@ -284,8 +336,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Active = true
 		ds.writingState.Paused = false
 		ds.writingState.BasePath = path
-		ds.writingState.Filename = fmt.Sprintf(filenamePattern, "chan*", "ljh")
-		log.Printf("%v/%v channels have OFF writing enabled\n", channelsWithOff, len(ds.processors))
+		ds.writingState.FilenamePattern = filenamePattern
+		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	}
 	if ds.publishSync.writingChan != nil {
 		ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused
@@ -295,10 +347,14 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 // WritingState monitors the state of file writing.
 type WritingState struct {
-	Active   bool
-	Paused   bool
-	BasePath string
-	Filename string
+	Active                       bool
+	Paused                       bool
+	BasePath                     string
+	FilenamePattern              string
+	experimentStateFile          *os.File
+	ExperimentStateFilename      string
+	ExperimentStateLabel         string
+	ExperimentStateLabelUnixNano int
 }
 
 // ComputeWritingState doesn't need to compute, but just returns the writingState
@@ -477,12 +533,13 @@ func (ds *AnySource) PrepareRun() error {
 
 // Stop ends the data supply.
 func (ds *AnySource) Stop() error {
-	if ds.Running() {
-		close(ds.abortSelf)
+	if !ds.Running() {
+		return fmt.Errorf("Anysource not running, cannot stop")
 	}
-	ds.runDone.Wait()
+	close(ds.abortSelf)
 	ds.broker.Stop()
 	ds.publishSync.Stop()
+	ds.CloseOutputs()
 	return nil
 }
 
@@ -490,7 +547,6 @@ func (ds *AnySource) Stop() error {
 func (ds *AnySource) CloseOutputs() {
 	ds.runMutex.Lock()
 	defer ds.runMutex.Unlock()
-
 	for _, ch := range ds.output {
 		close(ch)
 	}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ type SourceControl struct {
 	simPulses *SimPulseSource
 	triangle  *TriangleSource
 	lancero   *LanceroSource
+	erroring  *ErroringSource
 	// TODO: Add sources for ROACH, Abaco
 	activeSource DataSource
 
@@ -48,6 +50,7 @@ func NewSourceControl() *SourceControl {
 		sc.lancero.heartbeats = sc.heartbeats
 
 	}
+	sc.erroring = NewErroringSource()
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
 	return sc
@@ -62,7 +65,7 @@ type ServerStatus struct {
 	Npresamp               int
 	Ncol                   []int
 	Nrow                   []int
-	ChannelsWithProjectors []int
+	ChannelsWithProjectors []int // move this to something than reports mix also? and experimentStateLabel
 	// TODO: maybe bytes/sec data rate...?
 }
 
@@ -222,6 +225,10 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.activeSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
+	case "ERRORINGSOURCE":
+		s.activeSource = DataSource(s.erroring)
+		s.status.SourceName = "Erroring"
+
 	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
@@ -261,18 +268,37 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	}
 	log.Printf("Stopping data source\n")
 	s.activeSource.Stop()
-	s.status.Running = false
-	s.activeSource = nil
+	s.handlePosibleStoppedSource()
 	*reply = true
 	s.broadcastStatus()
 	*reply = true
 	return nil
 }
 
+// handlePosibleStoppedSource checks for a stopped source and modifies s
+// s to be correct after a source has stopped
+// it should called in Stop() and any that would be incorrect if it didn't know
+// the source was stopped
+func (s *SourceControl) handlePosibleStoppedSource() {
+	if s.activeSource != nil && !s.activeSource.Running() {
+		s.status.Running = false
+		s.activeSource = nil
+	}
+}
+
+// WaitForStopTestingOnly will block until the running data source is finished and s.activeSource == nil
+func (s *SourceControl) WaitForStopTestingOnly(dummy *string, reply *bool) error {
+	for s.activeSource != nil {
+		s.activeSource.Wait()
+		time.Sleep(1 * time.Millisecond)
+	}
+	return nil
+}
+
 // WriteControlConfig object to control start/stop/pause of data writing
 // Path and FileType are ignored for any request other than Start
 type WriteControlConfig struct {
-	Request    string // "Start", "Stop", "Pause", or "Unpause"
+	Request    string // "Start", "Stop", "Pause", or "Unpause", or "Unpause label"
 	Path       string // write in a new directory under this path
 	WriteLJH22 bool   // turn on one or more file formats
 	WriteOFF   bool
@@ -291,6 +317,21 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	return err
 }
 
+type StateLabelConfig struct {
+	Label string
+}
+
+// SetExperimentStateLabel sets the experiment state label in the _experiment_state file
+func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply *bool) error {
+	if s.activeSource == nil {
+		return fmt.Errorf("no active source")
+	}
+	if err := s.activeSource.SetExperimentStateLabel(config.Label); err != nil {
+		return err
+	}
+	return nil
+}
+
 // WriteComment writes the comment to comment.txt
 func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	*reply = true
@@ -299,9 +340,8 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	}
 	ws := s.activeSource.ComputeWritingState()
 	if ws.Active {
-		dir := path.Dir(ws.Filename)
-		commentName := path.Join(dir, "comment.txt")
-		fp, err := os.Create(commentName)
+		commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
+		fp, err := os.Create(commentFilename)
 		if err != nil {
 			return err
 		}
@@ -320,10 +360,9 @@ type CouplingStatus int
 
 // Specific allowed values for status of FB / error coupling
 const (
-	// FB and error aren't coupled
-	NoCoupling CouplingStatus = iota + 1
-	FBToErr                   // FB triggers cause secondary triggers in error channels
-	ErrToFB                   // Error triggers cause secondary triggers in FB channels
+	NoCoupling CouplingStatus = iota + 1 // NoCoupling turns off FB + error coupling
+	FBToErr                              // FB triggers cause secondary triggers in error channels
+	ErrToFB                              // Error triggers cause secondary triggers in FB channels
 )
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
@@ -365,6 +404,7 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
+	s.handlePosibleStoppedSource()
 	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.DataMB = 0
@@ -372,6 +412,7 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
+	s.handlePosibleStoppedSource()
 	if s.activeSource != nil {
 		s.status.ChannelsWithProjectors = s.activeSource.ChannelsWithProjectors()
 	}
@@ -474,7 +515,7 @@ func RunRPCServer(portrpc int, block bool) {
 	go func() {
 		server := rpc.NewServer()
 		if err := server.Register(sourceControl); err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
 		if err := server.Register(mapServer); err != nil {
 			log.Fatal(err)
@@ -483,11 +524,11 @@ func RunRPCServer(portrpc int, block bool) {
 		port := fmt.Sprintf(":%d", portrpc)
 		listener, err := net.Listen("tcp", port)
 		if err != nil {
-			log.Fatal("listen error:", err)
+			panic(fmt.Sprint("listen error:", err))
 		}
 		for {
 			if conn, err := listener.Accept(); err != nil {
-				log.Fatal("accept error: " + err.Error())
+				panic("accept error: " + err.Error())
 			} else {
 				log.Printf("new connection established\n")
 				go func() { // this is equivalent to ServeCodec, except all requests from a single connection

@@ -233,3 +233,38 @@ func (sps *SimPulseSource) blockingRead() error {
 	sps.nextFrameNum += FrameIndex(sps.cycleLen)
 	return nil
 }
+
+// ErroringSource  is used to test the behavior of errors in blockingRead
+// an error in blocking read should change the state of the source such that
+// the next call to blocking read will return io.EOF
+// then source.Stop() will be called.
+// the source should be able to be restatrted after this
+// ErroringSource needs to exist in dastard (not just in tests) so that
+// it can be exposed through the RPC server to test that the RPC server
+// recovers properly as well
+type ErroringSource struct {
+	AnySource
+	hasErrored     bool
+	nBlockingReads int
+}
+
+// NewErroringSource returns a new ErroringSource, requires no configuration
+func NewErroringSource() *ErroringSource {
+	es := new(ErroringSource)
+	es.nchan = 1
+	return es
+}
+
+// Sample is part of the required interface, and resets the hasErrored varible
+func (es *ErroringSource) Sample() error {
+	es.hasErrored = false
+	return nil
+}
+func (es *ErroringSource) blockingRead() error {
+	es.nBlockingReads++
+	if es.hasErrored {
+		return io.EOF
+	}
+	es.hasErrored = true
+	return fmt.Errorf("ErroringSource.blockingRead always errors on first call")
+}

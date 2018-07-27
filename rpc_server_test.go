@@ -3,6 +3,7 @@ package dastard
 import (
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -207,46 +208,63 @@ func TestServer(t *testing.T) {
 			t.Error("expected error on CoupleErrToFB when non-Lancero source is active")
 		}
 	}
-	// path, err := ioutil.TempDir("", "dastard_test")
-	// if err != nil {
-	// 	t.Fatal("Could not open temporary directory")
-	// }
-	// defer os.RemoveAll(path)
-	// wconfig := WriteControlConfig{Request: "Start", Path: path, WriteLJH22: true}
-	// if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
-	// 	t.Error("SourceControl.WriteControl START error:", err1)
-	// }
-	// time.Sleep(150 * time.Millisecond)
-	// comment := "hello"
-	// if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
-	// 	t.Error("SourceControl.WriteComment error while writing:", err1)
-	// }
-	// wconfig.Request = "Stop"
-	// if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
-	// 	t.Error("SourceControl.WriteControl STOP error:", err1)
-	// }
-	// // Check that comment.txt file exists and has a newline appended
-	// date := time.Now().Format("20060102")
-	// fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
-	// file, err := os.Open(fname)
-	// defer file.Close()
-	// if err != nil {
-	// 	t.Errorf("Could not open comment file %q", fname)
-	// } else {
-	// 	b := make([]byte, 1+len(comment))
-	// 	_, err2 := file.Read(b)
-	// 	if err2 != nil {
-	// 		t.Error("file.Read failed on comment file", err2)
-	// 	} else if string(b) != "hello\n" {
-	// 		t.Errorf("comment.txt file contains %q, want %q", b, "hello\n")
-	// 	}
-	// }
-	// if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
-	// 	t.Error("SourceControl.WriteComment error after source stoped:", err1)
-	// }
-
-	err = client.Call("SourceControl.Stop", sourceName, &okay)
+	path, err := ioutil.TempDir("", "dastard_test")
 	if err != nil {
+		t.Fatal("Could not open temporary directory")
+	}
+	defer os.RemoveAll(path)
+	wconfig := WriteControlConfig{Request: "Start", Path: path, WriteLJH22: true}
+	if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
+		t.Error("SourceControl.WriteControl START error:", err1)
+	}
+	time.Sleep(150 * time.Millisecond)
+	comment := "hello"
+	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
+		t.Error("SourceControl.WriteComment error while writing:", err1)
+	}
+	stateLabelArg := StateLabelConfig{Label: "testlabel"}
+	if err1 := client.Call("SourceControl.SetExperimentStateLabel", &stateLabelArg, &okay); err1 != nil {
+		t.Error(err1)
+	}
+	wconfig.Request = "Stop"
+	if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
+		t.Error("SourceControl.WriteControl STOP error:", err1)
+	}
+	// Check that comment.txt file exists and has a newline appended
+	if true { // prevent variables from persisting
+		date := time.Now().Format("20060102")
+		fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
+		file, err0 := os.Open(fname)
+		defer file.Close()
+		if err0 != nil {
+			t.Errorf("Could not open comment file %q", fname)
+		} else {
+			b := make([]byte, 1+len(comment))
+			_, err2 := file.Read(b)
+			if err2 != nil {
+				t.Error("file.Read failed on comment file", err2)
+			} else if string(b) != "hello\n" {
+				t.Errorf("comment.txt file contains %q, want %q", b, "hello\n")
+			}
+		}
+	}
+	// Check that experiment_state file exists
+	if true { // prevent variables from persisting
+		date := time.Now().Format("20060102")
+		fname := fmt.Sprintf("%s/%s/0000/%s_run0000_experiment_state.txt", path, date, date)
+		file, err0 := os.Open(fname)
+		defer file.Close()
+		if err0 != nil {
+			t.Error(err0)
+		}
+	}
+	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
+		t.Error("SourceControl.WriteComment error after source stoped:", err1)
+	}
+	if err1 := client.Call("SourceControl.SetExperimentStateLabel", &stateLabelArg, &okay); err1 == nil {
+		t.Error("expected error after STOP")
+	}
+	if err = client.Call("SourceControl.Stop", sourceName, &okay); err != nil {
 		t.Errorf("Error calling SourceControl.Stop(%s)\n%v", sourceName, err)
 	}
 	if !okay {
@@ -369,11 +387,36 @@ func setupViper() error {
 	return nil
 }
 
+func TestErroringSourceRPC(t *testing.T) {
+	client, errClient := simpleClient()
+	defer client.Close()
+	if errClient != nil {
+		t.Fatal(errClient)
+	}
+	sourceName := "ERRORINGSOURCE"
+	dummy := ""
+	okay := false
+	for i := 0; i < 5; i++ {
+		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
+			t.Error(err)
+		}
+		if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
+			t.Error("expected error")
+		}
+		if err := client.Call("SourceControl.WaitForStopTestingOnly", &dummy, &okay); err != nil {
+			t.Error(err)
+		}
+		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
+			t.Error("expected error")
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
 	if err != nil {
-		log.Fatalf("error opening file: %v", err)
+		panic(fmt.Sprintf("error opening file: %v", err))
 	}
 	defer f.Close()
 	log.SetOutput(f)
@@ -381,7 +424,7 @@ func TestMain(m *testing.M) {
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	go RunClientUpdater(Ports.Status)
