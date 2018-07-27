@@ -24,6 +24,7 @@ type edgeMultiStateType int
 const (
 	searching edgeMultiStateType = iota
 	verifying
+	initial
 )
 
 // TriggerState contains all the state that controls trigger logic
@@ -55,12 +56,12 @@ type TriggerState struct {
 // modify dsp to have it start looking for triggers at sample 6
 // can't be sample 0 because we look back in time by up to 6 samples
 // for kink fit
-func (dsp *DataStreamProcessor) inspectStartingAtSample6() {
+func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
+	dsp.edgeMultiState = initial
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
-	dsp.edgeMultiState = verifying
-	dsp.edgeMultiILastInspected = 6
+	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4
-	dsp.edgeMultiIPotential = 6
+	dsp.edgeMultiIPotential = -math.MaxInt64 / 4
 }
 
 // create a record using dsp.NPresamples and dsp.NSamples
@@ -188,10 +189,14 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	var iPotential, iLast, iFirst int
 	iPotential = int(dsp.edgeMultiIPotential - segment.firstFramenum)
 	iLast = ndata + dsp.NPresamples - dsp.NSamples
-	if dsp.edgeMultiState == verifying {
+	switch dsp.edgeMultiState {
+	case verifying:
 		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
-	} else {
+	case searching:
 		iFirst = 2*dsp.NSamples + 1 // +1 to account for maximum shift from kink model
+	case initial:
+		iFirst = 6
+		dsp.edgeMultiState = searching
 	}
 	// fmt.Println()
 	// fmt.Println("dsp.channelIndex", dsp.channelIndex, "segment.firstFramenum", segment.firstFramenum, "dsp.edgeMultiIPotential", dsp.edgeMultiIPotential)
@@ -222,7 +227,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 					xdataf := make([]float64, 10)
 					ydataf := make([]float64, 10)
 					for j := 0; j < 10; j++ {
-						fmt.Printf("j %v, iPotential %v, j+iPotential-6 %v, i %v\n", j, iPotential, j+iPotential-6, i)
+						// fmt.Printf("j %v, iPotential %v, j+iPotential-6 %v, i %v\n", j, iPotential, j+iPotential-6, i)
 						xdataf[j] = float64(j + iPotential - 6) // look at samples from i-6 to i+3
 						ydataf[j] = float64(raw[j+iPotential-6])
 					}
@@ -280,16 +285,16 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			} else {
 				t = triggerInds[i-1]
 			}
-			fmt.Printf("dsp.LastEdgeMultiTrigger %v, tFirst %v\n", dsp.LastEdgeMultiTrigger, tFirst)
+			// fmt.Printf("dsp.LastEdgeMultiTrigger %v, tFirst %v\n", dsp.LastEdgeMultiTrigger, tFirst)
 			lastNPost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
 			npre := min(dsp.NPresamples, int(u-t-lastNPost))
 			npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
 			// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
 			// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 			if dsp.EdgeMultiMakeShortRecords {
-				fmt.Printf("short trigger at u %v\n", u)
-				fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
-					"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
+				// fmt.Printf("short trigger at u %v\n", u)
+				// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
+				// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
 				newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
 				records = append(records, newRecord)
 			} else if dsp.EdgeMultiMakeContaminatedRecords {
@@ -333,6 +338,8 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 
 			// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
 			nextPotentialTrig := int(dsp.LastEdgeMultiTrigger-segment.firstFramenum) + delaySamples
+			fmt.Printf("nextPotentialTrig %v = dsp.LastEdgeMultiTrigger %v - segment.firstFramenum %v + delaySamples %v\n",
+				nextPotentialTrig, dsp.LastEdgeMultiTrigger, segment.firstFramenum, delaySamples)
 			if nextPotentialTrig < dsp.NPresamples+1 {
 				nextPotentialTrig = dsp.NPresamples + 1
 			}
@@ -361,10 +368,10 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 					nextPotentialTrig = nextFoundTrig + delaySamples
 					idxNextTrig++
 					if nFoundTrigs > idxNextTrig {
-						fmt.Println("increment nextFoundTrig")
+						fmt.Println("increment from next edgeTrigger")
 						nextFoundTrig = triggerInds[idxNextTrig]
 					} else {
-						fmt.Println("no more trigs")
+						fmt.Println("no more edgeTriggers")
 						nextFoundTrig = math.MaxInt64
 					}
 				}
