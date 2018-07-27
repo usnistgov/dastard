@@ -18,10 +18,10 @@ type triggerList struct {
 	lastFrameThatWillNeverTrigger FrameIndex
 }
 
-type edgeMultiStateType int
+type edgeMultiInternalSearchStateType int
 
 const (
-	searching edgeMultiStateType = iota
+	searching edgeMultiInternalSearchStateType = iota
 	verifying
 	initial
 )
@@ -45,7 +45,7 @@ type TriggerState struct {
 	EdgeMultiMakeShortRecords        bool
 	EdgeMultiMakeContaminatedRecords bool
 	EdgeMultiVerifyNMonotone         int
-	edgeMultiState                   edgeMultiStateType
+	edgeMultiInternalSearchState     edgeMultiInternalSearchStateType
 	edgeMultiIPotential              FrameIndex
 	edgeMultiILastInspected          FrameIndex
 
@@ -56,7 +56,7 @@ type TriggerState struct {
 // can't be sample 0 because we look back in time by up to 6 samples
 // for kink fit
 func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
-	dsp.edgeMultiState = initial
+	dsp.edgeMultiInternalSearchState = initial
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4
@@ -176,6 +176,19 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 
 }
 
+// edgeMultiTriggerComputeAppend computes the EdgeMulti Trigger
+// There are two modes
+// 1. EdgeMulti: requires: EdgeMulti. one of EdgeRising, EdgeFalling. EdgeLevel, EdgeMultiVerifyNMonotone
+// This mode looks for successive samples that differ by EdgeLevel or more. These become potential triggers
+// there are EdgeMultiVerifyNMonotone succesive samples with a positive difference
+// A new trigger can be found  Immediatley after a local maximum has been found
+// records are generated according to
+// EdgeMultiMakeShortRecords  -> variable length records
+// EdgeMultiMakeContaminatedRecords -> records that may have another pulse in them
+// Neither -> Fixed length records without any other pulses in them (as if you already did postpeak deriv cut)
+// EdgeFalling probaly doesn't work yet
+// 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeLevel, EdgeRising, EdgeMultiVerifyNMonotone, AutoDelay
+// will not produce pulse containing records, just the autotrigger that fit in around them
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	if !dsp.EdgeTrigger {
 		return records
@@ -188,32 +201,31 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	var iPotential, iLast, iFirst int
 	iPotential = int(dsp.edgeMultiIPotential - segment.firstFramenum)
 	iLast = ndata + dsp.NPresamples - dsp.NSamples
-	switch dsp.edgeMultiState {
+	switch dsp.edgeMultiInternalSearchState {
 	case verifying:
 		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
 	case searching:
 		iFirst = 2*dsp.NSamples + 1 // +1 to account for maximum shift from kink model
 	case initial:
 		iFirst = 6
-		dsp.edgeMultiState = searching
+		dsp.edgeMultiInternalSearchState = searching
 	}
 	// fmt.Println()
 	// fmt.Println("dsp.channelIndex", dsp.channelIndex, "segment.firstFramenum", segment.firstFramenum, "dsp.edgeMultiIPotential", dsp.edgeMultiIPotential)
-	// fmt.Println("dsp.edgeMultiState", dsp.edgeMultiState, "dsp.edgeMultiILastInspected", dsp.edgeMultiILastInspected, "dsp.EdgeMultiVerifyNMonotone", dsp.EdgeMultiVerifyNMonotone)
+	// fmt.Println("dsp.edgeMultiInternalSearchState", dsp.edgeMultiInternalSearchState, "dsp.edgeMultiILastInspected", dsp.edgeMultiILastInspected, "dsp.EdgeMultiVerifyNMonotone", dsp.EdgeMultiVerifyNMonotone)
 	// fmt.Println("iPotential", iPotential, "iFirst", iFirst, "iLast", iLast, "len(raw)", len(raw), "dsp.NPresamples", dsp.NPresamples)
 	if dsp.EdgeMultiVerifyNMonotone+3 > dsp.NSamples-dsp.NPresamples {
 		panic(fmt.Sprintf("%v %v %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
 	}
 	for i := iFirst; i <= iLast; i++ {
 		// fmt.Printf("i=%v, i_frame=%v\n", i, i+int(segment.firstFramenum))
-		switch dsp.edgeMultiState {
+		switch dsp.edgeMultiInternalSearchState {
 		case searching:
 			diff := int32(raw[i]) - int32(raw[i-1])
 			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 				(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
 				iPotential = i
-				dsp.edgeMultiState = verifying
-				// fmt.Println("increase")
+				dsp.edgeMultiInternalSearchState = verifying
 			}
 		case verifying:
 			// now we have a potenial trigger
@@ -240,9 +252,9 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 					}
 					triggerInds = append(triggerInds, iTrigger)
 				}
-				dsp.edgeMultiState = searching
+				dsp.edgeMultiInternalSearchState = searching
 			} else if i-iPotential >= dsp.NSamples { // if it has been rising for a whole record, that won't be a useful pulse, so just to back to searching
-				dsp.edgeMultiState = searching
+				dsp.edgeMultiInternalSearchState = searching
 			}
 		}
 	}
@@ -253,9 +265,9 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	dsp.edgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
 
 	var lastIThatCantEdgeTrigger int
-	if dsp.edgeMultiState == searching {
+	if dsp.edgeMultiInternalSearchState == searching {
 		lastIThatCantEdgeTrigger = int(dsp.edgeMultiILastInspected-segment.firstFramenum) - 1
-	} else if dsp.edgeMultiState == verifying {
+	} else if dsp.edgeMultiInternalSearchState == verifying {
 		lastIThatCantEdgeTrigger = iPotential - 1
 	}
 
@@ -305,7 +317,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			}
 		}
 		if iLast >= iFirst {
-			if dsp.edgeMultiState == verifying {
+			if dsp.edgeMultiInternalSearchState == verifying {
 				// fmt.Println("dsp.NPresamples", dsp.NPresamples, "ndata", ndata, "iPotential", iPotential)
 				extraSamplesToKeep := (ndata - iPotential) + 1 // +1 to account for maximum shift from kink model
 				if extraSamplesToKeep < 0 {
