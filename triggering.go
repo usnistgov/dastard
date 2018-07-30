@@ -56,7 +56,6 @@ type TriggerState struct {
 // can't be sample 0 because we look back in time by up to 6 samples
 // for kink fit
 func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
-	fmt.Println("edgeMultiSetIntialState")
 	dsp.edgeMultiInternalSearchState = initial
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4

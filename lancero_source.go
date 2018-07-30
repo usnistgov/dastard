@@ -31,14 +31,15 @@ type LanceroDevice struct {
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
 type LanceroSource struct {
-	devices           map[int]*LanceroDevice
-	ncards            int
-	clockMhz          int
-	nsamp             int
-	active            []*LanceroDevice
-	chan2readoutOrder []int
-	Mix               []*Mix
-	blockingReadCount int
+	devices                         map[int]*LanceroDevice
+	ncards                          int
+	clockMhz                        int
+	nsamp                           int
+	active                          []*LanceroDevice
+	chan2readoutOrder               []int
+	Mix                             []*Mix
+	blockingReadCount               int
+	consecutiveDistributeDataErrors int
 	AnySource
 }
 
@@ -488,14 +489,20 @@ func (ls *LanceroSource) distributeData() error {
 		nrows := (p - q) / n
 		periodNS := timediff.Nanoseconds() / int64(framesUsed)
 		lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
-		if ncols != dev.ncols || nrows != dev.nrows || lsync != dev.lsync || framesUsed <= 0 {
-			fmt.Printf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v, blockingReadCount %v\n",
-				ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount)
+		if ncols != dev.ncols || nrows != dev.nrows ||
+			math.Abs(float64(lsync)-float64(dev.lsync)) > 1 || framesUsed <= 0 {
+			ls.consecutiveDistributeDataErrors++
+			fmt.Printf("have ibuf %v, ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v, blockingReadCount %v, consecutiveDistributeDataErrors %v\n",
+				ibuf, ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount, ls.consecutiveDistributeDataErrors)
 			if ls.blockingReadCount > 1 {
 				// lsync calculation fails on first few reads so don't error
-				return fmt.Errorf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v",
-					ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync)
+				if ls.consecutiveDistributeDataErrors > 5 {
+					return fmt.Errorf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v",
+						ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync)
+				}
 			}
+		} else {
+			ls.consecutiveDistributeDataErrors = 0
 		}
 	}
 	// Consume framesUsed frames of data from each channel.
