@@ -14,6 +14,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 // Lanceroer is the interaface shared by Lancero and NoHardware
@@ -176,6 +178,11 @@ func FindFrameBits(b []byte) (int, int, int, error) {
 		} else {
 			break
 		}
+	}
+	if n < 1 {
+		spew.Dump(b)
+		fmt.Println(q)
+		return q / 4, p / 4, n, fmt.Errorf("n = zero, not clear how this is possible")
 	}
 	frameBitInPreviousWord = true
 	for i := q + 4*n; i < len(b); i += 4 {
