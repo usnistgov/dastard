@@ -508,8 +508,8 @@ func (ls *LanceroSource) distributeData() error {
 	// Consume framesUsed frames of data from each channel.
 	// Careful! This slice of slices will be in lancero READOUT order:
 	// r0c0, r0c1, r0c2, etc.
-	datacopies := make([][]RawType, len(ls.output))
-	for i := range ls.output {
+	datacopies := make([][]RawType, ls.nchan)
+	for i := range ls.processors {
 		datacopies[i] = make([]RawType, framesUsed)
 	}
 
@@ -549,15 +549,14 @@ func (ls *LanceroSource) distributeData() error {
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
 	firstTime := lastSampleTime.Add(-segDuration)
-	for channum, ch := range ls.output {
-		data := datacopies[ls.chan2readoutOrder[channum]]
-		if channum%2 == 1 { // feedback channel needs more processing
-			mix := ls.Mix[channum]
-			errData := datacopies[ls.chan2readoutOrder[channum-1]]
+	for channelIndex := range ls.processors {
+		data := datacopies[ls.chan2readoutOrder[channelIndex]]
+		if channelIndex%2 == 1 { // feedback channel needs more processing
+			mix := ls.Mix[channelIndex]
+			errData := datacopies[ls.chan2readoutOrder[channelIndex-1]]
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.errorScale
 			mix.MixRetardFb(&data, &errData)
 		}
-
 		seg := DataSegment{
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating
@@ -565,7 +564,7 @@ func (ls *LanceroSource) distributeData() error {
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
 		}
-		ch <- seg
+		ls.segments[channelIndex] = seg
 	}
 
 	ls.nextFrameNum += FrameIndex(framesUsed)
