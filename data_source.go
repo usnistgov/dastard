@@ -588,12 +588,8 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndicies {
 		if channelIndex < ds.nchan { // Don't trust client to know this number!
-			go func() {
-				dsp := ds.processors[channelIndex]
-				dsp.changeMutex.Lock()
-				defer dsp.changeMutex.Unlock()
-				dsp.TriggerState = state.TriggerState
-			}()
+			dsp := ds.processors[channelIndex]
+			dsp.TriggerState = state.TriggerState
 		}
 	}
 	return nil
