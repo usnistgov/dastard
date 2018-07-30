@@ -206,7 +206,7 @@ func TestDataSignedness(t *testing.T) {
 	data := make([]RawType, len(errsig))
 	copy(data, errsig)
 	seg := &DataSegment{rawData: data}
-	dsp := NewDataStreamProcessor(0, nil)
+	dsp := NewDataStreamProcessor(0, nil, nil)
 	dsp.DecimateLevel = 2
 	dsp.Decimate = true
 	dsp.DecimateAvgMode = true

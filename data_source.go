@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -45,14 +44,10 @@ type DataSource interface {
 	SetExperimentStateLabel(string) error
 	ChannelsWithProjectors() []int
 	Wait() error
-	ProcessSegments() error
-	RunDoneAdd()
-	RunDoneDone()
 }
 
 // Wait returns when the source run is done, aka the source is stopped
 func (ds *AnySource) Wait() error {
-	// fmt.Println("ds.Wait")
 	ds.runDone.Wait()
 	return nil
 }
@@ -61,16 +56,6 @@ func (ds *AnySource) Wait() error {
 // don't need the mix
 func (ds *AnySource) ConfigureMixFraction(channelIndex int, mixFraction float64) error {
 	return fmt.Errorf("source type %s does not support Mix", ds.name)
-}
-
-// RunDoneAdd adds one to ds.runDone, this should only be called in Start
-func (ds *AnySource) RunDoneAdd() {
-	ds.runDone.Add(1)
-}
-
-// RunDoneDone calls ds.runDone, this should only be called in Start
-func (ds *AnySource) RunDoneDone() {
-	ds.runDone.Done()
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -96,10 +81,8 @@ func Start(ds DataSource) error {
 		return err
 	}
 
-	ds.RunDoneAdd()
 	// Have the DataSource produce data until graceful stop.
 	go func() {
-		defer ds.RunDoneDone()
 		for {
 			// fmt.Println("calling blockingRead")
 			if err := ds.blockingRead(); err == io.EOF {
@@ -112,14 +95,6 @@ func Start(ds DataSource) error {
 				log.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
 				ds.Stop() // will cause next call to ds.blockingRead to return io.EOF
 			}
-			if ds.Running() { // process data segments if source is still running
-				// fmt.Println("ProcessSegments")
-				if err := ds.ProcessSegments(); err != nil {
-					log.Printf("processSegments returns Error, stopping source: %s\n", err.Error())
-					ds.Stop()
-				}
-			}
-
 		}
 
 	}()
@@ -163,50 +138,16 @@ type AnySource struct {
 	samplePeriod time.Duration // time per sample
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
+	output       []chan DataSegment
 	processors   []*DataStreamProcessor
 	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
 	broker       *TriggerBroker
-	// publishSync  *PublishSync
-	noProcess           bool // Set true only for testing.
-	heartbeats          chan Heartbeat
-	segments            []DataSegment
-	writingState        WritingState
-	numberWrittenTicker *time.Ticker
-	runMutex            sync.Mutex
-	runDone             sync.WaitGroup
-}
-
-// ProcessSegments processes a single outstanding for each processor in ds
-// returns when all segments have been processed
-// it's a more synchnous version of each dsp launching it's own goroutine
-func (ds *AnySource) ProcessSegments() error {
-	var wg sync.WaitGroup
-	for i, dsp := range ds.processors {
-		segment := ds.segments[i]
-		if segment.processed {
-			spew.Dump(segment)
-			return fmt.Errorf("channelIndex %v has already processed segment", i)
-		}
-		wg.Add(1)
-		go func(dsp *DataStreamProcessor) {
-			defer wg.Done()
-			dsp.processSegment(&segment)
-		}(dsp)
-	}
-	wg.Wait()
-	numberWritten := make([]int, ds.nchan)
-	for i, dsp := range ds.processors {
-		numberWritten[i] = dsp.numberWritten
-	}
-	if ds.writingState.Active && !ds.writingState.Paused {
-		select {
-		case <-ds.numberWrittenTicker.C:
-			clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
-				state: struct{ NumberWritten []int }{NumberWritten: numberWritten}} // only exported fields are serialized
-		default:
-		}
-	}
-	return nil
+	publishSync  *PublishSync
+	noProcess    bool // Set true only for testing.
+	heartbeats   chan Heartbeat
+	writingState WritingState
+	runMutex     sync.Mutex
+	runDone      sync.WaitGroup
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
@@ -398,9 +339,9 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.FilenamePattern = filenamePattern
 		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	}
-	// if ds.publishSync.writingChan != nil {
-	// 	ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused
-	// }
+	if ds.publishSync.writingChan != nil {
+		ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused
+	}
 	return nil
 }
 
@@ -514,11 +455,19 @@ func (ds *AnySource) PrepareRun() error {
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run()
 
-	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
-	ds.segments = make([]DataSegment, ds.nchan)
+	// Start a PublishSync to publish the # of records written
+	ds.publishSync = NewPublishSync(ds.nchan)
+	go ds.publishSync.Run()
+
+	// Channels onto which we'll put data produced by this source
+	ds.output = make([]chan DataSegment, ds.nchan)
+	for i := 0; i < ds.nchan; i++ {
+		ds.output[i] = make(chan DataSegment)
+	}
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
+	ds.runDone.Add(ds.nchan)
 	signed := ds.Signed()
 	vpa := ds.VoltsPerArb()
 
@@ -549,8 +498,8 @@ func (ds *AnySource) PrepareRun() error {
 		LevelLevel:   4000,
 	}
 
-	for channelIndex := range ds.processors {
-		dsp := NewDataStreamProcessor(channelIndex, ds.broker)
+	for channelIndex, dataSegmentChan := range ds.output {
+		dsp := NewDataStreamProcessor(channelIndex, ds.broker, ds.publishSync.numberWrittenChans[channelIndex])
 		dsp.Name = ds.chanNames[channelIndex]
 		dsp.SampleRate = ds.sampleRate
 		dsp.stream.signed = signed[channelIndex]
@@ -569,15 +518,14 @@ func (ds *AnySource) PrepareRun() error {
 
 		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[channelIndex]
 		// channel is closed, depending on ds.noProcess (which is false except for testing)
-		// 	ds.runDone.Add(1)
-		// 	go func(ch <-chan DataSegment) {
-		// 		defer ds.runDone.Done()
-		// 		if ds.noProcess {
-		// 			<-ds.abortSelf
-		// 		} else {
-		// 			dsp.ProcessData(ch)
-		// 		}
-		// 	}(dataSegmentChan)
+		go func(ch <-chan DataSegment) {
+			defer ds.runDone.Done()
+			if ds.noProcess {
+				<-ds.abortSelf
+			} else {
+				dsp.ProcessData(ch)
+			}
+		}(dataSegmentChan)
 	}
 	ds.lastread = time.Now()
 	return nil
@@ -590,14 +538,19 @@ func (ds *AnySource) Stop() error {
 	}
 	close(ds.abortSelf)
 	ds.broker.Stop()
-	// ds.publishSync.Stop()
+	ds.publishSync.Stop()
 	ds.CloseOutputs()
 	return nil
 }
 
 // CloseOutputs closes all channels that carry buffers of data for downstream processing.
 func (ds *AnySource) CloseOutputs() {
-
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+	for _, ch := range ds.output {
+		close(ch)
+	}
+	ds.output = nil
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState
@@ -634,13 +587,14 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 		return fmt.Errorf("got ConfigureTriggers with no valid ChannelIndicies")
 	}
 	for _, channelIndex := range state.ChannelIndicies {
-		if channelIndex >= ds.nchan {
-			return fmt.Errorf("channelIndex %v is >= ds.nchan %v", channelIndex, ds.nchan)
+		if channelIndex < ds.nchan { // Don't trust client to know this number!
+			go func() {
+				dsp := ds.processors[channelIndex]
+				dsp.changeMutex.Lock()
+				defer dsp.changeMutex.Unlock()
+				dsp.TriggerState = state.TriggerState
+			}()
 		}
-	}
-	for _, channelIndex := range state.ChannelIndicies {
-		dsp := ds.processors[channelIndex]
-		dsp.TriggerState = state.TriggerState
 	}
 	return nil
 }
@@ -676,7 +630,6 @@ type DataSegment struct {
 	firstTime       time.Time
 	framePeriod     time.Duration
 	voltsPerArb     float32
-	processed       bool
 	// facts about the data source?
 }
 
