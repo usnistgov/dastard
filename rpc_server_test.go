@@ -393,7 +393,7 @@ func TestErroringSourceRPC(t *testing.T) {
 			t.Error(err)
 		}
 		if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
-			t.Error("expected error")
+			t.Error("expected error source already started")
 		}
 		if err := client.Call("SourceControl.WaitForStopTestingOnly", &dummy, &okay); err != nil {
 			t.Error(err)
