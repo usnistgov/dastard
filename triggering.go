@@ -205,8 +205,11 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
 	case initial:
 		iFirst = dsp.NPresamples
-		if iFirst < 6 {
+		if iFirst < 6 { // kink model looks at i-6
 			iFirst = 6
+		}
+		if iFirst < dsp.NPresamples { // recordization looks at i-dsp.NPresamples
+			iFirst = dsp.NPresamples
 		}
 	}
 
