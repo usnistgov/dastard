@@ -318,6 +318,12 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		if config.Request[7:8] != " " || len(config.Request) == 8 {
 			return fmt.Errorf("request format invalid. got::\n%v\nwant someting like: \"UNPAUSE label\"", config.Request)
 		}
+		if len(config.Request) > 7 { // "UNPAUSE label" format already validated
+			stateLabel := config.Request[8:]
+			if err := ds.SetExperimentStateLabel(stateLabel); err != nil {
+				return err
+			}
+		}
 	}
 	if !(strings.HasPrefix(request, "START") || strings.HasPrefix(request, "STOP") ||
 		strings.HasPrefix(request, "PAUSE") || strings.HasPrefix(request, "UNPAUSE")) {
@@ -336,16 +342,13 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(false)
 		}
-		if len(config.Request) > 7 { // "UNPAUSE label" format already validated
-			stateLabel := config.Request[8:]
-			if err := ds.SetExperimentStateLabel(stateLabel); err != nil {
-				return err
-			}
-		}
+
 		ds.writingState.Paused = false
 
 	} else if strings.HasPrefix(request, "STOP") {
 		for _, dsp := range ds.processors {
+			dsp.changeMutex.Lock()
+			defer dsp.changeMutex.Unlock()
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
@@ -363,6 +366,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	} else if strings.HasPrefix(request, "START") {
 		channelsWithOff := 0
 		for i, dsp := range ds.processors {
+			dsp.changeMutex.Lock()
+			defer dsp.changeMutex.Unlock()
 			timebase := 1.0 / dsp.SampleRate
 			rccode := ds.rowColCodes[i]
 			nrows := rccode.rows()
@@ -398,9 +403,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.FilenamePattern = filenamePattern
 		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	}
-	// if ds.publishSync.writingChan != nil {
-	// 	ds.publishSync.writingChan <- ds.writingState.Active && !ds.writingState.Paused
-	// }
 	return nil
 }
 
