@@ -203,7 +203,7 @@ func TestLongRecords(t *testing.T) {
 		{1000, 10000, 10001},
 	}
 	for _, test := range tests {
-		dsp := NewDataStreamProcessor(0, broker, nil)
+		dsp := NewDataStreamProcessor(0, broker)
 		dsp.NPresamples = test.npre
 		dsp.NSamples = test.nsamp
 		dsp.SampleRate = 100000.0
@@ -246,7 +246,7 @@ func TestSingles(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, broker, nil)
+	dsp := NewDataStreamProcessor(0, broker)
 	nRepeat := 1
 
 	const bigval = 8000
@@ -410,7 +410,7 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, broker, nil)
+	dsp := NewDataStreamProcessor(0, broker)
 	nRepeat := 1
 
 	const bigval = 8000
@@ -468,7 +468,7 @@ func TestEdgeMulti(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, broker, nil)
+	dsp := NewDataStreamProcessor(0, broker)
 
 	//kink model parameters
 	var a, b, c float64
@@ -616,7 +616,7 @@ func TestEdgeVetosLevel(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, broker, nil)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 
@@ -656,7 +656,7 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, broker, nil)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 	dsp.AutoTrigger = true
@@ -680,7 +680,7 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, broker, nil)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 
@@ -713,7 +713,7 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	broker := NewTriggerBroker(nchan)
 	go broker.Run()
 	defer broker.Stop()
-	dsp := NewDataStreamProcessor(0, broker, nil)
+	dsp := NewDataStreamProcessor(0, broker)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 

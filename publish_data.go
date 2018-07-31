@@ -3,8 +3,6 @@ package dastard
 import (
 	"bytes"
 	"fmt"
-	"log"
-	"math/rand"
 	"reflect"
 	"time"
 	"unsafe"
@@ -20,14 +18,13 @@ import (
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
 // in each call to PublishData
 type DataPublisher struct {
-	PubRecordsChan    chan []*DataRecord
-	PubSummariesChan  chan []*DataRecord
-	LJH22             *ljh.Writer
-	LJH3              *ljh.Writer3
-	OFF               *off.Writer
-	WritingPaused     bool
-	numberWritten     int      // integrates up the total number written, reset any time writing starts or stops
-	numberWrittenChan chan int // send the total number written to this channel after each write group
+	PubRecordsChan   chan []*DataRecord
+	PubSummariesChan chan []*DataRecord
+	LJH22            *ljh.Writer
+	LJH3             *ljh.Writer3
+	OFF              *off.Writer
+	WritingPaused    bool
+	numberWritten    int // integrates up the total number written, reset any time writing starts or stops
 }
 
 // SetPause changes the paused state to the given value of pause
@@ -247,9 +244,6 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
 		dp.numberWritten += len(records)
 	}
-	if dp.numberWrittenChan != nil {
-		dp.numberWrittenChan <- dp.numberWritten
-	}
 	return nil
 }
 
@@ -410,62 +404,4 @@ func bytesToRawType(b []byte) []RawType {
 	header.Len /= ratio
 	data := *(*[]RawType)(unsafe.Pointer(&header))
 	return data
-}
-
-// PublishSync is used to synchronize the publication of number of records written
-type PublishSync struct {
-	writing            bool
-	writingChan        chan bool // send message here to set writing without race condition
-	numberWrittenChans []chan int
-	NumberWritten      []int
-	abort              chan struct{} // This can signal the Run() goroutine to stop
-	id                 int
-}
-
-// NewPublishSync returns a *PublishSync for nchan channels
-func NewPublishSync(nchan int) *PublishSync {
-	numberWrittenChans := make([]chan int, nchan)
-	for i := 0; i < nchan; i++ {
-		numberWrittenChans[i] = make(chan int)
-	}
-	id := rand.Int() % 1000
-	return &PublishSync{numberWrittenChans: numberWrittenChans, abort: make(chan struct{}),
-		NumberWritten: make([]int, nchan), writingChan: make(chan bool), id: id}
-}
-
-// Run runs, collects number of records published, publishes summaries
-// should be called as a goroutine
-func (ps *PublishSync) Run() {
-	log.Println("PublishSync Run() id", ps.id)
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		default:
-			// get data from all PrimaryTrigs channels
-			for i := 0; i < len(ps.numberWrittenChans); i++ {
-				select {
-				case <-ps.abort:
-					return
-				case n := <-ps.numberWrittenChans[i]:
-					ps.NumberWritten[i] = n
-				case ps.writing = <-ps.writingChan:
-				case <-time.After(500 * time.Millisecond):
-					fmt.Println("PublishSync is confused")
-					ps.NumberWritten[i] = -1
-				}
-			}
-		case <-ticker.C:
-			if ps.writing {
-				clientMessageChan <- ClientUpdate{tag: "NUMBERWRITTEN",
-					state: ps} // only exported fields are serialized
-			} // only send NUMBERWRITTEN messages when writing is occuring
-		}
-	}
-}
-
-// Stop causes the Run() goroutine to end at the next appropriate moment.
-func (ps *PublishSync) Stop() {
-	close(ps.abort)
-	log.Println("PublishSync.Stop() id", ps.id)
 }
