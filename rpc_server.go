@@ -242,7 +242,10 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.activeSource = nil
 		return err
 	}
-	s.status.Nchannels = s.activeSource.Nchan()
+	status := s.status
+	activeSource := s.activeSource
+	nChannels := activeSource.Nchan() // this occasionally failed with invalid memory address or nil pointer dereference when starting lancero
+	status.Nchannels = nChannels
 	if ls, ok := s.activeSource.(*LanceroSource); ok {
 		s.status.Ncol = make([]int, ls.ncards)
 		s.status.Nrow = make([]int, ls.ncards)
@@ -283,6 +286,7 @@ func (s *SourceControl) handlePosibleStoppedSource() {
 	if s.activeSource != nil && !s.activeSource.Running() {
 		s.status.Running = false
 		s.activeSource = nil
+		s.broadcastStatus()
 	}
 }
 
@@ -430,7 +434,7 @@ func (s *SourceControl) broadcastWritingState() {
 func (s *SourceControl) broadcastTriggerState() {
 	if s.activeSource != nil && s.status.Running {
 		state := s.activeSource.ComputeFullTriggerState()
-		log.Printf("TriggerState: %v\n", state)
+		// log.Printf("TriggerState: %v\n", state)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", state}
 	}
 }
@@ -438,7 +442,7 @@ func (s *SourceControl) broadcastTriggerState() {
 func (s *SourceControl) broadcastChannelNames() {
 	if s.activeSource != nil && s.status.Running {
 		configs := s.activeSource.ChannelNames()
-		log.Printf("chanNames: %v\n", configs)
+		// log.Printf("chanNames: %v\n", configs)
 		s.clientUpdates <- ClientUpdate{"CHANNELNAMES", configs}
 	}
 }

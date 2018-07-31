@@ -485,15 +485,17 @@ func (ls *LanceroSource) distributeData() error {
 		if err != nil {
 			return fmt.Errorf("Error in findFrameBits: %v", err)
 		}
+		qExpect := dev.ncols * dev.nrows
+		// FindFrameBits q is the index of the first frame bit after a non frame bit
 		ncols := n
 		nrows := (p - q) / n
 		periodNS := timediff.Nanoseconds() / int64(framesUsed)
 		lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
-		if ncols != dev.ncols || nrows != dev.nrows ||
+		if q != qExpect || ncols != dev.ncols || nrows != dev.nrows ||
 			math.Abs(float64(lsync)-float64(dev.lsync)) > 1 || framesUsed <= 0 {
 			ls.consecutiveDistributeDataErrors++
-			fmt.Printf("have ibuf %v, ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v, blockingReadCount %v, consecutiveDistributeDataErrors %v\n",
-				ibuf, ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount, ls.consecutiveDistributeDataErrors)
+			fmt.Printf("have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, blockingReadCount %v, consecutiveDistributeDataErrors %v\n",
+				ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount, ls.consecutiveDistributeDataErrors)
 			if ls.blockingReadCount > 1 {
 				// lsync calculation fails on first few reads so don't error
 				if ls.consecutiveDistributeDataErrors > 5 {

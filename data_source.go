@@ -654,8 +654,10 @@ func (ds *AnySource) ChannelNames() []string {
 
 // ConfigurePulseLengths set the pulse record length and pre-samples.
 func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
-	if npre < 0 || nsamp < 1 || nsamp < npre+1 {
-		return fmt.Errorf("ConfigurePulseLengths arguments are invalid")
+	if npre < 3 || // edgeTrigger looks at npre-3
+		nsamp < 1 || // require at least 1 sample
+		nsamp < npre+1 { // require at least one post trigger sample
+		return fmt.Errorf("ConfigurePulseLengths nsamp %v, npre %v are invalid", nsamp, npre)
 	}
 	for _, dsp := range ds.processors {
 		go dsp.ConfigurePulseLengths(nsamp, npre)
