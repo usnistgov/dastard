@@ -642,7 +642,7 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndicies {
 		dsp := ds.processors[channelIndex]
-		dsp.TriggerState = state.TriggerState
+		dsp.ConfigureTrigger(state.TriggerState)
 	}
 	return nil
 }

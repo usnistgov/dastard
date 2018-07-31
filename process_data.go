@@ -105,6 +105,7 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	defer dsp.changeMutex.Unlock()
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		dsp.removeProjectorsBasis()
+		dsp.edgeMultiSetInitialState()
 	}
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
@@ -114,15 +115,8 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
-
 	dsp.TriggerState = state
-}
-
-// ProcessData drains the data channel and processes whatever is found there.
-func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
-	for segment := range dataIn {
-		dsp.processSegment(&segment)
-	}
+	dsp.edgeMultiSetInitialState()
 }
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
