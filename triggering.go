@@ -221,7 +221,11 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		panic(fmt.Sprintf("dsp.EdgeMultiVerifyNMonotone %v, dsp.NSamples %v, dsp.NPreSamples %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
 	}
 	if !(dsp.EdgeRising || dsp.EdgeFalling) {
-		panic("need one of EdgeRising and EdgeFalling")
+		panic("need one of EdgeRising or EdgeFalling")
+	}
+	if iFirst < 6 {
+		panic(fmt.Sprintf("channel %v, iFirst %v<6!! segment.firstFramenum %v, dsp.edgeMultiILastInspected %v, dsp.edgeMultiInernalSearchState %v, dsp.NPresamples %v, dsp.NSamples %v, iLast %v, len(raw) %v, iPotential %v",
+			dsp.channelIndex, iFirst, segment.firstFramenum, dsp.edgeMultiILastInspected, dsp.edgeMultiInternalSearchState, dsp.NPresamples, dsp.NSamples, iLast, len(raw), iPotential))
 	}
 	for i := iFirst; i <= iLast; i++ {
 		// fmt.Printf("i=%v, i_frame=%v\n", i, i+int(segment.firstFramenum))
