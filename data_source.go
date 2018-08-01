@@ -81,16 +81,21 @@ func (ds *AnySource) RunDoneDone() {
 // 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 // When done with the loop, close all channels to DataStreamProcessor objects.
 func Start(ds DataSource) error {
+	debug("Start 1")
 	if ds.Running() {
 		return fmt.Errorf("cannot Start() a source that's already Running()")
 	}
+	debug("Start 2")
+
 	if err := ds.Sample(); err != nil {
 		return err
 	}
+	debug("Start 3")
 
 	if err := ds.PrepareRun(); err != nil {
 		return err
 	}
+	debug("Start 4")
 
 	if err := ds.StartRun(); err != nil {
 		return err
@@ -123,6 +128,8 @@ func Start(ds DataSource) error {
 		}
 
 	}()
+	debug("Start 5")
+
 	return nil
 }
 
@@ -587,12 +594,16 @@ func (ds *AnySource) PrepareRun() error {
 
 // Stop ends the data supply.
 func (ds *AnySource) Stop() error {
+	debug("Stop 1")
 	if !ds.Running() {
 		return fmt.Errorf("Anysource not running, cannot stop")
 	}
+	debug("Stop 2")
+
 	close(ds.abortSelf)
+	debug("Stop 3")
 	ds.broker.Stop()
-	// ds.publishSync.Stop()
+	debug("Stop 4")
 	ds.CloseOutputs()
 	return nil
 }
@@ -642,6 +653,8 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndicies {
 		dsp := ds.processors[channelIndex]
+		dsp.changeMutex.Lock()
+		dsp.changeMutex.Unlock()
 		dsp.ConfigureTrigger(state.TriggerState)
 	}
 	return nil

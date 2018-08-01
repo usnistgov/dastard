@@ -155,12 +155,30 @@ func (dev *lanceroDevice) idVersion() (uint32, error) {
 // function will block until the threshold interrupt event occurs:
 // at least threshold bytes of data are now available.
 func (dev *lanceroDevice) readEvents() (uint32, error) {
-	result := make([]byte, 4)
-	n, err := dev.FileEvents.Read(result)
-	if n < 4 || err != nil {
-		return 0, fmt.Errorf("lanceroDevice: Could not readEvents")
+	debug("dev.readEvents 1")
+	resultChan := make(chan []byte)
+	errChan := make(chan error)
+	go func() {
+		result := make([]byte, 4)
+		// Galen observed this call blocking, and leading to need for reboot
+		// SetDeadline doesn't actualy seem to work, so double
+		// up with a manual channel based deadline
+		dev.FileEvents.SetDeadline(time.Now().Add(3 * time.Second))
+		n, err := dev.FileEvents.Read(result)
+		debug("dev.readEvents 2")
+		if n < 4 || err != nil {
+			errChan <- err
+		}
+		resultChan <- result
+	}()
+	select {
+	case result := <-resultChan:
+		return binary.LittleEndian.Uint32(result[0:]), nil
+	case err := <-errChan:
+		return 0, fmt.Errorf("lanceroDeviceL could not readEvents, %v", err)
+	case <-time.After(5 * time.Second):
+		return 0, fmt.Errorf("lanceroDevice: Could not readEvents, channel timeout")
 	}
-	return binary.LittleEndian.Uint32(result[0:]), nil
 }
 
 // Write a uint32 to a Lancero register at the given offset.
@@ -284,11 +302,15 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 
 // Stop the cyclic SGDMA.
 func (dev *lanceroDevice) cyclicStop() error {
+	debug("dev.cyclicStop 1")
 	verbose := dev.verbosity >= 3
+	verbose = true
 	var BUSYFLAG uint32 = 1
 
 	// Read engine status
 	value, err := dev.readControl(0x204)
+	debug("dev.cyclicStop 2")
+
 	if err != nil {
 		return err
 	}
@@ -301,6 +323,7 @@ func (dev *lanceroDevice) cyclicStop() error {
 		}
 		return nil
 	}
+	debug("dev.cyclicStop 1")
 
 	// Stop the engine
 	if err = dev.writeControl(0x208, dev.engineStopValue); err != nil {
@@ -309,10 +332,13 @@ func (dev *lanceroDevice) cyclicStop() error {
 	if verbose {
 		log.Printf("cyclicStop(): Writing 0x%x to engine control 0x208.\n", value)
 	}
+	debug("dev.cyclicStop 3")
 
 	// Read engine status again, repeatedly until it is not BUSY.
 	var laststatus uint32 = 0xdeadbeef
 	for {
+		debug("dev.cyclicStop 4")
+
 		value, err = dev.readControl(0x204)
 		if err != nil {
 			return err
@@ -333,5 +359,7 @@ func (dev *lanceroDevice) cyclicStop() error {
 		log.Printf("cyclicStop(): Write engine no longer BUSY.\n")
 		log.Printf("cyclicStop(): Engine status = 0x%08x.\n", value)
 	}
+	debug("dev.cyclicStop 5")
+
 	return nil
 }

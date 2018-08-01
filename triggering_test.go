@@ -512,7 +512,8 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
 
 	// here we will find all triggers in trigInds, and contaminated records will be created
-	primaries, _ := testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti C: MakeContaminatedRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
+	// we expect the last two triggers to be not made because there will be limited by the rate limiting algorithm
+	primaries, _ := testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti C: MakeContaminatedRecords", []FrameIndex{100, 200, 301, 401, 460, 500})
 	for _, record := range primaries {
 		if len(record.data) != dsp.NSamples {
 			t.Errorf("EdgeMulti C record has wrong number of samples %v", record)

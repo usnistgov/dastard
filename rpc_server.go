@@ -244,10 +244,10 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		return err
 	}
 	s.isSourceActive = true
-	status := s.status
-	activeSource := s.ActiveSource
-	nChannels := activeSource.Nchan() // this occasionally failed with invalid memory address or nil pointer dereference when starting lancero
-	status.Nchannels = nChannels
+	//status := s.status
+	// activeSource := s.ActiveSource
+	// nChannels := activeSource.Nchan() // this occasionally failed with invalid memory address or nil pointer dereference when starting lancero
+	s.status.Nchannels = s.ActiveSource.Nchan()
 	if ls, ok := s.ActiveSource.(*LanceroSource); ok {
 		s.status.Ncol = make([]int, ls.ncards)
 		s.status.Nrow = make([]int, ls.ncards)

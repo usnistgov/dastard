@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"time"
@@ -198,6 +199,16 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	var iPotential, iLast, iFirst int
 	iPotential = int(dsp.edgeMultiIPotential - segment.firstFramenum)
 	iLast = ndata + dsp.NPresamples - dsp.NSamples
+	if dsp.edgeMultiILastInspected == 0 && segment.firstFramenum == 0 {
+		if dsp.edgeMultiInternalSearchState != initial {
+			dsp.edgeMultiInternalSearchState = initial
+			for i := 0; i < 10; i++ {
+				fmt.Printf("channelIndex %v needed edgeMultiInternalSearchState reset to initial\n", dsp.channelIndex)
+			}
+		}
+		// this shouldn't be neccesary, but maybe it helps because of race conditions?
+		// helps avoid iFirst <6
+	}
 	switch dsp.edgeMultiInternalSearchState {
 	case verifying:
 		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
@@ -322,6 +333,10 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			} else if dsp.EdgeMultiMakeContaminatedRecords {
 				newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 				records = append(records, newRecord)
+				if len(records) >= (len(raw)/dsp.NSamples)/2+1 {
+					log.Println("limiting recordization rate of EdgeMultiMakeContaminatedRecords")
+					break
+				}
 			} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
 				newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
 				records = append(records, newRecord)

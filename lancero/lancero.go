@@ -98,6 +98,7 @@ func (lan *Lancero) StartAdapter(waitSeconds int) error {
 
 // StopAdapter stops the ring buffer adapter.
 func (lan *Lancero) StopAdapter() error {
+	debug("lan.StopAdapter")
 	return lan.adapter.stop()
 }
 
