@@ -179,7 +179,7 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 
 // edgeMultiTriggerComputeAppend computes the EdgeMulti Trigger
 // There are two modes
-// 1. EdgeMulti: requires: EdgeMulti. one of EdgeRising, EdgeFalling. EdgeLevel, EdgeMultiVerifyNMonotone
+// 1. EdgeMulti: requires: EdgeMulti, EdgeLevel, EdgeMultiVerifyNMonotone
 // This mode looks for successive samples that differ by EdgeLevel or more. These become potential triggers
 // there are EdgeMultiVerifyNMonotone succesive samples with a positive difference
 // A new trigger can be found  Immediatley after a local maximum has been found
@@ -187,9 +187,9 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 // EdgeMultiMakeShortRecords  -> variable length records
 // EdgeMultiMakeContaminatedRecords -> records that may have another pulse in them
 // Neither -> Fixed length records without any other pulses in them (as if you already did postpeak deriv cut)
-// EdgeFalling probaly doesn't work yet
-// 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeLevel, EdgeRising, EdgeMultiVerifyNMonotone, AutoDelay
+// 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeLevel, EdgeMultiVerifyNMonotone, AutoDelay
 // will not produce pulse containing records, just the autotrigger that fit in around them
+// negative values for EdgeLevel look for negative going edges
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	segment := &dsp.stream.DataSegment
 	raw := segment.rawData
@@ -206,7 +206,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 				fmt.Printf("channelIndex %v needed edgeMultiInternalSearchState reset to initial\n", dsp.channelIndex)
 			}
 		}
-		// this shouldn't be neccesary, but maybe it helps because of race conditions?
+		// I havent' figure out why this is neccesary but maybe it helps because of race conditions?
 		// helps avoid iFirst <6
 	}
 	switch dsp.edgeMultiInternalSearchState {
@@ -231,13 +231,12 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	if dsp.EdgeMultiVerifyNMonotone+3 > dsp.NSamples-dsp.NPresamples {
 		panic(fmt.Sprintf("dsp.EdgeMultiVerifyNMonotone %v, dsp.NSamples %v, dsp.NPreSamples %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
 	}
-	if !(dsp.EdgeRising || dsp.EdgeFalling) {
-		panic("need one of EdgeRising or EdgeFalling")
-	}
 	if iFirst < 6 {
 		panic(fmt.Sprintf("channel %v, iFirst %v<6!! segment.firstFramenum %v, dsp.edgeMultiILastInspected %v, dsp.edgeMultiInernalSearchState %v, dsp.NPresamples %v, dsp.NSamples %v, iLast %v, len(raw) %v, iPotential %v",
 			dsp.channelIndex, iFirst, segment.firstFramenum, dsp.edgeMultiILastInspected, dsp.edgeMultiInternalSearchState, dsp.NPresamples, dsp.NSamples, iLast, len(raw), iPotential))
 	}
+	rising := dsp.EdgeLevel >= 0
+	falling := !rising
 	for i := iFirst; i <= iLast; i++ {
 		// fmt.Printf("i=%v, i_frame=%v\n", i, i+int(segment.firstFramenum))
 		// dsp.edgeMultiILastInspected = FrameIndex(i) + segment.firstFramenum
@@ -246,16 +245,15 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			dsp.edgeMultiInternalSearchState = searching
 		case searching:
 			diff := int32(raw[i]) - int32(raw[i-1])
-			if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
-				(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
+			if (rising && diff >= dsp.EdgeLevel) ||
+				(falling && diff <= dsp.EdgeLevel) {
 				iPotential = i
 				dsp.edgeMultiInternalSearchState = verifying
 			}
 		case verifying:
 			// now we have a potenial trigger
-			// require following samples to each be greater than the last
-			if raw[i] <= raw[i-1] { // here we observe a decrease
-				// fmt.Println("decrease")
+			// require following samples to each be greater than the last (for rising)
+			if (rising && raw[i] <= raw[i-1]) || (falling && raw[i] >= raw[i-1]) { // here we see non-monotone sample, eg a fall on a rising edge
 				nMonotone := i - iPotential
 				if nMonotone >= dsp.EdgeMultiVerifyNMonotone {
 					// now attempt to refine the trigger using the kink model
@@ -277,7 +275,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 					triggerInds = append(triggerInds, iTrigger)
 				}
 				dsp.edgeMultiInternalSearchState = searching
-			} else if i-iPotential >= dsp.NSamples { // if it has been rising for a whole record, that won't be a useful pulse, so just to back to searching
+			} else if i-iPotential >= dsp.NSamples { // if it has been monotone for a whole record, that won't be a useful pulse, go back to searching
 				dsp.edgeMultiInternalSearchState = searching
 			}
 		}

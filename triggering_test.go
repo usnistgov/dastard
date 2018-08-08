@@ -493,12 +493,9 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.NPresamples = 50
 	dsp.NSamples = 100
 
-	dsp.EdgeTrigger = true
 	dsp.EdgeMulti = true
-	dsp.EdgeRising = true
 	dsp.EdgeLevel = 10000
 	dsp.EdgeMultiVerifyNMonotone = 5
-	// should yield a single edge trigger
 	nRepeat := 1
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high", []FrameIndex{})
 	dsp.EdgeLevel = 1
@@ -608,6 +605,40 @@ func TestEdgeMulti(t *testing.T) {
 	_, _ = testTriggerSubroutine(t, rawJ, nRepeatJ, dsp, "EdgeMulti J: EdgeMultiNoise avoiding edge triggers",
 		[]FrameIndex{30, 40, 60, 70, 80, 90, 100, 110, 120, 130, 140, 160, 170, 180, 190})
 
+	//kink model parameters
+	var aFalling, bFalling, cFalling float64
+	aFalling = 1000
+	bFalling = 0
+	cFalling = -10
+	rawK := make([]RawType, 1000)
+	for i := range rawK {
+		rawK[i] = RawType(aFalling)
+	}
+	for i := 0; i < len(kinkList); i++ {
+		k := kinkList[i]
+		kint := int(math.Ceil(k))
+		for j := kint - 6; j < kint+20; j++ {
+			rawK[j] = RawType(math.Ceil(kinkModel(k, float64(j), aFalling, bFalling, cFalling)))
+			if j == kint+19 {
+				rawK[j] = RawType(kint) + RawType(aFalling) // make it easier to figure out which trigger you are looking at if you print raw
+			}
+		}
+		kinkListFrameIndex[i] = FrameIndex(kint)
+	}
+	dsp.NPresamples = 50
+	dsp.NSamples = 100
+	dsp.EdgeMulti = true
+	dsp.EdgeMultiNoise = false
+	dsp.EdgeLevel = -10000
+	dsp.EdgeMultiMakeContaminatedRecords = true
+	dsp.EdgeMultiMakeShortRecords = false
+	dsp.EdgeMultiVerifyNMonotone = 5
+	nRepeatK := 1
+	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti K: level too large (negative)", []FrameIndex{})
+	dsp.EdgeLevel = -1
+	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti L: negative trigger level", []FrameIndex{100, 200, 301, 401, 460, 500})
 }
 
 // TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
