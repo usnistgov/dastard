@@ -122,6 +122,7 @@ var nosaveMessages = map[string]struct{}{
 	"triggerrate":   {},
 	"numberwritten": {},
 	"newdastard":    {},
+	"tesmap":        {},
 }
 
 // saveState stores server configuration to the standard config file.

@@ -66,8 +66,16 @@ func TestServer(t *testing.T) {
 		t.Errorf("viper.GetInt(%q) returns %d, want %d", "harrypotter", hp, harrypotter)
 	}
 
-	// Test a basic configuration
 	var okay bool
+
+	// Test Map service
+	fname := "maps/ar14_30rows_map.cfg"
+	err = client.Call("MapServer.Load", &fname, &okay)
+	if err != nil {
+		t.Errorf("Error calling MapServer.Load(): %s", err.Error())
+	}
+
+	// Test a basic configuration
 	simConfig := SimPulseSourceConfig{
 		Nchan: 4, SampleRate: 10000.0, Pedestal: 3000.0,
 		Amplitude: 10000., Nsamp: 1000,

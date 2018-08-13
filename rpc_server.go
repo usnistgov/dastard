@@ -466,6 +466,9 @@ func RunRPCServer(portrpc int, block bool) {
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = clientMessageChan
 
+	mapServer := newMapServer()
+	mapServer.clientUpdates = clientMessageChan
+
 	// Signal clients that there's a new Dastard running
 	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
 
@@ -523,6 +526,9 @@ func RunRPCServer(portrpc int, block bool) {
 		server := rpc.NewServer()
 		if err := server.Register(sourceControl); err != nil {
 			panic(err)
+		}
+		if err := server.Register(mapServer); err != nil {
+			log.Fatal(err)
 		}
 		server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 		port := fmt.Sprintf(":%d", portrpc)
