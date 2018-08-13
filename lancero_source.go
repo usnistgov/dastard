@@ -188,7 +188,6 @@ func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction fl
 
 // Sample determines key data facts by sampling some initial data.
 func (ls *LanceroSource) Sample() error {
-	debug("Sample  1")
 	ls.blockingReadCount = 0
 	ls.nchan = 0
 	for _, device := range ls.active {
@@ -200,7 +199,6 @@ func (ls *LanceroSource) Sample() error {
 		ls.nchan += device.ncols * device.nrows * 2
 		ls.sampleRate = float64(device.clockMhz) * 1e6 / float64(device.lsync*device.nrows)
 	}
-	debug("Sample  3")
 
 	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
 	ls.updateChanOrderMap()
@@ -237,49 +235,40 @@ func (ls *LanceroSource) Sample() error {
 		ls.chanNumbers[i-1] = 1 + i/2
 		ls.chanNumbers[i] = 1 + i/2
 	}
-	debug("Sample  6")
 
 	return nil
 }
 
 func (device *LanceroDevice) sampleCard() error {
-	debug("Sample Card 1")
 	lan := device.card
 
 	if err := lan.ChangeRingBuffer(1200000, 400000); err != nil {
 		return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 	}
-	debug("Sample Card 2")
 
 	if err := lan.StartAdapter(2); err != nil {
 		return fmt.Errorf("failed to start lancero (driver problem): %v", err)
 	}
-	debug("Sample Card 3")
 
 	defer lan.StopAdapter()
 	log.Println("sampling card:")
 	log.Println(spew.Sdump(lan))
 	lan.InspectAdapter()
-	debug("Sample Card 4")
 
 	linePeriod := 1 // use dummy values for things we will learn by sampling data
 	frameLength := 1
 	dataDelay := device.cardDelay
 	channelMask := device.fiberMask
 	err := lan.CollectorConfigure(linePeriod, dataDelay, channelMask, frameLength)
-	debug("Sample Card 5")
 
 	if err != nil {
 		return fmt.Errorf("error in CollectorConfigure: %v", err)
 	}
-	debug("Sample Card 6")
 
 	const simulate bool = false
-	debug("Sample Card 7")
 
 	err = lan.StartCollector(simulate)
 	defer lan.StopCollector()
-	debug("Sample Card 8")
 
 	if err != nil {
 		return fmt.Errorf("error in StartCollector: %v", err)
@@ -288,14 +277,12 @@ func (device *LanceroDevice) sampleCard() error {
 	interruptCatcher := make(chan os.Signal, 1)
 	signal.Notify(interruptCatcher, os.Interrupt)
 	defer signal.Stop(interruptCatcher)
-	debug("Sample Card 9")
 
 	var bytesRead int
 	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
 	const tooManyIterations int = 100 // nor this many reads of the lancero
 	nIgnore := 3
 	for i := 0; i < tooManyIterations; i++ {
-		debug("Sample Card 10 i=", i)
 
 		if bytesRead >= tooManyBytes && i > nIgnore { // we ignore first buffer, so make sure we've seen 2
 			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
@@ -304,18 +291,15 @@ func (device *LanceroDevice) sampleCard() error {
 
 		var waittime time.Duration
 		var buffer []byte
-		debug("Sample Card 11 i=", i)
 
 		select {
 		case <-interruptCatcher:
 			return fmt.Errorf("LanceroDevice.sampleCard was interrupted")
 		default:
-			debug("Sample Card 12 i=", i)
 			_, waittime, err = lan.Wait()
 			if err != nil {
 				return err
 			}
-			debug("Sample Card 13 i=", i)
 			buffer, _, err = lan.AvailableBuffer()
 
 			if err != nil {
@@ -327,12 +311,10 @@ func (device *LanceroDevice) sampleCard() error {
 		// or possibly appending a few buffers
 		totalBytes := len(buffer)
 		if i < nIgnore {
-			debug("Sample Card 14 i=", i)
 			lan.ReleaseBytes(totalBytes)
 			bytesRead += totalBytes
 			continue
 		}
-		debug("Sample Card 15 i=", i)
 		log.Printf("waittime: %v\n", waittime)
 		log.Printf("Found buffer with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
 		log.Println(lancero.OdDashTX(buffer, 10))
@@ -353,7 +335,6 @@ func (device *LanceroDevice) sampleCard() error {
 		lan.ReleaseBytes(totalBytes)
 		return nil
 	}
-	debug("Sample Card 11")
 
 	return fmt.Errorf("After %d reads, found no valid buffers in Lancero device %d", tooManyIterations, device.devnum)
 }
@@ -609,7 +590,6 @@ func (ls *LanceroSource) distributeData() error {
 
 // stop ends the data streaming on all active lancero devices.
 func (ls *LanceroSource) stop() error {
-	debug("ls.stop 1")
 	for _, device := range ls.active {
 		if device.collRunning {
 			device.card.StopCollector()
@@ -619,14 +599,10 @@ func (ls *LanceroSource) stop() error {
 
 	for _, device := range ls.active {
 		if device.adapRunning {
-			debug("ls.stop 2")
-
 			device.card.StopAdapter()
 			device.adapRunning = false
 		}
 	}
-	debug("ls.stop 3")
-
 	return nil
 }
 
