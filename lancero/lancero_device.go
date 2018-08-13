@@ -155,12 +155,28 @@ func (dev *lanceroDevice) idVersion() (uint32, error) {
 // function will block until the threshold interrupt event occurs:
 // at least threshold bytes of data are now available.
 func (dev *lanceroDevice) readEvents() (uint32, error) {
-	result := make([]byte, 4)
-	n, err := dev.FileEvents.Read(result)
-	if n < 4 || err != nil {
-		return 0, fmt.Errorf("lanceroDevice: Could not readEvents")
+	resultChan := make(chan []byte)
+	errChan := make(chan error)
+	go func() {
+		result := make([]byte, 4)
+		// Galen observed this call blocking, and leading to need for reboot
+		// SetDeadline doesn't actualy seem to work, so double
+		// up with a manual channel based deadline
+		dev.FileEvents.SetDeadline(time.Now().Add(3 * time.Second))
+		n, err := dev.FileEvents.Read(result)
+		if n < 4 || err != nil {
+			errChan <- err
+		}
+		resultChan <- result
+	}()
+	select {
+	case result := <-resultChan:
+		return binary.LittleEndian.Uint32(result[0:]), nil
+	case err := <-errChan:
+		return 0, fmt.Errorf("lanceroDeviceL could not readEvents, %v", err)
+	case <-time.After(5 * time.Second):
+		return 0, fmt.Errorf("lanceroDevice: Could not readEvents, channel timeout")
 	}
-	return binary.LittleEndian.Uint32(result[0:]), nil
 }
 
 // Write a uint32 to a Lancero register at the given offset.
@@ -285,10 +301,12 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 // Stop the cyclic SGDMA.
 func (dev *lanceroDevice) cyclicStop() error {
 	verbose := dev.verbosity >= 3
+	verbose = true
 	var BUSYFLAG uint32 = 1
 
 	// Read engine status
 	value, err := dev.readControl(0x204)
+
 	if err != nil {
 		return err
 	}
@@ -313,6 +331,7 @@ func (dev *lanceroDevice) cyclicStop() error {
 	// Read engine status again, repeatedly until it is not BUSY.
 	var laststatus uint32 = 0xdeadbeef
 	for {
+
 		value, err = dev.readControl(0x204)
 		if err != nil {
 			return err
@@ -333,5 +352,6 @@ func (dev *lanceroDevice) cyclicStop() error {
 		log.Printf("cyclicStop(): Write engine no longer BUSY.\n")
 		log.Printf("cyclicStop(): Engine status = 0x%08x.\n", value)
 	}
+
 	return nil
 }

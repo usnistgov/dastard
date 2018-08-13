@@ -28,7 +28,8 @@ type SourceControl struct {
 	lancero   *LanceroSource
 	erroring  *ErroringSource
 	// TODO: Add sources for ROACH, Abaco
-	activeSource DataSource
+	ActiveSource   DataSource
+	isSourceActive bool
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
@@ -129,22 +130,22 @@ type MixFractionObject struct {
 // is used. Thus, we will internally store not MixFraction, but errorScale := MixFraction/Nsamp.
 // NOTE: only supported by LanceroSource.
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		*reply = false
 		return fmt.Errorf("No source is active")
 	}
-	err := s.activeSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
+	err := s.ActiveSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
 	*reply = (err == nil)
 	return err
 }
 
 // ConfigureTriggers configures the trigger state for 1 or more channels.
 func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
 	log.Printf("GOT ConfigureTriggers: %v", spew.Sdump(state))
-	err := s.activeSource.ChangeTriggerState(state)
+	err := s.ActiveSource.ChangeTriggerState(state)
 	s.broadcastTriggerState()
 	*reply = (err == nil)
 	return err
@@ -160,7 +161,7 @@ type ProjectorsBasisObject struct {
 
 // ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
 func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, reply *bool) error {
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
 	projectorsBytes, err := base64.StdEncoding.DecodeString(pbo.ProjectorsBase64)
@@ -178,7 +179,7 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 	if err := basis.UnmarshalBinary(basisBytes); err != nil {
 		return err
 	}
-	if err := s.activeSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription); err != nil {
+	if err := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription); err != nil {
 		return err
 	}
 
@@ -195,10 +196,10 @@ type SizeObject struct {
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
 	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
-	err := s.activeSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
+	err := s.ActiveSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
 	*reply = (err == nil)
 	s.status.Npresamp = sizes.Npre
 	s.status.Nsamples = sizes.Nsamp
@@ -208,25 +209,25 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
-	if s.activeSource != nil {
-		return fmt.Errorf("activeSource is not nil, want nil (you should call Stop)")
+	if s.isSourceActive {
+		return fmt.Errorf("already have active source, do not start")
 	}
 	name := strings.ToUpper(*sourceName)
 	switch name {
 	case "SIMPULSESOURCE":
-		s.activeSource = DataSource(s.simPulses)
+		s.ActiveSource = DataSource(s.simPulses)
 		s.status.SourceName = "SimPulses"
 
 	case "TRIANGLESOURCE":
-		s.activeSource = DataSource(s.triangle)
+		s.ActiveSource = DataSource(s.triangle)
 		s.status.SourceName = "Triangles"
 
 	case "LANCEROSOURCE":
-		s.activeSource = DataSource(s.lancero)
+		s.ActiveSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
 	case "ERRORINGSOURCE":
-		s.activeSource = DataSource(s.erroring)
+		s.ActiveSource = DataSource(s.erroring)
 		s.status.SourceName = "Erroring"
 
 	// TODO: Add cases here for ROACH, ABACO, etc.
@@ -237,13 +238,17 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	s.status.Running = true
-	if err := Start(s.activeSource); err != nil {
+	if err := Start(s.ActiveSource); err != nil {
 		s.status.Running = false
-		s.activeSource = nil
+		s.isSourceActive = false
 		return err
 	}
-	s.status.Nchannels = s.activeSource.Nchan()
-	if ls, ok := s.activeSource.(*LanceroSource); ok {
+	s.isSourceActive = true
+	//status := s.status
+	// activeSource := s.ActiveSource
+	// nChannels := activeSource.Nchan() // this occasionally failed with invalid memory address or nil pointer dereference when starting lancero
+	s.status.Nchannels = s.ActiveSource.Nchan()
+	if ls, ok := s.ActiveSource.(*LanceroSource); ok {
 		s.status.Ncol = make([]int, ls.ncards)
 		s.status.Nrow = make([]int, ls.ncards)
 		for i, device := range ls.active {
@@ -263,11 +268,11 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
 	log.Printf("Stopping data source\n")
-	s.activeSource.Stop()
+	s.ActiveSource.Stop()
 	s.handlePosibleStoppedSource()
 	*reply = true
 	s.broadcastStatus()
@@ -280,16 +285,17 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 // it should called in Stop() and any that would be incorrect if it didn't know
 // the source was stopped
 func (s *SourceControl) handlePosibleStoppedSource() {
-	if s.activeSource != nil && !s.activeSource.Running() {
+	if s.isSourceActive && !s.ActiveSource.Running() {
 		s.status.Running = false
-		s.activeSource = nil
+		s.isSourceActive = false
+		s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 	}
 }
 
-// WaitForStopTestingOnly will block until the running data source is finished and s.activeSource == nil
+// WaitForStopTestingOnly will block until the running data source is finished and s.isSourceActive
 func (s *SourceControl) WaitForStopTestingOnly(dummy *string, reply *bool) error {
-	for s.activeSource != nil {
-		s.activeSource.Wait()
+	for s.isSourceActive {
+		s.ActiveSource.Wait()
 		time.Sleep(1 * time.Millisecond)
 	}
 	return nil
@@ -308,10 +314,10 @@ type WriteControlConfig struct {
 // WriteControl requests start/stop/pause/unpause data writing
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
 	*reply = true
-	if s.activeSource == nil {
-		return nil
+	if !s.isSourceActive {
+		return fmt.Errorf("no active source")
 	}
-	err := s.activeSource.WriteControl(config)
+	err := s.ActiveSource.WriteControl(config)
 	*reply = (err != nil)
 	s.broadcastWritingState()
 	return err
@@ -324,10 +330,10 @@ type StateLabelConfig struct {
 
 // SetExperimentStateLabel sets the experiment state label in the _experiment_state file
 func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply *bool) error {
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		return fmt.Errorf("no active source")
 	}
-	if err := s.activeSource.SetExperimentStateLabel(config.Label); err != nil {
+	if err := s.ActiveSource.SetExperimentStateLabel(config.Label); err != nil {
 		return err
 	}
 	return nil
@@ -336,10 +342,11 @@ func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply 
 // WriteComment writes the comment to comment.txt
 func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 	*reply = true
-	if s.activeSource == nil || len(*comment) == 0 {
-		return nil
+	if !s.isSourceActive || len(*comment) == 0 {
+		return fmt.Errorf("cant write comment, sourceActive %v, len(*comment) %v",
+			s.isSourceActive, len(*comment))
 	}
-	ws := s.activeSource.ComputeWritingState()
+	ws := s.ActiveSource.ComputeWritingState()
 	if ws.Active {
 		commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
 		fp, err := os.Create(commentFilename)
@@ -368,7 +375,7 @@ const (
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
 func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
 
@@ -377,7 +384,7 @@ func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
 	if *couple {
 		c = ErrToFB
 	}
-	err := s.activeSource.SetCoupling(c)
+	err := s.ActiveSource.SetCoupling(c)
 	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
 	if err != nil {
 		*reply = false
@@ -387,7 +394,7 @@ func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
 
 // CoupleFBToErr turns on or off coupling of FB -> Error
 func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
-	if s.activeSource == nil {
+	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
 
@@ -396,7 +403,7 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 	if *couple {
 		c = FBToErr
 	}
-	err := s.activeSource.SetCoupling(c)
+	err := s.ActiveSource.SetCoupling(c)
 	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
 	if err != nil {
 		*reply = false
@@ -414,31 +421,31 @@ func (s *SourceControl) broadcastHeartbeat() {
 
 func (s *SourceControl) broadcastStatus() {
 	s.handlePosibleStoppedSource()
-	if s.activeSource != nil {
-		s.status.ChannelsWithProjectors = s.activeSource.ChannelsWithProjectors()
+	if s.isSourceActive {
+		s.status.ChannelsWithProjectors = s.ActiveSource.ChannelsWithProjectors()
 	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
 func (s *SourceControl) broadcastWritingState() {
-	if s.activeSource != nil && s.status.Running {
-		state := s.activeSource.ComputeWritingState()
+	if s.isSourceActive && s.status.Running {
+		state := s.ActiveSource.ComputeWritingState()
 		s.clientUpdates <- ClientUpdate{"WRITING", state}
 	}
 }
 
 func (s *SourceControl) broadcastTriggerState() {
-	if s.activeSource != nil && s.status.Running {
-		state := s.activeSource.ComputeFullTriggerState()
-		log.Printf("TriggerState: %v\n", state)
+	if s.isSourceActive && s.status.Running {
+		state := s.ActiveSource.ComputeFullTriggerState()
+		// log.Printf("TriggerState: %v\n", state)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", state}
 	}
 }
 
 func (s *SourceControl) broadcastChannelNames() {
-	if s.activeSource != nil && s.status.Running {
-		configs := s.activeSource.ChannelNames()
-		log.Printf("chanNames: %v\n", configs)
+	if s.isSourceActive && s.status.Running {
+		configs := s.ActiveSource.ChannelNames()
+		// log.Printf("chanNames: %v\n", configs)
 		s.clientUpdates <- ClientUpdate{"CHANNELNAMES", configs}
 	}
 }
@@ -483,6 +490,8 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
+	sourceControl.ActiveSource = sourceControl.triangle
+	sourceControl.isSourceActive = false
 	if err == nil {
 		sourceControl.broadcastStatus()
 	}

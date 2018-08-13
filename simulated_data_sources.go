@@ -96,7 +96,7 @@ func (ts *TriangleSource) blockingRead() error {
 		now = time.Now()
 		if ts.heartbeats != nil {
 			dt := now.Sub(ts.lastread).Seconds()
-			mb := float64(ts.cycleLen*2*len(ts.output)) / 1e6
+			mb := float64(ts.cycleLen*2*ts.nchan) / 1e6
 			ts.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
 		}
 		ts.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
@@ -104,7 +104,7 @@ func (ts *TriangleSource) blockingRead() error {
 
 	// Backtrack to find the time associated with the first sample.
 	firstTime := now.Add(-ts.timeperbuf) // use now here, this should acutually correspond to the time the data was read
-	for _, ch := range ts.output {
+	for channelIndex := range ts.processors {
 		datacopy := make([]RawType, ts.cycleLen)
 		copy(datacopy, ts.onecycle)
 		seg := DataSegment{
@@ -114,7 +114,7 @@ func (ts *TriangleSource) blockingRead() error {
 			firstFramenum:   ts.nextFrameNum,
 			firstTime:       firstTime,
 		}
-		ch <- seg
+		ts.segments[channelIndex] = seg
 	}
 	ts.nextFrameNum += FrameIndex(ts.cycleLen)
 
@@ -207,7 +207,7 @@ func (sps *SimPulseSource) blockingRead() error {
 		now = time.Now()
 		if sps.heartbeats != nil {
 			dt := now.Sub(sps.lastread).Seconds()
-			mb := float64(sps.cycleLen*2*len(sps.output)) / 1e6
+			mb := float64(sps.cycleLen*2*sps.nchan) / 1e6
 			sps.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
 		}
 		sps.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
@@ -215,7 +215,7 @@ func (sps *SimPulseSource) blockingRead() error {
 
 	// Backtrack to find the time associated with the first sample.
 	firstTime := now.Add(-sps.timeperbuf) // use now for accurate sample time
-	for _, ch := range sps.output {
+	for channelIndex := range sps.processors {
 		datacopy := make([]RawType, sps.cycleLen)
 		copy(datacopy, sps.onecycle)
 		for i := 0; i < sps.cycleLen; i++ {
@@ -228,7 +228,7 @@ func (sps *SimPulseSource) blockingRead() error {
 			firstFramenum:   sps.nextFrameNum,
 			firstTime:       firstTime,
 		}
-		ch <- seg
+		sps.segments[channelIndex] = seg
 	}
 	sps.nextFrameNum += FrameIndex(sps.cycleLen)
 	return nil

@@ -31,14 +31,15 @@ type LanceroDevice struct {
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
 type LanceroSource struct {
-	devices           map[int]*LanceroDevice
-	ncards            int
-	clockMhz          int
-	nsamp             int
-	active            []*LanceroDevice
-	chan2readoutOrder []int
-	Mix               []*Mix
-	blockingReadCount int
+	devices                         map[int]*LanceroDevice
+	ncards                          int
+	clockMhz                        int
+	nsamp                           int
+	active                          []*LanceroDevice
+	chan2readoutOrder               []int
+	Mix                             []*Mix
+	blockingReadCount               int
+	consecutiveDistributeDataErrors int
 	AnySource
 }
 
@@ -190,6 +191,7 @@ func (ls *LanceroSource) Sample() error {
 	ls.blockingReadCount = 0
 	ls.nchan = 0
 	for _, device := range ls.active {
+
 		err := device.sampleCard()
 		if err != nil {
 			return err
@@ -197,6 +199,7 @@ func (ls *LanceroSource) Sample() error {
 		ls.nchan += device.ncols * device.nrows * 2
 		ls.sampleRate = float64(device.clockMhz) * 1e6 / float64(device.lsync*device.nrows)
 	}
+
 	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
 	ls.updateChanOrderMap()
 
@@ -232,6 +235,7 @@ func (ls *LanceroSource) Sample() error {
 		ls.chanNumbers[i-1] = 1 + i/2
 		ls.chanNumbers[i] = 1 + i/2
 	}
+
 	return nil
 }
 
@@ -241,9 +245,11 @@ func (device *LanceroDevice) sampleCard() error {
 	if err := lan.ChangeRingBuffer(1200000, 400000); err != nil {
 		return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 	}
+
 	if err := lan.StartAdapter(2); err != nil {
 		return fmt.Errorf("failed to start lancero (driver problem): %v", err)
 	}
+
 	defer lan.StopAdapter()
 	log.Println("sampling card:")
 	log.Println(spew.Sdump(lan))
@@ -254,13 +260,16 @@ func (device *LanceroDevice) sampleCard() error {
 	dataDelay := device.cardDelay
 	channelMask := device.fiberMask
 	err := lan.CollectorConfigure(linePeriod, dataDelay, channelMask, frameLength)
+
 	if err != nil {
 		return fmt.Errorf("error in CollectorConfigure: %v", err)
 	}
 
 	const simulate bool = false
+
 	err = lan.StartCollector(simulate)
 	defer lan.StopCollector()
+
 	if err != nil {
 		return fmt.Errorf("error in StartCollector: %v", err)
 	}
@@ -268,11 +277,13 @@ func (device *LanceroDevice) sampleCard() error {
 	interruptCatcher := make(chan os.Signal, 1)
 	signal.Notify(interruptCatcher, os.Interrupt)
 	defer signal.Stop(interruptCatcher)
+
 	var bytesRead int
 	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
 	const tooManyIterations int = 100 // nor this many reads of the lancero
 	nIgnore := 3
 	for i := 0; i < tooManyIterations; i++ {
+
 		if bytesRead >= tooManyBytes && i > nIgnore { // we ignore first buffer, so make sure we've seen 2
 			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
 				bytesRead)
@@ -280,6 +291,7 @@ func (device *LanceroDevice) sampleCard() error {
 
 		var waittime time.Duration
 		var buffer []byte
+
 		select {
 		case <-interruptCatcher:
 			return fmt.Errorf("LanceroDevice.sampleCard was interrupted")
@@ -323,6 +335,7 @@ func (device *LanceroDevice) sampleCard() error {
 		lan.ReleaseBytes(totalBytes)
 		return nil
 	}
+
 	return fmt.Errorf("After %d reads, found no valid buffers in Lancero device %d", tooManyIterations, device.devnum)
 }
 
@@ -484,25 +497,32 @@ func (ls *LanceroSource) distributeData() error {
 		if err != nil {
 			return fmt.Errorf("Error in findFrameBits: %v", err)
 		}
+		qExpect := dev.ncols * dev.nrows
+		// FindFrameBits q is the index of the first frame bit after a non frame bit
 		ncols := n
 		nrows := (p - q) / n
 		periodNS := timediff.Nanoseconds() / int64(framesUsed)
 		lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
-		if ncols != dev.ncols || nrows != dev.nrows || lsync != dev.lsync || framesUsed <= 0 {
-			fmt.Printf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v, blockingReadCount %v\n",
-				ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount)
+		if q != qExpect || ncols != dev.ncols || nrows != dev.nrows || framesUsed <= 0 {
+			ls.consecutiveDistributeDataErrors++
+			fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, blockingReadCount %v, consecutiveDistributeDataErrors %v\n",
+				ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount, ls.consecutiveDistributeDataErrors)
 			if ls.blockingReadCount > 1 {
 				// lsync calculation fails on first few reads so don't error
-				return fmt.Errorf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v",
-					ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync)
+				if ls.consecutiveDistributeDataErrors > 5 {
+					return fmt.Errorf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v",
+						ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync)
+				}
 			}
+		} else {
+			ls.consecutiveDistributeDataErrors = 0
 		}
 	}
 	// Consume framesUsed frames of data from each channel.
 	// Careful! This slice of slices will be in lancero READOUT order:
 	// r0c0, r0c1, r0c2, etc.
-	datacopies := make([][]RawType, len(ls.output))
-	for i := range ls.output {
+	datacopies := make([][]RawType, ls.nchan)
+	for i := range ls.processors {
 		datacopies[i] = make([]RawType, framesUsed)
 	}
 
@@ -542,15 +562,14 @@ func (ls *LanceroSource) distributeData() error {
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
 	firstTime := lastSampleTime.Add(-segDuration)
-	for channum, ch := range ls.output {
-		data := datacopies[ls.chan2readoutOrder[channum]]
-		if channum%2 == 1 { // feedback channel needs more processing
-			mix := ls.Mix[channum]
-			errData := datacopies[ls.chan2readoutOrder[channum-1]]
+	for channelIndex := range ls.processors {
+		data := datacopies[ls.chan2readoutOrder[channelIndex]]
+		if channelIndex%2 == 1 { // feedback channel needs more processing
+			mix := ls.Mix[channelIndex]
+			errData := datacopies[ls.chan2readoutOrder[channelIndex-1]]
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.errorScale
 			mix.MixRetardFb(&data, &errData)
 		}
-
 		seg := DataSegment{
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating
@@ -558,7 +577,7 @@ func (ls *LanceroSource) distributeData() error {
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
 		}
-		ch <- seg
+		ls.segments[channelIndex] = seg
 	}
 
 	ls.nextFrameNum += FrameIndex(framesUsed)

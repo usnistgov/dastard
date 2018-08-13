@@ -71,7 +71,7 @@ func (dsp *DataStreamProcessor) HasProjectors() bool {
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
-func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWrittenChan chan int) *DataStreamProcessor {
+func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
 	framesPerSample := 1
 	firstFrame := FrameIndex(0)
@@ -83,7 +83,6 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, numberWritt
 	dsp := DataStreamProcessor{channelIndex: channelIndex, Broker: broker,
 		stream: *stream, NSamples: nsamp, NPresamples: npre,
 	}
-	dsp.DataPublisher.numberWrittenChan = numberWrittenChan
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors.Reset()              // dsp.projectors is set to zero value
 	dsp.basis.Reset()                   // dsp.basis is set to zero value
@@ -106,6 +105,7 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	defer dsp.changeMutex.Unlock()
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		dsp.removeProjectorsBasis()
+		dsp.edgeMultiSetInitialState()
 	}
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
@@ -115,29 +115,21 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
-
 	dsp.TriggerState = state
-}
-
-// ProcessData drains the data channel and processes whatever is found there.
-func (dsp *DataStreamProcessor) ProcessData(dataIn <-chan DataSegment) {
-	for segment := range dataIn {
-		dsp.processSegment(&segment)
-	}
+	dsp.edgeMultiSetInitialState()
 }
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
-
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
 	records, _ := dsp.TriggerData()
-	dsp.AnalyzeData(records)                      // add analysis results to records in-place
-	err := dsp.DataPublisher.PublishData(records) // publish and save data, when enabled
-	if err != nil {
+	dsp.AnalyzeData(records)                                       // add analysis results to records in-place
+	if err := dsp.DataPublisher.PublishData(records); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
+	segment.processed = true
 }
 
 // DecimateData decimates data in-place.

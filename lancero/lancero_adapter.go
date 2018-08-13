@@ -234,6 +234,7 @@ func (a *adapter) start(waitSeconds int) error {
 
 func (a *adapter) stop() error {
 	verbose := a.verbosity >= 3
+	verbose = true
 	if verbose {
 		log.Println("adapter.stop(): setting RUN | FLUSH bits.")
 	}
@@ -245,7 +246,6 @@ func (a *adapter) stop() error {
 	if err != nil || value != bitsAdapterCtrlRunFlush {
 		return fmt.Errorf("adapter.stop() could not set state RUN|FLUSH")
 	}
-
 	if verbose {
 		log.Printf("adapter.stop(): ADAP_CTRL = 0x%08x.\n", value)
 		log.Printf("adapter.stop(): lancero_cyclic_stop()).\n")
@@ -253,7 +253,6 @@ func (a *adapter) stop() error {
 	if err = a.device.cyclicStop(); err != nil {
 		return err
 	}
-
 	// stop adapter
 	if verbose {
 		log.Printf("adapter.stop(): clearing RUN | FLUSH bits.\n")
@@ -263,14 +262,12 @@ func (a *adapter) stop() error {
 	if err != nil || value != 0 {
 		return fmt.Errorf("adapter.stop() could not set state 0")
 	}
-
 	// configure the Avalon ST/MM adapter
 	a.readIndex = 0
 	a.device.writeRegister(adapterRBS, a.length)
 	a.device.writeRegister(adapterRBTH, a.thresholdLevel)
 	a.device.writeRegister(adapterRBRI, a.readIndex)
 	a.device.writeRegister(adapterRBAD, 0)
-
 	// We want to get alarm when ring buffer more than 75% filled.
 	a.device.writeRegister(adapterALRM, (3*a.length)/4)
 	return nil
@@ -291,6 +288,7 @@ func (a *adapter) wait() (time.Time, time.Duration, error) {
 		a.lastThresh = now
 		return now, sinceLast, nil
 	}
+
 	if a.verbosity >= 3 {
 		log.Println("adapter.wait(): Waiting for threshold event.")
 	}
@@ -301,6 +299,7 @@ func (a *adapter) wait() (time.Time, time.Duration, error) {
 	now = time.Now()
 	sinceLast := now.Sub(a.lastThresh)
 	a.lastThresh = now
+
 	if a.verbosity >= 3 {
 		waitTime := now.Sub(start)
 		log.Printf("adapter.wait(): Waited for %v (%v since last thresh).\n",
