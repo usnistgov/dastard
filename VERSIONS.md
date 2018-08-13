@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.1.1** August 13, 2018.
+* Demonstrated OFF file writing with triggering.
+
 **0.1.0** July 13, 2018.
 * Ready for acquiring LJH (and maybe OFF) files with triggering.
 
