@@ -289,6 +289,9 @@ func (s *SourceControl) handlePosibleStoppedSource() {
 		s.status.Running = false
 		s.isSourceActive = false
 		s.clientUpdates <- ClientUpdate{"STATUS", s.status}
+		if s.ActiveSource.ShouldAutoRestart() {
+			log.Println("dastard is aware it should AutoRestart, but it's not implemented yet")
+		}
 	}
 }
 

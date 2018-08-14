@@ -48,6 +48,7 @@ type DataSource interface {
 	ProcessSegments() error
 	RunDoneAdd()
 	RunDoneDone()
+	ShouldAutoRestart() bool
 }
 
 // Wait returns when the source run is done, aka the source is stopped
@@ -55,6 +56,11 @@ func (ds *AnySource) Wait() error {
 	// fmt.Println("ds.Wait")
 	ds.runDone.Wait()
 	return nil
+}
+
+// Return true if source should be auto-restarted after an error (AnySource default implementation returns false)
+func (ds *AnySource) ShouldAutoRestart() bool {
+	return ds.shouldAutoRestart
 }
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
@@ -169,6 +175,7 @@ type AnySource struct {
 	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
 	broker       *TriggerBroker
 	// publishSync  *PublishSync
+	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
 	heartbeats          chan Heartbeat
 	segments            []DataSegment

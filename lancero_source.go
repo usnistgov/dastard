@@ -91,12 +91,13 @@ func contains(s []*LanceroDevice, e *LanceroDevice) bool {
 // For now, we'll make the FiberMask equal for all cards. That need not
 // be permanent, but I do think ClockMhz is necessarily the same for all cards.
 type LanceroSourceConfig struct {
-	FiberMask      uint32
-	ClockMhz       int
-	Nsamp          int
-	CardDelay      []int
-	ActiveCards    []int
-	AvailableCards []int
+	FiberMask         uint32
+	ClockMhz          int
+	Nsamp             int
+	CardDelay         []int
+	ActiveCards       []int
+	AvailableCards    []int
+	ShouldAutoRestart bool
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
@@ -111,6 +112,7 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMhz = config.ClockMhz
+	ls.shouldAutoRestart = config.ShouldAutoRestart
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
 		if dev == nil {
