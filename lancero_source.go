@@ -278,65 +278,55 @@ func (device *LanceroDevice) sampleCard() error {
 	signal.Notify(interruptCatcher, os.Interrupt)
 	defer signal.Stop(interruptCatcher)
 
-	var bytesRead int
-	const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
-	const tooManyIterations int = 100 // nor this many reads of the lancero
-	nIgnore := 3
-	for i := 0; i < tooManyIterations; i++ {
-
-		if bytesRead >= tooManyBytes && i > nIgnore { // we ignore first buffer, so make sure we've seen 2
-			return fmt.Errorf("LanceroDevice.sampleCard read %d bytes, failed to find nrow*ncol",
-				bytesRead)
-		}
-
-		var waittime time.Duration
-		var buffer []byte
-
+	var timeFix0, timeFix time.Time
+	var err0 error
+	_, timeFix0, err0 = lan.AvailableBuffer()
+	if err0 != nil {
+		return err0
+	}
+	timeFix = timeFix0
+	var buffer []byte
+	minDuration := 200 * time.Millisecond // the NoHardware tests can fail if this is too long, since I test with multiple lancero devices, the first device has to wait for all other devices to finish
+	var bytesReadSinceTimeFix0 int64
+	frameBitsHandled := false
+	for timeFix.Sub(timeFix0) < minDuration {
 		select {
 		case <-interruptCatcher:
 			return fmt.Errorf("LanceroDevice.sampleCard was interrupted")
 		default:
-			_, waittime, err = lan.Wait()
-			if err != nil {
-				return err
+			if _, _, err2 := lan.Wait(); err2 != nil {
+				return err2
 			}
-			buffer, _, err = lan.AvailableBuffer()
-
-			if err != nil {
-				return err
+			var b []byte
+			var err1 error
+			b, timeFix, err1 = lan.AvailableBuffer()
+			if err1 != nil {
+				return err1
 			}
+			bytesReadSinceTimeFix0 += int64(len(b))
+			if !frameBitsHandled {
+				buffer = append(buffer, b...) // only append if framebits havent been handled, to reduce unneeded memory usage
+				log.Println(lancero.OdDashTX(buffer, 10))
+				q, p, n, err := lancero.FindFrameBits(buffer)
+				if err != nil {
+					return fmt.Errorf("Error in findFrameBits: %v", err)
+				}
+				device.ncols = n
+				device.nrows = (p - q) / n
+				device.frameSize = device.ncols * device.nrows * 4
+				frameBitsHandled = true
+			}
+			lan.ReleaseBytes(len(b))
 		}
-
-		// if dastard is getting lsync wrong, consider requireing a minimum buffer size
-		// or possibly appending a few buffers
-		totalBytes := len(buffer)
-		if i < nIgnore {
-			lan.ReleaseBytes(totalBytes)
-			bytesRead += totalBytes
-			continue
-		}
-		log.Printf("waittime: %v\n", waittime)
-		log.Printf("Found buffer with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
-		log.Println(lancero.OdDashTX(buffer, 10))
-		q, p, n, err := lancero.FindFrameBits(buffer)
-		bytesPerFrame := 4 * (p - q)
-		if err != nil {
-			return fmt.Errorf("Error in findFrameBits: %v", err)
-		}
-		device.ncols = n
-		device.nrows = (p - q) / n
-		periodNS := waittime.Nanoseconds() / (int64(totalBytes) / int64(bytesPerFrame))
+	}
+	if frameBitsHandled {
+		periodNS := timeFix.Sub(timeFix0).Nanoseconds() / (bytesReadSinceTimeFix0 / int64(device.frameSize))
 		device.lsync = roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
-		device.frameSize = device.ncols * device.nrows * 4
-
 		log.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
 			device.nrows, periodNS, device.lsync)
-
-		lan.ReleaseBytes(totalBytes)
 		return nil
 	}
-
-	return fmt.Errorf("After %d reads, found no valid buffers in Lancero device %d", tooManyIterations, device.devnum)
+	return fmt.Errorf("failed to SampleCard")
 }
 
 // Imperfect round to nearest integer
