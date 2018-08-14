@@ -290,6 +290,10 @@ func (device *LanceroDevice) sampleCard() error {
 	var bytesReadSinceTimeFix0 int64
 	frameBitsHandled := false
 	for timeFix.Sub(timeFix0) < minDuration {
+		// notice above we called AvailableBuffer and discarded data, noted timeFix0
+		// here we read for at least minDuration, counting all bytes read (hopefully reading for this long will make lsync reliably correct)
+		// we also append all bytes read to buffer to learn ncol and nrows
+		// and stop appending once we have learned ncol and nrows
 		select {
 		case <-interruptCatcher:
 			return fmt.Errorf("LanceroDevice.sampleCard was interrupted")
@@ -307,14 +311,15 @@ func (device *LanceroDevice) sampleCard() error {
 			if !frameBitsHandled {
 				buffer = append(buffer, b...) // only append if framebits havent been handled, to reduce unneeded memory usage
 				log.Println(lancero.OdDashTX(buffer, 10))
-				q, p, n, err := lancero.FindFrameBits(buffer)
-				if err != nil {
-					return fmt.Errorf("Error in findFrameBits: %v", err)
+				q, p, n, err3 := lancero.FindFrameBits(buffer)
+				if err3 == nil {
+					device.ncols = n
+					device.nrows = (p - q) / n
+					device.frameSize = device.ncols * device.nrows * 4
+					frameBitsHandled = true
+				} else {
+					fmt.Printf("Error in findFrameBits: %v", err3)
 				}
-				device.ncols = n
-				device.nrows = (p - q) / n
-				device.frameSize = device.ncols * device.nrows * 4
-				frameBitsHandled = true
 			}
 			lan.ReleaseBytes(len(b))
 		}
