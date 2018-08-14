@@ -217,6 +217,9 @@ func TestServer(t *testing.T) {
 	if err1 := client.Call("SourceControl.WriteControl", &wconfig, &okay); err1 != nil {
 		t.Error("SourceControl.WriteControl START error:", err1)
 	}
+	if err1 := client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay); err1 == nil {
+		t.Errorf("Expected error calling SourceControl.ConfigurePulseLengths(%v) when writing active, saw none", sizes)
+	}
 	time.Sleep(150 * time.Millisecond)
 	comment := "hello"
 	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
@@ -396,7 +399,7 @@ func TestErroringSourceRPC(t *testing.T) {
 	sourceName := "ERRORINGSOURCE"
 	dummy := ""
 	okay := false
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 5; i++ { // this test is super slow (like 10 seconds), not sure why
 		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
 			t.Error(err)
 		}
