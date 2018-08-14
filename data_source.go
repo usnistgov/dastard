@@ -58,7 +58,7 @@ func (ds *AnySource) Wait() error {
 	return nil
 }
 
-// Return true if source should be auto-restarted after an error (AnySource default implementation returns false)
+// ShouldAutoRestart true if source should be auto-restarted after an error
 func (ds *AnySource) ShouldAutoRestart() bool {
 	return ds.shouldAutoRestart
 }
