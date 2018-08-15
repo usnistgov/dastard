@@ -3,6 +3,7 @@ package dastard
 import (
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/rpc"
@@ -366,6 +367,26 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 			fp.WriteString("\n")
 		}
 	}
+	return nil
+}
+
+// ReadComment reads the contents of comment.txt if it exists, otherwise returns err
+func (s *SourceControl) ReadComment(zero *int, reply *string) error {
+	if !s.isSourceActive {
+		return fmt.Errorf("cant read comment with no active source")
+	} else if *zero != 0 {
+		return fmt.Errorf("please pass an the value 0, as it will be ignored, you passed %v", zero)
+	}
+	ws := s.ActiveSource.ComputeWritingState()
+	if !ws.Active {
+		return fmt.Errorf("cant read comment when not activley writing")
+	}
+	commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
+	b, err := ioutil.ReadFile(commentFilename)
+	if err != nil {
+		return err
+	}
+	*reply = string(b)
 	return nil
 }
 

@@ -225,6 +225,16 @@ func TestServer(t *testing.T) {
 	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
 		t.Error("SourceControl.WriteComment error while writing:", err1)
 	}
+	if true { // prevent variables from persisting
+		var zero *int
+		var reply *string
+		if err1 := client.Call("SourceControl.ReadComment", &zero, &reply); err1 != nil {
+			t.Error("SourceControl.ReadComment error:", err1)
+		}
+		if *reply != "hello\n" {
+			t.Errorf("want %q, have %q", "hello\n", *reply)
+		}
+	}
 	stateLabelArg := StateLabelConfig{Label: "testlabel"}
 	if err1 := client.Call("SourceControl.SetExperimentStateLabel", &stateLabelArg, &okay); err1 != nil {
 		t.Error(err1)
