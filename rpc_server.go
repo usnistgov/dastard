@@ -200,7 +200,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
-	if s.ActiveSource.ComputeWritingState().Active {
+	if s.ActiveSource.ComputeWritingState().Active && (s.status.Npresamp != sizes.Npre || s.status.Nsamples != sizes.Nsamp) {
 		return fmt.Errorf("Stop writing before changing record lengths")
 	}
 	err := s.ActiveSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
@@ -248,9 +248,12 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		return err
 	}
 	s.isSourceActive = true
-	//status := s.status
-	// activeSource := s.ActiveSource
-	// nChannels := activeSource.Nchan() // this occasionally failed with invalid memory address or nil pointer dereference when starting lancero
+	sizes := SizeObject{Npre: s.status.Npresamp, Nsamp: s.status.Nsamples}
+	var replyIgnored bool
+	// Npresamp and Nsamples are properties of the DataStreamProcessor
+	// they are hardcoded in NewDataStreamProcessor, which is called in PrepareRun, which is called in Start
+	// so rather than chain through arguments, I just call ConfigurePulseLengths after Start
+	s.ConfigurePulseLengths(sizes, &replyIgnored)
 	s.status.Nchannels = s.ActiveSource.Nchan()
 	if ls, ok := s.ActiveSource.(*LanceroSource); ok {
 		s.status.Ncol = make([]int, ls.ncards)

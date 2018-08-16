@@ -208,10 +208,11 @@ func (w Writer) Close() {
 // rowcount is framecount*number_of_rows+row_number for TDM or TDM-like (eg CDM) data,
 // rowcount=framecount for uMux data
 // return error if data is wrong length (w.Samples is correct length)
-func (w *Writer) WriteRecord(rowcount int64, timestamp int64, data []uint16) error {
+func (w *Writer) WriteRecord(framecount int64, timestamp int64, data []uint16) error {
 	if len(data) != w.Samples {
 		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
+	rowcount := framecount*int64(w.NumberOfRows) + int64(w.RowNum)
 	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
 		return err
 	}
@@ -287,14 +288,14 @@ func (w *Writer3) WriteHeader() error {
 // firstRisingSample is the index in data of the sample after the pretrigger (zero or one indexed?)
 // timestamp is posix timestamp in microseconds since epoch
 // data can be variable length
-func (w *Writer3) WriteRecord(firstRisingSample int32, rowcount int64, timestamp int64, data []uint16) error {
+func (w *Writer3) WriteRecord(firstRisingSample int32, framecount int64, timestamp int64, data []uint16) error {
 	if _, err := w.writer.Write(getbytes.FromInt32(int32(len(data)))); err != nil {
 		return err
 	}
 	if _, err := w.writer.Write(getbytes.FromInt32(firstRisingSample)); err != nil {
 		return err
 	}
-	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
+	if _, err := w.writer.Write(getbytes.FromInt64(framecount)); err != nil {
 		return err
 	}
 	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {

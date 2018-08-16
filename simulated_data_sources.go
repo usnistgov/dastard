@@ -65,6 +65,9 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 	ts.maxval = config.Max
 	cycleTime := float64(ts.cycleLen) / ts.sampleRate
 	ts.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
+	if ts.timeperbuf > 4*time.Second {
+		return fmt.Errorf("timeperbuf is %v, should be less than 4 seconds", ts.timeperbuf)
+	}
 	return nil
 }
 
@@ -174,8 +177,10 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 
 	cycleTime := float64(sps.cycleLen) / sps.sampleRate
 	sps.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
-	// log.Printf("made a simulated pulse source for %d channels.\n", sps.nchan)
-	// log.Printf("configured with wait time of %v\n", sps.timeperbuf)
+	sps.timeperbuf = time.Duration(float64(time.Second) * cycleTime)
+	if sps.timeperbuf > 4*time.Second {
+		return fmt.Errorf("timeperbuf is %v, should be less than 4 seconds", sps.timeperbuf)
+	}
 	return nil
 }
 

@@ -108,8 +108,10 @@ func TestBadVersionNumbers(t *testing.T) {
 
 func TestWriter(t *testing.T) {
 	w := Writer{FileName: "writertest.ljh",
-		Samples:    100,
-		Presamples: 50}
+		Samples:      100,
+		Presamples:   50,
+		NumberOfRows: 2,
+		RowNum:       1}
 	err := w.CreateFile()
 	if err != nil {
 		t.Errorf("file creation error: %v", err)
@@ -163,8 +165,10 @@ func TestWriter(t *testing.T) {
 	if record.TimeCode != 127 {
 		t.Errorf("WriterTest, TimeCode Wrong, have %v, wand %v", record.TimeCode, 127)
 	}
-	if record.RowCount != 8888888 {
-		t.Errorf("WriterTest, RowCount Wrong, have %v, want %v", record.RowCount, 8888888)
+	// WriteRecord accepts a framecount of 8888888 here, but we write the Rowcount 8888888*2+1=17777777
+	// w.NumberOfRows = 2, w.RowNum = 1
+	if record.RowCount != 17777777 {
+		t.Errorf("WriterTest, RowCount Wrong, have %v, want %v", record.RowCount, 17777777)
 	}
 	w.SourceName = "Lancero"
 	w.WriteHeader(time.Now())
