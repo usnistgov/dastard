@@ -250,6 +250,9 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.isSourceActive = true
 	sizes := SizeObject{Npre: s.status.Npresamp, Nsamp: s.status.Nsamples}
 	var replyIgnored bool
+	// Npresamp and Nsamples are properties of the DataStreamProcessor
+	// they are hardcoded in NewDataStreamProcessor, which is called in PrepareRun, which is called in Start
+	// so rather than chain through arguments, I just call ConfigurePulseLengths after Start
 	s.ConfigurePulseLengths(sizes, &replyIgnored)
 	s.status.Nchannels = s.ActiveSource.Nchan()
 	if ls, ok := s.ActiveSource.(*LanceroSource); ok {
