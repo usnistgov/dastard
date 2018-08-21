@@ -14,6 +14,8 @@ sudo apt-get update
 sudo apt-get install -y libsodium-dev python-pyqt5 golang-1.10-go libczmq-dev`
 go get -u github.com/usnistgov/dastard
 ```
+ * Install microscope https://github.com/usnistgov/microscope
+ * Install dastard-commander https://github.com/usnistgov/dastard-commander
 
 ## Purpose
 
