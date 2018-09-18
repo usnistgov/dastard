@@ -29,17 +29,27 @@ type LanceroDevice struct {
 	card        lancero.Lanceroer
 }
 
+// BuffersChanType is an internal message type used to allow
+// a goroutine to read from the Lancero card and put data on a buffered channel
+type BuffersChanType struct {
+	datacopies     [][]RawType
+	lastSampleTime time.Time
+	timeDiff       time.Duration
+	totalBytes     int
+}
+
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
 type LanceroSource struct {
-	devices                         map[int]*LanceroDevice
-	ncards                          int
-	clockMhz                        int
-	nsamp                           int
-	active                          []*LanceroDevice
-	chan2readoutOrder               []int
-	Mix                             []*Mix
-	blockingReadCount               int
-	consecutiveDistributeDataErrors int
+	devices           map[int]*LanceroDevice
+	ncards            int
+	clockMhz          int
+	nsamp             int
+	active            []*LanceroDevice
+	chan2readoutOrder []int
+	Mix               []*Mix
+	blockingReadCount int
+	buffersChan       chan BuffersChanType
+	readPeriod        time.Duration
 	AnySource
 }
 
@@ -50,6 +60,8 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
+	source.buffersChan = make(chan BuffersChanType, 20)
+	source.readPeriod = 50 * time.Millisecond
 	if err != nil {
 		return source, err
 	}
@@ -427,7 +439,101 @@ func (ls *LanceroSource) StartRun() error {
 			return fmt.Errorf("read %v bytes, did %v iterations", bytesRead, i)
 		}
 	}
+	ls.launchLanceroReader()
 	return nil
+}
+
+func (ls *LanceroSource) launchLanceroReader() {
+	go func() {
+		ticker := time.NewTicker(ls.readPeriod)
+		for {
+			select {
+			case <-ticker.C:
+				var buffers [][]RawType
+				framesUsed := math.MaxInt64
+				var lastSampleTime time.Time
+
+				for _, dev := range ls.active {
+
+					b, timeFix, err := dev.card.AvailableBuffer()
+					if err != nil {
+						panic("Warning: AvailableBuffer failed")
+					}
+					buffers = append(buffers, bytesToRawType(b))
+					bframes := len(b) / dev.frameSize
+					if bframes < framesUsed {
+						framesUsed = bframes
+						lastSampleTime = timeFix
+					}
+				}
+				timeDiff := lastSampleTime.Sub(ls.lastread)
+				ls.lastread = lastSampleTime
+				// check for changes in nrow, ncol and lsync
+				for ibuf, dev := range ls.active {
+					buffer := buffers[ibuf]
+					q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer))
+					if err != nil {
+						panic(fmt.Sprintf("Error in findFrameBits: %v", err))
+					}
+					qExpect := dev.ncols * dev.nrows
+					// FindFrameBits q is the index of the first frame bit after a non frame bit
+					ncols := n
+					nrows := (p - q) / n
+					periodNS := timeDiff.Nanoseconds() / int64(framesUsed)
+					lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
+					if q != qExpect || ncols != dev.ncols || nrows != dev.nrows || framesUsed <= 0 {
+						fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, blockingReadCount %v\n",
+							ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount)
+						panic("error reading from lancero, probably let buffer overfill")
+					}
+				}
+				// Consume framesUsed frames of data from each channel.
+				// Careful! This slice of slices will be in lancero READOUT order:
+				// r0c0, r0c1, r0c2, etc.
+				datacopies := make([][]RawType, ls.nchan)
+				for i := range ls.processors {
+					datacopies[i] = make([]RawType, framesUsed)
+				}
+
+				// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
+				// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
+				// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
+				// this loop handles 10938 frames in 20.5 ms on 687horton, aka aka 1.9 us/frame
+				// the previous loop handles 52000 frames in 253 ms, aka 4.8 us/frame
+				// when running more than 2 lancero cards, even this version may not keep up reliably
+				nchanPrevDevices := 0
+				for ibuf, dev := range ls.active {
+					buffer := buffers[ibuf]
+					nchan := dev.ncols * dev.nrows * 2
+					for i := 0; i < nchan; i++ {
+						dc := datacopies[i+nchanPrevDevices]
+						idx := i
+						for j := 0; j < framesUsed; j++ {
+							dc[j] = buffer[idx]
+							idx += nchan
+						}
+					}
+					nchanPrevDevices += nchan
+				}
+
+				// Inform the driver to release the data we just consumed
+				totalBytes := 0
+				for _, dev := range ls.active {
+					release := framesUsed * dev.frameSize
+					dev.card.ReleaseBytes(release)
+					totalBytes += release
+				}
+				if len(ls.buffersChan) == cap(ls.buffersChan) {
+					panic(fmt.Sprintf("internal buffersChan full, len %v, capacipy %v", len(ls.buffersChan), cap(ls.buffersChan)))
+				}
+				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime, timeDiff: timeDiff, totalBytes: totalBytes}
+
+			case <-ls.abortSelf:
+				close(ls.buffersChan)
+				return
+			}
+		}
+	}()
 }
 
 // blockingRead blocks and then reads data when "enough" is ready.
@@ -435,25 +541,17 @@ func (ls *LanceroSource) StartRun() error {
 func (ls *LanceroSource) blockingRead() error {
 	ls.runMutex.Lock()
 	defer ls.runMutex.Unlock()
-	// Wait on only one device (the first) to have enough data.
-	// Method distributeData will then read from all devices.
-	done := make(chan error)
-	dev := ls.active[0]
-	go func() {
-		_, _, err := dev.card.Wait()
-		done <- err
-	}()
 	select {
-	case <-ls.abortSelf:
-		if err := ls.stop(); err != nil {
-			return err
+	case <-time.After(time.Duration(cap(ls.buffersChan)) * ls.readPeriod):
+		panic(fmt.Sprintf("timeout, no data from lancero after %v", time.Duration(cap(ls.buffersChan))*ls.readPeriod))
+	case buffersMsg := <-ls.buffersChan:
+		if buffersMsg.datacopies == nil { //  checks if buffersMsg is closed, will have zero value, zero slices are nil
+			if err := ls.stop(); err != nil {
+				return err
+			}
+			return io.EOF
 		}
-		return io.EOF
-	case err := <-done:
-		if err != nil {
-			return err
-		}
-		err1 := ls.distributeData()
+		err1 := ls.distributeData(buffersMsg)
 		if err1 != nil {
 			return err1
 		}
@@ -465,97 +563,13 @@ func (ls *LanceroSource) blockingRead() error {
 // distributeData reads the raw data buffers from all devices in the LanceroSource
 // and distributes their data by copying into slices that go on channels, one
 // channel per data stream.
-func (ls *LanceroSource) distributeData() error {
-	// Get one buffer per card. Whichever contains the fewest frames will
-	// dictate how much data to process and what the timestamp is.
+func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
+	datacopies := buffersMsg.datacopies
+	lastSampleTime := buffersMsg.lastSampleTime
+	timeDiff := buffersMsg.timeDiff
+	totalBytes := buffersMsg.totalBytes
 	framesUsed := math.MaxInt64
-	var buffers [][]RawType
-	var lastSampleTime time.Time
-	for _, dev := range ls.active {
-		b, timeFix, err := dev.card.AvailableBuffer()
-		if err != nil {
-			log.Printf("Warning: AvailableBuffer failed")
-			return err
-		}
-		buffers = append(buffers, bytesToRawType(b))
 
-		bframes := len(b) / dev.frameSize
-		if bframes < framesUsed {
-			framesUsed = bframes
-			lastSampleTime = timeFix
-		}
-	}
-	timediff := lastSampleTime.Sub(ls.lastread)
-	ls.lastread = lastSampleTime
-	// check for changes in nrow, ncol and lsync
-	for ibuf, dev := range ls.active {
-		buffer := buffers[ibuf]
-		q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer))
-		if err != nil {
-			return fmt.Errorf("Error in findFrameBits: %v", err)
-		}
-		qExpect := dev.ncols * dev.nrows
-		// FindFrameBits q is the index of the first frame bit after a non frame bit
-		ncols := n
-		nrows := (p - q) / n
-		periodNS := timediff.Nanoseconds() / int64(framesUsed)
-		lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
-		if q != qExpect || ncols != dev.ncols || nrows != dev.nrows || framesUsed <= 0 {
-			ls.consecutiveDistributeDataErrors++
-			fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, blockingReadCount %v, consecutiveDistributeDataErrors %v\n",
-				ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount, ls.consecutiveDistributeDataErrors)
-			if ls.blockingReadCount > 1 {
-				// lsync calculation fails on first few reads so don't error
-				if ls.consecutiveDistributeDataErrors > 5 {
-					return fmt.Errorf("have ncols %v, nrows %v, lsync %v, framesUsed %v. had ncols %v, nrows %v, lsync %v",
-						ncols, nrows, lsync, framesUsed, dev.ncols, dev.nrows, dev.lsync)
-				}
-			}
-		} else {
-			ls.consecutiveDistributeDataErrors = 0
-		}
-	}
-	// Consume framesUsed frames of data from each channel.
-	// Careful! This slice of slices will be in lancero READOUT order:
-	// r0c0, r0c1, r0c2, etc.
-	datacopies := make([][]RawType, ls.nchan)
-	for i := range ls.processors {
-		datacopies[i] = make([]RawType, framesUsed)
-	}
-
-	// TODO: Look for external trigger bits here, either once per card or once per column
-
-	// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
-	// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
-	// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
-	// this loop handles 10938 frames in 20.5 ms on 687horton, aka aka 1.9 us/frame
-	// the previous loop handles 52000 frames in 253 ms, aka 4.8 us/frame
-	// when running more than 2 lancero cards, even this version may not keep up reliably
-	nchanPrevDevices := 0
-	for ibuf, dev := range ls.active {
-		buffer := buffers[ibuf]
-		nchan := dev.ncols * dev.nrows * 2
-		for i := 0; i < nchan; i++ {
-			dc := datacopies[i+nchanPrevDevices]
-			idx := i
-			for j := 0; j < framesUsed; j++ {
-				dc[j] = buffer[idx]
-				idx += nchan
-			}
-		}
-		nchanPrevDevices += nchan
-	}
-
-	// Inform the driver to release the data we just consumed
-	totalBytes := 0
-	for _, dev := range ls.active {
-		release := framesUsed * dev.frameSize
-		dev.card.ReleaseBytes(release)
-		totalBytes += release
-	}
-
-	// Now send these data downstream. Here we permute data into the expected
-	// channel ordering: r0c0, r1c0, r2c0, etc via the chan2readoutOrder map.
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
 	firstTime := lastSampleTime.Add(-segDuration)
@@ -580,7 +594,7 @@ func (ls *LanceroSource) distributeData() error {
 	ls.nextFrameNum += FrameIndex(framesUsed)
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
-			Time: timediff.Seconds()}
+			Time: timeDiff.Seconds(), BufferCapacity: cap(ls.buffersChan), BufferFill: len(ls.buffersChan)}
 	}
 	return nil
 }
