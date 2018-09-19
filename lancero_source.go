@@ -60,7 +60,7 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
-	source.buffersChan = make(chan BuffersChanType, 20)
+	source.buffersChan = make(chan BuffersChanType, 100)
 	source.readPeriod = 50 * time.Millisecond
 	if err != nil {
 		return source, err
@@ -568,7 +568,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
 	totalBytes := buffersMsg.totalBytes
-	framesUsed := math.MaxInt64
+	framesUsed := len(datacopies[0])
 
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
@@ -590,11 +590,13 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 		}
 		ls.segments[channelIndex] = seg
 	}
-
 	ls.nextFrameNum += FrameIndex(framesUsed)
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 			Time: timeDiff.Seconds(), BufferCapacity: cap(ls.buffersChan), BufferFill: len(ls.buffersChan)}
+	}
+	if len(ls.buffersChan) > 0 {
+		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), time.Now().Sub(firstTime))
 	}
 	return nil
 }
