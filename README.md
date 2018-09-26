@@ -7,11 +7,13 @@ A data acquisition framework for NIST transition-edge sensor (TES) microcalorime
  * Requires Ubuntu 16.
  
  ```
-sudo add-apt-repository 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
-wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key`
+ sudo add-apt-repository 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
+cd ~/Downloads
+wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key
 sudo apt-key add - < Release.key
 sudo apt-get update
-sudo apt-get install -y libsodium-dev python-pyqt5 golang-1.10-go libczmq-dev`
+sudo apt-get install -y libsodium-dev python-pyqt5 libczmq-dev roxterm git
+sudo snap install --classic go
 go get -u github.com/usnistgov/dastard
 ```
  * Install microscope https://github.com/usnistgov/microscope
