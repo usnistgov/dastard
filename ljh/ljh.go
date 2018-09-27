@@ -141,7 +141,7 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
-	w.writer = bufio.NewWriterSize(w.file, 32768)
+	w.writer = bufio.NewWriterSize(w.file, 32768*8)
 	return nil
 }
 

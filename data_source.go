@@ -108,6 +108,7 @@ func Start(ds DataSource) error {
 	go func() {
 		defer ds.RunDoneDone()
 		for {
+			tStart := time.Now()
 			// fmt.Println("calling blockingRead")
 			if err := ds.blockingRead(); err == io.EOF {
 				log.Println("blockingRead returns io.EOF, more stopping the source")
@@ -119,12 +120,18 @@ func Start(ds DataSource) error {
 				log.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
 				ds.Stop() // will cause next call to ds.blockingRead to return io.EOF
 			}
+			tMid := time.Now()
 			if ds.Running() { // process data segments if source is still running
 				// fmt.Println("ProcessSegments")
 				if err := ds.ProcessSegments(); err != nil {
 					log.Printf("processSegments returns Error, stopping source: %s\n", err.Error())
 					ds.Stop()
 				}
+			}
+			dBlockingRead := tMid.Sub(tStart)
+			dRunning := time.Now().Sub(tMid)
+			if dBlockingRead+dRunning > 90*time.Millisecond {
+				fmt.Println("dBlockingRead, dRunning", dBlockingRead, dRunning)
 			}
 
 		}
@@ -183,6 +190,7 @@ type AnySource struct {
 	numberWrittenTicker *time.Ticker
 	runMutex            sync.Mutex
 	runDone             sync.WaitGroup
+	readCounter         int
 }
 
 // ProcessSegments processes a single outstanding for each processor in ds
@@ -190,6 +198,8 @@ type AnySource struct {
 // it's a more synchnous version of each dsp launching it's own goroutine
 func (ds *AnySource) ProcessSegments() error {
 	var wg sync.WaitGroup
+	tStart1 := time.Now()
+	publishInProcessSegment := false
 	for i, dsp := range ds.processors {
 		segment := ds.segments[i]
 		if segment.processed {
@@ -199,10 +209,30 @@ func (ds *AnySource) ProcessSegments() error {
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
-			dsp.processSegment(&segment)
+			dsp.processSegment(&segment, publishInProcessSegment)
 		}(dsp)
 	}
 	wg.Wait()
+	processSegmentDuration := time.Now().Sub(tStart1)
+	if processSegmentDuration > 25*time.Millisecond {
+		fmt.Println("processSegmentDuration", processSegmentDuration)
+	}
+	tStart := time.Now()
+	if !publishInProcessSegment {
+		for _, dsp := range ds.processors {
+			dsp.PublishData(dsp.records)
+		}
+	}
+	for i, dsp := range ds.processors {
+		if (i+ds.readCounter)%20 == 0 { // flush each dsp once per 20 reads, but not all at once
+			dsp.Flush()
+		}
+	}
+	ds.readCounter++
+	flushDuration := time.Now().Sub(tStart)
+	if flushDuration > 10*time.Millisecond {
+		fmt.Println("flushDuration", flushDuration)
+	}
 	numberWritten := make([]int, ds.nchan)
 	for i, dsp := range ds.processors {
 		numberWritten[i] = dsp.numberWritten
@@ -214,6 +244,10 @@ func (ds *AnySource) ProcessSegments() error {
 				state: struct{ NumberWritten []int }{NumberWritten: numberWritten}} // only exported fields are serialized
 		default:
 		}
+	}
+	remainingDuration := time.Now().Sub(tStart) - flushDuration
+	if remainingDuration > 10*time.Millisecond {
+		fmt.Println("remainingDuration", remainingDuration)
 	}
 	return nil
 }
