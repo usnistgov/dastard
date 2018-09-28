@@ -32,7 +32,6 @@ type DataStreamProcessor struct {
 	TriggerState
 	DataPublisher
 	changeMutex sync.Mutex // Don't change key data without locking this.
-	records     []*DataRecord
 }
 
 // RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
@@ -120,19 +119,15 @@ func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
 	dsp.edgeMultiSetInitialState()
 }
 
-func (dsp *DataStreamProcessor) processSegment(segment *DataSegment, publish bool) {
+func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.changeMutex.Lock()
 	defer dsp.changeMutex.Unlock()
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
 	records, _ := dsp.TriggerData()
-	dsp.AnalyzeData(records) // add analysis results to records in-place
-	if publish {
-		if err := dsp.DataPublisher.PublishData(records); err != nil { // publish and save data, when enabled
-			panic(err)
-		}
-	} else {
-		dsp.records = records
+	dsp.AnalyzeData(records)                                       // add analysis results to records in-place
+	if err := dsp.DataPublisher.PublishData(records); err != nil { // publish and save data, when enabled
+		panic(err)
 	}
 	segment.processed = true
 }

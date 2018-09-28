@@ -189,24 +189,16 @@ func (dp *DataPublisher) RemovePubSummaries() {
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
 func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	var times []time.Duration
-	tLast := time.Now()
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
 	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	if dp.HasPubSummaries() {
 		dp.PubSummariesChan <- records
 	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	if dp.HasLJH22() && !dp.WritingPaused {
 		for _, record := range records {
 			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
-				if dp.LJH22.ChannelIndex == 1 {
-					fmt.Println("writing LJH22 header")
-				}
 				err := dp.LJH22.CreateFile()
 				if err != nil {
 					return err
@@ -217,8 +209,6 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	if dp.HasLJH3() && !dp.WritingPaused {
 		for _, record := range records {
 			if !dp.LJH3.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
@@ -233,8 +223,6 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	if dp.HasOFF() && !dp.WritingPaused {
 		for _, record := range records {
 			if !dp.OFF.HeaderWritten() { // MATTER doesn't create ljh files until at least one record exists, let us do the same
@@ -256,13 +244,9 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			}
 		}
 	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
 		dp.numberWritten += len(records)
 	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	var sum time.Duration
 	for _, t := range times {
 		sum += t

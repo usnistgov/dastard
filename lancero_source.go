@@ -443,6 +443,10 @@ func (ls *LanceroSource) StartRun() error {
 	return nil
 }
 
+// launchLanceroReader launches a goroutine that reads from the lancero card
+// based on a ticker with ls.readPeriod
+// it then demuxes the data and puts it on ls.BuffersChan
+// this way the lancero is read with minimum potential for interruption
 func (ls *LanceroSource) launchLanceroReader() {
 	go func() {
 		ticker := time.NewTicker(ls.readPeriod)
@@ -467,11 +471,10 @@ func (ls *LanceroSource) launchLanceroReader() {
 					}
 				}
 				timeDiff := lastSampleTime.Sub(ls.lastread)
-				if timeDiff > 60*time.Millisecond {
+				if timeDiff > 2*ls.readPeriod {
 					fmt.Println("timeDiff in lancero reader", timeDiff)
 				}
 				ls.lastread = lastSampleTime
-				tStart := time.Now()
 				// check for changes in nrow, ncol and lsync
 				for ibuf, dev := range ls.active {
 					buffer := buffers[ibuf]
@@ -531,10 +534,6 @@ func (ls *LanceroSource) launchLanceroReader() {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacipy %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime, timeDiff: timeDiff, totalBytes: totalBytes}
-				demuxDuration := time.Now().Sub(tStart)
-				if demuxDuration > 40*time.Millisecond {
-					fmt.Println("demuxDuration", demuxDuration)
-				}
 			case <-ls.abortSelf:
 				close(ls.buffersChan)
 				return
@@ -571,10 +570,6 @@ func (ls *LanceroSource) blockingRead() error {
 // and distributes their data by copying into slices that go on channels, one
 // channel per data stream.
 func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
-	var times []time.Duration
-	var tLast time.Time
-	tLast = time.Now()
-
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
@@ -584,8 +579,6 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
 	firstTime := lastSampleTime.Add(-segDuration)
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	for channelIndex := range ls.processors {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
 		if channelIndex%2 == 1 { // feedback channel needs more processing
@@ -603,21 +596,10 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 		}
 		ls.segments[channelIndex] = seg
 	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
 	ls.nextFrameNum += FrameIndex(framesUsed)
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
-			Time: timeDiff.Seconds(), BufferCapacity: cap(ls.buffersChan), BufferFill: len(ls.buffersChan)}
-	}
-	times = append(times, time.Now().Sub(tLast))
-	tLast = time.Now()
-	var sum time.Duration
-	for _, t := range times {
-		sum += t
-	}
-	if sum > 10*time.Millisecond {
-		fmt.Println("distributeData", times)
+			Time: timeDiff.Seconds()}
 	}
 	if len(ls.buffersChan) > 0 {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), time.Now().Sub(firstTime))
