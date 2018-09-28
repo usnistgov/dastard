@@ -58,10 +58,6 @@ func TestChannelOrder(t *testing.T) {
 		}
 	}
 
-	ls.StartRun()
-	ls.stop()
-	ls.Delete()
-
 	// test roundint
 	fs := []float64{-1.4, -.6, -.4, 0, .4, .5, .6, 1.4}
 	es := []int{-1, -1, 0, 0, 0, 1, 1, 1}
@@ -79,7 +75,9 @@ func TestNoHardwareSource(t *testing.T) {
 	linePeriodSet = 400 // don't make this too low, or test -race will fail
 	nLancero = 3
 	source := new(LanceroSource)
+	source.readPeriod = 1 * time.Millisecond
 	source.devices = make(map[int]*LanceroDevice, nLancero)
+	source.buffersChan = make(chan BuffersChanType, 10)
 	cardDelay := []int{0} // a single card delay value works for multiple cards
 	activeCards := make([]int, nLancero)
 	for i := 0; i < nLancero; i++ {
@@ -110,6 +108,7 @@ func TestNoHardwareSource(t *testing.T) {
 		}
 	}
 	config.Nsamp = 499
+
 	if err := source.Configure(&config); err == nil {
 		t.Error("LanceroSource.Configure should fail with Nsamp>16")
 	}
@@ -144,6 +143,7 @@ func TestNoHardwareSource(t *testing.T) {
 	// the lsync is not right. about half the time I run the test there are 3 blocking reads
 	// at which point the lancero source shuts down due to it seeing lsync change
 	// then Stop() will error but the err value is not checked so it doesn't cause a test failure
+
 }
 
 func TestMix(t *testing.T) {

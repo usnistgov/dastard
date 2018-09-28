@@ -30,13 +30,18 @@ type DataPublisher struct {
 // SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.WritingPaused = pause
-	if dp.LJH22 != nil {
+	dp.Flush()
+}
+
+// Flush calls Flush for each writer that has a Flush command (LJH22, LJH3, OFF)
+func (dp *DataPublisher) Flush() {
+	if dp.HasLJH22() {
 		dp.LJH22.Flush()
 	}
-	if dp.LJH3 != nil {
+	if dp.HasLJH3() {
 		dp.LJH3.Flush()
 	}
-	if dp.OFF != nil {
+	if dp.HasOFF() {
 		dp.OFF.Flush()
 	}
 }
@@ -183,6 +188,7 @@ func (dp *DataPublisher) RemovePubSummaries() {
 
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
 func (dp *DataPublisher) PublishData(records []*DataRecord) error {
+	var times []time.Duration
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
 	}
@@ -202,7 +208,6 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
-		dp.LJH22.Flush()
 	}
 	if dp.HasLJH3() && !dp.WritingPaused {
 		for _, record := range records {
@@ -217,7 +222,6 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
-		dp.LJH3.Flush()
 	}
 	if dp.HasOFF() && !dp.WritingPaused {
 		for _, record := range records {
@@ -239,10 +243,16 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 				return err
 			}
 		}
-		dp.OFF.Flush()
 	}
 	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
 		dp.numberWritten += len(records)
+	}
+	var sum time.Duration
+	for _, t := range times {
+		sum += t
+	}
+	if dp.HasLJH22() && (sum > 40*time.Millisecond || dp.LJH22.ChannelIndex == -1) {
+		fmt.Printf("ChannelIndex %v, times %v\n", dp.LJH22.ChannelIndex, times)
 	}
 	return nil
 }

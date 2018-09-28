@@ -1,5 +1,10 @@
 ## DASTARD Versions
 
+**0.1.2** September 28, 2018.
+* Uses an internal buffered channel to queue Lancero data for processing so that 
+  we can survive 1-second-plus delays in processing (writing seems to be the
+  particular problem).
+
 **0.1.1** August 13, 2018.
 * Demonstrated OFF file writing with triggering.
 
