@@ -179,9 +179,10 @@ type AnySource struct {
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	processors   []*DataStreamProcessor
-	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
+	abortSelf    chan struct{} // Signal to the core loop of active sources to stop
+	blockReady   chan struct{} // Signal from the core loop that a block is ready to process
 	broker       *TriggerBroker
-	// publishSync  *PublishSync
+
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
 	heartbeats          chan Heartbeat
@@ -554,6 +555,7 @@ func (ds *AnySource) PrepareRun() error {
 	}
 	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
 	ds.abortSelf = make(chan struct{})
+	ds.blockReady = make(chan struct{})
 
 	// Start a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
@@ -630,7 +632,7 @@ func (ds *AnySource) Stop() error {
 
 // CloseOutputs closes all channels that carry buffers of data for downstream processing.
 func (ds *AnySource) CloseOutputs() {
-
+	close(ds.blockReady)
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState

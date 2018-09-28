@@ -36,6 +36,10 @@ type SourceControl struct {
 	clientUpdates chan<- ClientUpdate
 	totalData     Heartbeat
 	heartbeats    chan Heartbeat
+
+	// For queueing up RPC requests for later execution and getting the result
+	queuedRequests chan func()
+	queuedResults  chan error
 }
 
 // NewSourceControl creates a new SourceControl object with correctly initialized
@@ -43,6 +47,9 @@ type SourceControl struct {
 func NewSourceControl() *SourceControl {
 	sc := new(SourceControl)
 	sc.heartbeats = make(chan Heartbeat)
+	sc.queuedRequests = make(chan func())
+	sc.queuedResults = make(chan error)
+
 	sc.simPulses = NewSimPulseSource()
 	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle = NewTriangleSource()
@@ -138,6 +145,10 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 		return fmt.Errorf("No source is active")
 	}
 	err := s.ActiveSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
+	// s.queuedRequests <- func() {
+	// 	s.queuedResults <- s.ActiveSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
+	// }
+	// err := <-s.queuedResults
 	*reply = (err == nil)
 	return err
 }
