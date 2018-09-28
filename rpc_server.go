@@ -83,8 +83,6 @@ type Heartbeat struct {
 	Running        bool
 	Time           float64
 	DataMB         float64
-	BufferCapacity int
-	BufferFill     int
 }
 
 // FactorArgs holds the arguments to a Multiply operation

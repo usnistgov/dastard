@@ -119,7 +119,6 @@ func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan erro
 	blockReady := ds.BlockReady()
 
 	for {
-		tStart := time.Now()
 		select {
 		case err, ok := <-blockReady:
 			if !ok {
@@ -132,7 +131,6 @@ func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan erro
 				log.Printf("blockReady receives Error, stopping source: %s\n", err.Error())
 				return
 			}
-			tMid := time.Now()
 			if ds.Running() { // process data segments if source is still running
 				// fmt.Println("ProcessSegments")
 				if err := ds.ProcessSegments(); err != nil {
@@ -140,12 +138,6 @@ func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan erro
 					return
 				}
 			}
-			dBlockingRead := tMid.Sub(tStart)
-			dRunning := time.Now().Sub(tMid)
-			if dBlockingRead+dRunning > 90*time.Millisecond {
-				fmt.Println("dBlockingRead, dRunning", dBlockingRead, dRunning)
-			}
-
 			// Handle RPC requests
 		case request := <-queuedRequests:
 			request()
@@ -211,8 +203,6 @@ type AnySource struct {
 // It's a more synchronous version of each dsp launching its own goroutine
 func (ds *AnySource) ProcessSegments() error {
 	var wg sync.WaitGroup
-	tStart1 := time.Now()
-	publishInProcessSegment := false
 	for i, dsp := range ds.processors {
 		segment := ds.segments[i]
 		if segment.processed {
@@ -222,20 +212,11 @@ func (ds *AnySource) ProcessSegments() error {
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
-			dsp.processSegment(&segment, publishInProcessSegment)
+			dsp.processSegment(&segment)
 		}(dsp)
 	}
 	wg.Wait()
-	processSegmentDuration := time.Now().Sub(tStart1)
-	if processSegmentDuration > 25*time.Millisecond {
-		fmt.Println("processSegmentDuration", processSegmentDuration)
-	}
 	tStart := time.Now()
-	if !publishInProcessSegment {
-		for _, dsp := range ds.processors {
-			dsp.PublishData(dsp.records)
-		}
-	}
 	for i, dsp := range ds.processors {
 		if (i+ds.readCounter)%20 == 0 { // flush each dsp once per 20 reads, but not all at once
 			dsp.Flush()
@@ -243,7 +224,7 @@ func (ds *AnySource) ProcessSegments() error {
 	}
 	ds.readCounter++
 	flushDuration := time.Now().Sub(tStart)
-	if flushDuration > 10*time.Millisecond {
+	if flushDuration > 50*time.Millisecond {
 		fmt.Println("flushDuration", flushDuration)
 	}
 	numberWritten := make([]int, ds.nchan)
@@ -257,10 +238,6 @@ func (ds *AnySource) ProcessSegments() error {
 				state: struct{ NumberWritten []int }{NumberWritten: numberWritten}} // only exported fields are serialized
 		default:
 		}
-	}
-	remainingDuration := time.Now().Sub(tStart) - flushDuration
-	if remainingDuration > 10*time.Millisecond {
-		fmt.Println("remainingDuration", remainingDuration)
 	}
 	return nil
 }
