@@ -193,9 +193,9 @@ type AnySource struct {
 	readCounter         int
 }
 
-// ProcessSegments processes a single outstanding for each processor in ds
-// returns when all segments have been processed
-// it's a more synchnous version of each dsp launching it's own goroutine
+// ProcessSegments processes a single outstanding segment for each of ds.processors
+// Returns when all segments have been processed
+// It's a more synchronous version of each dsp launching its own goroutine
 func (ds *AnySource) ProcessSegments() error {
 	var wg sync.WaitGroup
 	tStart1 := time.Now()
@@ -611,18 +611,6 @@ func (ds *AnySource) PrepareRun() error {
 		// Publish Records and Summaries over ZMQ by default
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
-
-		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[channelIndex]
-		// channel is closed, depending on ds.noProcess (which is false except for testing)
-		// 	ds.runDone.Add(1)
-		// 	go func(ch <-chan DataSegment) {
-		// 		defer ds.runDone.Done()
-		// 		if ds.noProcess {
-		// 			<-ds.abortSelf
-		// 		} else {
-		// 			dsp.ProcessData(ch)
-		// 		}
-		// 	}(dataSegmentChan)
 	}
 	ds.lastread = time.Now()
 	return nil

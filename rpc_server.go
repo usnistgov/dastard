@@ -490,7 +490,8 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 }
 
 // RunRPCServer sets up and run a permanent JSON-RPC server.
-// if block, it will block until Ctrl-C and gracefully shut down
+// If block, it will block until Ctrl-C and gracefully shut down.
+// (The intention is that block=true in normal operation, but false for tests.)
 func RunRPCServer(portrpc int, block bool) {
 
 	// Set up objects to handle remote calls
@@ -590,12 +591,14 @@ func RunRPCServer(portrpc int, block bool) {
 		}
 	}()
 
-	if block {
-		// Finally, handle ctrl-C gracefully
-		interruptCatcher := make(chan os.Signal, 1)
-		signal.Notify(interruptCatcher, os.Interrupt)
-		<-interruptCatcher
-		dummy := "dummy"
-		sourceControl.Stop(&dummy, &okay)
+	if !block {
+		return
 	}
+
+	// Handle ctrl-C gracefully, by stopping the active source.
+	interruptCatcher := make(chan os.Signal, 1)
+	signal.Notify(interruptCatcher, os.Interrupt)
+	<-interruptCatcher
+	dummy := "dummy"
+	sourceControl.Stop(&dummy, &okay)
 }
