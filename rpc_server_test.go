@@ -324,9 +324,6 @@ func TestServer(t *testing.T) {
 	if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
 		t.Error("expect PrepareRun could not run with 0 channels (expect > 0)")
 	}
-	// if err != nil {
-	// 	t.Errorf("Error calling SourceControl.Start(%s): %s", sourceName, err.Error())
-	// }
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
@@ -409,18 +406,18 @@ func TestErroringSourceRPC(t *testing.T) {
 	sourceName := "ERRORINGSOURCE"
 	dummy := ""
 	okay := false
-	for i := 0; i < 5; i++ { // this test is super slow (like 10 seconds), not sure why
+	for i := 0; i < 2; i++ { // this test is super slow (like 10 seconds), not sure why
 		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
 			t.Error(err)
 		}
 		if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
-			t.Error("expected error source already started")
+			t.Error("ErroringSource.Start: no error, but expected error source already started")
 		}
 		if err := client.Call("SourceControl.WaitForStopTestingOnly", &dummy, &okay); err != nil {
 			t.Error(err)
 		}
 		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
-			t.Error("expected error")
+			t.Error("ErroringSource.Stop: expected error for second stop")
 		}
 	}
 }

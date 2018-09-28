@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strings"
@@ -28,8 +27,7 @@ type DataSource interface {
 	StartRun() error
 	Stop() error
 	Running() bool
-	blockingRead() error
-	CloseOutputs()
+	BlockReady() chan error
 	Nchan() int
 	Signed() []bool
 	VoltsPerArb() []float32
@@ -77,6 +75,13 @@ func (ds *AnySource) RunDoneAdd() {
 // RunDoneDone calls ds.runDone, this should only be called in Start
 func (ds *AnySource) RunDoneDone() {
 	ds.runDone.Done()
+	ds.blockReady = nil
+}
+
+// BlockReady returns the channel on which data sources send any errors.
+// More importantly, wait on this channel to wait on the source to have a data block.
+func (ds *AnySource) BlockReady() chan error {
+	return ds.blockReady
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -86,7 +91,7 @@ func (ds *AnySource) RunDoneDone() {
 // 3) StartRun: a per-source method to begin data acquisition, if relevant.
 // 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 // When done with the loop, close all channels to DataStreamProcessor objects.
-func Start(ds DataSource) error {
+func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) error {
 	if ds.Running() {
 		return fmt.Errorf("cannot Start() a source that's already Running()")
 	}
@@ -104,27 +109,35 @@ func Start(ds DataSource) error {
 	}
 
 	ds.RunDoneAdd()
-	// Have the DataSource produce data until graceful stop.
-	go func() {
-		defer ds.RunDoneDone()
-		for {
-			tStart := time.Now()
-			// fmt.Println("calling blockingRead")
-				log.Println("blockingRead returns io.EOF, more stopping the source")
-				// EOF error should occur after abortSelf has been closed
-				// ds.CloseOutputs() // why is this here, ds.Stop also calls CloseOutputs
+	go CoreLoop(ds, queuedRequests, queuedResults)
+	return nil
+}
+
+// CoreLoop has the DataSource produce data until graceful stop.
+func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan error) {
+	defer ds.RunDoneDone()
+	blockReady := ds.BlockReady()
+
+	for {
+		tStart := time.Now()
+		select {
+		case err, ok := <-blockReady:
+			if !ok {
+				log.Println("blockReady closed, stopping the source normally")
+				// blockReady should get closed after abortSelf has been closed
 				return
+
 			} else if err != nil {
 				// other errors indicate a problem with source, need to close down
-				log.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
-				ds.Stop() // will cause next call to ds.blockingRead to return io.EOF
+				log.Printf("blockReady receives Error, stopping source: %s\n", err.Error())
+				return
 			}
 			tMid := time.Now()
 			if ds.Running() { // process data segments if source is still running
 				// fmt.Println("ProcessSegments")
 				if err := ds.ProcessSegments(); err != nil {
 					log.Printf("processSegments returns Error, stopping source: %s\n", err.Error())
-					ds.Stop()
+					return
 				}
 			}
 			dBlockingRead := tMid.Sub(tStart)
@@ -133,13 +146,11 @@ func Start(ds DataSource) error {
 				fmt.Println("dBlockingRead, dRunning", dBlockingRead, dRunning)
 			}
 
+			// Handle RPC requests
+		case request := <-queuedRequests:
+			request()
 		}
-
-	}()
-
-	return nil
-			// fmt.Println("ProcessSegments")
-				log.Printf("processSegments returns Error, stopping source: %s\n", err.Error())
+	}
 }
 
 // RowColCode holds an 8-byte summary of the row-column geometry
@@ -181,7 +192,7 @@ type AnySource struct {
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	processors   []*DataStreamProcessor
 	abortSelf    chan struct{} // Signal to the core loop of active sources to stop
-	blockReady   chan struct{} // Signal from the core loop that a block is ready to process
+	blockReady   chan error    // Signal from the core loop that a block is ready to process
 	broker       *TriggerBroker
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
@@ -251,12 +262,6 @@ func (ds *AnySource) ProcessSegments() error {
 	if remainingDuration > 10*time.Millisecond {
 		fmt.Println("remainingDuration", remainingDuration)
 	}
-	return nil
-}
-
-// StartRun tells the hardware to switch into data streaming mode.
-// It's a no-op for simulated (software) sources
-func (ds *AnySource) StartRun() error {
 	return nil
 }
 
@@ -556,7 +561,7 @@ func (ds *AnySource) PrepareRun() error {
 	}
 	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
 	ds.abortSelf = make(chan struct{})
-	ds.blockReady = make(chan struct{})
+	ds.blockReady = make(chan error)
 
 	// Start a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
@@ -627,13 +632,7 @@ func (ds *AnySource) Stop() error {
 
 	close(ds.abortSelf)
 	ds.broker.Stop()
-	ds.CloseOutputs()
 	return nil
-}
-
-// CloseOutputs closes all channels that carry buffers of data for downstream processing.
-func (ds *AnySource) CloseOutputs() {
-	close(ds.blockReady)
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState

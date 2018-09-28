@@ -255,7 +255,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	s.status.Running = true
-	if err := Start(s.ActiveSource); err != nil {
+	if err := Start(s.ActiveSource, s.queuedRequests, s.queuedResults); err != nil {
 		s.status.Running = false
 		s.isSourceActive = false
 		return err
@@ -293,18 +293,18 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	}
 	log.Printf("Stopping data source\n")
 	s.ActiveSource.Stop()
-	s.handlePosibleStoppedSource()
+	s.handlePossibleStoppedSource()
 	*reply = true
 	s.broadcastStatus()
 	*reply = true
 	return nil
 }
 
-// handlePosibleStoppedSource checks for a stopped source and modifies s
-// s to be correct after a source has stopped
-// it should called in Stop() and any that would be incorrect if it didn't know
-// the source was stopped
-func (s *SourceControl) handlePosibleStoppedSource() {
+// handlePossibleStoppedSource checks for a stopped source and modifies
+// s to be correct after a source has stopped.
+// It should called in Stop() plus any method that would be incorrect if it didn't
+// know the source was stopped
+func (s *SourceControl) handlePossibleStoppedSource() {
 	if s.isSourceActive && !s.ActiveSource.Running() {
 		s.status.Running = false
 		s.isSourceActive = false
@@ -318,7 +318,7 @@ func (s *SourceControl) handlePosibleStoppedSource() {
 // WaitForStopTestingOnly will block until the running data source is finished and s.isSourceActive
 func (s *SourceControl) WaitForStopTestingOnly(dummy *string, reply *bool) error {
 	for s.isSourceActive {
-		s.ActiveSource.Wait()
+		s.handlePossibleStoppedSource()
 		time.Sleep(1 * time.Millisecond)
 	}
 	return nil
@@ -455,7 +455,7 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
-	s.handlePosibleStoppedSource()
+	s.handlePossibleStoppedSource()
 	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.DataMB = 0
@@ -463,7 +463,7 @@ func (s *SourceControl) broadcastHeartbeat() {
 }
 
 func (s *SourceControl) broadcastStatus() {
-	s.handlePosibleStoppedSource()
+	s.handlePossibleStoppedSource()
 	if s.isSourceActive {
 		s.status.ChannelsWithProjectors = s.ActiveSource.ChannelsWithProjectors()
 	}

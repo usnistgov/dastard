@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"os"
@@ -528,7 +527,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 					totalBytes += release
 				}
 				if len(ls.buffersChan) == cap(ls.buffersChan) {
-					panic(fmt.Sprintf("internal buffersChan full, len %v, capacipy %v", len(ls.buffersChan), cap(ls.buffersChan)))
+					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime, timeDiff: timeDiff, totalBytes: totalBytes}
 				demuxDuration := time.Now().Sub(tStart)
@@ -541,30 +540,32 @@ func (ls *LanceroSource) launchLanceroReader() {
 			}
 		}
 	}()
-}
 
-// blockingRead blocks and then reads data when "enough" is ready.
-// This will need to somehow work across multiple cards???
-func (ls *LanceroSource) blockingRead() error {
-	ls.runMutex.Lock()
-	defer ls.runMutex.Unlock()
-	select {
-	case <-time.After(time.Duration(cap(ls.buffersChan)) * ls.readPeriod):
-		panic(fmt.Sprintf("timeout, no data from lancero after %v", time.Duration(cap(ls.buffersChan))*ls.readPeriod))
-	case buffersMsg := <-ls.buffersChan:
-		if buffersMsg.datacopies == nil { //  checks if buffersMsg is closed, will have zero value, zero slices are nil
-			if err := ls.stop(); err != nil {
-				return err
+	// Now read data until error or terminated
+	go func() {
+		for {
+			// This select was formerly the ls.blockingRead method
+			select {
+			case <-time.After(time.Duration(cap(ls.buffersChan)) * ls.readPeriod):
+				panic(fmt.Sprintf("timeout, no data from lancero after %v", time.Duration(cap(ls.buffersChan))*ls.readPeriod))
+			case buffersMsg := <-ls.buffersChan:
+				if buffersMsg.datacopies == nil { //  checks if buffersMsg is closed, will have zero value, zero slices are nil
+					if err := ls.stop(); err != nil {
+						ls.blockReady <- err
+					}
+					close(ls.blockReady)
+					return
+				}
+				err1 := ls.distributeData(buffersMsg)
+				if err1 != nil {
+					ls.blockReady <- err1
+					return
+				}
+				ls.blockReady <- nil
 			}
-			return io.EOF
+			ls.blockingReadCount++ // set to 0 in SampleCard
 		}
-		err1 := ls.distributeData(buffersMsg)
-		if err1 != nil {
-			return err1
-		}
-	}
-	ls.blockingReadCount++ // set to 0 in SampleCard
-	return nil
+	}()
 }
 
 // distributeData reads the raw data buffers from all devices in the LanceroSource
