@@ -277,7 +277,6 @@ func (es *ErroringSource) StartRun() error {
 	es.nStarts++
 	go func() {
 		es.blockReady <- fmt.Errorf("ErroringSource always errors on first call")
-		close(es.blockReady)
 	}()
 	return nil
 }

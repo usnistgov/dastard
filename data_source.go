@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -42,18 +41,26 @@ type DataSource interface {
 	SetCoupling(CouplingStatus) error
 	SetExperimentStateLabel(string) error
 	ChannelsWithProjectors() []int
-	Wait() error
 	ProcessSegments() error
-	RunDoneAdd()
-	RunDoneDone()
+	RunDoneActivate()
+	RunDoneDeactivate()
+	RunDoneWait()
 	ShouldAutoRestart() bool
 }
 
-// Wait returns when the source run is done, aka the source is stopped
-func (ds *AnySource) Wait() error {
-	// fmt.Println("ds.Wait")
+// RunDoneActivate adds one to ds.runDone, this should only be called in Start
+func (ds *AnySource) RunDoneActivate() {
+	ds.runDone.Add(1)
+}
+
+// RunDoneDeactivate calls Done on ds.runDone, this should only be called in Start
+func (ds *AnySource) RunDoneDeactivate() {
+	ds.runDone.Done()
+}
+
+// RunDoneWait returns when the source run is done, i.e., the source is stopped
+func (ds *AnySource) RunDoneWait() {
 	ds.runDone.Wait()
-	return nil
 }
 
 // ShouldAutoRestart true if source should be auto-restarted after an error
@@ -65,17 +72,6 @@ func (ds *AnySource) ShouldAutoRestart() bool {
 // don't need the mix
 func (ds *AnySource) ConfigureMixFraction(channelIndex int, mixFraction float64) error {
 	return fmt.Errorf("source type %s does not support Mix", ds.name)
-}
-
-// RunDoneAdd adds one to ds.runDone, this should only be called in Start
-func (ds *AnySource) RunDoneAdd() {
-	ds.runDone.Add(1)
-}
-
-// RunDoneDone calls ds.runDone, this should only be called in Start
-func (ds *AnySource) RunDoneDone() {
-	ds.runDone.Done()
-	ds.blockReady = nil
 }
 
 // BlockReady returns the channel on which data sources send any errors.
@@ -104,41 +100,40 @@ func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) 
 		return err
 	}
 
+	ds.RunDoneActivate()
 	if err := ds.StartRun(); err != nil {
 		return err
 	}
 
-	ds.RunDoneAdd()
 	go CoreLoop(ds, queuedRequests, queuedResults)
 	return nil
 }
 
 // CoreLoop has the DataSource produce data until graceful stop.
 func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan error) {
-	defer ds.RunDoneDone()
+	defer ds.RunDoneDeactivate()
 	blockReady := ds.BlockReady()
 
 	for {
 		select {
+		// Handle data, or recognize the end of data
 		case err, ok := <-blockReady:
 			if !ok {
-				log.Println("blockReady closed, stopping the source normally")
-				// blockReady should get closed after abortSelf has been closed
+				// blockReady should get closed in the data production loop when abortSelf has been closed
+				fmt.Println("blockReady channel was closed; stopping the source normally")
 				return
 
 			} else if err != nil {
 				// other errors indicate a problem with source, need to close down
-				log.Printf("blockReady receives Error, stopping source: %s\n", err.Error())
+				fmt.Printf("blockReady receives Error; stopping source: %s\n", err.Error())
 				return
 			}
-			if ds.Running() { // process data segments if source is still running
-				// fmt.Println("ProcessSegments")
-				if err := ds.ProcessSegments(); err != nil {
-					log.Printf("processSegments returns Error, stopping source: %s\n", err.Error())
-					return
-				}
+			if err := ds.ProcessSegments(); err != nil {
+				fmt.Printf("processSegments returns Error; stopping source: %s\n", err.Error())
+				return
 			}
-			// Handle RPC requests
+
+		// Handle RPC requests
 		case request := <-queuedRequests:
 			request()
 		}
@@ -601,10 +596,10 @@ func (ds *AnySource) PrepareRun() error {
 	return nil
 }
 
-// Stop ends the data supply.
+// Stop tells the data supply to deactivate.
 func (ds *AnySource) Stop() error {
 	if !ds.Running() {
-		return fmt.Errorf("Anysource not running, cannot stop")
+		return fmt.Errorf("AnySource not running, cannot stop")
 	}
 
 	close(ds.abortSelf)

@@ -91,12 +91,12 @@ func TestTriangle(t *testing.T) {
 	}
 	println("E")
 	ds.Stop()
-	println("F")
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true after stopped.")
 	}
 
 	// // Check that we can alter the record length
+	println("F")
 	if err := Start(ds, nil, nil); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
@@ -252,7 +252,7 @@ func TestErroringSource(t *testing.T) {
 		if err := Start(ds, nil, nil); err != nil {
 			t.Fatalf(fmt.Sprintf("Could not start ErroringSource: i=%v, err=%v", i, err))
 		}
-		es.runDone.Wait()
+		es.RunDoneWait()
 		if ds.Running() {
 			t.Error("ErroringSource is running, want not running")
 		}
