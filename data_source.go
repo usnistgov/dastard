@@ -110,7 +110,6 @@ func Start(ds DataSource) error {
 		for {
 			tStart := time.Now()
 			// fmt.Println("calling blockingRead")
-			if err := ds.blockingRead(); err == io.EOF {
 				log.Println("blockingRead returns io.EOF, more stopping the source")
 				// EOF error should occur after abortSelf has been closed
 				// ds.CloseOutputs() // why is this here, ds.Stop also calls CloseOutputs
@@ -139,6 +138,8 @@ func Start(ds DataSource) error {
 	}()
 
 	return nil
+			// fmt.Println("ProcessSegments")
+				log.Printf("processSegments returns Error, stopping source: %s\n", err.Error())
 }
 
 // RowColCode holds an 8-byte summary of the row-column geometry
