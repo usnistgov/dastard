@@ -60,8 +60,6 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
 	devnums, err := lancero.EnumerateLanceroDevices()
-	source.buffersChan = make(chan BuffersChanType, 100)
-	source.readPeriod = 50 * time.Millisecond
 	if err != nil {
 		return source, err
 	}
@@ -448,6 +446,8 @@ func (ls *LanceroSource) StartRun() error {
 // it then demuxes the data and puts it on ls.BuffersChan
 // this way the lancero is read with minimum potential for interruption
 func (ls *LanceroSource) launchLanceroReader() {
+	ls.buffersChan = make(chan BuffersChanType, 100)
+	ls.readPeriod = 50 * time.Millisecond
 	go func() {
 		ticker := time.NewTicker(ls.readPeriod)
 		for {
