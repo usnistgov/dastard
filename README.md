@@ -12,8 +12,8 @@ cd ~/Downloads
 wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key
 sudo apt-key add - < Release.key
 sudo apt-get update
-sudo apt-get install -y libsodium-dev python-pyqt5 libczmq-dev roxterm git
-sudo snap install --classic go
+sudo apt-get install -y libsodium-dev python-pyqt5 libczmq-dev roxterm git golang-1.10-go golang-1.10
+sudo ln -s /usr/lib/go-1.10/bin/go /usr/local/bin/go
 go get -u github.com/usnistgov/dastard
 ```
  * Install microscope https://github.com/usnistgov/microscope
