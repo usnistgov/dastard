@@ -73,9 +73,9 @@ type ServerStatus struct {
 
 // Heartbeat is the info sent in the regular heartbeat to clients
 type Heartbeat struct {
-	Running bool
-	Time    float64
-	DataMB  float64
+	Running        bool
+	Time           float64
+	DataMB         float64
 }
 
 // FactorArgs holds the arguments to a Multiply operation

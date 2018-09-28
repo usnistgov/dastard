@@ -126,7 +126,6 @@ func Start(ds DataSource) error {
 					ds.Stop()
 				}
 			}
-
 		}
 
 	}()
@@ -183,6 +182,7 @@ type AnySource struct {
 	numberWrittenTicker *time.Ticker
 	runMutex            sync.Mutex
 	runDone             sync.WaitGroup
+	readCounter         int
 }
 
 // ProcessSegments processes a single outstanding for each processor in ds
@@ -203,6 +203,17 @@ func (ds *AnySource) ProcessSegments() error {
 		}(dsp)
 	}
 	wg.Wait()
+	tStart := time.Now()
+	for i, dsp := range ds.processors {
+		if (i+ds.readCounter)%20 == 0 { // flush each dsp once per 20 reads, but not all at once
+			dsp.Flush()
+		}
+	}
+	ds.readCounter++
+	flushDuration := time.Now().Sub(tStart)
+	if flushDuration > 50*time.Millisecond {
+		fmt.Println("flushDuration", flushDuration)
+	}
 	numberWritten := make([]int, ds.nchan)
 	for i, dsp := range ds.processors {
 		numberWritten[i] = dsp.numberWritten
