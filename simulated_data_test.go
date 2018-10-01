@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"gonum.org/v1/gonum/mat"
 )
 
 // TestTriangle checks that TriangleSource works as expected
@@ -71,15 +69,17 @@ func TestTriangle(t *testing.T) {
 	// 	}
 	// }
 	println("A")
-	ds.Stop()
 
-	// Check that Running() is correct
+	// Stop, then check that Running() is correct
+	ds.Stop()
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true after stopped.")
 	}
 	println("B")
+
+	// Start again
 	if err := Start(ds, nil, nil); err != nil {
-		t.Fatalf("TriangleSource could not be started")
+		t.Fatalf("TriangleSource could not be started, %s", err.Error())
 	}
 	println("C")
 	if !ds.Running() {
@@ -89,43 +89,46 @@ func TestTriangle(t *testing.T) {
 	if err := Start(ds, nil, nil); err == nil {
 		t.Errorf("Start(TriangleSource) was allowed when source was running, want error.")
 	}
-	println("E")
+	time.Sleep(time.Second)
+	println("E1")
 	ds.Stop()
+	println("E2")
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true after stopped.")
 	}
 
-	// // Check that we can alter the record length
+	// Start a third time
 	println("F")
-	if err := Start(ds, nil, nil); err != nil {
-		t.Fatalf("TriangleSource could not be started")
-	}
-	ds.ConfigurePulseLengths(0, 0)
-	nsamp, npre := 500, 250
-	ds.ConfigurePulseLengths(nsamp, npre)
-	time.Sleep(5 * time.Millisecond)
-	dsp := ts.processors[0]
-	dsp.changeMutex.Lock()
-	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
-		t.Errorf("TriangleSource has (nsamp, npre)=(%d,%d), want (%d,%d)",
-			dsp.NSamples, dsp.NPresamples, nsamp, npre)
-	}
-	dsp.changeMutex.Unlock()
-	rows := 5
-	cols := 500
-	projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
-	basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
-	if err := dsp.SetProjectorsBasis(*projectors, *basis, "test model"); err != nil {
-		t.Error(err)
-	}
-	if err := ts.ConfigureProjectorsBases(1, *projectors, *basis, "test model"); err != nil {
-		t.Error(err)
-	}
-	println("G")
-	time.Sleep(time.Second)
-	println("H")
-	ds.Stop()
-	println("I")
+	// if err := Start(ds, nil, nil); err != nil {
+	// 	t.Fatalf("TriangleSource could not be started")
+	// }
+	// Check that we can alter the record length
+	// ds.ConfigurePulseLengths(0, 0)
+	// nsamp, npre := 500, 250
+	// ds.ConfigurePulseLengths(nsamp, npre)
+	// time.Sleep(5 * time.Millisecond)
+	// dsp := ts.processors[0]
+	// dsp.changeMutex.Lock()
+	// if dsp.NSamples != nsamp || dsp.NPresamples != npre {
+	// 	t.Errorf("TriangleSource has (nsamp, npre)=(%d,%d), want (%d,%d)",
+	// 		dsp.NSamples, dsp.NPresamples, nsamp, npre)
+	// }
+	// dsp.changeMutex.Unlock()
+	// rows := 5
+	// cols := 500
+	// projectors := mat.NewDense(rows, cols, make([]float64, rows*cols))
+	// basis := mat.NewDense(cols, rows, make([]float64, rows*cols))
+	// if err := dsp.SetProjectorsBasis(*projectors, *basis, "test model"); err != nil {
+	// 	t.Error(err)
+	// }
+	// if err := ts.ConfigureProjectorsBases(1, *projectors, *basis, "test model"); err != nil {
+	// 	t.Error(err)
+	// }
+	// println("G")
+	// time.Sleep(time.Second)
+	// println("H")
+	// ds.Stop()
+	// println("I")
 
 	// Now configure a 0-channel source and make sure it fails
 	config.Nchan = 0
@@ -133,7 +136,7 @@ func TestTriangle(t *testing.T) {
 		t.Errorf("TriangleSource can be configured with 0 channels, want error.")
 	}
 
-	// test maxval<minval errors
+	// Make sure that maxval < minval errors
 	config = TriangleSourceConfig{
 		Nchan:      4,
 		SampleRate: 10000.0,
@@ -143,7 +146,7 @@ func TestTriangle(t *testing.T) {
 	if err := ts.Configure(&config); err == nil {
 		t.Error("expected error for min>max")
 	}
-	// test maxval==minval
+	// March sure that maxval == minval does not error
 	config = TriangleSourceConfig{
 		Nchan:      4,
 		SampleRate: 10000.0,

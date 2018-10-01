@@ -19,6 +19,16 @@ type RawType uint16
 // FrameIndex is used for counting raw data frames.
 type FrameIndex int64
 
+// SourceState is used to indicate the active/inactive/transition state of data sources
+type SourceState int
+
+const (
+	Inactive SourceState = iota // Source is not active
+	Starting                    // Source is in transition to Active state
+	Active                      // Source is actively acquiring data
+	Stopping                    // Source is in transition to Inactive state
+)
+
 // DataSource is the interface for hardware or simulated data sources that
 // produce data.
 type DataSource interface {
@@ -27,6 +37,8 @@ type DataSource interface {
 	StartRun() error
 	Stop() error
 	Running() bool
+	GetState() SourceState
+	SetStateStarting() error
 	BlockReady() chan error
 	Nchan() int
 	Signed() []bool
@@ -45,23 +57,34 @@ type DataSource interface {
 	ProcessSegments() error
 	RunDoneActivate()
 	RunDoneDeactivate()
-	RunDoneWait()
+	// RunDoneWait()
 	ShouldAutoRestart() bool
 }
 
 // RunDoneActivate adds one to ds.runDone, this should only be called in Start
 func (ds *AnySource) RunDoneActivate() {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+	ds.sourceState = Active
+	fmt.Printf("Source Activated\n")
 	ds.runDone.Add(1)
 }
 
 // RunDoneDeactivate calls Done on ds.runDone, this should only be called in Start
 func (ds *AnySource) RunDoneDeactivate() {
+	fmt.Printf("deleteme: in RunDoneDeactivate, waiting for lock\n")
+	ds.runMutex.Lock()
+	ds.sourceState = Inactive
+	fmt.Printf("Source Inactivated\n")
 	ds.runDone.Done()
+	ds.runMutex.Unlock()
 }
 
 // RunDoneWait returns when the source run is done, i.e., the source is stopped
 func (ds *AnySource) RunDoneWait() {
+	fmt.Printf("deleteme: in RunDoneWait, waiting for runDone\n")
 	ds.runDone.Wait()
+	ds.broker.Stop()
 }
 
 // ShouldAutoRestart true if source should be auto-restarted after an error
@@ -89,23 +112,27 @@ func (ds *AnySource) BlockReady() chan error {
 // 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 // When done with the loop, close all channels to DataStreamProcessor objects.
 func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) error {
-	if ds.Running() {
-		return fmt.Errorf("cannot Start() a source that's already Running()")
+	if err := ds.SetStateStarting(); err != nil {
+		return err
 	}
 
+	fmt.Printf("deleteme: Calling ds.Sample\n")
 	if err := ds.Sample(); err != nil {
 		return err
 	}
 
+	fmt.Printf("deleteme: Calling ds.PrepareRun\n")
 	if err := ds.PrepareRun(); err != nil {
 		return err
 	}
 
+	fmt.Printf("deleteme: Calling ds.StartRun\n")
 	ds.RunDoneActivate()
 	if err := ds.StartRun(); err != nil {
 		return err
 	}
 
+	fmt.Printf("deleteme: Launching CoreLoop\n")
 	go CoreLoop(ds, queuedRequests, queuedResults)
 	return nil
 }
@@ -113,25 +140,25 @@ func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) 
 // CoreLoop has the DataSource produce data until graceful stop.
 func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan error) {
 	defer ds.RunDoneDeactivate()
+	defer func() { fmt.Println("CoreLoop is exiting next") }()
 	blockReady := ds.BlockReady()
 
 	for {
+		fmt.Printf("Select will check for blockReady=%p\n", blockReady)
 		select {
 		// Handle data, or recognize the end of data
 		case err, ok := <-blockReady:
 			if !ok {
-				// blockReady should get closed in the data production loop when abortSelf has been closed
+				// blockReady was closed in the data production loop when abortSelf was closed
 				log.Println("blockReady channel was closed; stopping the source normally")
 				return
 
 			} else if err != nil {
 				// other errors indicate a problem with source, need to close down
-				ds.Stop()
 				log.Printf("blockReady receives Error; stopping source: %s\n", err.Error())
 				return
 			}
 			if err := ds.ProcessSegments(); err != nil {
-				ds.Stop()
 				log.Printf("processSegments returns Error; stopping source: %s\n", err.Error())
 				return
 			}
@@ -140,6 +167,42 @@ func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan erro
 		case request := <-queuedRequests:
 			request()
 		}
+	}
+}
+
+// Stop tells the data supply to deactivate.
+func (ds *AnySource) Stop() error {
+	ds.runMutex.Lock()
+	switch ds.sourceState {
+	case Inactive:
+		ds.runMutex.Unlock()
+		return fmt.Errorf("AnySource not active, cannot stop")
+
+	case Starting:
+		fmt.Println("deleteme: called Stop on a Starting source")
+
+	case Active:
+		fmt.Println("deleteme: called Stop on a Active source")
+
+	case Stopping:
+		ds.runMutex.Unlock()
+		fmt.Println("deleteme: called Stop on a Stopping source")
+		return nil
+	}
+	ds.sourceState = Stopping
+	closeIfOpen(ds.abortSelf)
+	ds.runMutex.Unlock()
+
+	ds.RunDoneWait()
+	return nil
+}
+
+func closeIfOpen(c chan struct{}) {
+	select {
+	case <-c:
+		return
+	default:
+		close(c)
 	}
 }
 
@@ -191,7 +254,8 @@ type AnySource struct {
 	segments            []DataSegment
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
-	runMutex            sync.Mutex
+	sourceState         SourceState
+	runMutex            sync.Mutex // guards sourceState
 	runDone             sync.WaitGroup
 	readCounter         int
 }
@@ -297,9 +361,6 @@ func makeDirectory(basepath string) (string, error) {
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	request := strings.ToUpper(config.Request)
 	var filenamePattern, path string
-	// ds.runMutex.Lock()
-	// defer ds.runMutex.Unlock()
-	// this seems like a good idea, but doesn't actually prevent race conditions, and leads to deadlocks
 
 	// first check for possible errors, then take the lock and do the work
 	if strings.HasPrefix(request, "START") {
@@ -475,17 +536,24 @@ func (ds *AnySource) Nchan() int {
 }
 
 // Running tells whether the source is actively running.
-// If there's no ds.abortSelf yet, or it's closed, then source is NOT running.
 func (ds *AnySource) Running() bool {
-	if ds.abortSelf == nil {
-		return false
+	return ds.GetState() == Active
+}
+
+func (ds *AnySource) GetState() SourceState {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+	return ds.sourceState
+}
+
+func (ds *AnySource) SetStateStarting() error {
+	ds.runMutex.Lock()
+	defer ds.runMutex.Unlock()
+	if ds.sourceState == Inactive {
+		ds.sourceState = Starting
+		return nil
 	}
-	select {
-	case <-ds.abortSelf:
-		return false
-	default:
-		return true
-	}
+	return fmt.Errorf("cannot Start() a source that's %v, not Inactive", ds.sourceState)
 }
 
 // Signed returns a per-channel value: whether data are signed ints.
@@ -529,8 +597,6 @@ func (ds *AnySource) setDefaultChannelNames() {
 // cannot be prepared until we know the number of channels. It's an error for
 // ds.nchan to be less than 1.
 func (ds *AnySource) PrepareRun() error {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
@@ -596,17 +662,6 @@ func (ds *AnySource) PrepareRun() error {
 		dsp.SetPubSummaries()
 	}
 	ds.lastread = time.Now()
-	return nil
-}
-
-// Stop tells the data supply to deactivate.
-func (ds *AnySource) Stop() error {
-	if !ds.Running() {
-		return fmt.Errorf("AnySource not running, cannot stop")
-	}
-
-	close(ds.abortSelf)
-	ds.broker.Stop()
 	return nil
 }
 

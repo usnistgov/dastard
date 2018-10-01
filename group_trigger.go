@@ -248,5 +248,5 @@ func (broker *TriggerBroker) Run() {
 
 // Stop causes the Run() goroutine to end at the next appropriate moment.
 func (broker *TriggerBroker) Stop() {
-	close(broker.abort)
+	closeIfOpen(broker.abort)
 }
