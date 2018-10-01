@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -120,16 +121,18 @@ func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan erro
 		case err, ok := <-blockReady:
 			if !ok {
 				// blockReady should get closed in the data production loop when abortSelf has been closed
-				fmt.Println("blockReady channel was closed; stopping the source normally")
+				log.Println("blockReady channel was closed; stopping the source normally")
 				return
 
 			} else if err != nil {
 				// other errors indicate a problem with source, need to close down
-				fmt.Printf("blockReady receives Error; stopping source: %s\n", err.Error())
+				ds.Stop()
+				log.Printf("blockReady receives Error; stopping source: %s\n", err.Error())
 				return
 			}
 			if err := ds.ProcessSegments(); err != nil {
-				fmt.Printf("processSegments returns Error; stopping source: %s\n", err.Error())
+				ds.Stop()
+				log.Printf("processSegments returns Error; stopping source: %s\n", err.Error())
 				return
 			}
 

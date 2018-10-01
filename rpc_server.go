@@ -80,9 +80,9 @@ type ServerStatus struct {
 
 // Heartbeat is the info sent in the regular heartbeat to clients
 type Heartbeat struct {
-	Running        bool
-	Time           float64
-	DataMB         float64
+	Running bool
+	Time    float64
+	DataMB  float64
 }
 
 // FactorArgs holds the arguments to a Multiply operation
@@ -313,7 +313,8 @@ func (s *SourceControl) handlePossibleStoppedSource() {
 	}
 }
 
-// WaitForStopTestingOnly will block until the running data source is finished and s.isSourceActive
+// WaitForStopTestingOnly will block until the running data source is finished and
+// thus sets s.isSourceActive to false
 func (s *SourceControl) WaitForStopTestingOnly(dummy *string, reply *bool) error {
 	for s.isSourceActive {
 		s.handlePossibleStoppedSource()

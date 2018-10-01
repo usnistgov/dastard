@@ -406,18 +406,15 @@ func TestErroringSourceRPC(t *testing.T) {
 	sourceName := "ERRORINGSOURCE"
 	dummy := ""
 	okay := false
-	for i := 0; i < 2; i++ { // this test is super slow (like 10 seconds), not sure why
+	for i := 0; i < 2; i++ {
 		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
 			t.Error(err)
-		}
-		if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
-			t.Error("ErroringSource.Start: no error, but expected error source already started")
 		}
 		if err := client.Call("SourceControl.WaitForStopTestingOnly", &dummy, &okay); err != nil {
 			t.Error(err)
 		}
 		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
-			t.Error("ErroringSource.Stop: expected error for second stop")
+			t.Error("ErroringSource.Stop: expected error for stop because already waited for source to end")
 		}
 	}
 }
