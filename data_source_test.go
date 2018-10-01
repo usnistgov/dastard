@@ -153,13 +153,7 @@ func TestWritingFiles(t *testing.T) {
 	if err := ds.WriteControl(config); err != nil {
 		t.Error(err)
 	}
-	stat, statErr := ds.writingState.experimentStateFile.Stat()
-	if statErr != nil {
-		t.Error(statErr)
-	}
-	if !(stat.Size() == 54 || stat.Size() == 53 || stat.Size() == 52) { // this test is probably racy, the answer varies from run to run
-		t.Errorf("have file size %v, expected 54 or 53 or 52", stat.Size())
-	}
+	experimentStateFilename := ds.writingState.ExperimentStateFilename
 	config.Request = "Stop"
 	if err := ds.WriteControl(config); err != nil {
 		t.Errorf("%v\n%v", err, config.Request)
@@ -173,5 +167,19 @@ func TestWritingFiles(t *testing.T) {
 	if ds.processors[0].DataPublisher.HasLJH3() {
 		t.Error("Stop did not result in !HasLJH3")
 	}
-
+	if true { // prevent variable from persisting
+		fileContents, err2 := ioutil.ReadFile(experimentStateFilename)
+		fileContentsStr := string(fileContents)
+		if err2 != nil {
+			t.Error(err2)
+		}
+		expectFileContentsStr := "# unix time in nanoseconds, state label\n1538424162462127037, START\n1538174046828690465, AQ7\n1538424428433771969, STOP\n"
+		if !strings.HasPrefix(fileContentsStr, "# unix time in nanoseconds, state label\n") ||
+			!strings.Contains(fileContentsStr, ", START\n") ||
+			!strings.Contains(fileContentsStr, ", AQ7\n") ||
+			!strings.HasSuffix(fileContentsStr, ", STOP\n") ||
+			len(expectFileContentsStr) != len(fileContentsStr) {
+			t.Errorf("have\n%v\nwant (except timestamps should disagree)\n%v\n", fileContentsStr, expectFileContentsStr)
+		}
+	}
 }

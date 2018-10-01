@@ -235,7 +235,7 @@ func (ds *AnySource) StartRun() error {
 	return nil
 }
 
-// SetExperimentStateLabel writes to a file with name like _experiment_state.txt
+// SetExperimentStateLabel writes to a file with name like XXX_experiment_state.txt
 // the file is created upon the first call to this function for a given file writing
 func (ds *AnySource) SetExperimentStateLabel(stateLabel string) error {
 	if ds.writingState.experimentStateFile == nil {
@@ -243,16 +243,16 @@ func (ds *AnySource) SetExperimentStateLabel(stateLabel string) error {
 		var err error
 		ds.writingState.experimentStateFile, err = os.Create(ds.writingState.ExperimentStateFilename)
 		if err != nil {
-			return err
+			return fmt.Errorf("%v, filename: %v", err, ds.writingState.ExperimentStateFilename)
 		}
 		// write header
-		_, err1 := ds.writingState.experimentStateFile.WriteString("# unix time in nanoseconds, state label")
+		_, err1 := ds.writingState.experimentStateFile.WriteString("# unix time in nanoseconds, state label\n")
 		if err1 != nil {
 			return err
 		}
 	}
 	ds.writingState.ExperimentStateLabel = stateLabel
-	ds.writingState.ExperimentStateLabelUnixNano = time.Now().Nanosecond()
+	ds.writingState.ExperimentStateLabelUnixNano = time.Now().UnixNano()
 	_, err := ds.writingState.experimentStateFile.WriteString(fmt.Sprintf("%v, %v\n", ds.writingState.ExperimentStateLabelUnixNano, stateLabel))
 	if err != nil {
 		return err
@@ -376,9 +376,16 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Active = false
 		ds.writingState.Paused = false
 		ds.writingState.FilenamePattern = ""
+		ds.SetExperimentStateLabel("STOP")
 		if ds.writingState.experimentStateFile != nil {
-			ds.writingState.experimentStateFile.Close()
+			if err := ds.writingState.experimentStateFile.Close(); err != nil {
+				fmt.Println("failed to close experimentStatefile, err:", err)
+				// not sure how to handle this
+				// panic seems unwarranted
+				// throwing an error seems unwarranted, and I want to handle all errors earlier
+			}
 		}
+		ds.writingState.experimentStateFile = nil
 		ds.writingState.ExperimentStateFilename = ""
 		ds.writingState.ExperimentStateLabel = ""
 		ds.writingState.ExperimentStateLabelUnixNano = 0
@@ -422,6 +429,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.BasePath = path
 		ds.writingState.FilenamePattern = filenamePattern
 		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
+		ds.SetExperimentStateLabel("START")
 	}
 	return nil
 }
@@ -435,7 +443,7 @@ type WritingState struct {
 	experimentStateFile          *os.File
 	ExperimentStateFilename      string
 	ExperimentStateLabel         string
-	ExperimentStateLabelUnixNano int
+	ExperimentStateLabelUnixNano int64
 }
 
 // ComputeWritingState doesn't need to compute, but just returns the writingState
