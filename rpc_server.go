@@ -54,10 +54,10 @@ func NewSourceControl() *SourceControl {
 	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle = NewTriangleSource()
 	sc.triangle.heartbeats = sc.heartbeats
-	if lan, err := NewLanceroSource(); err == nil {
-		sc.lancero = lan
+	lan, err := NewLanceroSource()
+	sc.lancero = lan
+	if err == nil {
 		sc.lancero.heartbeats = sc.heartbeats
-
 	}
 	sc.erroring = NewErroringSource()
 	sc.status.Ncol = make([]int, 0)
