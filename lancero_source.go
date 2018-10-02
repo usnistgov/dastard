@@ -446,10 +446,13 @@ func (ls *LanceroSource) StartRun() error {
 	return nil
 }
 
-// launchLanceroReader launches a goroutine that reads from the lancero card
-// based on a ticker with ls.readPeriod
-// it then demuxes the data and puts it on ls.BuffersChan
-// this way the lancero is read with minimum potential for interruption
+// launchLanceroReader launches a goroutine that reads from the Lancero card
+// whenever prompted by a ticker with a duration of ls.readPeriod.
+// It then demuxes the data and puts it on ls.BuffersChan. A second goroutine
+// receives data buffers on that channel. Because the channel is buffered with
+// a large capacity, the Lancero can read with minimum potential for overflowing
+// because of long latency in the analysis stages of Dastard.
+
 func (ls *LanceroSource) launchLanceroReader() {
 	go func() {
 		ticker := time.NewTicker(ls.readPeriod)
@@ -547,11 +550,12 @@ func (ls *LanceroSource) launchLanceroReader() {
 
 	// Now read data until error or terminated
 	go func() {
+		panicTime := time.Duration(cap(ls.buffersChan)) * ls.readPeriod
 		for {
 			// This select statement was formerly the ls.blockingRead method
 			select {
-			case <-time.After(time.Duration(cap(ls.buffersChan)) * ls.readPeriod):
-				panic(fmt.Sprintf("timeout, no data from lancero after %v", time.Duration(cap(ls.buffersChan))*ls.readPeriod))
+			case <-time.After(panicTime):
+				panic(fmt.Sprintf("timeout, no data from lancero after %v / %v", panicTime, ls.readPeriod))
 
 			case buffersMsg, ok := <-ls.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
