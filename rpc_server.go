@@ -211,13 +211,21 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
 	}
-	if s.ActiveSource.ComputeWritingState().Active && (s.status.Npresamp != sizes.Npre || s.status.Nsamples != sizes.Nsamp) {
+	if s.status.Npresamp == sizes.Npre && s.status.Nsamples == sizes.Nsamp {
+		return nil // No change requested
+	}
+	if s.ActiveSource.ComputeWritingState().Active {
 		return fmt.Errorf("Stop writing before changing record lengths")
 	}
-	err := s.ActiveSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
+	s.queuedRequests <- func() {
+		s.queuedResults <- s.ActiveSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
+	}
+	err := <-s.queuedResults
 	*reply = (err == nil)
-	s.status.Npresamp = sizes.Npre
-	s.status.Nsamples = sizes.Nsamp
+	if err == nil {
+		s.status.Npresamp = sizes.Npre
+		s.status.Nsamples = sizes.Nsamp
+	}
 	s.broadcastStatus()
 	return err
 }
