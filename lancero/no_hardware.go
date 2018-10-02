@@ -10,8 +10,7 @@ import (
 )
 
 // NoHardware is a drop in replacement for Lancero (implements Lanceroer)
-// that requires not hardware
-// for testing
+// that requires no hardware. Use it for testing the interface.
 type NoHardware struct {
 	ncols                    int
 	nrows                    int

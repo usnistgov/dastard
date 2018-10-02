@@ -120,6 +120,14 @@ type LanceroSourceConfig struct {
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	ls.runMutex.Lock()
 	defer ls.runMutex.Unlock()
+	if ls.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure a LanceroSource if it's not Inactive")
+	}
+
+	// Error if Nsamp not in [1,16].
+	if config.Nsamp > 16 || config.Nsamp < 1 {
+		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", config.Nsamp)
+	}
 
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMhz = config.ClockMhz
@@ -145,10 +153,6 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	}
 	sort.Ints(config.AvailableCards)
 
-	// Error if Nsamp not in [1,16].
-	if config.Nsamp > 16 || config.Nsamp < 1 {
-		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", config.Nsamp)
-	}
 	ls.nsamp = config.Nsamp
 	return nil
 }
@@ -451,6 +455,10 @@ func (ls *LanceroSource) launchLanceroReader() {
 		ticker := time.NewTicker(ls.readPeriod)
 		for {
 			select {
+			case <-ls.abortSelf:
+				close(ls.buffersChan)
+				return
+
 			case <-ticker.C:
 				var buffers [][]RawType
 				framesUsed := math.MaxInt64
@@ -533,9 +541,6 @@ func (ls *LanceroSource) launchLanceroReader() {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime, timeDiff: timeDiff, totalBytes: totalBytes}
-			case <-ls.abortSelf:
-				close(ls.buffersChan)
-				return
 			}
 		}
 	}()
@@ -543,24 +548,27 @@ func (ls *LanceroSource) launchLanceroReader() {
 	// Now read data until error or terminated
 	go func() {
 		for {
-			// This select was formerly the ls.blockingRead method
+			// This select statement was formerly the ls.blockingRead method
 			select {
 			case <-time.After(time.Duration(cap(ls.buffersChan)) * ls.readPeriod):
 				panic(fmt.Sprintf("timeout, no data from lancero after %v", time.Duration(cap(ls.buffersChan))*ls.readPeriod))
-			case buffersMsg := <-ls.buffersChan:
-				if buffersMsg.datacopies == nil { //  checks if buffersMsg is closed, will have zero value, zero slices are nil
+
+			case buffersMsg, ok := <-ls.buffersChan:
+				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
+				if buffersMsg.datacopies == nil || !ok {
 					if err := ls.stop(); err != nil {
 						ls.blockReady <- err
 					}
 					close(ls.blockReady)
 					return
 				}
+				// ls.buffersChan contained valid data, so act on it.
 				err1 := ls.distributeData(buffersMsg)
 				if err1 != nil {
 					ls.blockReady <- err1
 					return
 				}
-				ls.blockReady <- nil
+				ls.blockReady <- nil // This value means valid data has been distibuted
 			}
 			ls.blockingReadCount++ // set to 0 in SampleCard
 		}

@@ -397,28 +397,28 @@ func setupViper() error {
 	return nil
 }
 
-// func TestErroringSourceRPC(t *testing.T) {
-// 	client, errClient := simpleClient()
-// 	defer client.Close()
-// 	if errClient != nil {
-// 		t.Fatal(errClient)
-// 	}
-// 	sourceName := "ERRORINGSOURCE"
-// 	dummy := ""
-// 	okay := false
-// 	for i := 0; i < 2; i++ {
-// 		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
-// 			t.Error(err)
-// 		}
-// 		if err := client.Call("SourceControl.WaitForStopTestingOnly", &dummy, &okay); err != nil {
-// 			t.Error(err)
-// 		}
-// 		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
-// 			t.Error("ErroringSource.Stop: expected error for stop because already waited for source to end")
-// 		}
-// 	}
-// }
-//
+func TestErroringSourceRPC(t *testing.T) {
+	client, errClient := simpleClient()
+	defer client.Close()
+	if errClient != nil {
+		t.Fatal(errClient)
+	}
+	sourceName := "ERRORINGSOURCE"
+	dummy := ""
+	okay := false
+	for i := 0; i < 2; i++ {
+		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
+			t.Error(err)
+		}
+		if err := client.Call("SourceControl.WaitForStopTestingOnly", &dummy, &okay); err != nil {
+			t.Error(err)
+		}
+		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
+			t.Error("ErroringSource.Stop: expected error for stop because already waited for source to end")
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
