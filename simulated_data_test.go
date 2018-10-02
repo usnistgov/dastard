@@ -22,7 +22,7 @@ func TestTriangle(t *testing.T) {
 		t.Errorf("TriangleSource.Running() says true before first start.")
 	}
 
-	if err := Start(ds, nil, nil); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("TriangleSource could not be started")
 	}
 	if len(ts.processors) != config.Nchan {
@@ -76,7 +76,7 @@ func TestTriangle(t *testing.T) {
 	}
 
 	// Start again
-	if err := Start(ds, nil, nil); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("TriangleSource could not be started, %s", err.Error())
 	}
 	if !ds.Running() {
@@ -85,7 +85,7 @@ func TestTriangle(t *testing.T) {
 	if err := ts.Configure(&config); err == nil {
 		t.Errorf("TriangleSource can be configured with even though it's running, want error.")
 	}
-	if err := Start(ds, nil, nil); err == nil {
+	if err := Start(ds, nil); err == nil {
 		t.Errorf("Start(TriangleSource) was allowed when source was running, want error.")
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -95,9 +95,9 @@ func TestTriangle(t *testing.T) {
 	}
 
 	// Start a third time
-	// if err := Start(ds, nil, nil); err != nil {
-	// 	t.Fatalf("TriangleSource could not be started")
-	// }
+	if err := Start(ds, nil); err != nil {
+		t.Fatalf("TriangleSource could not be started")
+	}
 	// Check that we can alter the record length
 	// ds.ConfigurePulseLengths(0, 0)
 	// nsamp, npre := 500, 250
@@ -182,7 +182,7 @@ func TestSimPulse(t *testing.T) {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
 	}
 
-	if err := Start(ds, nil, nil); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
 	if len(ps.processors) != config.Nchan {
@@ -231,7 +231,7 @@ func TestSimPulse(t *testing.T) {
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before started.")
 	}
-	if err := Start(ds, nil, nil); err != nil {
+	if err := Start(ds, nil); err != nil {
 		t.Fatalf("SimPulseSource could not be started")
 	}
 	if !ds.Running() {
@@ -240,7 +240,7 @@ func TestSimPulse(t *testing.T) {
 	if err := ps.Configure(&config); err == nil {
 		t.Errorf("SimPulseSource can be configured with even though it's running, want error.")
 	}
-	if err := Start(ds, nil, nil); err == nil {
+	if err := Start(ds, nil); err == nil {
 		t.Errorf("Start(SimPulseSource) was allowed when source was running, want error.")
 	}
 	ds.Stop()
@@ -260,7 +260,7 @@ func TestErroringSource(t *testing.T) {
 	ds := DataSource(es)
 	for i := 0; i < 5; i++ {
 		// 	// start the source, wait for it to end due to error, repeat
-		if err := Start(ds, nil, nil); err != nil {
+		if err := Start(ds, nil); err != nil {
 			t.Fatalf(fmt.Sprintf("Could not start ErroringSource: i=%v, err=%v", i, err))
 		}
 		es.RunDoneWait()

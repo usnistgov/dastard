@@ -276,7 +276,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	s.status.Running = true
-	if err := Start(s.ActiveSource, s.queuedRequests, s.queuedResults); err != nil {
+	if err := Start(s.ActiveSource, s.queuedRequests); err != nil {
 		s.status.Running = false
 		s.isSourceActive = false
 		return err

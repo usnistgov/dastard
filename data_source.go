@@ -107,7 +107,7 @@ func (ds *AnySource) BlockReady() chan error {
 // 3) StartRun: a per-source method to begin data acquisition, if relevant.
 // 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 // When done with the loop, close all channels to DataStreamProcessor objects.
-func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) error {
+func Start(ds DataSource, queuedRequests chan func()) error {
 	if err := ds.SetStateStarting(); err != nil {
 		return err
 	}
@@ -125,12 +125,12 @@ func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) 
 		return err
 	}
 
-	go CoreLoop(ds, queuedRequests, queuedResults)
+	go CoreLoop(ds, queuedRequests)
 	return nil
 }
 
 // CoreLoop has the DataSource produce data until graceful stop.
-func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan error) {
+func CoreLoop(ds DataSource, queuedRequests chan func()) {
 	defer ds.RunDoneDeactivate()
 	blockReady := ds.BlockReady()
 
