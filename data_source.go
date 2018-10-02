@@ -277,7 +277,7 @@ func (ds *AnySource) ProcessSegments() error {
 	ds.readCounter++
 	flushDuration := time.Now().Sub(tStart)
 	if flushDuration > 50*time.Millisecond {
-		fmt.Println("flushDuration", flushDuration)
+		log.Println("flushDuration", flushDuration)
 	}
 	numberWritten := make([]int, ds.nchan)
 	for i, dsp := range ds.processors {
