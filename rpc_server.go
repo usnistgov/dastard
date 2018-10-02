@@ -126,6 +126,17 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	return err
 }
 
+// runLaterIfActive will return error if source is Inactive; otherwise it will
+// run the closure f at an appropriate point in the data handling cycle
+// and return any error sent on s.queuedRequests.
+func (s *SourceControl) runLaterIfActive(f func()) error {
+	if !s.isSourceActive {
+		return fmt.Errorf("No source is active")
+	}
+	s.queuedRequests <- f
+	return <-s.queuedResults
+}
+
 // MixFractionObject is the RPC-usable structure for ConfigureMixFraction
 type MixFractionObject struct {
 	ChannelIndex int
@@ -138,27 +149,25 @@ type MixFractionObject struct {
 // is used. Thus, we will internally store not MixFraction, but errorScale := MixFraction/Nsamp.
 // NOTE: only supported by LanceroSource.
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
-	if !s.isSourceActive {
-		*reply = false
-		return fmt.Errorf("No source is active")
+	f := func() {
+		s.queuedResults <- s.ActiveSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
 	}
-	err := s.ActiveSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
-	// s.queuedRequests <- func() {
-	// 	s.queuedResults <- s.ActiveSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
-	// }
-	// err := <-s.queuedResults
+	err := s.runLaterIfActive(f)
 	*reply = (err == nil)
 	return err
 }
 
 // ConfigureTriggers configures the trigger state for 1 or more channels.
 func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
-	if !s.isSourceActive {
-		return fmt.Errorf("No source is active")
+	log.Printf("Got ConfigureTriggers: %v", spew.Sdump(state))
+	f := func() {
+		err := s.ActiveSource.ChangeTriggerState(state)
+		if err == nil {
+			s.broadcastTriggerState()
+		}
+		s.queuedResults <- err
 	}
-	log.Printf("GOT ConfigureTriggers: %v", spew.Sdump(state))
-	err := s.ActiveSource.ChangeTriggerState(state)
-	s.broadcastTriggerState()
+	err := s.runLaterIfActive(f)
 	*reply = (err == nil)
 	return err
 }
@@ -173,9 +182,7 @@ type ProjectorsBasisObject struct {
 
 // ConfigureProjectorsBasis takes ProjectorsBase64 which must a base64 encoded string with binary data matching that from mat.Dense.MarshalBinary
 func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, reply *bool) error {
-	if !s.isSourceActive {
-		return fmt.Errorf("No source is active")
-	}
+	*reply = false
 	projectorsBytes, err := base64.StdEncoding.DecodeString(pbo.ProjectorsBase64)
 	if err != nil {
 		return err
@@ -185,18 +192,22 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 		return err
 	}
 	var projectors, basis mat.Dense
-	if err := projectors.UnmarshalBinary(projectorsBytes); err != nil {
+	if err = projectors.UnmarshalBinary(projectorsBytes); err != nil {
 		return err
 	}
-	if err := basis.UnmarshalBinary(basisBytes); err != nil {
+	if err = basis.UnmarshalBinary(basisBytes); err != nil {
 		return err
 	}
-	if err := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription); err != nil {
-		return err
+	f := func() {
+		err := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription)
+		if err == nil {
+			s.status.ChannelsWithProjectors = s.ActiveSource.ChannelsWithProjectors()
+		}
+		s.queuedResults <- err
 	}
-
-	*reply = true
-	return nil
+	err = s.runLaterIfActive(f)
+	*reply = (err == nil)
+	return err
 }
 
 // SizeObject is the RPC-usable structure for ConfigurePulseLengths to change pulse record sizes.
@@ -207,6 +218,7 @@ type SizeObject struct {
 
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
+	*reply = false
 	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")
@@ -217,21 +229,24 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	if s.ActiveSource.ComputeWritingState().Active {
 		return fmt.Errorf("Stop writing before changing record lengths")
 	}
-	s.queuedRequests <- func() {
-		s.queuedResults <- s.ActiveSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
+
+	f := func() {
+		err := s.ActiveSource.ConfigurePulseLengths(sizes.Nsamp, sizes.Npre)
+		if err == nil {
+			s.status.Npresamp = sizes.Npre
+			s.status.Nsamples = sizes.Nsamp
+		}
+		s.broadcastStatus()
+		s.queuedResults <- err
 	}
-	err := <-s.queuedResults
+	err := s.runLaterIfActive(f)
 	*reply = (err == nil)
-	if err == nil {
-		s.status.Npresamp = sizes.Npre
-		s.status.Nsamples = sizes.Nsamp
-	}
-	s.broadcastStatus()
 	return err
 }
 
 // Start will identify the source given by sourceName and Sample then Start it.
 func (s *SourceControl) Start(sourceName *string, reply *bool) error {
+	*reply = false
 	if s.isSourceActive {
 		return fmt.Errorf("already have active source, do not start")
 	}
@@ -300,7 +315,6 @@ func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	log.Printf("Stopping data source\n")
 	s.ActiveSource.Stop()
 	s.handlePossibleStoppedSource()
-	*reply = true
 	s.broadcastStatus()
 	*reply = true
 	return nil
@@ -343,13 +357,15 @@ type WriteControlConfig struct {
 
 // WriteControl requests start/stop/pause/unpause data writing
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
-	*reply = true
-	if !s.isSourceActive {
-		return fmt.Errorf("no active source")
+	f := func() {
+		err := s.ActiveSource.WriteControl(config)
+		if err == nil {
+			s.broadcastWritingState()
+		}
+		s.queuedResults <- err
 	}
-	err := s.ActiveSource.WriteControl(config)
-	*reply = (err != nil)
-	s.broadcastWritingState()
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
 	return err
 }
 
@@ -360,37 +376,41 @@ type StateLabelConfig struct {
 
 // SetExperimentStateLabel sets the experiment state label in the _experiment_state file
 func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply *bool) error {
-	if !s.isSourceActive {
-		return fmt.Errorf("no active source")
+	f := func() {
+		s.queuedResults <- s.ActiveSource.SetExperimentStateLabel(config.Label)
 	}
-	if err := s.ActiveSource.SetExperimentStateLabel(config.Label); err != nil {
-		return err
-	}
-	return nil
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
+	return err
 }
 
 // WriteComment writes the comment to comment.txt
 func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
-	*reply = true
-	if !s.isSourceActive || len(*comment) == 0 {
-		return fmt.Errorf("cant write comment, sourceActive %v, len(*comment) %v",
+	*reply = false
+	if len(*comment) == 0 {
+		return fmt.Errorf("can't write zero-length comment, sourceActive %v, len(*comment) %v",
 			s.isSourceActive, len(*comment))
 	}
-	ws := s.ActiveSource.ComputeWritingState()
-	if ws.Active {
-		commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
-		fp, err := os.Create(commentFilename)
-		if err != nil {
-			return err
+	f := func() {
+		ws := s.ActiveSource.ComputeWritingState()
+		if ws.Active {
+			commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
+			fp, err := os.Create(commentFilename)
+			if err != nil {
+				s.queuedResults <- err
+			}
+			defer fp.Close()
+			fp.WriteString(*comment)
+			// Always end the comment file with a newline.
+			if !strings.HasSuffix(*comment, "\n") {
+				fp.WriteString("\n")
+			}
 		}
-		defer fp.Close()
-		fp.WriteString(*comment)
-		// Always end the comment file with a newline.
-		if !strings.HasSuffix(*comment, "\n") {
-			fp.WriteString("\n")
-		}
+		s.queuedResults <- nil
 	}
-	return nil
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
+	return err
 }
 
 // ReadComment reads the contents of comment.txt if it exists, otherwise returns err
@@ -402,7 +422,7 @@ func (s *SourceControl) ReadComment(zero *int, reply *string) error {
 	}
 	ws := s.ActiveSource.ComputeWritingState()
 	if !ws.Active {
-		return fmt.Errorf("cant read comment when not activley writing")
+		return fmt.Errorf("cant read comment when not actively writing")
 	}
 	commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
 	b, err := ioutil.ReadFile(commentFilename)
@@ -425,39 +445,33 @@ const (
 
 // CoupleErrToFB turns on or off coupling of Error -> FB
 func (s *SourceControl) CoupleErrToFB(couple *bool, reply *bool) error {
-	if !s.isSourceActive {
-		return fmt.Errorf("No source is active")
+	f := func() {
+		c := NoCoupling
+		if *couple {
+			c = ErrToFB
+		}
+		err := s.ActiveSource.SetCoupling(c)
+		s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
+		s.queuedResults <- err
 	}
-
-	*reply = true
-	c := NoCoupling
-	if *couple {
-		c = ErrToFB
-	}
-	err := s.ActiveSource.SetCoupling(c)
-	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
-	if err != nil {
-		*reply = false
-	}
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
 	return err
 }
 
 // CoupleFBToErr turns on or off coupling of FB -> Error
 func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
-	if !s.isSourceActive {
-		return fmt.Errorf("No source is active")
+	f := func() {
+		c := NoCoupling
+		if *couple {
+			c = FBToErr
+		}
+		err := s.ActiveSource.SetCoupling(c)
+		s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
+		s.queuedResults <- err
 	}
-
-	*reply = true
-	c := NoCoupling
-	if *couple {
-		c = FBToErr
-	}
-	err := s.ActiveSource.SetCoupling(c)
-	s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
-	if err != nil {
-		*reply = false
-	}
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
 	return err
 }
 
@@ -471,9 +485,6 @@ func (s *SourceControl) broadcastHeartbeat() {
 
 func (s *SourceControl) broadcastStatus() {
 	s.handlePossibleStoppedSource()
-	if s.isSourceActive {
-		s.status.ChannelsWithProjectors = s.ActiveSource.ChannelsWithProjectors()
-	}
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
 }
 
@@ -572,7 +583,6 @@ func RunRPCServer(portrpc int, block bool) {
 	}()
 
 	// Now launch the connection handler and accept connections.
-
 	go func() {
 		server := rpc.NewServer()
 		if err := server.Register(sourceControl); err != nil {
