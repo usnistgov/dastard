@@ -117,7 +117,7 @@ func TestNoHardwareSource(t *testing.T) {
 		t.Error("LanceroSource.Configure fails:", err)
 	}
 
-	if err := Start(source, nil, nil); err != nil {
+	if err := Start(source, nil); err != nil {
 		source.Stop()
 		t.Fatal(err)
 	}
@@ -143,7 +143,6 @@ func TestNoHardwareSource(t *testing.T) {
 	// the lsync is not right. about half the time I run the test there are 3 blocking reads
 	// at which point the lancero source shuts down due to it seeing lsync change
 	// then Stop() will error but the err value is not checked so it doesn't cause a test failure
-
 }
 
 func TestMix(t *testing.T) {
