@@ -68,37 +68,33 @@ func TestTriangle(t *testing.T) {
 	// 		t.Errorf("TriangleSource second segment, ouput %d gives firstFramenum %d, want %d", i, segment.firstFramenum, 2*n)
 	// 	}
 	// }
-	println("A")
 
 	// Stop, then check that Running() is correct
 	ds.Stop()
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true after stopped.")
 	}
-	println("B")
 
 	// Start again
 	if err := Start(ds, nil, nil); err != nil {
 		t.Fatalf("TriangleSource could not be started, %s", err.Error())
 	}
-	println("C")
 	if !ds.Running() {
 		t.Errorf("TriangleSource.Running() says false after started.")
 	}
-	println("D")
+	if err := ts.Configure(&config); err == nil {
+		t.Errorf("TriangleSource can be configured with even though it's running, want error.")
+	}
 	if err := Start(ds, nil, nil); err == nil {
 		t.Errorf("Start(TriangleSource) was allowed when source was running, want error.")
 	}
-	time.Sleep(time.Second)
-	println("E1")
+	time.Sleep(100 * time.Millisecond)
 	ds.Stop()
-	println("E2")
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true after stopped.")
 	}
 
 	// Start a third time
-	println("F")
 	// if err := Start(ds, nil, nil); err != nil {
 	// 	t.Fatalf("TriangleSource could not be started")
 	// }
@@ -144,9 +140,18 @@ func TestTriangle(t *testing.T) {
 		Max:        200,
 	}
 	if err := ts.Configure(&config); err == nil {
-		t.Error("expected error for min>max")
+		t.Error("TriangleSource can be configured with min>max, want error")
 	}
-	// March sure that maxval == minval does not error
+	config = TriangleSourceConfig{
+		Nchan:      4,
+		SampleRate: 1.0,
+		Min:        100,
+		Max:        200,
+	}
+	if err := ts.Configure(&config); err == nil {
+		t.Errorf("TriangleSource can be configured with too-slow buffer %v, want error", ts.timeperbuf)
+	}
+	// Make sure that maxval == minval does not error and cycleLen is >>1.
 	config = TriangleSourceConfig{
 		Nchan:      4,
 		SampleRate: 10000.0,
@@ -157,7 +162,7 @@ func TestTriangle(t *testing.T) {
 		t.Error(err)
 	}
 	if ts.cycleLen != 1001 {
-		t.Errorf("have %v, want 1001", ts.cycleLen)
+		t.Errorf("ts.cycleLen is %v, want 1001", ts.cycleLen)
 	}
 }
 
@@ -231,6 +236,9 @@ func TestSimPulse(t *testing.T) {
 	}
 	if !ds.Running() {
 		t.Errorf("SimPulseSource.Running() says false after started.")
+	}
+	if err := ps.Configure(&config); err == nil {
+		t.Errorf("SimPulseSource can be configured with even though it's running, want error.")
 	}
 	if err := Start(ds, nil, nil); err == nil {
 		t.Errorf("Start(SimPulseSource) was allowed when source was running, want error.")

@@ -66,23 +66,19 @@ func (ds *AnySource) RunDoneActivate() {
 	ds.runMutex.Lock()
 	defer ds.runMutex.Unlock()
 	ds.sourceState = Active
-	fmt.Printf("Source Activated\n")
 	ds.runDone.Add(1)
 }
 
 // RunDoneDeactivate calls Done on ds.runDone, this should only be called in Start
 func (ds *AnySource) RunDoneDeactivate() {
-	fmt.Printf("deleteme: in RunDoneDeactivate, waiting for lock\n")
 	ds.runMutex.Lock()
 	ds.sourceState = Inactive
-	fmt.Printf("Source Inactivated\n")
 	ds.runDone.Done()
 	ds.runMutex.Unlock()
 }
 
 // RunDoneWait returns when the source run is done, i.e., the source is stopped
 func (ds *AnySource) RunDoneWait() {
-	fmt.Printf("deleteme: in RunDoneWait, waiting for runDone\n")
 	ds.runDone.Wait()
 	ds.broker.Stop()
 }
@@ -116,23 +112,19 @@ func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) 
 		return err
 	}
 
-	fmt.Printf("deleteme: Calling ds.Sample\n")
 	if err := ds.Sample(); err != nil {
 		return err
 	}
 
-	fmt.Printf("deleteme: Calling ds.PrepareRun\n")
 	if err := ds.PrepareRun(); err != nil {
 		return err
 	}
 
-	fmt.Printf("deleteme: Calling ds.StartRun\n")
 	ds.RunDoneActivate()
 	if err := ds.StartRun(); err != nil {
 		return err
 	}
 
-	fmt.Printf("deleteme: Launching CoreLoop\n")
 	go CoreLoop(ds, queuedRequests, queuedResults)
 	return nil
 }
@@ -140,11 +132,9 @@ func Start(ds DataSource, queuedRequests chan func(), queuedResults chan error) 
 // CoreLoop has the DataSource produce data until graceful stop.
 func CoreLoop(ds DataSource, queuedRequests chan func(), queuedResults chan error) {
 	defer ds.RunDoneDeactivate()
-	defer func() { fmt.Println("CoreLoop is exiting next") }()
 	blockReady := ds.BlockReady()
 
 	for {
-		fmt.Printf("Select will check for blockReady=%p\n", blockReady)
 		select {
 		// Handle data, or recognize the end of data
 		case err, ok := <-blockReady:
@@ -179,14 +169,14 @@ func (ds *AnySource) Stop() error {
 		return fmt.Errorf("AnySource not active, cannot stop")
 
 	case Starting:
-		fmt.Println("deleteme: called Stop on a Starting source")
+		fmt.Println("deleteme: called Stop on a Starting source; how to handle this??")
 
 	case Active:
-		fmt.Println("deleteme: called Stop on a Active source")
+		// This is the normal case: Stop on an Active source
 
 	case Stopping:
 		ds.runMutex.Unlock()
-		fmt.Println("deleteme: called Stop on a Stopping source")
+		fmt.Println("deleteme: called Stop again on a Stopping source")
 		return nil
 	}
 	ds.sourceState = Stopping

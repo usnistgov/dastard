@@ -32,17 +32,22 @@ type TriangleSourceConfig struct {
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
+	// Check configuration for acceptability
 	if config.Nchan < 1 {
 		return fmt.Errorf("TriangleSource.Configure() asked for %d channels, should be > 0", config.Nchan)
 	}
-	if ts.GetState() != Inactive {
-		return fmt.Errorf("cannot Configure a TriangleSource if it's not Inactive")
-	}
-	ts.runMutex.Lock()
-	defer ts.runMutex.Unlock()
 	if config.Min > config.Max {
 		return fmt.Errorf("have config.Min=%v > config.Max=%v, want Min<Max", config.Min, config.Max)
 	}
+
+	ts.runMutex.Lock()
+	defer ts.runMutex.Unlock()
+	if ts.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure a TriangleSource if it's not Inactive")
+	}
+	ts.nchan = config.Nchan
+	ts.sampleRate = config.SampleRate
+	ts.samplePeriod = time.Duration(roundint(1e9 / ts.sampleRate))
 	nrise := config.Max - config.Min
 	if nrise > 0 {
 		ts.cycleLen = 2 * int(nrise)
@@ -59,9 +64,6 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 			ts.onecycle[i] = config.Max
 		}
 	}
-	ts.nchan = config.Nchan
-	ts.sampleRate = config.SampleRate
-	ts.samplePeriod = time.Duration(roundint(1e9 / ts.sampleRate))
 
 	ts.minval = config.Min
 	ts.maxval = config.Max
@@ -90,14 +92,12 @@ func (ts *TriangleSource) Sample() error {
 // StartRun launches the repeated loop that generates Triangle data.
 func (ts *TriangleSource) StartRun() error {
 	go func() {
-		defer func() { fmt.Println("exiting StartRun data genertion loop") }()
 		for {
 			nextread := ts.lastread.Add(ts.timeperbuf)
 			waittime := time.Until(nextread)
 			var now time.Time
 			select {
 			case <-ts.abortSelf:
-				fmt.Printf("TriangleSource.abortSelf was closed, closing blockReady=%p\n", ts.blockReady)
 				close(ts.blockReady)
 				return
 			case <-time.After(waittime):
@@ -165,6 +165,9 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 
 	sps.runMutex.Lock()
 	defer sps.runMutex.Unlock()
+	if sps.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure a SimPulseSource if it's not Inactive")
+	}
 	sps.nchan = config.Nchan
 	sps.sampleRate = config.SampleRate
 	sps.samplePeriod = time.Duration(roundint(1e9 / sps.sampleRate))
@@ -217,7 +220,6 @@ func (sps *SimPulseSource) StartRun() error {
 			var now time.Time
 			select {
 			case <-sps.abortSelf:
-				fmt.Printf("SimPulseSource.abortSelf was closed, closing blockReady=%p\n", sps.blockReady)
 				close(sps.blockReady)
 				return
 			case <-time.After(waittime):
