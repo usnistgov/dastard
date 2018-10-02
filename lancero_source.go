@@ -69,12 +69,15 @@ func NewLanceroSource() (*LanceroSource, error) {
 		ld := LanceroDevice{devnum: dnum}
 		lan, err := lancero.NewLancero(dnum)
 		if err != nil {
-			log.Printf("warning: failed to create /dev/lancero_user%d", dnum)
+			log.Printf("warning: failed to open /dev/lancero_user%d and companion devices", dnum)
 			continue
 		}
 		ld.card = lan
 		source.devices[dnum] = &ld
 		source.ncards++
+	}
+	if source.ncards == 0 {
+		return source, fmt.Errorf("could not open any of /dev/lancero_user*, though devnums %v exist", devnums)
 	}
 	return source, nil
 }
