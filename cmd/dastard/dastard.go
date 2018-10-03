@@ -91,6 +91,6 @@ func main() {
 		panic(err)
 	}
 
-	go dastard.RunClientUpdater(dastard.Ports.Status)
+	go dastard.RunClientUpdater(dastard.Ports.Status, nil)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 }

@@ -434,9 +434,21 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	go RunClientUpdater(Ports.Status)
+	abort := make(chan struct{})
+	go RunClientUpdater(Ports.Status, abort)
 	RunRPCServer(Ports.RPC, false)
 
-	// run tests
-	os.Exit(m.Run())
+	// run tests and wrap up
+	result := m.Run()
+
+	// Prevent zmq "dangling 'PUB' socket..." errors by closing the channels that
+	// will cause the zmq sockets to be destroyed.
+	if PubRecordsChan != nil {
+		close(PubRecordsChan)
+	}
+	if PubSummariesChan != nil {
+		close(PubSummariesChan)
+	}
+	close(abort)
+	os.Exit(result)
 }

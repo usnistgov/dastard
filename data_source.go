@@ -647,7 +647,7 @@ func (ds *AnySource) PrepareRun() error {
 		}
 		dsp.TriggerState = *ts
 
-		// Publish Records and Summaries over ZMQ by default
+		// Publish Records and Summaries over ZMQ. Not optional at this time.
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 	}

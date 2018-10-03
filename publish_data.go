@@ -328,17 +328,18 @@ func messageRecords(rec *DataRecord) [][]byte {
 	return [][]byte{header.Bytes(), data}
 }
 
+// Two library-global variables to allow sharing of zmq publisher sockets
 // PubRecordsChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
 var PubRecordsChan chan []*DataRecord
 
 // PubSummariesChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
 var PubSummariesChan chan []*DataRecord
 
-// configurePubRecordsSocket should be run exactly one time
-// it initializes PubFeederChan and launches a goroutine (with no way to stop it at the moment)
-// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs
-// this way even if go routines in different threads want to publish records, they all use the same
-// zmq port.
+// configurePubRecordsSocket should be run exactly one time.
+// It initializes PubFeederChan and launches a goroutine
+// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs.
+// This way even if goroutines in different threads want to publish records, they all use the same
+// zmq port. The goroutine can be stopped by closing PubRecordsChan.
 func configurePubRecordsSocket() (err error) {
 	if PubRecordsChan != nil {
 		return fmt.Errorf("run configurePubRecordsSocket only one time")
@@ -358,8 +359,10 @@ func configurePubSummariesSocket() (err error) {
 
 // startSocket sets up a ZMQ publisher socket and starts a goroutine to publish
 // messages based on any records that appear on a new channel. Returns the
-// channel for other routines to fill.
-// *** This looks like it could be replaced by PubChanneler, but tests show terrible performance with Channeler ***
+// channel for other routines to fill. Close that channel to destroy the socket.
+//
+// *** This looks like it could be replaced by PubChanneler, but tests show terrible
+// performance with Channeler ***
 func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
 	const publishChannelDepth = 500
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
@@ -376,7 +379,10 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	go func() {
 		defer pubSocket.Destroy()
 		for {
-			records := <-pubchan
+			records, ok := <-pubchan
+			if !ok { // Destroy socket when pubchan is closed and drained
+				return
+			}
 			for _, record := range records {
 				message := converter(record)
 				err := pubSocket.SendMessage(message)
