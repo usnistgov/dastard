@@ -120,7 +120,7 @@ type LanceroSourceConfig struct {
 // CardDelay can have one value, which is shared across all cards, or must be one entry per card
 // ActiveCards is a slice of indicies into ls.devices to activate
 // AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
-func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
+func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	ls.runMutex.Lock()
 	defer ls.runMutex.Unlock()
 	if ls.sourceState != Inactive {
@@ -138,10 +138,12 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
 		if dev == nil {
-			return fmt.Errorf("i=%v, c=%v, device == nil", i, c)
+			err = fmt.Errorf("i=%v, c=%v, device == nil", i, c)
+			break
 		}
 		if contains(ls.active, dev) {
-			return fmt.Errorf("attempt to use same device two times: i=%v, c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
+			err = fmt.Errorf("attempt to use same device two times: i=%v, c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
+			break
 		}
 		ls.active = append(ls.active, dev)
 		if len(config.CardDelay) >= 1+i {
@@ -157,7 +159,7 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	sort.Ints(config.AvailableCards)
 
 	ls.nsamp = config.Nsamp
-	return nil
+	return err
 }
 
 // updateChanOrderMap updates the map chan2readoutOrder based on the number
