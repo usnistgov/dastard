@@ -624,9 +624,9 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 			Time: timeDiff.Seconds()}
 	}
-	if len(ls.buffersChan) > 0 {
-		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), time.Now().Sub(firstTime))
-	}
+	// if len(ls.buffersChan) > 0 {
+	// 	log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), time.Now().Sub(firstTime))
+	// }
 	return block
 }
 

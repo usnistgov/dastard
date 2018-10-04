@@ -480,7 +480,6 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 }
 
 func (s *SourceControl) broadcastHeartbeat() {
-	s.handlePossibleStoppedSource()
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.DataMB = 0
 	s.totalData.Time = 0
