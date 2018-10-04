@@ -51,15 +51,16 @@ func NewSourceControl() *SourceControl {
 	sc.queuedResults = make(chan error)
 
 	sc.simPulses = NewSimPulseSource()
-	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle = NewTriangleSource()
-	sc.triangle.heartbeats = sc.heartbeats
-	lan, err := NewLanceroSource()
-	sc.lancero = lan
-	if err == nil {
-		sc.lancero.heartbeats = sc.heartbeats
-	}
 	sc.erroring = NewErroringSource()
+	lan, _ := NewLanceroSource()
+	sc.lancero = lan
+
+	sc.simPulses.heartbeats = sc.heartbeats
+	sc.triangle.heartbeats = sc.heartbeats
+	sc.erroring.heartbeats = sc.heartbeats
+	sc.lancero.heartbeats = sc.heartbeats
+
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
 	return sc
@@ -480,7 +481,6 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 
 func (s *SourceControl) broadcastHeartbeat() {
 	s.handlePossibleStoppedSource()
-	s.totalData.Running = s.status.Running
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.DataMB = 0
 	s.totalData.Time = 0
@@ -581,6 +581,7 @@ func RunRPCServer(portrpc int, block bool) {
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.DataMB += h.DataMB
 				sourceControl.totalData.Time += h.Time
+				sourceControl.totalData.Running = h.Running
 			}
 		}
 	}()
