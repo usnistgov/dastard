@@ -161,6 +161,9 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 				log.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
 				return
 			}
+			// In some sources, ds.getNextBlock has to be called again to initiate the next
+			// data acquisition step (Lancero specifically).
+			nextBlock = ds.getNextBlock()
 		}
 	}
 }

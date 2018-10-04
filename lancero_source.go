@@ -549,11 +549,17 @@ func (ls *LanceroSource) launchLanceroReader() {
 			}
 		}
 	}()
+}
 
-	// Now read data until error or terminated
+// getNextBlock returns the channel on which data sources send data and any errors.
+// More importantly, wait on this channel to wait on the source to have a data block.
+// The LanceroSource version also has to monitor the timeout channel, handle any possible
+// mixRequests, and wait for the buffersChan to yield real, valid Lancero data.
+// The idea here is to minimize the number of long-running goroutines, which are hard
+// to reason about.
+func (ls *LanceroSource) getNextBlock() chan *dataBlock {
+	panicTime := time.Duration(cap(ls.buffersChan)) * ls.readPeriod
 	go func() {
-		defer close(ls.nextBlock)
-		panicTime := time.Duration(cap(ls.buffersChan)) * ls.readPeriod
 		for {
 			// This select statement was formerly the ls.blockingRead method
 			select {
@@ -571,18 +577,21 @@ func (ls *LanceroSource) launchLanceroReader() {
 						block.err = err
 						ls.nextBlock <- block
 					}
+					close(ls.nextBlock)
 					return
 				}
 				// ls.buffersChan contained valid data, so act on it.
 				block := ls.distributeData(buffersMsg)
+				ls.blockingReadCount++ // set to 0 in SampleCard
 				ls.nextBlock <- block
 				if block.err != nil {
-					return
+					close(ls.nextBlock)
 				}
+				return
 			}
-			ls.blockingReadCount++ // set to 0 in SampleCard
 		}
 	}()
+	return ls.nextBlock
 }
 
 // distributeData reads the raw data buffers from all devices in the LanceroSource
