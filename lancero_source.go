@@ -58,10 +58,11 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.name = "Lancero"
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
-	devnums, err := lancero.EnumerateLanceroDevices()
 	source.buffersChan = make(chan BuffersChanType, 100)
 	source.readPeriod = 50 * time.Millisecond
-	if err != nil {
+
+	devnums, err := lancero.EnumerateLanceroDevices()
+	if len(devnums) == 0 || err != nil {
 		return source, err
 	}
 
