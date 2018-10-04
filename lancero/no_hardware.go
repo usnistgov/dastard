@@ -12,18 +12,18 @@ import (
 // NoHardware is a drop in replacement for Lancero (implements Lanceroer)
 // that requires no hardware. Use it for testing the interface.
 type NoHardware struct {
-	ncols                    int
-	nrows                    int
-	linePeriod               int
-	nanoSecondsPerLinePeriod int
-	isOpen                   bool
-	isStarted                bool
-	collectorStarted         bool
-	bytesReleased            int
-	lastReadTime             time.Time
-	minTimeBetweenReads      time.Duration
-	rowCount                 int
-	idNum                    int
+	ncols               int
+	nrows               int
+	linePeriod          int
+	nsPerLinePeriod     int
+	isOpen              bool
+	isStarted           bool
+	collectorStarted    bool
+	bytesReleased       int
+	lastReadTime        time.Time
+	minTimeBetweenReads time.Duration
+	rowCount            int
+	idNum               int
 }
 
 // String implements Stringer for NoHardware, aka controls how Println output looks
@@ -34,11 +34,12 @@ func (lan NoHardware) String() string {
 var idNumCounter int
 
 // NewNoHardware generates and returns a new Lancero object in test mode,
-// meaning it emulate a lancero without any hardware
+// meaning it emulate a lancero without any hardware. Here linePeriod is
+// the equivalent of LSYNC: how many 8 ns clocks per row of readout.
 func NewNoHardware(ncols int, nrows int, linePeriod int) (*NoHardware, error) {
-	nanoSecondsPerLinePeriod := 8
+	const nsPerLinePeriod = 8
 	lan := NoHardware{ncols: ncols, nrows: nrows, linePeriod: linePeriod,
-		nanoSecondsPerLinePeriod: nanoSecondsPerLinePeriod, isOpen: true, lastReadTime: time.Now(),
+		nsPerLinePeriod: nsPerLinePeriod, isOpen: true, lastReadTime: time.Now(),
 		minTimeBetweenReads: 10 * time.Millisecond, idNum: idNumCounter}
 	idNumCounter++
 	return &lan, nil
@@ -125,7 +126,7 @@ func (lan *NoHardware) AvailableBuffer() ([]byte, time.Time, error) {
 	}
 	sinceLastRead := now.Sub(lan.lastReadTime)
 	lan.lastReadTime = now
-	frameDurationNanoseconds := lan.linePeriod * lan.nanoSecondsPerLinePeriod * lan.nrows
+	frameDurationNanoseconds := lan.linePeriod * lan.nsPerLinePeriod * lan.nrows
 	frames := int(sinceLastRead.Nanoseconds()) / frameDurationNanoseconds
 	// log.Printf("id %v read at %v\n", lan.idNum, time.Now())
 	if sinceLastRead > 50*lan.minTimeBetweenReads {

@@ -49,6 +49,7 @@ type LanceroSource struct {
 	blockingReadCount int
 	buffersChan       chan BuffersChanType
 	readPeriod        time.Duration
+	mixRequests       chan *MixFractionObject
 	AnySource
 }
 
@@ -191,21 +192,15 @@ func (ls *LanceroSource) updateChanOrderMap() {
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + errorScale*err
-func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
+func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) error {
+	processorIndex := mfo.ChannelIndex
 	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
 		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
 	}
 	if processorIndex%2 == 0 {
 		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", processorIndex)
 	}
-	// Make this a goroutine so it can grab the lock whenever convenient, but after
-	// any possible errors have already been sent back to the RPC server. This lock
-	// is normally held most of the time by LanceroSource.blockingRead.
-	go func() {
-		ls.runMutex.Lock()
-		defer ls.runMutex.Unlock()
-		ls.Mix[processorIndex].errorScale = mixFraction / float64(ls.nsamp)
-	}()
+	ls.mixRequests <- mfo
 	return nil
 }
 
@@ -237,6 +232,7 @@ func (ls *LanceroSource) Sample() error {
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1. / 65535.0
 	}
+	ls.mixRequests = make(chan *MixFractionObject, ls.nchan)
 
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	i := 0
@@ -562,6 +558,9 @@ func (ls *LanceroSource) launchLanceroReader() {
 			select {
 			case <-time.After(panicTime):
 				panic(fmt.Sprintf("timeout, no data from lancero after %v / %v", panicTime, ls.readPeriod))
+
+			case mfo := <-ls.mixRequests:
+				ls.Mix[mfo.ChannelIndex].errorScale = mfo.MixFraction / float64(ls.nsamp)
 
 			case buffersMsg, ok := <-ls.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.

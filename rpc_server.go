@@ -147,12 +147,15 @@ type MixFractionObject struct {
 // mix = fb + mixFraction*err/Nsamp
 // This MixFractionObject contains mix fractions as reported by autotune, where error/Nsamp
 // is used. Thus, we will internally store not MixFraction, but errorScale := MixFraction/Nsamp.
-// NOTE: only supported by LanceroSource.
+// Supported by LanceroSource only.
+//
+// This does not need to be sent on the queuedRequests channel, because internally
+// LanceroSource.ConfigureMixFraction will queue these requests. The reason is that
+// queuedRequests is for keeping RPC requests separate from the data-*processing* step.
+// But changes to the mix settings need to be kept separate from LanceroSource.distrubuteData,
+// which is part of the data-*production* step, not the data-processing step.
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
-	f := func() {
-		s.queuedResults <- s.ActiveSource.ConfigureMixFraction(mfo.ChannelIndex, mfo.MixFraction)
-	}
-	err := s.runLaterIfActive(f)
+	err := s.ActiveSource.ConfigureMixFraction(mfo)
 	*reply = (err == nil)
 	return err
 }
