@@ -39,7 +39,7 @@ type DataSource interface {
 	Running() bool
 	GetState() SourceState
 	SetStateStarting() error
-	BlockReady() chan error
+	getNextBlock() chan *dataBlock
 	Nchan() int
 	Signed() []bool
 	VoltsPerArb() []float32
@@ -54,7 +54,7 @@ type DataSource interface {
 	SetCoupling(CouplingStatus) error
 	SetExperimentStateLabel(string) error
 	ChannelsWithProjectors() []int
-	ProcessSegments() error
+	ProcessSegments(*dataBlock) error
 	RunDoneActivate()
 	RunDoneDeactivate()
 	// RunDoneWait()
@@ -94,10 +94,10 @@ func (ds *AnySource) ConfigureMixFraction(mfo *MixFractionObject) error {
 	return fmt.Errorf("source type %s does not support Mix", ds.name)
 }
 
-// BlockReady returns the channel on which data sources send any errors.
+// getNextBlock returns the channel on which data sources send data and any errors.
 // More importantly, wait on this channel to wait on the source to have a data block.
-func (ds *AnySource) BlockReady() chan error {
-	return ds.blockReady
+func (ds *AnySource) getNextBlock() chan *dataBlock {
+	return ds.nextBlock
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -130,32 +130,37 @@ func Start(ds DataSource, queuedRequests chan func()) error {
 }
 
 // CoreLoop has the DataSource produce data until graceful stop.
+// This will be a long-running goroutine, as long as a source is active.
 func CoreLoop(ds DataSource, queuedRequests chan func()) {
 	defer ds.RunDoneDeactivate()
-	blockReady := ds.BlockReady()
+	nextBlock := ds.getNextBlock()
 
 	for {
+		// Use select to interleave 2 activities that should NOT be done concurrently:
+		// 1. Handle RPC requests to chage data processing parameters (e.g. trigger)
+		// 2. Handle new data and processes it
 		select {
-		// Handle data, or recognize the end of data
-		case err, ok := <-blockReady:
-			if !ok {
-				// blockReady was closed in the data production loop when abortSelf was closed
-				log.Println("blockReady channel was closed; stopping the source normally")
-				return
-
-			} else if err != nil {
-				// other errors indicate a problem with source, need to close down
-				log.Printf("blockReady receives Error; stopping source: %s\n", err.Error())
-				return
-			}
-			if err := ds.ProcessSegments(); err != nil {
-				log.Printf("processSegments returns Error; stopping source: %s\n", err.Error())
-				return
-			}
 
 		// Handle RPC requests
 		case request := <-queuedRequests:
 			request()
+
+		// Handle data, or recognize the end of data
+		case block, ok := <-nextBlock:
+			if !ok {
+				// nextBlock was closed in the data production loop when abortSelf was closed
+				log.Println("nextBlock channel was closed; stopping the source normally")
+				return
+
+			} else if block.err != nil {
+				// errors in block indicate a problem with source: need to close down
+				log.Printf("nextBlock receives Error; stopping source: %s\n", block.err.Error())
+				return
+			}
+			if err := ds.ProcessSegments(block); err != nil {
+				log.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
+				return
+			}
 		}
 	}
 }
@@ -219,6 +224,13 @@ func rcCode(row, col, rows, cols int) RowColCode {
 	return RowColCode(code)
 }
 
+// dataBlock contains a block of data (one segment per data stream)
+type dataBlock struct {
+	segments []DataSegment
+	nSamp    int
+	err      error
+}
+
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
@@ -234,14 +246,13 @@ type AnySource struct {
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	processors   []*DataStreamProcessor
-	abortSelf    chan struct{} // Signal to the core loop of active sources to stop
-	blockReady   chan error    // Signal from the core loop that a block is ready to process
+	abortSelf    chan struct{}   // Signal to the core loop of active sources to stop
+	nextBlock    chan *dataBlock // Signal from the core loop that a block is ready to process
 	broker       *TriggerBroker
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
 	heartbeats          chan Heartbeat
-	segments            []DataSegment
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
 	sourceState         SourceState
@@ -253,10 +264,10 @@ type AnySource struct {
 // ProcessSegments processes a single outstanding segment for each of ds.processors
 // Returns when all segments have been processed
 // It's a more synchronous version of each dsp launching its own goroutine
-func (ds *AnySource) ProcessSegments() error {
+func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	var wg sync.WaitGroup
 	for i, dsp := range ds.processors {
-		segment := ds.segments[i]
+		segment := block.segments[i]
 		if segment.processed {
 			spew.Dump(segment)
 			return fmt.Errorf("channelIndex %v has already processed segment", i)
@@ -592,14 +603,13 @@ func (ds *AnySource) PrepareRun() error {
 	}
 	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
 	ds.abortSelf = make(chan struct{})
-	ds.blockReady = make(chan error)
+	ds.nextBlock = make(chan *dataBlock)
 
 	// Start a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run()
 
 	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
-	ds.segments = make([]DataSegment, ds.nchan)
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)

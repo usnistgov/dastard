@@ -552,6 +552,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 
 	// Now read data until error or terminated
 	go func() {
+		defer close(ls.nextBlock)
 		panicTime := time.Duration(cap(ls.buffersChan)) * ls.readPeriod
 		for {
 			// This select statement was formerly the ls.blockingRead method
@@ -565,19 +566,19 @@ func (ls *LanceroSource) launchLanceroReader() {
 			case buffersMsg, ok := <-ls.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
+					block := new(dataBlock)
 					if err := ls.stop(); err != nil {
-						ls.blockReady <- err
+						block.err = err
+						ls.nextBlock <- block
 					}
-					close(ls.blockReady)
 					return
 				}
 				// ls.buffersChan contained valid data, so act on it.
-				err1 := ls.distributeData(buffersMsg)
-				if err1 != nil {
-					ls.blockReady <- err1
+				block := ls.distributeData(buffersMsg)
+				ls.nextBlock <- block
+				if block.err != nil {
 					return
 				}
-				ls.blockReady <- nil // This value means valid data has been distibuted
 			}
 			ls.blockingReadCount++ // set to 0 in SampleCard
 		}
@@ -587,7 +588,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 // distributeData reads the raw data buffers from all devices in the LanceroSource
 // and distributes their data by copying into slices that go on channels, one
 // channel per data stream.
-func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
+func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
@@ -597,7 +598,10 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
 	firstTime := lastSampleTime.Add(-segDuration)
-	for channelIndex := range ls.processors {
+	block := new(dataBlock)
+	nchan := len(datacopies)
+	block.segments = make([]DataSegment, nchan)
+	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
 		if channelIndex%2 == 1 { // feedback channel needs more processing
 			mix := ls.Mix[channelIndex]
@@ -612,7 +616,8 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
 		}
-		ls.segments[channelIndex] = seg
+		block.segments[channelIndex] = seg
+		block.nSamp = len(data)
 	}
 	ls.nextFrameNum += FrameIndex(framesUsed)
 	if ls.heartbeats != nil {
@@ -622,7 +627,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 	if len(ls.buffersChan) > 0 {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), time.Now().Sub(firstTime))
 	}
-	return nil
+	return block
 }
 
 // stop ends the data streaming on all active lancero devices.

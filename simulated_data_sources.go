@@ -98,7 +98,7 @@ func (ts *TriangleSource) StartRun() error {
 			var now time.Time
 			select {
 			case <-ts.abortSelf:
-				close(ts.blockReady)
+				close(ts.nextBlock)
 				return
 			case <-time.After(waittime):
 				now = time.Now()
@@ -111,8 +111,10 @@ func (ts *TriangleSource) StartRun() error {
 			}
 
 			// Backtrack to find the time associated with the first sample.
-			firstTime := now.Add(-ts.timeperbuf) // use now here, this should acutually correspond to the time the data was read
-			for channelIndex := range ts.processors {
+			firstTime := now.Add(-ts.timeperbuf) // use now here; should correspond to the time the data was read
+			block := new(dataBlock)
+			block.segments = make([]DataSegment, ts.nchan)
+			for channelIndex := 0; channelIndex < ts.nchan; channelIndex++ {
 				datacopy := make([]RawType, ts.cycleLen)
 				copy(datacopy, ts.onecycle)
 				seg := DataSegment{
@@ -122,10 +124,10 @@ func (ts *TriangleSource) StartRun() error {
 					firstFramenum:   ts.nextFrameNum,
 					firstTime:       firstTime,
 				}
-				ts.segments[channelIndex] = seg
+				block.segments[channelIndex] = seg
 			}
 			ts.nextFrameNum += FrameIndex(ts.cycleLen)
-			ts.blockReady <- nil
+			ts.nextBlock <- block
 		}
 	}()
 	return nil
@@ -214,13 +216,13 @@ func (sps *SimPulseSource) Sample() error {
 // StartRun launches the repeated loop that generates Triangle data.
 func (sps *SimPulseSource) StartRun() error {
 	go func() {
+		defer close(sps.nextBlock)
 		for {
 			nextread := sps.lastread.Add(sps.timeperbuf)
 			waittime := time.Until(nextread)
 			var now time.Time
 			select {
 			case <-sps.abortSelf:
-				close(sps.blockReady)
 				return
 			case <-time.After(waittime):
 				now = time.Now()
@@ -234,7 +236,9 @@ func (sps *SimPulseSource) StartRun() error {
 
 			// Backtrack to find the time associated with the first sample.
 			firstTime := now.Add(-sps.timeperbuf) // use now for accurate sample time
-			for channelIndex := range sps.processors {
+			block := new(dataBlock)
+			block.segments = make([]DataSegment, sps.nchan)
+			for channelIndex := 0; channelIndex < sps.nchan; channelIndex++ {
 				datacopy := make([]RawType, sps.cycleLen)
 				copy(datacopy, sps.onecycle)
 				for i := 0; i < sps.cycleLen; i++ {
@@ -247,10 +251,10 @@ func (sps *SimPulseSource) StartRun() error {
 					firstFramenum:   sps.nextFrameNum,
 					firstTime:       firstTime,
 				}
-				sps.segments[channelIndex] = seg
+				block.segments[channelIndex] = seg
 			}
 			sps.nextFrameNum += FrameIndex(sps.cycleLen)
-			sps.blockReady <- nil
+			sps.nextBlock <- block
 		}
 	}()
 	return nil
@@ -285,7 +289,9 @@ func (es *ErroringSource) Sample() error {
 func (es *ErroringSource) StartRun() error {
 	es.nStarts++
 	go func() {
-		es.blockReady <- fmt.Errorf("ErroringSource always errors on first call")
+		block := new(dataBlock)
+		block.err = fmt.Errorf("ErroringSource always errors on first call")
+		es.nextBlock <- block
 	}()
 	return nil
 }
