@@ -456,6 +456,8 @@ func (ls *LanceroSource) StartRun() error {
 // because of long latency in the analysis stages of Dastard.
 
 func (ls *LanceroSource) launchLanceroReader() {
+	ls.buffersChan = make(chan BuffersChanType, 100)
+	ls.readPeriod = 50 * time.Millisecond
 	go func() {
 		ticker := time.NewTicker(ls.readPeriod)
 		for {
