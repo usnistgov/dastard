@@ -3,7 +3,6 @@ package dastard
 import (
 	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"gonum.org/v1/gonum/mat"
@@ -31,7 +30,6 @@ type DataStreamProcessor struct {
 	DecimateState
 	TriggerState
 	DataPublisher
-	changeMutex sync.Mutex // Don't change key data without locking this.
 }
 
 // RemoveProjectorsBasis calls .Reset on projectors and basis, which disables projections in analysis
@@ -47,8 +45,6 @@ func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense, modelDescription string) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
-	dsp.changeMutex.Lock()
-	defer dsp.changeMutex.Unlock()
 	if dsp.NSamples != cols {
 		return fmt.Errorf("projectors has wrong size, rows: %v, cols: %v, want cols: %v", rows, cols, dsp.NSamples)
 	}
@@ -101,8 +97,6 @@ type DecimateState struct {
 // Also removes any existing projectors and basis.
 func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	// if nsamp or npre is invalid, panic, do not silently ignore
-	dsp.changeMutex.Lock()
-	defer dsp.changeMutex.Unlock()
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		dsp.removeProjectorsBasis()
 		dsp.edgeMultiSetInitialState()
@@ -113,15 +107,11 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 
 // ConfigureTrigger sets this stream's trigger state.
 func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
-	dsp.changeMutex.Lock()
-	defer dsp.changeMutex.Unlock()
 	dsp.TriggerState = state
 	dsp.edgeMultiSetInitialState()
 }
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
-	dsp.changeMutex.Lock()
-	defer dsp.changeMutex.Unlock()
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
 	records, _ := dsp.TriggerData()

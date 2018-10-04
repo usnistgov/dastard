@@ -434,8 +434,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 	} else if strings.HasPrefix(request, "STOP") {
 		for _, dsp := range ds.processors {
-			dsp.changeMutex.Lock()
-			defer dsp.changeMutex.Unlock()
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
@@ -453,8 +451,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	} else if strings.HasPrefix(request, "START") {
 		channelsWithOff := 0
 		for i, dsp := range ds.processors {
-			dsp.changeMutex.Lock()
-			defer dsp.changeMutex.Unlock()
 			timebase := 1.0 / dsp.SampleRate
 			rccode := ds.rowColCodes[i]
 			nrows := rccode.rows()
@@ -705,8 +701,6 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndicies {
 		dsp := ds.processors[channelIndex]
-		dsp.changeMutex.Lock()
-		dsp.changeMutex.Unlock()
 		dsp.ConfigureTrigger(state.TriggerState)
 	}
 	return nil
@@ -725,7 +719,7 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 		return fmt.Errorf("ConfigurePulseLengths nsamp %v, npre %v are invalid", nsamp, npre)
 	}
 	for _, dsp := range ds.processors {
-		go dsp.ConfigurePulseLengths(nsamp, npre)
+		dsp.ConfigurePulseLengths(nsamp, npre)
 	}
 	return nil
 }
