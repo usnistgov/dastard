@@ -49,7 +49,7 @@ type DataSource interface {
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense, string) error
 	ChangeTriggerState(*FullTriggerState) error
-	ConfigureMixFraction(*MixFractionObject) error
+	ConfigureMixFraction(*MixFractionObject) ([]float64, error)
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
 	SetExperimentStateLabel(string) error
@@ -90,8 +90,8 @@ func (ds *AnySource) ShouldAutoRestart() bool {
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
 // don't need the mix
-func (ds *AnySource) ConfigureMixFraction(mfo *MixFractionObject) error {
-	return fmt.Errorf("source type %s does not support Mix", ds.name)
+func (ds *AnySource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64, error) {
+	return nil, fmt.Errorf("source type %s does not support Mix", ds.name)
 }
 
 // getNextBlock returns the channel on which data sources send data and any errors.
