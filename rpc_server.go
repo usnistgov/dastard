@@ -169,9 +169,7 @@ func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) 
 	log.Printf("Got ConfigureTriggers: %v", spew.Sdump(state))
 	f := func() {
 		err := s.ActiveSource.ChangeTriggerState(state)
-		if err == nil {
-			s.broadcastTriggerState()
-		}
+		s.broadcastTriggerState()
 		s.queuedResults <- err
 	}
 	err := s.runLaterIfActive(f)
@@ -225,7 +223,7 @@ type SizeObject struct {
 
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
-	*reply = false
+	*reply = false // handle the case that sizes fails the validation tests and we return early
 	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if !s.isSourceActive {
 		return fmt.Errorf("No source is active")

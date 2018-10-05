@@ -46,7 +46,7 @@ type LanceroSource struct {
 	active            []*LanceroDevice
 	chan2readoutOrder []int
 	Mix               []*Mix
-	blockingReadCount int
+	dataBlockCount    int
 	buffersChan       chan BuffersChanType
 	readPeriod        time.Duration
 	mixRequests       chan *MixFractionObject
@@ -60,11 +60,9 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.name = "Lancero"
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
-	source.buffersChan = make(chan BuffersChanType, 100)
-	source.readPeriod = 50 * time.Millisecond
 
 	devnums, err := lancero.EnumerateLanceroDevices()
-	if len(devnums) == 0 || err != nil {
+	if err != nil {
 		return source, err
 	}
 
@@ -79,7 +77,7 @@ func NewLanceroSource() (*LanceroSource, error) {
 		source.devices[dnum] = &ld
 		source.ncards++
 	}
-	if source.ncards == 0 {
+	if source.ncards == 0 && len(devnums) > 0 {
 		return source, fmt.Errorf("could not open any of /dev/lancero_user*, though devnums %v exist", devnums)
 	}
 	return source, nil
@@ -124,8 +122,8 @@ type LanceroSourceConfig struct {
 // ActiveCards is a slice of indicies into ls.devices to activate
 // AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
-	ls.runMutex.Lock()
-	defer ls.runMutex.Unlock()
+	ls.sourceStateLock.Lock()
+	defer ls.sourceStateLock.Unlock()
 	if ls.sourceState != Inactive {
 		return fmt.Errorf("cannot Configure a LanceroSource if it's not Inactive")
 	}
@@ -194,12 +192,12 @@ func (ls *LanceroSource) updateChanOrderMap() {
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + errorScale*err
 func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64, error) {
-	for _, processorIndex := range mfo.ChannelIndices {
-		if processorIndex >= len(ls.Mix) || processorIndex < 0 {
-			return nil, fmt.Errorf("processorIndex %v out of bounds", processorIndex)
+	for _, channelIndex := range mfo.ChannelIndices {
+		if channelIndex >= len(ls.Mix) || channelIndex < 0 {
+			return nil, fmt.Errorf("channelIndex %v out of bounds", channelIndex)
 		}
-		if processorIndex%2 == 0 {
-			return nil, fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", processorIndex)
+		if channelIndex%2 == 0 {
+			return nil, fmt.Errorf("channelIndex %v is even, only odd channels (feedback) allowed", channelIndex)
 		}
 	}
 	ls.mixRequests <- mfo
@@ -209,7 +207,7 @@ func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64
 
 // Sample determines key data facts by sampling some initial data.
 func (ls *LanceroSource) Sample() error {
-	ls.blockingReadCount = 0
+	ls.dataBlockCount = 0
 	ls.nchan = 0
 	for _, device := range ls.active {
 
@@ -506,8 +504,8 @@ func (ls *LanceroSource) launchLanceroReader() {
 					periodNS := timeDiff.Nanoseconds() / int64(framesUsed)
 					lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
 					if q != qExpect || ncols != dev.ncols || nrows != dev.nrows || framesUsed <= 0 {
-						fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, blockingReadCount %v\n",
-							ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount)
+						fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, dataBlockCount %v\n",
+							ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.dataBlockCount)
 						panic("error reading from lancero, probably let buffer overfill")
 					}
 				}
@@ -558,6 +556,8 @@ func (ls *LanceroSource) launchLanceroReader() {
 
 // getNextBlock returns the channel on which data sources send data and any errors.
 // More importantly, wait on this channel to wait on the source to have a data block.
+// This will end by putting a valid or error-ish dataBlock onto ls.nextBlock. If the
+// block has a non-nil error, this goroutine will also close ls.nextBlock.
 // The LanceroSource version also has to monitor the timeout channel, handle any possible
 // mixRequests, and wait for the buffersChan to yield real, valid Lancero data.
 // The idea here is to minimize the number of long-running goroutines, which are hard
@@ -598,7 +598,7 @@ func (ls *LanceroSource) getNextBlock() chan *dataBlock {
 				}
 				// ls.buffersChan contained valid data, so act on it.
 				block := ls.distributeData(buffersMsg)
-				ls.blockingReadCount++ // set to 0 in SampleCard
+				ls.dataBlockCount++ // set to 0 in SampleCard
 				ls.nextBlock <- block
 				if block.err != nil {
 					close(ls.nextBlock)
@@ -649,9 +649,11 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 			Time: timeDiff.Seconds()}
 	}
-	// if len(ls.buffersChan) > 0 {
-	// 	log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), time.Now().Sub(firstTime))
-	// }
+	now := time.Now()
+	delay := now.Sub(lastSampleTime)
+	if delay > 100*time.Millisecond {
+		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), now.Sub(firstTime))
+	}
 	return block
 }
 

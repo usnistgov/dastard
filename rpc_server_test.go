@@ -78,7 +78,7 @@ func TestServer(t *testing.T) {
 	// Test a basic configuration
 	simConfig := SimPulseSourceConfig{
 		Nchan: 4, SampleRate: 10000.0, Pedestal: 3000.0,
-		Amplitude: 10000., Nsamp: 1000,
+		Amplitudes: []float64{10000., 8000., 6000.}, Nsamp: 1000,
 	}
 	err = client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
 	if !okay {

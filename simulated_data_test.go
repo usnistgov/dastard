@@ -168,7 +168,7 @@ func TestSimPulse(t *testing.T) {
 		Nchan:      5,
 		SampleRate: 150000.0,
 		Pedestal:   1000.0,
-		Amplitude:  10000.0,
+		Amplitudes: []float64{10000.0},
 		Nsamp:      16000,
 	}
 	ps.Configure(&config)

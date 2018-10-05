@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -57,24 +56,23 @@ type DataSource interface {
 	ProcessSegments(*dataBlock) error
 	RunDoneActivate()
 	RunDoneDeactivate()
-	// RunDoneWait()
 	ShouldAutoRestart() bool
 }
 
 // RunDoneActivate adds one to ds.runDone, this should only be called in Start
 func (ds *AnySource) RunDoneActivate() {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
+	ds.sourceStateLock.Lock()
+	defer ds.sourceStateLock.Unlock()
 	ds.sourceState = Active
 	ds.runDone.Add(1)
 }
 
 // RunDoneDeactivate calls Done on ds.runDone, this should only be called in Start
 func (ds *AnySource) RunDoneDeactivate() {
-	ds.runMutex.Lock()
+	ds.sourceStateLock.Lock()
 	ds.sourceState = Inactive
 	ds.runDone.Done()
-	ds.runMutex.Unlock()
+	ds.sourceStateLock.Unlock()
 }
 
 // RunDoneWait returns when the source run is done, i.e., the source is stopped
@@ -120,7 +118,7 @@ func Start(ds DataSource, queuedRequests chan func()) error {
 		return err
 	}
 
-	ds.RunDoneActivate()
+	ds.RunDoneActivate() // Will call RunDoneDeactivate when CoreLoop returns.
 	if err := ds.StartRun(); err != nil {
 		return err
 	}
@@ -170,10 +168,10 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 
 // Stop tells the data supply to deactivate.
 func (ds *AnySource) Stop() error {
-	ds.runMutex.Lock()
+	ds.sourceStateLock.Lock()
 	switch ds.sourceState {
 	case Inactive:
-		ds.runMutex.Unlock()
+		ds.sourceStateLock.Unlock()
 		return fmt.Errorf("AnySource not active, cannot stop")
 
 	case Starting:
@@ -183,13 +181,13 @@ func (ds *AnySource) Stop() error {
 		// This is the normal case: Stop on an Active source
 
 	case Stopping:
-		ds.runMutex.Unlock()
-		fmt.Println("deleteme: called Stop again on a Stopping source")
+		// Ignore Stop if source is already Stopping.
+		ds.sourceStateLock.Unlock()
 		return nil
 	}
 	ds.sourceState = Stopping
 	closeIfOpen(ds.abortSelf)
-	ds.runMutex.Unlock()
+	ds.sourceStateLock.Unlock()
 
 	ds.RunDoneWait()
 	return nil
@@ -198,7 +196,7 @@ func (ds *AnySource) Stop() error {
 func closeIfOpen(c chan struct{}) {
 	select {
 	case <-c:
-		return
+		log.Println("warning: you tried to close a channel twice, but Dastard outsmarted you")
 	default:
 		close(c)
 	}
@@ -259,7 +257,7 @@ type AnySource struct {
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
 	sourceState         SourceState
-	runMutex            sync.Mutex // guards sourceState
+	sourceStateLock     sync.Mutex // guards sourceState
 	runDone             sync.WaitGroup
 	readCounter         int
 }
@@ -271,10 +269,6 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	var wg sync.WaitGroup
 	for i, dsp := range ds.processors {
 		segment := block.segments[i]
-		if segment.processed {
-			spew.Dump(segment)
-			return fmt.Errorf("channelIndex %v has already processed segment", i)
-		}
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
@@ -549,14 +543,14 @@ func (ds *AnySource) Running() bool {
 }
 
 func (ds *AnySource) GetState() SourceState {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
+	ds.sourceStateLock.Lock()
+	defer ds.sourceStateLock.Unlock()
 	return ds.sourceState
 }
 
 func (ds *AnySource) SetStateStarting() error {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
+	ds.sourceStateLock.Lock()
+	defer ds.sourceStateLock.Unlock()
 	if ds.sourceState == Inactive {
 		ds.sourceState = Starting
 		return nil
