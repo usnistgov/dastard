@@ -72,12 +72,12 @@ func TestNoHardwareSource(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
 	ncolsSet = 1
 	nrowsSet = 4
-	linePeriodSet = 400 // don't make this too low, or test -race will fail
+	linePeriodSet = 1000 // don't make this too low, or test -race will fail
 	nLancero = 3
 	source := new(LanceroSource)
 	source.readPeriod = 1 * time.Millisecond
 	source.devices = make(map[int]*LanceroDevice, nLancero)
-	source.buffersChan = make(chan BuffersChanType, 10)
+	source.buffersChan = make(chan BuffersChanType, 25)
 	cardDelay := []int{0} // a single card delay value works for multiple cards
 	activeCards := make([]int, nLancero)
 	for i := 0; i < nLancero; i++ {
@@ -117,7 +117,7 @@ func TestNoHardwareSource(t *testing.T) {
 		t.Error("LanceroSource.Configure fails:", err)
 	}
 
-	if err := Start(source); err != nil {
+	if err := Start(source, nil); err != nil {
 		source.Stop()
 		t.Fatal(err)
 	}
@@ -132,10 +132,12 @@ func TestNoHardwareSource(t *testing.T) {
 	if source.chanNames[2] != "err2" {
 		t.Errorf("LanceroSource.chanNames[2] %v, want err2", source.chanNames[3])
 	}
-	if err := source.ConfigureMixFraction(0, 1.0); err == nil {
+	mfo := MixFractionObject{ChannelIndex: 0, MixFraction: 1.0}
+	if err := source.ConfigureMixFraction(&mfo); err == nil {
 		t.Error("expected error for mixing on even channel")
 	}
-	if err := source.ConfigureMixFraction(1, 1.0); err != nil {
+	mfo.ChannelIndex = 1
+	if err := source.ConfigureMixFraction(&mfo); err != nil {
 		t.Error(err)
 	}
 	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
@@ -143,7 +145,6 @@ func TestNoHardwareSource(t *testing.T) {
 	// the lsync is not right. about half the time I run the test there are 3 blocking reads
 	// at which point the lancero source shuts down due to it seeing lsync change
 	// then Stop() will error but the err value is not checked so it doesn't cause a test failure
-
 }
 
 func TestMix(t *testing.T) {

@@ -223,8 +223,9 @@ func (broker *TriggerBroker) Run() {
 		var hiTime time.Time
 		var duration time.Duration
 		nMessages := len(broker.triggerCounters[0].messages)
-		countsSeen := make([]int, broker.nchannels)
 		for i := 0; i < nMessages; i++ {
+			// It's a data race if we don't make a new slice for each message:
+			countsSeen := make([]int, broker.nchannels)
 			for j := 0; j < broker.nchannels; j++ {
 				// fmt.Println(i, j, nMessages, broker.nchannels)
 				message := broker.triggerCounters[j].messages[i]
@@ -248,5 +249,5 @@ func (broker *TriggerBroker) Run() {
 
 // Stop causes the Run() goroutine to end at the next appropriate moment.
 func (broker *TriggerBroker) Stop() {
-	close(broker.abort)
+	closeIfOpen(broker.abort)
 }

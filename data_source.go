@@ -2,14 +2,12 @@ package dastard
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -20,6 +18,16 @@ type RawType uint16
 // FrameIndex is used for counting raw data frames.
 type FrameIndex int64
 
+// SourceState is used to indicate the active/inactive/transition state of data sources
+type SourceState int
+
+const (
+	Inactive SourceState = iota // Source is not active
+	Starting                    // Source is in transition to Active state
+	Active                      // Source is actively acquiring data
+	Stopping                    // Source is in transition to Inactive state
+)
+
 // DataSource is the interface for hardware or simulated data sources that
 // produce data.
 type DataSource interface {
@@ -28,8 +36,9 @@ type DataSource interface {
 	StartRun() error
 	Stop() error
 	Running() bool
-	blockingRead() error
-	CloseOutputs()
+	GetState() SourceState
+	SetStateStarting() error
+	getNextBlock() chan *dataBlock
 	Nchan() int
 	Signed() []bool
 	VoltsPerArb() []float32
@@ -39,23 +48,37 @@ type DataSource interface {
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense, string) error
 	ChangeTriggerState(*FullTriggerState) error
-	ConfigureMixFraction(int, float64) error
+	ConfigureMixFraction(*MixFractionObject) error
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
 	SetExperimentStateLabel(string) error
 	ChannelsWithProjectors() []int
-	Wait() error
-	ProcessSegments() error
-	RunDoneAdd()
-	RunDoneDone()
+	ProcessSegments(*dataBlock) error
+	RunDoneActivate()
+	RunDoneDeactivate()
 	ShouldAutoRestart() bool
 }
 
-// Wait returns when the source run is done, aka the source is stopped
-func (ds *AnySource) Wait() error {
-	// fmt.Println("ds.Wait")
+// RunDoneActivate adds one to ds.runDone, this should only be called in Start
+func (ds *AnySource) RunDoneActivate() {
+	ds.sourceStateLock.Lock()
+	defer ds.sourceStateLock.Unlock()
+	ds.sourceState = Active
+	ds.runDone.Add(1)
+}
+
+// RunDoneDeactivate calls Done on ds.runDone, this should only be called in Start
+func (ds *AnySource) RunDoneDeactivate() {
+	ds.sourceStateLock.Lock()
+	ds.sourceState = Inactive
+	ds.runDone.Done()
+	ds.sourceStateLock.Unlock()
+}
+
+// RunDoneWait returns when the source run is done, i.e., the source is stopped
+func (ds *AnySource) RunDoneWait() {
 	ds.runDone.Wait()
-	return nil
+	ds.broker.Stop()
 }
 
 // ShouldAutoRestart true if source should be auto-restarted after an error
@@ -65,18 +88,14 @@ func (ds *AnySource) ShouldAutoRestart() bool {
 
 // ConfigureMixFraction provides a default implementation for all non-lancero sources that
 // don't need the mix
-func (ds *AnySource) ConfigureMixFraction(channelIndex int, mixFraction float64) error {
+func (ds *AnySource) ConfigureMixFraction(mfo *MixFractionObject) error {
 	return fmt.Errorf("source type %s does not support Mix", ds.name)
 }
 
-// RunDoneAdd adds one to ds.runDone, this should only be called in Start
-func (ds *AnySource) RunDoneAdd() {
-	ds.runDone.Add(1)
-}
-
-// RunDoneDone calls ds.runDone, this should only be called in Start
-func (ds *AnySource) RunDoneDone() {
-	ds.runDone.Done()
+// getNextBlock returns the channel on which data sources send data and any errors.
+// More importantly, wait on this channel to wait on the source to have a data block.
+func (ds *AnySource) getNextBlock() chan *dataBlock {
+	return ds.nextBlock
 }
 
 // Start will start the given DataSource, including sampling its data for # channels.
@@ -86,9 +105,9 @@ func (ds *AnySource) RunDoneDone() {
 // 3) StartRun: a per-source method to begin data acquisition, if relevant.
 // 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 // When done with the loop, close all channels to DataStreamProcessor objects.
-func Start(ds DataSource) error {
-	if ds.Running() {
-		return fmt.Errorf("cannot Start() a source that's already Running()")
+func Start(ds DataSource, queuedRequests chan func()) error {
+	if err := ds.SetStateStarting(); err != nil {
+		return err
 	}
 
 	if err := ds.Sample(); err != nil {
@@ -99,38 +118,88 @@ func Start(ds DataSource) error {
 		return err
 	}
 
+	ds.RunDoneActivate() // Will call RunDoneDeactivate when CoreLoop returns.
 	if err := ds.StartRun(); err != nil {
 		return err
 	}
 
-	ds.RunDoneAdd()
-	// Have the DataSource produce data until graceful stop.
-	go func() {
-		defer ds.RunDoneDone()
-		for {
-			// fmt.Println("calling blockingRead")
-			if err := ds.blockingRead(); err == io.EOF {
-				log.Println("blockingRead returns io.EOF, more stopping the source")
-				// EOF error should occur after abortSelf has been closed
-				// ds.CloseOutputs() // why is this here, ds.Stop also calls CloseOutputs
-				return
-			} else if err != nil {
-				// other errors indicate a problem with source, need to close down
-				log.Printf("blockingRead returns Error, stopping source: %s\n", err.Error())
-				ds.Stop() // will cause next call to ds.blockingRead to return io.EOF
-			}
-			if ds.Running() { // process data segments if source is still running
-				// fmt.Println("ProcessSegments")
-				if err := ds.ProcessSegments(); err != nil {
-					log.Printf("processSegments returns Error, stopping source: %s\n", err.Error())
-					ds.Stop()
-				}
-			}
-		}
-
-	}()
-
+	go CoreLoop(ds, queuedRequests)
 	return nil
+}
+
+// CoreLoop has the DataSource produce data until graceful stop.
+// This will be a long-running goroutine, as long as a source is active.
+func CoreLoop(ds DataSource, queuedRequests chan func()) {
+	defer ds.RunDoneDeactivate()
+	nextBlock := ds.getNextBlock()
+
+	for {
+		// Use select to interleave 2 activities that should NOT be done concurrently:
+		// 1. Handle RPC requests to chage data processing parameters (e.g. trigger)
+		// 2. Handle new data and processes it
+		select {
+
+		// Handle RPC requests
+		case request := <-queuedRequests:
+			request()
+
+		// Handle data, or recognize the end of data
+		case block, ok := <-nextBlock:
+			if !ok {
+				// nextBlock was closed in the data production loop when abortSelf was closed
+				log.Println("nextBlock channel was closed; stopping the source normally")
+				return
+
+			} else if block.err != nil {
+				// errors in block indicate a problem with source: need to close down
+				log.Printf("nextBlock receives Error; stopping source: %s\n", block.err.Error())
+				return
+			}
+			if err := ds.ProcessSegments(block); err != nil {
+				log.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
+				return
+			}
+			// In some sources, ds.getNextBlock has to be called again to initiate the next
+			// data acquisition step (Lancero specifically).
+			nextBlock = ds.getNextBlock()
+		}
+	}
+}
+
+// Stop tells the data supply to deactivate.
+func (ds *AnySource) Stop() error {
+	ds.sourceStateLock.Lock()
+	switch ds.sourceState {
+	case Inactive:
+		ds.sourceStateLock.Unlock()
+		return fmt.Errorf("AnySource not active, cannot stop")
+
+	case Starting:
+		fmt.Println("deleteme: called Stop on a Starting source; how to handle this??")
+
+	case Active:
+		// This is the normal case: Stop on an Active source
+
+	case Stopping:
+		// Ignore Stop if source is already Stopping.
+		ds.sourceStateLock.Unlock()
+		return nil
+	}
+	ds.sourceState = Stopping
+	closeIfOpen(ds.abortSelf)
+	ds.sourceStateLock.Unlock()
+
+	ds.RunDoneWait()
+	return nil
+}
+
+func closeIfOpen(c chan struct{}) {
+	select {
+	case <-c:
+		log.Println("warning: you tried to close a channel twice, but Dastard outsmarted you")
+	default:
+		close(c)
+	}
 }
 
 // RowColCode holds an 8-byte summary of the row-column geometry
@@ -156,6 +225,13 @@ func rcCode(row, col, rows, cols int) RowColCode {
 	return RowColCode(code)
 }
 
+// dataBlock contains a block of data (one segment per data stream)
+type dataBlock struct {
+	segments []DataSegment
+	nSamp    int
+	err      error
+}
+
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
@@ -171,31 +247,28 @@ type AnySource struct {
 	lastread     time.Time
 	nextFrameNum FrameIndex // frame number for the next frame we will receive
 	processors   []*DataStreamProcessor
-	abortSelf    chan struct{} // This can signal the Run() goroutine to stop
+	abortSelf    chan struct{}   // Signal to the core loop of active sources to stop
+	nextBlock    chan *dataBlock // Signal from the core loop that a block is ready to process
 	broker       *TriggerBroker
-	// publishSync  *PublishSync
+
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
 	heartbeats          chan Heartbeat
-	segments            []DataSegment
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
-	runMutex            sync.Mutex
+	sourceState         SourceState
+	sourceStateLock     sync.Mutex // guards sourceState
 	runDone             sync.WaitGroup
 	readCounter         int
 }
 
-// ProcessSegments processes a single outstanding for each processor in ds
-// returns when all segments have been processed
-// it's a more synchnous version of each dsp launching it's own goroutine
-func (ds *AnySource) ProcessSegments() error {
+// ProcessSegments processes a single outstanding segment for each of ds.processors
+// Returns when all segments have been processed
+// It's a more synchronous version of each dsp launching its own goroutine
+func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	var wg sync.WaitGroup
 	for i, dsp := range ds.processors {
-		segment := ds.segments[i]
-		if segment.processed {
-			spew.Dump(segment)
-			return fmt.Errorf("channelIndex %v has already processed segment", i)
-		}
+		segment := block.segments[i]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
@@ -226,12 +299,6 @@ func (ds *AnySource) ProcessSegments() error {
 		default:
 		}
 	}
-	return nil
-}
-
-// StartRun tells the hardware to switch into data streaming mode.
-// It's a no-op for simulated (software) sources
-func (ds *AnySource) StartRun() error {
 	return nil
 }
 
@@ -292,9 +359,6 @@ func makeDirectory(basepath string) (string, error) {
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	request := strings.ToUpper(config.Request)
 	var filenamePattern, path string
-	// ds.runMutex.Lock()
-	// defer ds.runMutex.Unlock()
-	// this seems like a good idea, but doesn't actually prevent race conditions, and leads to deadlocks
 
 	// first check for possible errors, then take the lock and do the work
 	if strings.HasPrefix(request, "START") {
@@ -367,8 +431,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 	} else if strings.HasPrefix(request, "STOP") {
 		for _, dsp := range ds.processors {
-			dsp.changeMutex.Lock()
-			defer dsp.changeMutex.Unlock()
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
@@ -393,8 +455,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	} else if strings.HasPrefix(request, "START") {
 		channelsWithOff := 0
 		for i, dsp := range ds.processors {
-			dsp.changeMutex.Lock()
-			defer dsp.changeMutex.Unlock()
 			timebase := 1.0 / dsp.SampleRate
 			rccode := ds.rowColCodes[i]
 			nrows := rccode.rows()
@@ -478,17 +538,24 @@ func (ds *AnySource) Nchan() int {
 }
 
 // Running tells whether the source is actively running.
-// If there's no ds.abortSelf yet, or it's closed, then source is NOT running.
 func (ds *AnySource) Running() bool {
-	if ds.abortSelf == nil {
-		return false
+	return ds.GetState() == Active
+}
+
+func (ds *AnySource) GetState() SourceState {
+	ds.sourceStateLock.Lock()
+	defer ds.sourceStateLock.Unlock()
+	return ds.sourceState
+}
+
+func (ds *AnySource) SetStateStarting() error {
+	ds.sourceStateLock.Lock()
+	defer ds.sourceStateLock.Unlock()
+	if ds.sourceState == Inactive {
+		ds.sourceState = Starting
+		return nil
 	}
-	select {
-	case <-ds.abortSelf:
-		return false
-	default:
-		return true
-	}
+	return fmt.Errorf("cannot Start() a source that's %v, not Inactive", ds.sourceState)
 }
 
 // Signed returns a per-channel value: whether data are signed ints.
@@ -532,20 +599,18 @@ func (ds *AnySource) setDefaultChannelNames() {
 // cannot be prepared until we know the number of channels. It's an error for
 // ds.nchan to be less than 1.
 func (ds *AnySource) PrepareRun() error {
-	ds.runMutex.Lock()
-	defer ds.runMutex.Unlock()
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
 	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
 	ds.abortSelf = make(chan struct{})
+	ds.nextBlock = make(chan *dataBlock)
 
 	// Start a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
 	go ds.broker.Run()
 
 	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
-	ds.segments = make([]DataSegment, ds.nchan)
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
@@ -593,41 +658,12 @@ func (ds *AnySource) PrepareRun() error {
 		}
 		dsp.TriggerState = *ts
 
-		// Publish Records and Summaries over ZMQ by default
+		// Publish Records and Summaries over ZMQ. Not optional at this time.
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
-
-		// This goroutine will run until the ds.abortSelf channel or the ch==ds.output[channelIndex]
-		// channel is closed, depending on ds.noProcess (which is false except for testing)
-		// 	ds.runDone.Add(1)
-		// 	go func(ch <-chan DataSegment) {
-		// 		defer ds.runDone.Done()
-		// 		if ds.noProcess {
-		// 			<-ds.abortSelf
-		// 		} else {
-		// 			dsp.ProcessData(ch)
-		// 		}
-		// 	}(dataSegmentChan)
 	}
 	ds.lastread = time.Now()
 	return nil
-}
-
-// Stop ends the data supply.
-func (ds *AnySource) Stop() error {
-	if !ds.Running() {
-		return fmt.Errorf("Anysource not running, cannot stop")
-	}
-
-	close(ds.abortSelf)
-	ds.broker.Stop()
-	ds.CloseOutputs()
-	return nil
-}
-
-// CloseOutputs closes all channels that carry buffers of data for downstream processing.
-func (ds *AnySource) CloseOutputs() {
-
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState
@@ -670,8 +706,6 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndicies {
 		dsp := ds.processors[channelIndex]
-		dsp.changeMutex.Lock()
-		dsp.changeMutex.Unlock()
 		dsp.ConfigureTrigger(state.TriggerState)
 	}
 	return nil
@@ -690,7 +724,7 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 		return fmt.Errorf("ConfigurePulseLengths nsamp %v, npre %v are invalid", nsamp, npre)
 	}
 	for _, dsp := range ds.processors {
-		go dsp.ConfigurePulseLengths(nsamp, npre)
+		dsp.ConfigurePulseLengths(nsamp, npre)
 	}
 	return nil
 }

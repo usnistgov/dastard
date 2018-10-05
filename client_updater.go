@@ -40,7 +40,7 @@ func init() {
 
 // RunClientUpdater forwards any message from its input channel to the ZMQ publisher socket
 // to publish any information that clients need to know.
-func RunClientUpdater(statusport int) {
+func RunClientUpdater(statusport int, abort <-chan struct{}) {
 	hostname := fmt.Sprintf("tcp://*:%d", statusport)
 	pubSocket, err := czmq.NewPub(hostname)
 	if err != nil {
@@ -70,6 +70,9 @@ func RunClientUpdater(statusport int) {
 
 	for {
 		select {
+		case <-abort:
+			return
+
 		case update := <-clientMessageChan:
 			if update.tag == "SENDALL" {
 				for k, v := range lastMessages {

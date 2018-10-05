@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"os"
@@ -47,9 +46,10 @@ type LanceroSource struct {
 	active            []*LanceroDevice
 	chan2readoutOrder []int
 	Mix               []*Mix
-	blockingReadCount int
+	dataBlockCount    int
 	buffersChan       chan BuffersChanType
 	readPeriod        time.Duration
+	mixRequests       chan *MixFractionObject
 	AnySource
 }
 
@@ -59,6 +59,7 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.name = "Lancero"
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
+
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
 		return source, err
@@ -68,12 +69,15 @@ func NewLanceroSource() (*LanceroSource, error) {
 		ld := LanceroDevice{devnum: dnum}
 		lan, err := lancero.NewLancero(dnum)
 		if err != nil {
-			log.Printf("warning: failed to create /dev/lancero_user%d", dnum)
+			log.Printf("warning: failed to open /dev/lancero_user%d and companion devices", dnum)
 			continue
 		}
 		ld.card = lan
 		source.devices[dnum] = &ld
 		source.ncards++
+	}
+	if source.ncards == 0 && len(devnums) > 0 {
+		return source, fmt.Errorf("could not open any of /dev/lancero_user*, though devnums %v exist", devnums)
 	}
 	return source, nil
 }
@@ -116,9 +120,17 @@ type LanceroSourceConfig struct {
 // CardDelay can have one value, which is shared across all cards, or must be one entry per card
 // ActiveCards is a slice of indicies into ls.devices to activate
 // AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
-func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
-	ls.runMutex.Lock()
-	defer ls.runMutex.Unlock()
+func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
+	ls.sourceStateLock.Lock()
+	defer ls.sourceStateLock.Unlock()
+	if ls.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure a LanceroSource if it's not Inactive")
+	}
+
+	// Error if Nsamp not in [1,16].
+	if config.Nsamp > 16 || config.Nsamp < 1 {
+		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", config.Nsamp)
+	}
 
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMhz = config.ClockMhz
@@ -126,10 +138,12 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
 		if dev == nil {
-			return fmt.Errorf("i=%v, c=%v, device == nil", i, c)
+			err = fmt.Errorf("i=%v, c=%v, device == nil", i, c)
+			break
 		}
 		if contains(ls.active, dev) {
-			return fmt.Errorf("attempt to use same device two times: i=%v, c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
+			err = fmt.Errorf("attempt to use same device two times: i=%v, c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
+			break
 		}
 		ls.active = append(ls.active, dev)
 		if len(config.CardDelay) >= 1+i {
@@ -144,12 +158,8 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) error {
 	}
 	sort.Ints(config.AvailableCards)
 
-	// Error if Nsamp not in [1,16].
-	if config.Nsamp > 16 || config.Nsamp < 1 {
-		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", config.Nsamp)
-	}
 	ls.nsamp = config.Nsamp
-	return nil
+	return err
 }
 
 // updateChanOrderMap updates the map chan2readoutOrder based on the number
@@ -180,27 +190,21 @@ func (ls *LanceroSource) updateChanOrderMap() {
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + errorScale*err
-func (ls *LanceroSource) ConfigureMixFraction(processorIndex int, mixFraction float64) error {
-	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
-		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
+func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) error {
+	channelIndex := mfo.ChannelIndex
+	if channelIndex >= len(ls.Mix) || channelIndex < 0 {
+		return fmt.Errorf("channelIndex %v out of bounds", channelIndex)
 	}
-	if processorIndex%2 == 0 {
-		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", processorIndex)
+	if channelIndex%2 == 0 {
+		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", channelIndex)
 	}
-	// Make this a goroutine so it can grab the lock whenever convenient, but after
-	// any possible errors have already been sent back to the RPC server. This lock
-	// is normally held most of the time by LanceroSource.blockingRead.
-	go func() {
-		ls.runMutex.Lock()
-		defer ls.runMutex.Unlock()
-		ls.Mix[processorIndex].errorScale = mixFraction / float64(ls.nsamp)
-	}()
+	ls.mixRequests <- mfo
 	return nil
 }
 
 // Sample determines key data facts by sampling some initial data.
 func (ls *LanceroSource) Sample() error {
-	ls.blockingReadCount = 0
+	ls.dataBlockCount = 0
 	ls.nchan = 0
 	for _, device := range ls.active {
 
@@ -226,6 +230,7 @@ func (ls *LanceroSource) Sample() error {
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1. / 65535.0
 	}
+	ls.mixRequests = make(chan *MixFractionObject, ls.nchan)
 
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	i := 0
@@ -441,10 +446,13 @@ func (ls *LanceroSource) StartRun() error {
 	return nil
 }
 
-// launchLanceroReader launches a goroutine that reads from the lancero card
-// based on a ticker with ls.readPeriod
-// it then demuxes the data and puts it on ls.BuffersChan
-// this way the lancero is read with minimum potential for interruption
+// launchLanceroReader launches a goroutine that reads from the Lancero card
+// whenever prompted by a ticker with a duration of ls.readPeriod.
+// It then demuxes the data and puts it on ls.BuffersChan. A second goroutine
+// receives data buffers on that channel. Because the channel is buffered with
+// a large capacity, the Lancero can read with minimum potential for overflowing
+// because of long latency in the analysis stages of Dastard.
+
 func (ls *LanceroSource) launchLanceroReader() {
 	ls.buffersChan = make(chan BuffersChanType, 100)
 	ls.readPeriod = 50 * time.Millisecond
@@ -452,6 +460,10 @@ func (ls *LanceroSource) launchLanceroReader() {
 		ticker := time.NewTicker(ls.readPeriod)
 		for {
 			select {
+			case <-ls.abortSelf:
+				close(ls.buffersChan)
+				return
+
 			case <-ticker.C:
 				var buffers [][]RawType
 				framesUsed := math.MaxInt64
@@ -489,8 +501,8 @@ func (ls *LanceroSource) launchLanceroReader() {
 					periodNS := timeDiff.Nanoseconds() / int64(framesUsed)
 					lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
 					if q != qExpect || ncols != dev.ncols || nrows != dev.nrows || framesUsed <= 0 {
-						fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, blockingReadCount %v\n",
-							ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.blockingReadCount)
+						fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, dataBlockCount %v\n",
+							ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.dataBlockCount)
 						panic("error reading from lancero, probably let buffer overfill")
 					}
 				}
@@ -531,45 +543,63 @@ func (ls *LanceroSource) launchLanceroReader() {
 					totalBytes += release
 				}
 				if len(ls.buffersChan) == cap(ls.buffersChan) {
-					panic(fmt.Sprintf("internal buffersChan full, len %v, capacipy %v", len(ls.buffersChan), cap(ls.buffersChan)))
+					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime, timeDiff: timeDiff, totalBytes: totalBytes}
-			case <-ls.abortSelf:
-				close(ls.buffersChan)
-				return
 			}
 		}
 	}()
 }
 
-// blockingRead blocks and then reads data when "enough" is ready.
-// This will need to somehow work across multiple cards???
-func (ls *LanceroSource) blockingRead() error {
-	ls.runMutex.Lock()
-	defer ls.runMutex.Unlock()
-	select {
-	case <-time.After(time.Duration(cap(ls.buffersChan)) * ls.readPeriod):
-		panic(fmt.Sprintf("timeout, no data from lancero after %v", time.Duration(cap(ls.buffersChan))*ls.readPeriod))
-	case buffersMsg := <-ls.buffersChan:
-		if buffersMsg.datacopies == nil { //  checks if buffersMsg is closed, will have zero value, zero slices are nil
-			if err := ls.stop(); err != nil {
-				return err
+// getNextBlock returns the channel on which data sources send data and any errors.
+// More importantly, wait on this channel to wait on the source to have a data block.
+// This will end by putting a valid or error-ish dataBlock onto ls.nextBlock. If the
+// block has a non-nil error, this goroutine will also close ls.nextBlock.
+// The LanceroSource version also has to monitor the timeout channel, handle any possible
+// mixRequests, and wait for the buffersChan to yield real, valid Lancero data.
+// The idea here is to minimize the number of long-running goroutines, which are hard
+// to reason about.
+func (ls *LanceroSource) getNextBlock() chan *dataBlock {
+	panicTime := time.Duration(cap(ls.buffersChan)) * ls.readPeriod
+	go func() {
+		for {
+			// This select statement was formerly the ls.blockingRead method
+			select {
+			case <-time.After(panicTime):
+				panic(fmt.Sprintf("timeout, no data from lancero after %v / %v", panicTime, ls.readPeriod))
+
+			case mfo := <-ls.mixRequests:
+				ls.Mix[mfo.ChannelIndex].errorScale = mfo.MixFraction / float64(ls.nsamp)
+
+			case buffersMsg, ok := <-ls.buffersChan:
+				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
+				if buffersMsg.datacopies == nil || !ok {
+					block := new(dataBlock)
+					if err := ls.stop(); err != nil {
+						block.err = err
+						ls.nextBlock <- block
+					}
+					close(ls.nextBlock)
+					return
+				}
+				// ls.buffersChan contained valid data, so act on it.
+				block := ls.distributeData(buffersMsg)
+				ls.dataBlockCount++ // set to 0 in SampleCard
+				ls.nextBlock <- block
+				if block.err != nil {
+					close(ls.nextBlock)
+				}
+				return
 			}
-			return io.EOF
 		}
-		err1 := ls.distributeData(buffersMsg)
-		if err1 != nil {
-			return err1
-		}
-	}
-	ls.blockingReadCount++ // set to 0 in SampleCard
-	return nil
+	}()
+	return ls.nextBlock
 }
 
 // distributeData reads the raw data buffers from all devices in the LanceroSource
 // and distributes their data by copying into slices that go on channels, one
 // channel per data stream.
-func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
+func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
@@ -579,7 +609,10 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
 	firstTime := lastSampleTime.Add(-segDuration)
-	for channelIndex := range ls.processors {
+	block := new(dataBlock)
+	nchan := len(datacopies)
+	block.segments = make([]DataSegment, nchan)
+	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
 		if channelIndex%2 == 1 { // feedback channel needs more processing
 			mix := ls.Mix[channelIndex]
@@ -594,17 +627,20 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) error {
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
 		}
-		ls.segments[channelIndex] = seg
+		block.segments[channelIndex] = seg
+		block.nSamp = len(data)
 	}
 	ls.nextFrameNum += FrameIndex(framesUsed)
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 			Time: timeDiff.Seconds()}
 	}
-	if len(ls.buffersChan) > 0 {
-		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), time.Now().Sub(firstTime))
+	now := time.Now()
+	delay := now.Sub(lastSampleTime)
+	if delay > 100*time.Millisecond {
+		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), now.Sub(firstTime))
 	}
-	return nil
+	return block
 }
 
 // stop ends the data streaming on all active lancero devices.

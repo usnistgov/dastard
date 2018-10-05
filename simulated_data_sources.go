@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"fmt"
-	"io"
 	"math/rand"
 	"time"
 )
@@ -33,14 +32,22 @@ type TriangleSourceConfig struct {
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
+	// Check configuration for acceptability
 	if config.Nchan < 1 {
 		return fmt.Errorf("TriangleSource.Configure() asked for %d channels, should be > 0", config.Nchan)
 	}
-	ts.runMutex.Lock()
-	defer ts.runMutex.Unlock()
 	if config.Min > config.Max {
 		return fmt.Errorf("have config.Min=%v > config.Max=%v, want Min<Max", config.Min, config.Max)
 	}
+
+	ts.sourceStateLock.Lock()
+	defer ts.sourceStateLock.Unlock()
+	if ts.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure a TriangleSource if it's not Inactive")
+	}
+	ts.nchan = config.Nchan
+	ts.sampleRate = config.SampleRate
+	ts.samplePeriod = time.Duration(roundint(1e9 / ts.sampleRate))
 	nrise := config.Max - config.Min
 	if nrise > 0 {
 		ts.cycleLen = 2 * int(nrise)
@@ -57,9 +64,6 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 			ts.onecycle[i] = config.Max
 		}
 	}
-	ts.nchan = config.Nchan
-	ts.sampleRate = config.SampleRate
-	ts.samplePeriod = time.Duration(roundint(1e9 / ts.sampleRate))
 
 	ts.minval = config.Min
 	ts.maxval = config.Max
@@ -85,42 +89,47 @@ func (ts *TriangleSource) Sample() error {
 	return nil
 }
 
-// blockingRead blocks and then reads data when "enough" is ready.
-func (ts *TriangleSource) blockingRead() error {
-	ts.runMutex.Lock()
-	defer ts.runMutex.Unlock()
-	nextread := ts.lastread.Add(ts.timeperbuf)
-	waittime := time.Until(nextread)
-	var now time.Time
-	select {
-	case <-ts.abortSelf:
-		return io.EOF
-	case <-time.After(waittime):
-		now = time.Now()
-		if ts.heartbeats != nil {
-			dt := now.Sub(ts.lastread).Seconds()
-			mb := float64(ts.cycleLen*2*ts.nchan) / 1e6
-			ts.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
-		}
-		ts.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
-	}
+// StartRun launches the repeated loop that generates Triangle data.
+func (ts *TriangleSource) StartRun() error {
+	go func() {
+		for {
+			nextread := ts.lastread.Add(ts.timeperbuf)
+			waittime := time.Until(nextread)
+			var now time.Time
+			select {
+			case <-ts.abortSelf:
+				close(ts.nextBlock)
+				return
+			case <-time.After(waittime):
+				now = time.Now()
+				if ts.heartbeats != nil {
+					dt := now.Sub(ts.lastread).Seconds()
+					mb := float64(ts.cycleLen*2*ts.nchan) / 1e6
+					ts.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
+				}
+				ts.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
+			}
 
-	// Backtrack to find the time associated with the first sample.
-	firstTime := now.Add(-ts.timeperbuf) // use now here, this should acutually correspond to the time the data was read
-	for channelIndex := range ts.processors {
-		datacopy := make([]RawType, ts.cycleLen)
-		copy(datacopy, ts.onecycle)
-		seg := DataSegment{
-			rawData:         datacopy,
-			framesPerSample: 1,
-			framePeriod:     ts.samplePeriod,
-			firstFramenum:   ts.nextFrameNum,
-			firstTime:       firstTime,
+			// Backtrack to find the time associated with the first sample.
+			firstTime := now.Add(-ts.timeperbuf) // use now here; should correspond to the time the data was read
+			block := new(dataBlock)
+			block.segments = make([]DataSegment, ts.nchan)
+			for channelIndex := 0; channelIndex < ts.nchan; channelIndex++ {
+				datacopy := make([]RawType, ts.cycleLen)
+				copy(datacopy, ts.onecycle)
+				seg := DataSegment{
+					rawData:         datacopy,
+					framesPerSample: 1,
+					framePeriod:     ts.samplePeriod,
+					firstFramenum:   ts.nextFrameNum,
+					firstTime:       firstTime,
+				}
+				block.segments[channelIndex] = seg
+			}
+			ts.nextFrameNum += FrameIndex(ts.cycleLen)
+			ts.nextBlock <- block
 		}
-		ts.segments[channelIndex] = seg
-	}
-	ts.nextFrameNum += FrameIndex(ts.cycleLen)
-
+	}()
 	return nil
 }
 
@@ -154,6 +163,12 @@ type SimPulseSourceConfig struct {
 func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	if config.Nchan < 1 {
 		return fmt.Errorf("SimPulseSource.Configure() asked for %d channels, should be > 0", config.Nchan)
+	}
+
+	sps.sourceStateLock.Lock()
+	defer sps.sourceStateLock.Unlock()
+	if sps.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure a SimPulseSource if it's not Inactive")
 	}
 	sps.nchan = config.Nchan
 	sps.sampleRate = config.SampleRate
@@ -198,44 +213,50 @@ func (sps *SimPulseSource) Sample() error {
 	return nil
 }
 
-// blockingRead blocks and then reads data when "enough" is ready.
-func (sps *SimPulseSource) blockingRead() error {
-	sps.runMutex.Lock()
-	defer sps.runMutex.Unlock()
-	nextread := sps.lastread.Add(sps.timeperbuf)
-	waittime := time.Until(nextread)
-	var now time.Time
-	select {
-	case <-sps.abortSelf:
-		return io.EOF
-	case <-time.After(waittime):
-		now = time.Now()
-		if sps.heartbeats != nil {
-			dt := now.Sub(sps.lastread).Seconds()
-			mb := float64(sps.cycleLen*2*sps.nchan) / 1e6
-			sps.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
-		}
-		sps.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
-	}
+// StartRun launches the repeated loop that generates Triangle data.
+func (sps *SimPulseSource) StartRun() error {
+	go func() {
+		defer close(sps.nextBlock)
+		for {
+			nextread := sps.lastread.Add(sps.timeperbuf)
+			waittime := time.Until(nextread)
+			var now time.Time
+			select {
+			case <-sps.abortSelf:
+				return
+			case <-time.After(waittime):
+				now = time.Now()
+				if sps.heartbeats != nil {
+					dt := now.Sub(sps.lastread).Seconds()
+					mb := float64(sps.cycleLen*2*sps.nchan) / 1e6
+					sps.heartbeats <- Heartbeat{Running: true, Time: dt, DataMB: mb}
+				}
+				sps.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
+			}
 
-	// Backtrack to find the time associated with the first sample.
-	firstTime := now.Add(-sps.timeperbuf) // use now for accurate sample time
-	for channelIndex := range sps.processors {
-		datacopy := make([]RawType, sps.cycleLen)
-		copy(datacopy, sps.onecycle)
-		for i := 0; i < sps.cycleLen; i++ {
-			datacopy[i] += RawType(rand.Intn(21) - 10)
+			// Backtrack to find the time associated with the first sample.
+			firstTime := now.Add(-sps.timeperbuf) // use now for accurate sample time
+			block := new(dataBlock)
+			block.segments = make([]DataSegment, sps.nchan)
+			for channelIndex := 0; channelIndex < sps.nchan; channelIndex++ {
+				datacopy := make([]RawType, sps.cycleLen)
+				copy(datacopy, sps.onecycle)
+				for i := 0; i < sps.cycleLen; i++ {
+					datacopy[i] += RawType(rand.Intn(21) - 10)
+				}
+				seg := DataSegment{
+					rawData:         datacopy,
+					framesPerSample: 1,
+					framePeriod:     sps.samplePeriod,
+					firstFramenum:   sps.nextFrameNum,
+					firstTime:       firstTime,
+				}
+				block.segments[channelIndex] = seg
+			}
+			sps.nextFrameNum += FrameIndex(sps.cycleLen)
+			sps.nextBlock <- block
 		}
-		seg := DataSegment{
-			rawData:         datacopy,
-			framesPerSample: 1,
-			framePeriod:     sps.samplePeriod,
-			firstFramenum:   sps.nextFrameNum,
-			firstTime:       firstTime,
-		}
-		sps.segments[channelIndex] = seg
-	}
-	sps.nextFrameNum += FrameIndex(sps.cycleLen)
+	}()
 	return nil
 }
 
@@ -249,8 +270,7 @@ func (sps *SimPulseSource) blockingRead() error {
 // recovers properly as well
 type ErroringSource struct {
 	AnySource
-	hasErrored     bool
-	nBlockingReads int
+	nStarts int
 }
 
 // NewErroringSource returns a new ErroringSource, requires no configuration
@@ -260,16 +280,18 @@ func NewErroringSource() *ErroringSource {
 	return es
 }
 
-// Sample is part of the required interface, and resets the hasErrored varible
+// Sample is part of the required interface.
 func (es *ErroringSource) Sample() error {
-	es.hasErrored = false
 	return nil
 }
-func (es *ErroringSource) blockingRead() error {
-	es.nBlockingReads++
-	if es.hasErrored {
-		return io.EOF
-	}
-	es.hasErrored = true
-	return fmt.Errorf("ErroringSource.blockingRead always errors on first call")
+
+// StartRun is part of the required interface and ensures future failure
+func (es *ErroringSource) StartRun() error {
+	es.nStarts++
+	go func() {
+		block := new(dataBlock)
+		block.err = fmt.Errorf("ErroringSource always errors on first call")
+		es.nextBlock <- block
+	}()
+	return nil
 }
