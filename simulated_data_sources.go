@@ -155,7 +155,7 @@ type SimPulseSourceConfig struct {
 	Nchan      int
 	SampleRate float64
 	Pedestal   float64
-	Amplitude  float64
+	Amplitudes []float64
 	Nsamp      int
 }
 
@@ -174,19 +174,23 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	sps.sampleRate = config.SampleRate
 	sps.samplePeriod = time.Duration(roundint(1e9 / sps.sampleRate))
 
-	sps.cycleLen = config.Nsamp
+	nsizes := len(config.Amplitudes)
+	sps.cycleLen = nsizes * config.Nsamp
 	firstIdx := 5
 	sps.onecycle = make([]RawType, sps.cycleLen)
 
-	ampl := []float64{config.Amplitude, -config.Amplitude}
+	ampl := []float64{0, 0}
 	exprate := []float64{.99, .96}
-	value := config.Pedestal
+	var value float64
 	for i := 0; i < sps.cycleLen; i++ {
-		if i >= firstIdx {
-			value = config.Pedestal + ampl[0] + ampl[1]
-			ampl[0] *= exprate[0]
-			ampl[1] *= exprate[1]
+		if i%config.Nsamp == firstIdx {
+			j := i / config.Nsamp
+			ampl[0] = config.Amplitudes[j]
+			ampl[1] = -config.Amplitudes[j]
 		}
+		value = config.Pedestal + ampl[0] + ampl[1]
+		ampl[0] *= exprate[0]
+		ampl[1] *= exprate[1]
 		sps.onecycle[i] = RawType(value + 0.5)
 	}
 
