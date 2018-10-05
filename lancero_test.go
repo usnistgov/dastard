@@ -132,12 +132,12 @@ func TestNoHardwareSource(t *testing.T) {
 	if source.chanNames[2] != "err2" {
 		t.Errorf("LanceroSource.chanNames[2] %v, want err2", source.chanNames[3])
 	}
-	mfo := MixFractionObject{ChannelIndex: 0, MixFraction: 1.0}
 	if err := source.ConfigureMixFraction(&mfo); err == nil {
+	mfo := MixFractionObject{ChannelIndices: []int{0}, MixFractions: []float64{1.0}}
 		t.Error("expected error for mixing on even channel")
 	}
-	mfo.ChannelIndex = 1
 	if err := source.ConfigureMixFraction(&mfo); err != nil {
+	mfo.ChannelIndices[0] = 1
 		t.Error(err)
 	}
 	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed

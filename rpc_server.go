@@ -140,8 +140,8 @@ func (s *SourceControl) runLaterIfActive(f func()) error {
 
 // MixFractionObject is the RPC-usable structure for ConfigureMixFraction
 type MixFractionObject struct {
-	ChannelIndex int
-	MixFraction  float64
+	ChannelIndices []int
+	MixFractions   []float64
 }
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ChannelIndex

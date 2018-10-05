@@ -193,12 +193,12 @@ func (ls *LanceroSource) updateChanOrderMap() {
 // ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
 // mix = fb + errorScale*err
 func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) error {
-	processorIndex := mfo.ChannelIndex
-	if processorIndex >= len(ls.Mix) || processorIndex < 0 {
-		return fmt.Errorf("processorIndex %v out of bounds", processorIndex)
-	}
-	if processorIndex%2 == 0 {
 		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", processorIndex)
+	for _, processorIndex := range mfo.ChannelIndices {
+		if processorIndex >= len(ls.Mix) || processorIndex < 0 {
+			return nil, fmt.Errorf("processorIndex %v out of bounds", processorIndex)
+		}
+		if processorIndex%2 == 0 {
 	}
 	ls.mixRequests <- mfo
 	return nil
@@ -569,7 +569,13 @@ func (ls *LanceroSource) getNextBlock() chan *dataBlock {
 				panic(fmt.Sprintf("timeout, no data from lancero after %v / %v", panicTime, ls.readPeriod))
 
 			case mfo := <-ls.mixRequests:
-				ls.Mix[mfo.ChannelIndex].errorScale = mfo.MixFraction / float64(ls.nsamp)
+				for i, index := range mfo.ChannelIndices {
+					if index < 0 || index >= len(ls.Mix) {
+						continue
+					}
+					fraction := mfo.MixFractions[i]
+					ls.Mix[index].errorScale = fraction / float64(ls.nsamp)
+				}
 
 			case buffersMsg, ok := <-ls.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
