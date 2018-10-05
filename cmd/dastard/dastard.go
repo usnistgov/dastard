@@ -91,6 +91,8 @@ func main() {
 		panic(err)
 	}
 
-	go dastard.RunClientUpdater(dastard.Ports.Status, nil)
+	abort := make(chan struct{})
+	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
+	close(abort)
 }
