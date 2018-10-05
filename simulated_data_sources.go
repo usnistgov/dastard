@@ -40,8 +40,8 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 		return fmt.Errorf("have config.Min=%v > config.Max=%v, want Min<Max", config.Min, config.Max)
 	}
 
-	ts.runMutex.Lock()
-	defer ts.runMutex.Unlock()
+	ts.sourceStateLock.Lock()
+	defer ts.sourceStateLock.Unlock()
 	if ts.sourceState != Inactive {
 		return fmt.Errorf("cannot Configure a TriangleSource if it's not Inactive")
 	}
@@ -165,8 +165,8 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 		return fmt.Errorf("SimPulseSource.Configure() asked for %d channels, should be > 0", config.Nchan)
 	}
 
-	sps.runMutex.Lock()
-	defer sps.runMutex.Unlock()
+	sps.sourceStateLock.Lock()
+	defer sps.sourceStateLock.Unlock()
 	if sps.sourceState != Inactive {
 		return fmt.Errorf("cannot Configure a SimPulseSource if it's not Inactive")
 	}
