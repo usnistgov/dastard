@@ -233,7 +233,12 @@ func (ls *LanceroSource) Sample() error {
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1. / 65535.0
 	}
-	ls.mixRequests = make(chan *MixFractionObject, ls.nchan)
+
+	// Set up mix requests/replies to go on channels with a modest buffer size.
+	// If this proves to be a problem, we can change it to ls.nchan later.
+	const MIXDEPTH = 10 // How many active mix requests allowed before RPC backs up
+	ls.mixRequests = make(chan *MixFractionObject, MIXDEPTH)
+	ls.currentMix = make(chan []float64, MIXDEPTH)
 
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	i := 0
@@ -555,9 +560,9 @@ func (ls *LanceroSource) launchLanceroReader() {
 }
 
 // getNextBlock returns the channel on which data sources send data and any errors.
-// More importantly, wait on this channel to wait on the source to have a data block.
-// This will end by putting a valid or error-ish dataBlock onto ls.nextBlock. If the
-// block has a non-nil error, this goroutine will also close ls.nextBlock.
+// More importantly, wait on this returned channel to await the source having a data block.
+// This goroutine will end by putting a valid or error-ish dataBlock onto ls.nextBlock.
+// If the block has a non-nil error, this goroutine will also close ls.nextBlock.
 // The LanceroSource version also has to monitor the timeout channel, handle any possible
 // mixRequests, and wait for the buffersChan to yield real, valid Lancero data.
 // The idea here is to minimize the number of long-running goroutines, which are hard

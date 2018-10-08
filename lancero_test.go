@@ -140,7 +140,7 @@ func TestNoHardwareSource(t *testing.T) {
 	mix, err := source.ConfigureMixFraction(&mfo)
 	if err != nil {
 		t.Error(err)
-	} else if mix[0] != 1.0 {
+	} else if mix[1] != 1.0 {
 		t.Errorf("source.ConfigureMixFraction returns [%f], want %f", mix[0], 1.0)
 	}
 	time.Sleep(20 * time.Millisecond) // wait long enough for some data to be processed
