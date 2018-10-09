@@ -158,9 +158,7 @@ type MixFractionObject struct {
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
 	currentMix, err := s.ActiveSource.ConfigureMixFraction(mfo)
 	*reply = (err == nil)
-	if err == nil {
-		s.broadcastMixState(currentMix)
-	}
+	s.broadcastMixState(currentMix)
 	return err
 }
 
