@@ -50,7 +50,7 @@ type LanceroSource struct {
 	buffersChan       chan BuffersChanType
 	readPeriod        time.Duration
 	mixRequests       chan *MixFractionObject
-	currentMix        chan []float64
+	currentMix        chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	AnySource
 }
 
@@ -189,7 +189,7 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	}
 }
 
-// ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
+// ConfigureMixFraction sets the MixFraction potentially for many channels, returns the list of current mix values
 // mix = fb + errorScale*err
 func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64, error) {
 	for _, channelIndex := range mfo.ChannelIndices {
@@ -201,7 +201,7 @@ func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64
 		}
 	}
 	ls.mixRequests <- mfo
-	current := <-ls.currentMix
+	current := <-ls.currentMix // retrieve current mix race-free
 	return current, nil
 }
 
@@ -578,9 +578,6 @@ func (ls *LanceroSource) getNextBlock() chan *dataBlock {
 
 			case mfo := <-ls.mixRequests:
 				for i, index := range mfo.ChannelIndices {
-					if index < 0 || index >= len(ls.Mix) {
-						continue
-					}
 					fraction := mfo.MixFractions[i]
 					ls.Mix[index].errorScale = fraction / float64(ls.nsamp)
 				}
