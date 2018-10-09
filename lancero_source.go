@@ -50,6 +50,7 @@ type LanceroSource struct {
 	buffersChan       chan BuffersChanType
 	readPeriod        time.Duration
 	mixRequests       chan *MixFractionObject
+	currentMix        chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	AnySource
 }
 
@@ -188,18 +189,20 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	}
 }
 
-// ConfigureMixFraction sets the MixFraction for the channel associated with ProcessorIndex
+// ConfigureMixFraction sets the MixFraction potentially for many channels, returns the list of current mix values
 // mix = fb + errorScale*err
-func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) error {
-	channelIndex := mfo.ChannelIndex
-	if channelIndex >= len(ls.Mix) || channelIndex < 0 {
-		return fmt.Errorf("channelIndex %v out of bounds", channelIndex)
-	}
-	if channelIndex%2 == 0 {
-		return fmt.Errorf("proccesorIndex %v is even, only odd channels (feedback) allowed", channelIndex)
+func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64, error) {
+	for _, channelIndex := range mfo.ChannelIndices {
+		if channelIndex >= len(ls.Mix) || channelIndex < 0 {
+			return nil, fmt.Errorf("channelIndex %v out of bounds", channelIndex)
+		}
+		if channelIndex%2 == 0 {
+			return nil, fmt.Errorf("channelIndex %v is even, only odd channels (feedback) allowed", channelIndex)
+		}
 	}
 	ls.mixRequests <- mfo
-	return nil
+	current := <-ls.currentMix // retrieve current mix race-free
+	return current, nil
 }
 
 // Sample determines key data facts by sampling some initial data.
@@ -230,7 +233,12 @@ func (ls *LanceroSource) Sample() error {
 	for i := 1; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1. / 65535.0
 	}
-	ls.mixRequests = make(chan *MixFractionObject, ls.nchan)
+
+	// Set up mix requests/replies to go on channels with a modest buffer size.
+	// If this proves to be a problem, we can change it to ls.nchan later.
+	const MIXDEPTH = 10 // How many active mix requests allowed before RPC backs up
+	ls.mixRequests = make(chan *MixFractionObject, MIXDEPTH)
+	ls.currentMix = make(chan []float64, MIXDEPTH)
 
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	i := 0
@@ -552,9 +560,9 @@ func (ls *LanceroSource) launchLanceroReader() {
 }
 
 // getNextBlock returns the channel on which data sources send data and any errors.
-// More importantly, wait on this channel to wait on the source to have a data block.
-// This will end by putting a valid or error-ish dataBlock onto ls.nextBlock. If the
-// block has a non-nil error, this goroutine will also close ls.nextBlock.
+// More importantly, wait on this returned channel to await the source having a data block.
+// This goroutine will end by putting a valid or error-ish dataBlock onto ls.nextBlock.
+// If the block has a non-nil error, this goroutine will also close ls.nextBlock.
 // The LanceroSource version also has to monitor the timeout channel, handle any possible
 // mixRequests, and wait for the buffersChan to yield real, valid Lancero data.
 // The idea here is to minimize the number of long-running goroutines, which are hard
@@ -569,7 +577,15 @@ func (ls *LanceroSource) getNextBlock() chan *dataBlock {
 				panic(fmt.Sprintf("timeout, no data from lancero after %v / %v", panicTime, ls.readPeriod))
 
 			case mfo := <-ls.mixRequests:
-				ls.Mix[mfo.ChannelIndex].errorScale = mfo.MixFraction / float64(ls.nsamp)
+				for i, index := range mfo.ChannelIndices {
+					fraction := mfo.MixFractions[i]
+					ls.Mix[index].errorScale = fraction / float64(ls.nsamp)
+				}
+				mixFrac := make([]float64, len(ls.Mix))
+				for i, m := range ls.Mix {
+					mixFrac[i] = m.errorScale * float64(ls.nsamp)
+				}
+				ls.currentMix <- mixFrac
 
 			case buffersMsg, ok := <-ls.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.

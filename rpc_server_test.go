@@ -192,7 +192,7 @@ func TestServer(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.ConfigureProjectorsBasis(\"%s\") returns !okay, want okay", sourceName)
 	}
-	mfo := MixFractionObject{0, 1.0}
+	mfo := MixFractionObject{[]int{0}, []float64{1.0}}
 	if err1 := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err1 == nil {
 		t.Error("error on ConfigureMixFraction expected for non-mixable source")
 	}

@@ -140,8 +140,8 @@ func (s *SourceControl) runLaterIfActive(f func()) error {
 
 // MixFractionObject is the RPC-usable structure for ConfigureMixFraction
 type MixFractionObject struct {
-	ChannelIndex int
-	MixFraction  float64
+	ChannelIndices []int
+	MixFractions   []float64
 }
 
 // ConfigureMixFraction sets the MixFraction for the channel associated with ChannelIndex
@@ -156,8 +156,9 @@ type MixFractionObject struct {
 // But changes to the mix settings need to be kept separate from LanceroSource.distrubuteData,
 // which is part of the data-*production* step, not the data-processing step.
 func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool) error {
-	err := s.ActiveSource.ConfigureMixFraction(mfo)
+	currentMix, err := s.ActiveSource.ConfigureMixFraction(mfo)
 	*reply = (err == nil)
+	s.broadcastMixState(currentMix)
 	return err
 }
 
@@ -501,6 +502,10 @@ func (s *SourceControl) broadcastTriggerState() {
 		// log.Printf("TriggerState: %v\n", state)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", state}
 	}
+}
+
+func (s *SourceControl) broadcastMixState(mix []float64) {
+	s.clientUpdates <- ClientUpdate{"MIX", mix}
 }
 
 func (s *SourceControl) broadcastChannelNames() {
