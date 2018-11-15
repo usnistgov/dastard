@@ -227,7 +227,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 		return fmt.Errorf("No source is active")
 	}
 	if s.status.Npresamp == sizes.Npre && s.status.Nsamples == sizes.Nsamp {
-		return fmt.Errorf("requested PulseLengths %v,%v identical to current pulse lengths %v,%v", sizes.Npre, sizes.Nsamp, s.status.Npresamp, s.status.Nsamples)
+		return nil // no change requested
 	}
 	if s.ActiveSource.ComputeWritingState().Active {
 		return fmt.Errorf("Stop writing before changing record lengths")
