@@ -51,7 +51,7 @@ type DataSource interface {
 	ConfigureMixFraction(*MixFractionObject) ([]float64, error)
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
-	SetExperimentStateLabel(string) error
+	SetExperimentStateLabel(time.Time, string) error
 	ChannelsWithProjectors() []int
 	ProcessSegments(*dataBlock) error
 	RunDoneActivate()
@@ -320,7 +320,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 
 // SetExperimentStateLabel writes to a file with name like XXX_experiment_state.txt
 // the file is created upon the first call to this function for a given file writing
-func (ds *AnySource) SetExperimentStateLabel(stateLabel string) error {
+func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel string) error {
 	if ds.writingState.experimentStateFile == nil {
 		// create state file if neccesary
 		var err error
@@ -335,7 +335,7 @@ func (ds *AnySource) SetExperimentStateLabel(stateLabel string) error {
 		}
 	}
 	ds.writingState.ExperimentStateLabel = stateLabel
-	ds.writingState.ExperimentStateLabelUnixNano = time.Now().UnixNano()
+	ds.writingState.ExperimentStateLabelUnixNano = timestamp.UnixNano()
 	_, err := ds.writingState.experimentStateFile.WriteString(fmt.Sprintf("%v, %v\n", ds.writingState.ExperimentStateLabelUnixNano, stateLabel))
 	if err != nil {
 		return err
@@ -420,7 +420,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		}
 		if len(config.Request) > 7 { // "UNPAUSE label" format already validated
 			stateLabel := config.Request[8:]
-			if err := ds.SetExperimentStateLabel(stateLabel); err != nil {
+			if err := ds.SetExperimentStateLabel(time.Now(), stateLabel); err != nil {
 				return err
 			}
 		}
@@ -454,7 +454,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.Active = false
 		ds.writingState.Paused = false
 		ds.writingState.FilenamePattern = ""
-		ds.SetExperimentStateLabel("STOP")
+		ds.SetExperimentStateLabel(time.Now(), "STOP")
 		if ds.writingState.experimentStateFile != nil {
 			if err := ds.writingState.experimentStateFile.Close(); err != nil {
 				fmt.Println("failed to close experimentStatefile, err:", err)
@@ -505,7 +505,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.BasePath = path
 		ds.writingState.FilenamePattern = filenamePattern
 		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
-		ds.SetExperimentStateLabel("START")
+		ds.SetExperimentStateLabel(time.Now(), "START")
 	}
 	return nil
 }
