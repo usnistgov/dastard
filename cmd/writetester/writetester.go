@@ -70,6 +70,7 @@ func main() {
 	fmt.Printf("flushWithinBlock %v, flushAfterBlocks %v\n", flushWithinBlock, flushAfterBlocks)
 	for {
 		z++
+		// 1. here we would get data from data source
 		select {
 		case <-abortChan:
 			fmt.Println("clean exit")
@@ -81,8 +82,10 @@ func main() {
 			for i, w := range writers {
 				wg.Add(1)
 				go func(w *Writer, i int) {
+					// 2. here we would process data, we launch one goroutine per channel to parallelize this processing
 					tStart := time.Now()
 					defer wg.Done()
+					// 3. here we write data to disk, still within the same goroutines that did the processing
 					for j := 0; j < recordsPerChanPerTick; j++ {
 						if !w.headerWritten {
 							err := w.writeHeader()
