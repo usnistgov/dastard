@@ -1,5 +1,7 @@
 ## DASTARD Versions
 
+**0.2.2** December 7, 2018 (in progress)
+
 **0.2.1** December 7, 2018
 * Make mix command accept an array of new mix values and report all back to clients.
 * Make SimPulse configuration accept an array of amplitudes to generate multiple pulse sizes.
