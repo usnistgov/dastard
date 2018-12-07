@@ -1,7 +1,11 @@
 ## DASTARD Versions
-**0.2.1** October 2018 (in progress)
+
+**0.2.1** December 7, 2018
 * Make mix command accept an array of new mix values and report all back to clients.
 * Make SimPulse configuration accept an array of amplitudes to generate multiple pulse sizes.
+* Timestamp RPC commands SetExperimentStateLabel when received, not when processed.
+* Fix problems with simulated pulse data when read in MASS.
+* Get record lengths correct when starting a source.
 
 **0.2.0** October 5, 2018
 * Redesign the internals of Dastard to eliminate data races between RPC services 
