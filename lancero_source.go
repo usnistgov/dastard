@@ -31,10 +31,11 @@ type LanceroDevice struct {
 // BuffersChanType is an internal message type used to allow
 // a goroutine to read from the Lancero card and put data on a buffered channel
 type BuffersChanType struct {
-	datacopies     [][]RawType
-	lastSampleTime time.Time
-	timeDiff       time.Duration
-	totalBytes     int
+	datacopies               [][]RawType
+	externalTriggerRowcounts []int64
+	lastSampleTime           time.Time
+	timeDiff                 time.Duration
+	totalBytes               int
 }
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
@@ -522,6 +523,17 @@ func (ls *LanceroSource) launchLanceroReader() {
 					datacopies[i] = make([]RawType, framesUsed)
 				}
 
+				// The external trigger is encoded in the least significant bit of the feedback
+				// The information is redundant across columns, so we should only scan a single column
+				// The external trigger bit resolution is the row rate, eg for each row we get a 0 or a 1 representing
+				// if the voltage at the external trigger input is 3.3 V or not
+				// Here we will look for edge trigger, eg the bit is 1 but was 0 on the previous row
+				// Then we record the "rowcounts", where the rowcount = nrow*framecount+row
+				// here we we only know the framecount within this buffer, so later we will need to add the global framecount offset
+				externalTriggerRowcounts := make([]int64, 0)
+				externalTriggerLastState := false
+				externalTriggerMask := RawType(0x01)
+
 				// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
 				// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
 				// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
@@ -536,7 +548,16 @@ func (ls *LanceroSource) launchLanceroReader() {
 						dc := datacopies[i+nchanPrevDevices]
 						idx := i
 						for j := 0; j < framesUsed; j++ {
-							dc[j] = buffer[idx]
+							v := buffer[idx]
+							dc[j] = v
+							if i%2 == 1 && i < dev.nrows*2 { // check external triggers on feedback (odd) channels in the first column (<2*nrows)
+								externalTriggerState := (v & externalTriggerMask) == 1
+								if externalTriggerState && !externalTriggerLastState {
+									row := i >> 1 // equivalent to i/2
+									externalTriggerRowcounts = append(externalTriggerRowcounts, int64(j*dev.nrows+row))
+								}
+								externalTriggerLastState = externalTriggerState
+							}
 							idx += nchan
 						}
 					}
@@ -553,7 +574,8 @@ func (ls *LanceroSource) launchLanceroReader() {
 				if len(ls.buffersChan) == cap(ls.buffersChan) {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
-				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime, timeDiff: timeDiff, totalBytes: totalBytes}
+				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
+					timeDiff: timeDiff, totalBytes: totalBytes, externalTriggerRowcounts: externalTriggerRowcounts}
 			}
 		}
 	}()
@@ -655,6 +677,12 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	delay := now.Sub(lastSampleTime)
 	if delay > 100*time.Millisecond {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), now.Sub(firstTime))
+	}
+	// add the framecount offset to the external trigger rowcounts, and store them within the *dataBlock
+	block.externalTriggerRowcounts = make([]int64, len(buffersMsg.externalTriggerRowcounts))
+	nrows := ls.devices[0].nrows
+	for i, v := range buffersMsg.externalTriggerRowcounts {
+		block.externalTriggerRowcounts[i] = v + int64(ls.nextFrameNum)*int64(nrows)
 	}
 	return block
 }

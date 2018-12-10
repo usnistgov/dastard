@@ -1,12 +1,15 @@
 package dastard
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/usnistgov/dastard/getbytes"
 
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
@@ -228,9 +231,10 @@ func rcCode(row, col, rows, cols int) RowColCode {
 
 // dataBlock contains a block of data (one segment per data stream)
 type dataBlock struct {
-	segments []DataSegment
-	nSamp    int
-	err      error
+	segments                 []DataSegment
+	externalTriggerRowcounts []int64
+	nSamp                    int
+	err                      error
 }
 
 // AnySource implements features common to any object that implements
@@ -307,6 +311,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	for i, dsp := range ds.processors {
 		numberWritten[i] = dsp.numberWritten
 	}
+	ds.HandleExternalTriggers(block.externalTriggerRowcounts)
 	if ds.writingState.Active && !ds.writingState.Paused {
 		select {
 		case <-ds.numberWrittenTicker.C:
@@ -337,6 +342,43 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 	ds.writingState.ExperimentStateLabel = stateLabel
 	ds.writingState.ExperimentStateLabelUnixNano = timestamp.UnixNano()
 	_, err := ds.writingState.experimentStateFile.WriteString(fmt.Sprintf("%v, %v\n", ds.writingState.ExperimentStateLabelUnixNano, stateLabel))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+//HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
+//with the number of external triggers observed
+func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) error {
+	if len(externalTriggerRowcounts) == 0 {
+		return nil
+	}
+	if ds.writingState.externalTriggerFileBufferedWriter == nil {
+		// setup external trigger file if neccesary
+		var err error
+		ds.writingState.externalTriggerFile, err = os.Create(ds.writingState.ExternalTriggerFilename)
+		if err != nil {
+			return fmt.Errorf("cannot create ExternalTriggerFile, %v", err)
+		}
+		ds.writingState.externalTriggerFileBufferedWriter = bufio.NewWriter(ds.writingState.externalTriggerFile)
+		// write header
+		_, err1 := ds.writingState.externalTriggerFileBufferedWriter.WriteString("# external trigger rowcounts as int64 binary data follows, rowcounts = framecounts*nrow+row\n")
+		if err1 != nil {
+			return err
+		}
+		ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
+	}
+	ds.writingState.externalTriggerNumberObserved += len(externalTriggerRowcounts)
+	_, err := ds.writingState.externalTriggerFileBufferedWriter.Write(getbytes.FromSliceInt64(externalTriggerRowcounts))
+	select { // occasionally flush and send message about number of observed external triggers
+	case <-ds.writingState.externalTriggerTicker.C:
+		ds.writingState.externalTriggerFileBufferedWriter.Flush()
+		clientMessageChan <- ClientUpdate{tag: "EXTERNALTRIGGER",
+			state: struct{ NumberObservedInLastSecond int }{NumberObservedInLastSecond: ds.writingState.externalTriggerNumberObserved}} // only exported fields are serialized
+		ds.writingState.externalTriggerNumberObserved = 0
+	default:
+	}
 	if err != nil {
 		return err
 	}
@@ -457,16 +499,20 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.SetExperimentStateLabel(time.Now(), "STOP")
 		if ds.writingState.experimentStateFile != nil {
 			if err := ds.writingState.experimentStateFile.Close(); err != nil {
-				fmt.Println("failed to close experimentStatefile, err:", err)
-				// not sure how to handle this
-				// panic seems unwarranted
-				// throwing an error seems unwarranted, and I want to handle all errors earlier
+				return fmt.Errorf("failed to close experimentStatefile, err: %v", err)
 			}
 		}
 		ds.writingState.experimentStateFile = nil
 		ds.writingState.ExperimentStateFilename = ""
 		ds.writingState.ExperimentStateLabel = ""
 		ds.writingState.ExperimentStateLabelUnixNano = 0
+		if ds.writingState.externalTriggerFile != nil {
+			if err := ds.writingState.externalTriggerFile.Close(); err != nil {
+				return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
+			}
+		}
+		ds.writingState.externalTriggerNumberObserved = 0
+		ds.writingState.ExternalTriggerFilename = ""
 
 	} else if strings.HasPrefix(request, "START") {
 		channelsWithOff := 0
@@ -505,6 +551,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.BasePath = path
 		ds.writingState.FilenamePattern = filenamePattern
 		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
+		ds.writingState.ExternalTriggerFilename = fmt.Sprintf(filenamePattern, "external_trigger", "bin")
 		ds.SetExperimentStateLabel(time.Now(), "START")
 	}
 	return nil
@@ -512,14 +559,19 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 // WritingState monitors the state of file writing.
 type WritingState struct {
-	Active                       bool
-	Paused                       bool
-	BasePath                     string
-	FilenamePattern              string
-	experimentStateFile          *os.File
-	ExperimentStateFilename      string
-	ExperimentStateLabel         string
-	ExperimentStateLabelUnixNano int64
+	Active                            bool
+	Paused                            bool
+	BasePath                          string
+	FilenamePattern                   string
+	experimentStateFile               *os.File
+	ExperimentStateFilename           string
+	ExperimentStateLabel              string
+	ExperimentStateLabelUnixNano      int64
+	ExternalTriggerFilename           string
+	externalTriggerNumberObserved     int
+	externalTriggerFileBufferedWriter *bufio.Writer
+	externalTriggerTicker             *time.Ticker
+	externalTriggerFile               *os.File
 }
 
 // ComputeWritingState doesn't need to compute, but just returns the writingState
