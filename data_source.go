@@ -161,7 +161,7 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 			}
 			if err := ds.ProcessSegments(block); err != nil {
 				log.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
-				return
+				panic("panic stops source when processSegments fails")
 			}
 			// In some sources, ds.getNextBlock has to be called again to initiate the next
 			// data acquisition step (Lancero specifically).
@@ -311,7 +311,10 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	for i, dsp := range ds.processors {
 		numberWritten[i] = dsp.numberWritten
 	}
-	ds.HandleExternalTriggers(block.externalTriggerRowcounts)
+	err := ds.HandleExternalTriggers(block.externalTriggerRowcounts)
+	if err != nil {
+		return err
+	}
 	if ds.writingState.Active && !ds.writingState.Paused {
 		select {
 		case <-ds.numberWrittenTicker.C:
@@ -351,10 +354,8 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 //HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
 //with the number of external triggers observed
 func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) error {
-	if len(externalTriggerRowcounts) == 0 {
-		return nil
-	}
-	if ds.writingState.externalTriggerFileBufferedWriter == nil {
+	if ds.writingState.externalTriggerFileBufferedWriter == nil && len(externalTriggerRowcounts) > 0 &&
+		ds.writingState.ExternalTriggerFilename != "" {
 		// setup external trigger file if neccesary
 		var err error
 		ds.writingState.externalTriggerFile, err = os.Create(ds.writingState.ExternalTriggerFilename)
@@ -365,23 +366,32 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 		// write header
 		_, err1 := ds.writingState.externalTriggerFileBufferedWriter.WriteString("# external trigger rowcounts as int64 binary data follows, rowcounts = framecounts*nrow+row\n")
 		if err1 != nil {
-			return err
+			return fmt.Errorf("cannot write header to externalTriggerFileBufferedWriter, err %v", err)
 		}
-		ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
 	}
 	ds.writingState.externalTriggerNumberObserved += len(externalTriggerRowcounts)
-	_, err := ds.writingState.externalTriggerFileBufferedWriter.Write(getbytes.FromSliceInt64(externalTriggerRowcounts))
+	if ds.writingState.externalTriggerFileBufferedWriter != nil {
+		_, err := ds.writingState.externalTriggerFileBufferedWriter.Write(getbytes.FromSliceInt64(externalTriggerRowcounts))
+		if err != nil {
+			return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
+		}
+	}
 	select { // occasionally flush and send message about number of observed external triggers
 	case <-ds.writingState.externalTriggerTicker.C:
-		ds.writingState.externalTriggerFileBufferedWriter.Flush()
+		if ds.writingState.externalTriggerFileBufferedWriter != nil {
+			err := ds.writingState.externalTriggerFileBufferedWriter.Flush()
+			if err != nil {
+				return fmt.Errorf("cannot flush externalTriggerFileBufferedWriter, err %v", err)
+			}
+		}
 		clientMessageChan <- ClientUpdate{tag: "EXTERNALTRIGGER",
-			state: struct{ NumberObservedInLastSecond int }{NumberObservedInLastSecond: ds.writingState.externalTriggerNumberObserved}} // only exported fields are serialized
+			state: struct {
+				NumberObservedInLastSecond int
+			}{NumberObservedInLastSecond: ds.writingState.externalTriggerNumberObserved}} // only exported fields are serialized
 		ds.writingState.externalTriggerNumberObserved = 0
 	default:
 	}
-	if err != nil {
-		return err
-	}
+
 	return nil
 }
 
@@ -510,6 +520,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			if err := ds.writingState.externalTriggerFile.Close(); err != nil {
 				return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
 			}
+			ds.writingState.externalTriggerFileBufferedWriter = nil
 		}
 		ds.writingState.externalTriggerNumberObserved = 0
 		ds.writingState.ExternalTriggerFilename = ""
@@ -679,6 +690,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	go ds.broker.Run()
 
 	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
+	ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)

@@ -40,18 +40,19 @@ type BuffersChanType struct {
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
 type LanceroSource struct {
-	devices           map[int]*LanceroDevice
-	ncards            int
-	clockMhz          int
-	nsamp             int
-	active            []*LanceroDevice
-	chan2readoutOrder []int
-	Mix               []*Mix
-	dataBlockCount    int
-	buffersChan       chan BuffersChanType
-	readPeriod        time.Duration
-	mixRequests       chan *MixFractionObject
-	currentMix        chan []float64 // allows ConfigureMixFraction to return the currentMix race free
+	devices                  map[int]*LanceroDevice
+	ncards                   int
+	clockMhz                 int
+	nsamp                    int
+	active                   []*LanceroDevice
+	chan2readoutOrder        []int
+	Mix                      []*Mix
+	dataBlockCount           int
+	buffersChan              chan BuffersChanType
+	readPeriod               time.Duration
+	mixRequests              chan *MixFractionObject
+	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
+	externalTriggerLastState bool
 	AnySource
 }
 
@@ -523,17 +524,6 @@ func (ls *LanceroSource) launchLanceroReader() {
 					datacopies[i] = make([]RawType, framesUsed)
 				}
 
-				// The external trigger is encoded in the least significant bit of the feedback
-				// The information is redundant across columns, so we should only scan a single column
-				// The external trigger bit resolution is the row rate, eg for each row we get a 0 or a 1 representing
-				// if the voltage at the external trigger input is 3.3 V or not
-				// Here we will look for edge trigger, eg the bit is 1 but was 0 on the previous row
-				// Then we record the "rowcounts", where the rowcount = nrow*framecount+row
-				// here we we only know the framecount within this buffer, so later we will need to add the global framecount offset
-				externalTriggerRowcounts := make([]int64, 0)
-				externalTriggerLastState := false
-				externalTriggerMask := RawType(0x01)
-
 				// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
 				// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
 				// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
@@ -548,22 +538,12 @@ func (ls *LanceroSource) launchLanceroReader() {
 						dc := datacopies[i+nchanPrevDevices]
 						idx := i
 						for j := 0; j < framesUsed; j++ {
-							v := buffer[idx]
-							dc[j] = v
-							if i%2 == 1 && i < dev.nrows*2 { // check external triggers on feedback (odd) channels in the first column (<2*nrows)
-								externalTriggerState := (v & externalTriggerMask) == 1
-								if externalTriggerState && !externalTriggerLastState {
-									row := i >> 1 // equivalent to i/2
-									externalTriggerRowcounts = append(externalTriggerRowcounts, int64(j*dev.nrows+row))
-								}
-								externalTriggerLastState = externalTriggerState
-							}
+							dc[j] = buffer[idx]
 							idx += nchan
 						}
 					}
 					nchanPrevDevices += nchan
 				}
-
 				// Inform the driver to release the data we just consumed
 				totalBytes := 0
 				for _, dev := range ls.active {
@@ -575,7 +555,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
-					timeDiff: timeDiff, totalBytes: totalBytes, externalTriggerRowcounts: externalTriggerRowcounts}
+					timeDiff: timeDiff, totalBytes: totalBytes}
 			}
 		}
 	}()
@@ -650,6 +630,29 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	block := new(dataBlock)
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
+
+	// The external trigger is encoded in the second least significant bit of the feedback
+	// The information is redundant across columns, so we should only scan a single column
+	// The external trigger bit resolution is the row rate, eg for each row we get a 0 or a 1 representing
+	// if the voltage at the external trigger input is 3.3 V or not
+	// Here we will look for edge trigger, eg the bit is 1 but was 0 on the previous row
+	// Then we record the "rowcounts", where rowcount = nrow*framecount+row
+	// external trigger search must occur before Mix, since mix alters FB in place
+	externalTriggerRowcounts := make([]int64, 0)
+	nrows := ls.devices[0].nrows
+	for frame := 0; frame < framesUsed; frame++ { // frame within this block, need to add ls.nextFrameNum for consistent timing across blocks
+		for row := 0; row < nrows; row++ { // search the first column for frame bit level triggers
+			channelIndex := row*2 + 1
+			v := datacopies[channelIndex][frame]
+			externalTriggerState := (v & 0x02) == 0x02 // external trigger bit is 2nd least significant bit in feedback (odd channelIndex)
+			if externalTriggerState && !ls.externalTriggerLastState {
+				externalTriggerRowcounts = append(externalTriggerRowcounts, (int64(frame)+int64(ls.nextFrameNum))*int64(nrows)+int64(row))
+			}
+			ls.externalTriggerLastState = externalTriggerState
+		}
+	}
+	block.externalTriggerRowcounts = externalTriggerRowcounts
+
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
 		if channelIndex%2 == 1 { // feedback channel needs more processing
@@ -678,12 +681,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	if delay > 100*time.Millisecond {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), now.Sub(firstTime))
 	}
-	// add the framecount offset to the external trigger rowcounts, and store them within the *dataBlock
-	block.externalTriggerRowcounts = make([]int64, len(buffersMsg.externalTriggerRowcounts))
-	nrows := ls.devices[0].nrows
-	for i, v := range buffersMsg.externalTriggerRowcounts {
-		block.externalTriggerRowcounts[i] = v + int64(ls.nextFrameNum)*int64(nrows)
-	}
+
 	return block
 }
 
