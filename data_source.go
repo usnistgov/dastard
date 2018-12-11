@@ -517,6 +517,9 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.ExperimentStateLabel = ""
 		ds.writingState.ExperimentStateLabelUnixNano = 0
 		if ds.writingState.externalTriggerFile != nil {
+			if err := ds.writingState.externalTriggerFileBufferedWriter.Flush(); err != nil {
+				return fmt.Errorf("failed to flush externalTriggerFileBufferedWriter, err: %v", err)
+			}
 			if err := ds.writingState.externalTriggerFile.Close(); err != nil {
 				return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
 			}
