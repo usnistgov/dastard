@@ -31,11 +31,10 @@ type LanceroDevice struct {
 // BuffersChanType is an internal message type used to allow
 // a goroutine to read from the Lancero card and put data on a buffered channel
 type BuffersChanType struct {
-	datacopies               [][]RawType
-	externalTriggerRowcounts []int64
-	lastSampleTime           time.Time
-	timeDiff                 time.Duration
-	totalBytes               int
+	datacopies     [][]RawType
+	lastSampleTime time.Time
+	timeDiff       time.Duration
+	totalBytes     int
 }
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
