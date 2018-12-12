@@ -39,18 +39,19 @@ type BuffersChanType struct {
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
 type LanceroSource struct {
-	devices           map[int]*LanceroDevice
-	ncards            int
-	clockMhz          int
-	nsamp             int
-	active            []*LanceroDevice
-	chan2readoutOrder []int
-	Mix               []*Mix
-	dataBlockCount    int
-	buffersChan       chan BuffersChanType
-	readPeriod        time.Duration
-	mixRequests       chan *MixFractionObject
-	currentMix        chan []float64 // allows ConfigureMixFraction to return the currentMix race free
+	devices                  map[int]*LanceroDevice
+	ncards                   int
+	clockMhz                 int
+	nsamp                    int
+	active                   []*LanceroDevice
+	chan2readoutOrder        []int
+	Mix                      []*Mix
+	dataBlockCount           int
+	buffersChan              chan BuffersChanType
+	readPeriod               time.Duration
+	mixRequests              chan *MixFractionObject
+	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
+	externalTriggerLastState bool
 	AnySource
 }
 
@@ -542,7 +543,6 @@ func (ls *LanceroSource) launchLanceroReader() {
 					}
 					nchanPrevDevices += nchan
 				}
-
 				// Inform the driver to release the data we just consumed
 				totalBytes := 0
 				for _, dev := range ls.active {
@@ -553,7 +553,8 @@ func (ls *LanceroSource) launchLanceroReader() {
 				if len(ls.buffersChan) == cap(ls.buffersChan) {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
-				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime, timeDiff: timeDiff, totalBytes: totalBytes}
+				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
+					timeDiff: timeDiff, totalBytes: totalBytes}
 			}
 		}
 	}()
@@ -628,6 +629,29 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	block := new(dataBlock)
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
+
+	// The external trigger is encoded in the second least significant bit of the feedback
+	// The information is redundant across columns, so we should only scan a single column
+	// The external trigger bit resolution is the row rate, eg for each row we get a 0 or a 1 representing
+	// if the voltage at the external trigger input is 3.3 V or not
+	// Here we will look for edge trigger, eg the bit is 1 but was 0 on the previous row
+	// Then we record the "rowcounts", where rowcount = nrow*framecount+row
+	// external trigger search must occur before Mix, since mix alters FB in place
+	externalTriggerRowcounts := make([]int64, 0)
+	nrows := ls.devices[0].nrows
+	for frame := 0; frame < framesUsed; frame++ { // frame within this block, need to add ls.nextFrameNum for consistent timing across blocks
+		for row := 0; row < nrows; row++ { // search the first column for frame bit level triggers
+			channelIndex := row*2 + 1
+			v := datacopies[channelIndex][frame]
+			externalTriggerState := (v & 0x02) == 0x02 // external trigger bit is 2nd least significant bit in feedback (odd channelIndex)
+			if externalTriggerState && !ls.externalTriggerLastState {
+				externalTriggerRowcounts = append(externalTriggerRowcounts, (int64(frame)+int64(ls.nextFrameNum))*int64(nrows)+int64(row))
+			}
+			ls.externalTriggerLastState = externalTriggerState
+		}
+	}
+	block.externalTriggerRowcounts = externalTriggerRowcounts
+
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
 		if channelIndex%2 == 1 { // feedback channel needs more processing
@@ -656,6 +680,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	if delay > 100*time.Millisecond {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(ls.buffersChan), cap(ls.buffersChan), now.Sub(firstTime))
 	}
+
 	return block
 }
 
