@@ -120,12 +120,13 @@ func RunClientUpdater(statusport int, abort <-chan struct{}) {
 // nosaveMessages is a set of message names that you don't save, because they
 // contain no configuration that makes sense to preserve across runs of dastard.
 var nosaveMessages = map[string]struct{}{
-	"channelnames":  {},
-	"alive":         {},
-	"triggerrate":   {},
-	"numberwritten": {},
-	"newdastard":    {},
-	"tesmap":        {},
+	"channelnames":    {},
+	"alive":           {},
+	"triggerrate":     {},
+	"numberwritten":   {},
+	"newdastard":      {},
+	"tesmap":          {},
+	"externaltrigger": {},
 }
 
 // saveState stores server configuration to the standard config file.
