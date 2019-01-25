@@ -27,8 +27,9 @@ type SourceControl struct {
 	simPulses *SimPulseSource
 	triangle  *TriangleSource
 	lancero   *LanceroSource
+	abaco     *AbacoSource
 	erroring  *ErroringSource
-	// TODO: Add sources for ROACH, Abaco
+	// TODO: Add sources for ROACH
 	ActiveSource   DataSource
 	isSourceActive bool
 
@@ -55,6 +56,7 @@ func NewSourceControl() *SourceControl {
 	sc.erroring = NewErroringSource()
 	lan, _ := NewLanceroSource()
 	sc.lancero = lan
+	sc.abaco, _ = NewAbacoSource()
 
 	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle.heartbeats = sc.heartbeats
@@ -124,6 +126,16 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMhz, s.lancero.ncards)
+	return err
+}
+
+// ConfigureAbacoSource configures the abaco cards.
+func (s *SourceControl) ConfigureAbacoSource(args *AbacoSourceConfig, reply *bool) error {
+	log.Printf("ConfigureAbacoSource: \n")
+	err := s.abaco.Configure(args)
+	s.clientUpdates <- ClientUpdate{"ABACO", args}
+	*reply = (err == nil)
+	log.Printf("Result is okay=%t\n", *reply)
 	return err
 }
 
@@ -266,6 +278,10 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	case "LANCEROSOURCE":
 		s.ActiveSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
+
+	case "ABACOSOURCE":
+		s.ActiveSource = DataSource(s.abaco)
+		s.status.SourceName = "Abaco"
 
 	case "ERRORINGSOURCE":
 		s.ActiveSource = DataSource(s.erroring)
