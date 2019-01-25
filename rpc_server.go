@@ -570,6 +570,11 @@ func RunRPCServer(portrpc int, block bool) {
 	if err == nil {
 		sourceControl.ConfigureLanceroSource(&lsc, &okay)
 	}
+	var asc AbacoSourceConfig
+	err = viper.UnmarshalKey("abaco", &asc)
+	if err == nil {
+		sourceControl.ConfigureAbacoSource(&asc, &okay)
+	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle
