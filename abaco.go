@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 )
 
 // AbacoDevice represents a single Abaco device-special file.
@@ -23,7 +24,7 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 	return dev, nil
 }
 
-// AbacoSource represents all Abaco devices that supply data.
+// AbacoSource represents all Abaco devices that can potentially supply data.
 type AbacoSource struct {
 	devices map[int]*AbacoDevice
 	ncards  int
@@ -75,6 +76,38 @@ type AbacoSourceConfig struct {
 func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	as.sourceStateLock.Lock()
 	defer as.sourceStateLock.Unlock()
+	if as.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure an AbacoSource if it's not Inactive")
+	}
+
+	// used to be sure the same device isn't listed twice in config.ActiveCards
+	contains := func(s []*AbacoDevice, e *AbacoDevice) bool {
+		for _, a := range s {
+			if a == e {
+				return true
+			}
+		}
+		return false
+	}
+
+	as.active = make([]*AbacoDevice, 0)
+	for i, c := range config.ActiveCards {
+		dev := as.devices[c]
+		if dev == nil {
+			err = fmt.Errorf("i=%v, c=%v, device == nil", i, c)
+			break
+		}
+		if contains(as.active, dev) {
+			err = fmt.Errorf("attempt to use same Abaco device two times: i=%v, c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
+			break
+		}
+		as.active = append(as.active, dev)
+	}
+	config.AvailableCards = make([]int, 0)
+	for k := range as.devices {
+		config.AvailableCards = append(config.AvailableCards, k)
+	}
+	sort.Ints(config.AvailableCards)
 	return nil
 }
 
