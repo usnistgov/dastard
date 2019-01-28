@@ -9,6 +9,18 @@ import (
 // AbacoDevice represents a single Abaco device-special file.
 type AbacoDevice struct {
 	devnum int
+	File   *os.File
+}
+
+// NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading
+func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
+	dev = new(AbacoDevice)
+	dev.devnum = devnum
+	fname := fmt.Sprintf("/dev/xdma0_c2h_%d", devnum)
+	if dev.File, err = os.OpenFile(fname, os.O_RDWR, 0666); err != nil {
+		return nil, err
+	}
+	return dev, nil
 }
 
 // AbacoSource represents all Abaco devices that supply data.
@@ -31,16 +43,13 @@ func NewAbacoSource() (*AbacoSource, error) {
 	}
 
 	for _, dnum := range devnums {
-		ad := AbacoDevice{devnum: dnum}
-		// Need to
-		// lan, err := lancero.NewLancero(dnum)
-		err := error(nil)
+		ad, err := NewAbacoDevice(dnum)
 		if err != nil {
 			log.Printf("warning: failed to open /dev/xdma0_c2h_%d", dnum)
 			continue
 		}
 		// ad.card = lan
-		source.devices[dnum] = &ad
+		source.devices[dnum] = ad
 		source.ncards++
 	}
 	if source.ncards == 0 && len(devnums) > 0 {
