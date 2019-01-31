@@ -34,8 +34,8 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 
 // AbacoSource represents all Abaco devices that can potentially supply data.
 type AbacoSource struct {
-	devices    map[int,int]*AbacoDevice
-	ncards     int
+	devices    map[int]*AbacoDevice
+	Ndevices     int
 	active     []*AbacoDevice
 	readPeriod time.Duration
 	AnySource
@@ -58,11 +58,11 @@ func NewAbacoSource() (*AbacoSource, error) {
 			log.Printf("warning: failed to open /dev/xdma0_c2h_%d", dnum)
 			continue
 		}
-        cardnum = 0 // For now, only card 0 is allowed.
-		source.devices[cardnum, dnum] = ad
-		source.ncards++
+        // cardnum = 0 // For now, only card 0 is allowed.
+		source.devices[dnum] = ad
+		source.Ndevices++
 	}
-	if source.ncards == 0 && len(devnums) > 0 {
+	if source.Ndevices == 0 && len(devnums) > 0 {
 		return source, fmt.Errorf("could not open any of /dev/xdma0_c2h_*, though devnums %v exist", devnums)
 	}
 	return source, nil
@@ -148,9 +148,9 @@ func (as *AbacoSource) StartRun() error {
 
 //
 func (as *AbacoSource) launchAbacoReader() {
-	as.timeoutPeriod = 2 * time.Second
+	timeoutPeriod := 2 * time.Second
 	go func() {
-		timeout := time.NewTicker(as.timeoutPeriod)
+		timeout := time.NewTicker(timeoutPeriod)
         // Create a channel for data to return on
 		for {
             go func() {
