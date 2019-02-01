@@ -5,18 +5,20 @@ import (
 	// "encoding/binary"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
+	"time"
 
-    "github.com/usnistgov/dastard"
+	"github.com/usnistgov/dastard"
 )
 
 type acquireOptions struct {
 	verbosity int
 	threshold int
 	nSamples  int
-    devnum    int
+	devnum    int
 	output    string
 }
 
@@ -26,7 +28,7 @@ func parseOptions() error {
 	flag.IntVar(&opt.verbosity, "v", 0, "verbosity level")
 	flag.IntVar(&opt.threshold, "t", 1024, "threshold (in frames), fill level interrupt")
 	flag.IntVar(&opt.nSamples, "n", 0, "number of samples to acquire (<=0 means run indenfinitely)")
-    flag.IntVar(&opt.devnum, "d", 0, "device number for /dev/xdma0_c2h_*")
+	flag.IntVar(&opt.devnum, "d", 0, "device number for /dev/xdma0_c2h_*")
 	flag.StringVar(&opt.output, "o", "", "output filename")
 	flag.Parse()
 
@@ -38,7 +40,6 @@ func parseOptions() error {
 	}
 	return nil
 }
-
 
 func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 
@@ -55,9 +56,10 @@ func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 		fd = nil
 	}
 
-    // Start something??
+	// Start something??
 
 	var buffer []byte
+	var nbytes int
 
 	// Trap interrupts so we can cleanly exit the program
 	interruptCatcher := make(chan os.Signal, 1)
@@ -68,19 +70,25 @@ func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 		case <-interruptCatcher:
 			return
 		default:
-			// _, _, err = lan.Wait()
-			// if err != nil {
-			// 	return
-			// }
-			// buffer, _, err = lan.AvailableBuffer()
+			bufsize := 1024 * 1024
+			buffer = make([]byte, bufsize)
+			for bytesConsumed := 0; bytesConsumed < bufsize; {
+				nbytes, err = abaco.File.Read(buffer[bytesConsumed:])
+				bytesConsumed += nbytes
+				time.Sleep(1 * time.Millisecond)
+
+				if err == io.EOF {
+					return
+				} else if err != nil {
+					log.Printf("ERROR ", err)
+					return
+				}
+			}
+
+			log.Printf("%x %x %x %x\n", buffer[0:4], buffer[4:8], buffer[8:12], buffer[12:16])
 			totalBytes := len(buffer)
-			// if err != nil {
-			// 	return
-			// }
-			// log.Printf("Found buffer with %d total bytes", totalBytes)
-			// log.Printf(" size %d,", len(buffer))
-			// log.Println()
-			// lan.InspectAdapter()
+			log.Printf("Filled a buffer of full size %d", len(buffer))
+			log.Println()
 
 			if saveData {
 				bytesWritten := bytesRead
@@ -105,7 +113,6 @@ func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 			// Quit when read enough samples.
 			bytesRead += totalBytes
 			if opt.nSamples > 0 && opt.nSamples <= bytesRead/4 {
-
 				return
 			}
 
@@ -122,7 +129,7 @@ func main() {
 		return
 	}
 
-    abaco, err := dastard.NewAbacoDevice(opt.devnum)
+	abaco, err := dastard.NewAbacoDevice(opt.devnum)
 	if err != nil {
 		log.Println("ERROR: ", err)
 		return

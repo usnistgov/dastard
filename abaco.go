@@ -10,7 +10,7 @@ import (
 
 // AbacoDevice represents a single Abaco device-special file.
 type AbacoDevice struct {
-    cardnum    int
+	cardnum    int
 	devnum     int
 	File       *os.File
 	buffersize int
@@ -21,7 +21,7 @@ type AbacoDevice struct {
 // For now, assume card 0 with channels 0,1,2,... We can add a second card later.
 func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 	dev = new(AbacoDevice)
-    dev.cardnum = 0    // Force card zero for now
+	dev.cardnum = 0 // Force card zero for now
 	dev.devnum = devnum
 	fname := fmt.Sprintf("/dev/xdma%d_c2h_%d", dev.cardnum, devnum)
 	if dev.File, err = os.OpenFile(fname, os.O_RDWR, 0666); err != nil {
@@ -35,7 +35,7 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 // AbacoSource represents all Abaco devices that can potentially supply data.
 type AbacoSource struct {
 	devices    map[int]*AbacoDevice
-	Ndevices     int
+	Ndevices   int
 	active     []*AbacoDevice
 	readPeriod time.Duration
 	AnySource
@@ -58,7 +58,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 			log.Printf("warning: failed to open /dev/xdma0_c2h_%d", dnum)
 			continue
 		}
-        // cardnum = 0 // For now, only card 0 is allowed.
+		// cardnum = 0 // For now, only card 0 is allowed.
 		source.devices[dnum] = ad
 		source.Ndevices++
 	}
@@ -125,14 +125,14 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 // For Abaco µMUX systems, we need to discard one DMA buffer worth of stale data,
 // then check the data after that for frame bit info.
 func (as *AbacoSource) Sample() error {
-    // 1. Open the user file and query it for the data rate, number of channels (?),
-    // firmware FIFO size, and firmware version.
-    // 2. Read at least 2 FIFOs plus enough data to discern frame bits
-    // 3. Discard 2 FIFOs
-    // 4. Scan for frame bits
-    // 5. Store info that we've learned in AbacoSource or per device.
-    // 6. (not sure we'll do this) Read exactly as many bytes as needed to fill
-    // out an incomplete data frame.
+	// 1. Open the user file and query it for the data rate, number of channels (?),
+	// firmware FIFO size, and firmware version.
+	// 2. Read at least 2 FIFOs plus enough data to discern frame bits
+	// 3. Discard 2 FIFOs
+	// 4. Scan for frame bits
+	// 5. Store info that we've learned in AbacoSource or per device.
+	// 6. (not sure we'll do this) Read exactly as many bytes as needed to fill
+	// out an incomplete data frame.
 	return nil
 }
 
@@ -151,12 +151,12 @@ func (as *AbacoSource) launchAbacoReader() {
 	timeoutPeriod := 2 * time.Second
 	go func() {
 		timeout := time.NewTicker(timeoutPeriod)
-        // Create a channel for data to return on
+		// Create a channel for data to return on
 		for {
-            go func() {
-                // read from /dev/xdma0_c2h_0
-                // send filled buffer (and bytes actually read) on a channel
-            }()
+			go func() {
+				// read from /dev/xdma0_c2h_0
+				// send filled buffer (and bytes actually read) on a channel
+			}()
 			select {
 			case <-as.abortSelf:
 				// close anything that needs closing
@@ -165,8 +165,8 @@ func (as *AbacoSource) launchAbacoReader() {
 			case <-timeout.C:
 				// Handle failure to return
 
-                // case <-data channel:
-                // Send the data on for further processing
+				// case <-data channel:
+				// Send the data on for further processing
 			}
 		}
 	}()
