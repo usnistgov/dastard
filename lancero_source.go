@@ -28,6 +28,9 @@ type LanceroDevice struct {
 	card        lancero.Lanceroer
 }
 
+// lanceroFBOffset gives the location of the frame bit is in bytes 2, 6, 10...
+const lanceroFBOffset int = 2
+
 // BuffersChanType is an internal message type used to allow
 // a goroutine to read from the Lancero card and put data on a buffered channel
 type BuffersChanType struct {
@@ -337,14 +340,14 @@ func (device *LanceroDevice) sampleCard() error {
 			if !frameBitsHandled {
 				buffer = append(buffer, b...) // only append if framebits havent been handled, to reduce unneeded memory usage
 				log.Println(lancero.OdDashTX(buffer, 10))
-				q, p, n, err3 := lancero.FindFrameBits(buffer)
+				q, p, n, err3 := lancero.FindFrameBits(buffer, lanceroFBOffset)
 				if err3 == nil {
 					device.ncols = n
 					device.nrows = (p - q) / n
 					device.frameSize = device.ncols * device.nrows * 4
 					frameBitsHandled = true
 				} else {
-					fmt.Printf("Error in findFrameBits: %v", err3)
+					fmt.Printf("Error in FindFrameBits: %v", err3)
 				}
 			}
 			lan.ReleaseBytes(len(b))
@@ -434,7 +437,7 @@ func (ls *LanceroSource) StartRun() error {
 			if len(bytes) <= 0 {
 				continue
 			}
-			firstWord, _, _, err := lancero.FindFrameBits(bytes)
+			firstWord, _, _, err := lancero.FindFrameBits(bytes, lanceroFBOffset)
 			// should check for correct number of columns/rows again?
 			if err == nil {
 				if firstWord > 0 {
@@ -499,7 +502,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 				// check for changes in nrow, ncol and lsync
 				for ibuf, dev := range ls.active {
 					buffer := buffers[ibuf]
-					q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer))
+					q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer), lanceroFBOffset)
 					if err != nil {
 						panic(fmt.Sprintf("Error in findFrameBits: %v", err))
 					}

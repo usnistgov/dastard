@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
+	"github.com/usnistgov/dastard/lancero"
 )
 
 // AbacoDevice represents a single Abaco device-special file.
@@ -20,56 +20,6 @@ type AbacoDevice struct {
 	File       *os.File
 	buffersize int
 	buffer     []byte
-}
-
-// FindFrameBits returns q,p,n,err
-// q index of word with first frame bit following non-frame index
-// p index of word with next  frame bit following non-frame index
-// word means 4 bytes: errLerrMfbkLfbkM (L=least signifiant byte, M=most significant byte)
-// n number of consecutive words with frame bit set, starting at q
-// err is nil if q,p,n all found as expected
-func findFrameBits(b []byte) (int, int, int, error) {
-	const frameMask = byte(1)
-	var q, p, n int
-
-	var seenWordWithoutFrameBit bool
-	var frameBitInPreviousWord bool
-	for i := 0; i < len(b); i += 4 {
-		if seenWordWithoutFrameBit {
-			if frameBitInPreviousWord && !(frameMask&b[i] == 1) { // first look for lack of frame bit
-				frameBitInPreviousWord = true
-			} else if !frameBitInPreviousWord && frameMask&b[i] == 1 {
-				// found a frame bit when before there was none
-				q = i
-				break
-			}
-		} else {
-			seenWordWithoutFrameBit = !(frameMask&b[i] == 1)
-		}
-	}
-	for i := q; i < len(b); i += 4 { // count consecutive frame bits
-		if frameMask&b[i] == 1 {
-			n++
-		} else {
-			break
-		}
-	}
-	if n < 1 {
-		spew.Dump(b)
-		fmt.Println(q)
-		return q / 4, p / 4, n, fmt.Errorf("n = zero, not clear how this is possible")
-	}
-	frameBitInPreviousWord = true
-	for i := q + 4*n; i < len(b); i += 4 {
-		if frameBitInPreviousWord && !(frameMask&b[i] == 1) { // first look for lack of frame bit
-			frameBitInPreviousWord = false
-		} else if !frameBitInPreviousWord && frameMask&b[i] == 1 {
-			// found a frame bit when before there was none
-			p = i
-			return q / 4, p / 4, n, nil
-		}
-	}
-	return q / 4, p / 4, n, fmt.Errorf("b did not contain two frame starts")
 }
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading
@@ -92,6 +42,9 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 	return dev, nil
 }
 
+// abacoFBOffset gives the location of the frame bit is in bytes 0, 4, 8...
+const abacoFBOffset int = 0
+
 func (device *AbacoDevice) sampleCard() error {
 	// Read the device: two full buffers AND ignore the leading 2 FIFOs in the 2nd
 	for i := 0; i < 2; i++ {
@@ -102,13 +55,13 @@ func (device *AbacoDevice) sampleCard() error {
 		log.Print("Abaco bytes read: ", nb)
 	}
 
-	q, p, n, err3 := findFrameBits(device.buffer[128*1024:])
+	q, p, n, err3 := lancero.FindFrameBits(device.buffer[128*1024:], abacoFBOffset)
 	if err3 == nil {
 		device.ncols = n
 		device.nrows = (p - q) / n
 		device.frameSize = device.ncols * device.nrows * 4
 	} else {
-		fmt.Printf("Error in findFrameBits: %v", err3)
+		fmt.Printf("Error in FindFrameBits: %v", err3)
 	}
 	return nil
 }
