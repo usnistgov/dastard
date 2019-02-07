@@ -6,15 +6,70 @@ import (
 	"os"
 	"sort"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 // AbacoDevice represents a single Abaco device-special file.
 type AbacoDevice struct {
 	cardnum    int
 	devnum     int
+	nrows      int
+	ncols      int
+	frameSize  int // frame size, in bytes
 	File       *os.File
 	buffersize int
 	buffer     []byte
+}
+
+// FindFrameBits returns q,p,n,err
+// q index of word with first frame bit following non-frame index
+// p index of word with next  frame bit following non-frame index
+// word means 4 bytes: errLerrMfbkLfbkM (L=least signifiant byte, M=most significant byte)
+// n number of consecutive words with frame bit set, starting at q
+// err is nil if q,p,n all found as expected
+func findFrameBits(b []byte) (int, int, int, error) {
+	const frameMask = byte(1)
+	var q, p, n int
+
+	var seenWordWithoutFrameBit bool
+	var frameBitInPreviousWord bool
+	for i := 0; i < len(b); i += 4 {
+		if seenWordWithoutFrameBit {
+			if frameBitInPreviousWord && !(frameMask&b[i] == 1) { // first look for lack of frame bit
+				frameBitInPreviousWord = true
+			} else if !frameBitInPreviousWord && frameMask&b[i] == 1 {
+				// found a frame bit when before there was none
+				q = i
+				break
+			}
+		} else {
+			seenWordWithoutFrameBit = !(frameMask&b[i] == 1)
+		}
+	}
+	for i := q; i < len(b); i += 4 { // count consecutive frame bits
+		if frameMask&b[i] == 1 {
+			n++
+		} else {
+			break
+		}
+	}
+	if n < 1 {
+		spew.Dump(b)
+		fmt.Println(q)
+		return q / 4, p / 4, n, fmt.Errorf("n = zero, not clear how this is possible")
+	}
+	frameBitInPreviousWord = true
+	for i := q + 4*n; i < len(b); i += 4 {
+		if frameBitInPreviousWord && !(frameMask&b[i] == 1) { // first look for lack of frame bit
+			frameBitInPreviousWord = false
+		} else if !frameBitInPreviousWord && frameMask&b[i] == 1 {
+			// found a frame bit when before there was none
+			p = i
+			return q / 4, p / 4, n, nil
+		}
+	}
+	return q / 4, p / 4, n, fmt.Errorf("b did not contain two frame starts")
 }
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading
@@ -23,13 +78,39 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 	dev = new(AbacoDevice)
 	dev.cardnum = 0 // Force card zero for now
 	dev.devnum = devnum
-	fname := fmt.Sprintf("/dev/xdma%d_c2h_%d", dev.cardnum, devnum)
-	if dev.File, err = os.OpenFile(fname, os.O_RDWR, 0666); err != nil {
+	if devnum != 0 {
+		return nil, fmt.Errorf("NewAbacoDevice only supports devnum=0")
+	}
+
+	// fname := fmt.Sprintf("/dev/xdma%d_c2h_%d", dev.cardnum, devnum)
+	fname := fmt.Sprintf("/var/tmp/abacopipe")
+	if dev.File, err = os.OpenFile(fname, os.O_RDONLY, 0666); err != nil {
 		return nil, err
 	}
 	dev.buffersize = 1024 * 1024 // How to choose the size of the read buffer???
 	dev.buffer = make([]byte, dev.buffersize)
 	return dev, nil
+}
+
+func (device *AbacoDevice) sampleCard() error {
+	// Read the device: two full buffers AND ignore the leading 2 FIFOs in the 2nd
+	for i := 0; i < 2; i++ {
+		nb, err := device.File.Read(device.buffer)
+		if err != nil {
+			return err
+		}
+		log.Print("Abaco bytes read: ", nb)
+	}
+
+	q, p, n, err3 := findFrameBits(device.buffer[128*1024:])
+	if err3 == nil {
+		device.ncols = n
+		device.nrows = (p - q) / n
+		device.frameSize = device.ncols * device.nrows * 4
+	} else {
+		fmt.Printf("Error in findFrameBits: %v", err3)
+	}
+	return nil
 }
 
 // AbacoSource represents all Abaco devices that can potentially supply data.
@@ -48,6 +129,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.devices = make(map[int]*AbacoDevice)
 
 	devnums, err := enumerateAbacoDevices()
+	fmt.Printf("enumerateAbacoDevices returns %v\n", devnums)
 	if err != nil {
 		return source, err
 	}
@@ -65,6 +147,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	if source.Ndevices == 0 && len(devnums) > 0 {
 		return source, fmt.Errorf("could not open any of /dev/xdma0_c2h_*, though devnums %v exist", devnums)
 	}
+	fmt.Printf("NewAbacoSource has %d devices\n", source.Ndevices)
 	return source, nil
 }
 
@@ -102,6 +185,11 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	// Activate the cards listed in the config request.
 	as.active = make([]*AbacoDevice, 0)
 	for i, c := range config.ActiveCards {
+		if c < 0 || c >= len(as.devices) {
+			log.Printf("Warning: could not activate device %d, as there are only 0-%d\n",
+				c, len(as.devices)-1)
+			continue
+		}
 		dev := as.devices[c]
 		if dev == nil {
 			err = fmt.Errorf("i=%v, c=%v, device == nil", i, c)
@@ -133,6 +221,19 @@ func (as *AbacoSource) Sample() error {
 	// 5. Store info that we've learned in AbacoSource or per device.
 	// 6. (not sure we'll do this) Read exactly as many bytes as needed to fill
 	// out an incomplete data frame.
+
+	// For now, assume only one active device.
+	if len(as.active) <= 0 {
+		return fmt.Errorf("No Abaco devices are active")
+	}
+	for _, device := range as.active {
+		err := device.sampleCard()
+		if err != nil {
+			return err
+		}
+		as.nchan += device.ncols * device.nrows
+	}
+
 	return nil
 }
 
