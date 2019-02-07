@@ -214,11 +214,11 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 		return err
 	}
 	f := func() {
-		err := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription)
-		if err == nil {
+		errcpb := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription)
+		if errcpb == nil {
 			s.status.ChannelsWithProjectors = s.ActiveSource.ChannelsWithProjectors()
 		}
-		s.queuedResults <- err
+		s.queuedResults <- errcpb
 	}
 	err = s.runLaterIfActive(f)
 	*reply = (err == nil)

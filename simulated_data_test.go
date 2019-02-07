@@ -31,10 +31,10 @@ func TestTriangle(t *testing.T) {
 		t.Errorf("TriangleSource.Ouputs() returns %d channels, want %d", len(ts.processors), config.Nchan)
 	}
 	if ts.rowColCodes[0].rows() != 1 {
-		fmt.Errorf("have %v, expect 1", ts.rowColCodes[0].rows())
+		t.Errorf("have %v, expect 1", ts.rowColCodes[0].rows())
 	}
 	if ts.rowColCodes[3].rows() != 1 {
-		fmt.Errorf("have %v, expect 1", ts.rowColCodes[3].rows())
+		t.Errorf("have %v, expect 1", ts.rowColCodes[3].rows())
 	}
 
 	// Check first segment per source.
