@@ -84,3 +84,34 @@ func (rs *RoachSource) StartRun() error {
 	// There's no data streaming mode on ROACH, so no need to start it?
 	return nil
 }
+
+// RoachSourceConfig holds the arguments needed to call RoachSource.Configure by RPC.
+type RoachSourceConfig struct {
+	HostPort []string
+	Rates    []float64
+}
+
+// Configure sets up the internal buffers with given size, speed, and min/max.
+func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
+	rs.sourceStateLock.Lock()
+	defer rs.sourceStateLock.Unlock()
+	if rs.sourceState != Inactive {
+		return fmt.Errorf("cannot Configure a RoachSource if it's not Inactive")
+	}
+	n := len(config.HostPort)
+	nr := len(config.Rates)
+	if n != nr {
+		return fmt.Errorf("cannot Configure a RoachSource with %d addresses and %d data rates (%d != %d)",
+			n, nr, n, nr)
+	}
+	rs.Delete()
+	for i, host := range config.HostPort {
+		rate := config.Rates[i]
+		dev, err := NewRoachDevice(host, rate)
+		if err != nil {
+			return err
+		}
+		rs.active = append(rs.active, dev)
+	}
+	return nil
+}

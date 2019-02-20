@@ -133,11 +133,21 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	return err
 }
 
-// ConfigureAbacoSource configures the abaco cards.
+// ConfigureAbacoSource configures the Abaco cards.
 func (s *SourceControl) ConfigureAbacoSource(args *AbacoSourceConfig, reply *bool) error {
 	log.Printf("ConfigureAbacoSource: \n")
 	err := s.abaco.Configure(args)
 	s.clientUpdates <- ClientUpdate{"ABACO", args}
+	*reply = (err == nil)
+	log.Printf("Result is okay=%t\n", *reply)
+	return err
+}
+
+// ConfigureRoachSource configures the abaco cards.
+func (s *SourceControl) ConfigureRoachSource(args *RoachSourceConfig, reply *bool) error {
+	log.Printf("ConfigureRoachSource: \n")
+	err := s.roach.Configure(args)
+	s.clientUpdates <- ClientUpdate{"ROACH", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t\n", *reply)
 	return err
