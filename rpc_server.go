@@ -27,6 +27,7 @@ type SourceControl struct {
 	simPulses *SimPulseSource
 	triangle  *TriangleSource
 	lancero   *LanceroSource
+	roach     *RoachSource
 	abaco     *AbacoSource
 	erroring  *ErroringSource
 	// TODO: Add sources for ROACH
@@ -56,12 +57,15 @@ func NewSourceControl() *SourceControl {
 	sc.erroring = NewErroringSource()
 	lan, _ := NewLanceroSource()
 	sc.lancero = lan
+	sc.roach, _ = NewRoachSource()
 	sc.abaco, _ = NewAbacoSource()
 
 	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle.heartbeats = sc.heartbeats
 	sc.erroring.heartbeats = sc.heartbeats
 	sc.lancero.heartbeats = sc.heartbeats
+	sc.roach.heartbeats = sc.heartbeats
+	sc.abaco.heartbeats = sc.heartbeats
 
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
@@ -279,6 +283,10 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.ActiveSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
+	case "ROACHSOURCE":
+		s.ActiveSource = DataSource(s.roach)
+		s.status.SourceName = "Roach"
+
 	case "ABACOSOURCE":
 		s.ActiveSource = DataSource(s.abaco)
 		s.status.SourceName = "Abaco"
@@ -286,8 +294,6 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	case "ERRORINGSOURCE":
 		s.ActiveSource = DataSource(s.erroring)
 		s.status.SourceName = "Erroring"
-
-	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)

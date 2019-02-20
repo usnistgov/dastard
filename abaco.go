@@ -44,7 +44,7 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 	return dev, nil
 }
 
-// abacoFBOffset gives the location of the frame bit is in bytes 0, 4, 8...
+// abacoFBOffset gives the location of the frame bit: in bytes 0, 4, 8...
 const abacoFBOffset int = 0
 
 // sampleCard samples the data from a single card to scan for frame bits.
