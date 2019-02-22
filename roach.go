@@ -16,10 +16,10 @@ type RoachDevice struct {
 
 // RoachSource represents multiple ROACH devices
 type RoachSource struct {
-	Ndevices    int
-	active      []*RoachDevice
-	readPeriod  time.Duration
-	buffersChan chan AbacoBuffersType
+	Ndevices   int
+	active     []*RoachDevice
+	readPeriod time.Duration
+	// buffersChan chan AbacoBuffersType
 	AnySource
 }
 
@@ -28,22 +28,27 @@ func NewRoachDevice(host string, rate float64) (dev *RoachDevice, err error) {
 	dev = new(RoachDevice)
 	dev.host = host
 	dev.rate = rate
-	var raddr *net.UDPAddr
-
-	if raddr, err = net.ResolveUDPAddr("udp", host); err != nil {
+	raddr, err := net.ResolveUDPAddr("udp", host)
+	if err != nil {
 		return nil, err
 	}
-	if dev.conn, err = net.DialUDP("udp", nil, raddr); err != nil {
+	conn, err := net.ListenUDP("udp", raddr)
+	if err != nil {
 		return nil, err
 	}
+	dev.conn = conn
 	return dev, nil
 }
 
 // sampleCard reads a UDP packet and parses it
 func (dev *RoachDevice) sampleCard() error {
 	p := make([]byte, 16384)
-	n, _, err := dev.conn.ReadFrom(p)
-	fmt.Printf("%d bytes:\n%v\n", n, p)
+	deadline := time.Now().Add(time.Second)
+	if err := dev.conn.SetReadDeadline(deadline); err != nil {
+		return err
+	}
+	n, _, err := dev.conn.ReadFromUDP(p)
+	fmt.Printf("%d bytes:\n%v\n", n, p[0:n])
 	return err
 }
 
