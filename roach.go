@@ -1,6 +1,8 @@
 package dastard
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
@@ -40,6 +42,28 @@ func NewRoachDevice(host string, rate float64) (dev *RoachDevice, err error) {
 	return dev, nil
 }
 
+type packetHeader struct {
+	Unused   uint8
+	Fluxramp uint8
+	Nchan    uint16
+	Nsamp    uint16
+	Flags    uint16
+	Sampnum  uint64
+}
+
+func parsePacket(packet []byte) (header packetHeader, data []uint16) {
+	buf := bytes.NewReader(packet)
+	if err := binary.Read(buf, binary.BigEndian, &header); err != nil {
+		fmt.Println("binary.Read failed:", err)
+	}
+	// fmt.Printf("Header: %v\n", header)
+	data = make([]uint16, header.Nchan*header.Nsamp)
+	if err := binary.Read(buf, binary.BigEndian, &data); err != nil {
+		fmt.Println("binary.Read failed:", err)
+	}
+	return header, data
+}
+
 // sampleCard reads a UDP packet and parses it
 func (dev *RoachDevice) sampleCard() error {
 	p := make([]byte, 16384)
@@ -48,7 +72,9 @@ func (dev *RoachDevice) sampleCard() error {
 		return err
 	}
 	n, _, err := dev.conn.ReadFromUDP(p)
-	fmt.Printf("%d bytes:\n%v\n", n, p[0:n])
+	fmt.Printf("%d bytes:\n", n)
+	header, _ := parsePacket(p)
+	dev.nchan = int(header.Nchan)
 	return err
 }
 
