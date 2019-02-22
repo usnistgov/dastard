@@ -67,7 +67,7 @@ func publishRoachPackets(port int, nchan uint16, value uint16) (closer chan stru
 	return closer, nil
 }
 
-// TestDevice checks ??
+// TestDevice checks that the raw RoachDevice can receive and parse a header
 func TestDevice(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60001
@@ -82,7 +82,7 @@ func TestDevice(t *testing.T) {
 	if err != nil {
 		t.Errorf("NewRoachDevice returned %v", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	err = dev.sampleCard()
 	if err != nil {
 		t.Errorf("sampleCard returned %v", err)
@@ -91,4 +91,56 @@ func TestDevice(t *testing.T) {
 		t.Errorf("parsed packet header says nchan=%d, want %d", dev.nchan, nchan)
 	}
 	close(closer)
+}
+
+// TestDevice checks that the raw RoachDevice can receive and parse a header
+func TestRoachSource(t *testing.T) {
+	// Start generating Roach packets, until closer is closed.
+	port := 60002
+	var nchan uint16 = 40
+	closer, err := publishRoachPackets(port, nchan, 0xbeef)
+	if err != nil {
+		t.Errorf("publishRoachPackets returned %v", err)
+	}
+
+	rs, err := NewRoachSource()
+	if err != nil {
+		t.Errorf("NewRoachSource returned %v", err)
+	}
+	host := fmt.Sprintf("localhost:%d", port)
+	config := RoachSourceConfig{
+		HostPort: []string{host},
+		Rates:    []float64{40000.0},
+	}
+	err = rs.Configure(&config)
+	if err != nil {
+		t.Errorf("RoachSource.Configure returned %v", err)
+	}
+	if len(rs.active) != 1 {
+		t.Errorf("RoachSource.active has length %d, want 1", len(rs.active))
+	}
+	dev := rs.active[0]
+	if dev.conn == nil {
+		t.Errorf("RoachSource[0].conn is nil, should be connected")
+	}
+	if dev.nchan != 0 {
+		t.Errorf("RoachSource[0].nchan before Sample is %d, should be 0", dev.nchan)
+	}
+
+	err = rs.Sample()
+	if err != nil {
+		t.Errorf("RoachSource.Sample returned %v", err)
+	}
+	if dev.nchan != int(nchan) {
+		t.Errorf("RoachSource[0].nchan after Sample is %d, should be %d", dev.nchan, nchan)
+	}
+
+	err = rs.StartRun()
+	if err != nil {
+		t.Errorf("RoachSource.StartRun returned %v", err)
+	}
+	// Start(rs, )
+
+	close(closer)
+	rs.Delete()
 }

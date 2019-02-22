@@ -56,7 +56,6 @@ func parsePacket(packet []byte) (header packetHeader, data []uint16) {
 	if err := binary.Read(buf, binary.BigEndian, &header); err != nil {
 		fmt.Println("binary.Read failed:", err)
 	}
-	// fmt.Printf("Header: %v\n", header)
 	data = make([]uint16, header.Nchan*header.Nsamp)
 	if err := binary.Read(buf, binary.BigEndian, &data); err != nil {
 		fmt.Println("binary.Read failed:", err)
