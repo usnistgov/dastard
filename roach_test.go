@@ -179,4 +179,8 @@ func TestRoachSource(t *testing.T) {
 		t.Errorf("RoachSource.Configure should fail when source is Active, but it didn't")
 	}
 
+	err = rs.Stop()
+	if err != nil {
+		t.Errorf("RoachSource.Stop returned %v", err)
+	}
 }

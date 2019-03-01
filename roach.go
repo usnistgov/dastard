@@ -154,8 +154,6 @@ func (rs *RoachSource) Sample() error {
 
 // Delete closes all active RoachDevices.
 func (rs *RoachSource) Delete() {
-	rs.sourceStateLock.Lock()
-	defer rs.sourceStateLock.Unlock()
 	for _, device := range rs.active {
 		device.conn.Close()
 	}
@@ -163,20 +161,15 @@ func (rs *RoachSource) Delete() {
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
-// For ROACH µMUX systems, this is always happening. Then launch a goroutine to consume data.
+// For ROACH µMUX systems, this is always happening. What we do have to do is to
+// start 1 goroutine per UDP source to wait on the data and package it properly.
 func (rs *RoachSource) StartRun() error {
-	// There's no data streaming mode on ROACH, so nothing to "switch on"
 	go func() {
 		defer close(rs.nextBlock)
-		for {
-			select {
-			case <-rs.abortSelf:
-				rs.Delete()
-				return
-			default:
-				break
-			}
+		for _, dev := range rs.active {
+			go dev.readPackets(rs.nextBlock)
 		}
+		<-rs.abortSelf
 	}()
 	return nil
 }
