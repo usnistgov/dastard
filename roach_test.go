@@ -59,7 +59,7 @@ func publishRoachPackets(port int, nchan uint16, value uint16) (closer chan stru
 			default:
 				buffer := newBuffer(nchan, nsamp, i)
 				conn.Write(buffer)
-				fmt.Printf("Wrote buffer iteration %4d of size %d: %v\n", i, len(buffer), buffer[0:20])
+				// fmt.Printf("Wrote buffer iteration %4d of size %d: %v\n", i, len(buffer), buffer[0:20])
 				time.Sleep(100 * time.Millisecond)
 			}
 		}
@@ -72,7 +72,7 @@ func TestDevice(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60001
 	var nchan uint16 = 40
-	closer, err := publishRoachPackets(port, nchan, 0xbeef)
+	packetSourceCloser, err := publishRoachPackets(port, nchan, 0xbeef)
 	if err != nil {
 		t.Errorf("publishRoachPackets returned %v", err)
 	}
@@ -90,7 +90,7 @@ func TestDevice(t *testing.T) {
 	if dev.nchan != int(nchan) {
 		t.Errorf("parsed packet header says nchan=%d, want %d", dev.nchan, nchan)
 	}
-	close(closer)
+	close(packetSourceCloser)
 }
 
 // TestDevice checks that the raw RoachDevice can receive and parse a header
@@ -98,7 +98,9 @@ func TestRoachSource(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60002
 	var nchan uint16 = 40
-	closer, err := publishRoachPackets(port, nchan, 0xbeef)
+	packetSourceCloser, err := publishRoachPackets(port, nchan, 0xbeef)
+	defer close(packetSourceCloser)
+
 	if err != nil {
 		t.Errorf("publishRoachPackets returned %v", err)
 	}
@@ -110,8 +112,14 @@ func TestRoachSource(t *testing.T) {
 	host := fmt.Sprintf("localhost:%d", port)
 	config := RoachSourceConfig{
 		HostPort: []string{host},
-		Rates:    []float64{40000.0},
+		Rates:    []float64{40000.0, 50000.0}, // 2 Rates will be an error
 	}
+	err = rs.Configure(&config)
+	if err == nil {
+		t.Errorf("RoachSource.Configure should fail when HostPort and Rates are of unequal length")
+	}
+
+	config.Rates = config.Rates[0:1] // Fix rates so it's now of length 1
 	err = rs.Configure(&config)
 	if err != nil {
 		t.Errorf("RoachSource.Configure returned %v", err)
@@ -135,12 +143,22 @@ func TestRoachSource(t *testing.T) {
 		t.Errorf("RoachSource[0].nchan after Sample is %d, should be %d", dev.nchan, nchan)
 	}
 
+	// This should accomplish nothing, but it certainly should not error!
 	err = rs.StartRun()
 	if err != nil {
 		t.Errorf("RoachSource.StartRun returned %v", err)
 	}
-	// Start(rs, )
 
-	close(closer)
-	rs.Delete()
+	queuedRequests := make(chan func())
+	npre := 300
+	nsamp := 1000
+	err = Start(rs, queuedRequests, npre, nsamp)
+	if err != nil {
+		t.Errorf("Start(RoachSource,...) returned %v", err)
+	}
+	err = rs.Configure(&config)
+	if err == nil {
+		t.Errorf("RoachSource.Configure should fail when source is Active, but it didn't")
+	}
+
 }

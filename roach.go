@@ -70,8 +70,7 @@ func (dev *RoachDevice) sampleCard() error {
 	if err := dev.conn.SetReadDeadline(deadline); err != nil {
 		return err
 	}
-	n, _, err := dev.conn.ReadFromUDP(p)
-	fmt.Printf("%d bytes:\n", n)
+	_, _, err := dev.conn.ReadFromUDP(p)
 	header, _ := parsePacket(p)
 	dev.nchan = int(header.Nchan)
 	return err
