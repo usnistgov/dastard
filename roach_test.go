@@ -104,15 +104,15 @@ func TestRoachDevice(t *testing.T) {
 		}
 		for i, seg := range block.segments {
 			if seg.rawData[0] != RawType(i) {
-				t.Errorf("block.segments[%d][0] = %d, want %d",
+				t.Errorf("RoachDevice block.segments[%d][0] = %d, want %d",
 					i, seg.rawData[0], i)
 			}
 			if len(seg.rawData) != block.nSamp {
-				t.Errorf("block.segments[%d] length=%d, want %d", i, len(seg.rawData), block.nSamp)
+				t.Errorf("RoachDevice block.segments[%d] length=%d, want %d", i, len(seg.rawData), block.nSamp)
 			}
 		}
 		if block.nSamp < 10 {
-			t.Errorf("block.nSamp = %d, want at least 10", block.nSamp)
+			t.Errorf("RoachDevice block.nSamp = %d, want at least 10", block.nSamp)
 		}
 	}
 }
@@ -177,6 +177,29 @@ func TestRoachSource(t *testing.T) {
 	err = rs.Configure(&config)
 	if err == nil {
 		t.Errorf("RoachSource.Configure should fail when source is Active, but it didn't")
+	}
+
+	timeout := time.NewTimer(time.Second)
+	select {
+	case <-timeout.C:
+		t.Errorf("RoachDevice.readPackets launched but no data received after timeout")
+
+	case block := <-rs.nextBlock:
+		if len(block.segments) != dev.nchan {
+			t.Errorf("RoachSource block has %d data segments, want %d", len(block.segments), dev.nchan)
+		}
+		for i, seg := range block.segments {
+			if seg.rawData[0] != RawType(i) {
+				t.Errorf("RoachSource block.segments[%d][0] = %d, want %d",
+					i, seg.rawData[0], i)
+			}
+			if len(seg.rawData) != block.nSamp {
+				t.Errorf("RoachSource block.segments[%d] length=%d, want %d", i, len(seg.rawData), block.nSamp)
+			}
+		}
+		if block.nSamp < 10 {
+			t.Errorf("RoachSource block.nSamp = %d, want at least 10", block.nSamp)
+		}
 	}
 
 	err = rs.Stop()
