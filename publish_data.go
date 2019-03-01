@@ -328,7 +328,8 @@ func messageRecords(rec *DataRecord) [][]byte {
 	return [][]byte{header.Bytes(), data}
 }
 
-// Two library-global variables to allow sharing of zmq publisher sockets
+// Two library-global variables to allow sharing of zmq publisher sockets:
+
 // PubRecordsChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
 var PubRecordsChan chan []*DataRecord
 

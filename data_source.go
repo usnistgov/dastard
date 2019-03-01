@@ -24,6 +24,7 @@ type FrameIndex int64
 // SourceState is used to indicate the active/inactive/transition state of data sources
 type SourceState int
 
+// Names for the possible values of SourceState
 const (
 	Inactive SourceState = iota // Source is not active
 	Starting                    // Source is in transition to Active state
@@ -624,12 +625,14 @@ func (ds *AnySource) Running() bool {
 	return ds.GetState() == Active
 }
 
+// GetState returns the sourceState value in a race-free fashion
 func (ds *AnySource) GetState() SourceState {
 	ds.sourceStateLock.Lock()
 	defer ds.sourceStateLock.Unlock()
 	return ds.sourceState
 }
 
+// SetStateStarting sets the sourceState value to Starting in a race-free fashion
 func (ds *AnySource) SetStateStarting() error {
 	ds.sourceStateLock.Lock()
 	defer ds.sourceStateLock.Unlock()

@@ -24,13 +24,12 @@ import (
 // the Dastard data sources.
 // TODO: consider renaming -> DastardControl (5/11/18)
 type SourceControl struct {
-	simPulses *SimPulseSource
-	triangle  *TriangleSource
-	lancero   *LanceroSource
-	roach     *RoachSource
-	abaco     *AbacoSource
-	erroring  *ErroringSource
-	// TODO: Add sources for ROACH
+	simPulses      *SimPulseSource
+	triangle       *TriangleSource
+	lancero        *LanceroSource
+	roach          *RoachSource
+	abaco          *AbacoSource
+	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
 
