@@ -68,11 +68,12 @@ func publishRoachPackets(port int, nchan uint16, value uint16) (closer chan stru
 }
 
 // TestDevice checks that the raw RoachDevice can receive and parse a header
-func TestDevice(t *testing.T) {
+func TestRoachDevice(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60001
 	var nchan uint16 = 40
 	packetSourceCloser, err := publishRoachPackets(port, nchan, 0xbeef)
+	defer close(packetSourceCloser)
 	if err != nil {
 		t.Errorf("publishRoachPackets returned %v", err)
 	}
@@ -83,20 +84,43 @@ func TestDevice(t *testing.T) {
 		t.Errorf("NewRoachDevice returned %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	err = dev.sampleCard()
+	err = dev.samplePacket()
 	if err != nil {
-		t.Errorf("sampleCard returned %v", err)
+		t.Errorf("samplePacket returned %v", err)
 	}
 	if dev.nchan != int(nchan) {
 		t.Errorf("parsed packet header says nchan=%d, want %d", dev.nchan, nchan)
 	}
-	close(packetSourceCloser)
+
+	nextBlock := make(chan *dataBlock)
+	go dev.readPackets(nextBlock)
+	timeout := time.NewTimer(time.Second)
+	select {
+	case <-timeout.C:
+		t.Errorf("RoachDevice.readPackets launched but no data received after timeout")
+	case block := <-nextBlock:
+		if len(block.segments) != dev.nchan {
+			t.Errorf("RoachDevice block has %d data segments, want %d", len(block.segments), dev.nchan)
+		}
+		for i, seg := range block.segments {
+			if seg.rawData[0] != RawType(i) {
+				t.Errorf("block.segments[%d][0] = %d, want %d",
+					i, seg.rawData[0], i)
+			}
+			if len(seg.rawData) != block.nSamp {
+				t.Errorf("block.segments[%d] length=%d, want %d", i, len(seg.rawData), block.nSamp)
+			}
+		}
+		if block.nSamp < 10 {
+			t.Errorf("block.nSamp = %d, want at least 10", block.nSamp)
+		}
+	}
 }
 
 // TestDevice checks that the raw RoachDevice can receive and parse a header
 func TestRoachSource(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
-	port := 60002
+	port := 60005
 	var nchan uint16 = 40
 	packetSourceCloser, err := publishRoachPackets(port, nchan, 0xbeef)
 	defer close(packetSourceCloser)
@@ -141,12 +165,6 @@ func TestRoachSource(t *testing.T) {
 	}
 	if dev.nchan != int(nchan) {
 		t.Errorf("RoachSource[0].nchan after Sample is %d, should be %d", dev.nchan, nchan)
-	}
-
-	// This should accomplish nothing, but it certainly should not error!
-	err = rs.StartRun()
-	if err != nil {
-		t.Errorf("RoachSource.StartRun returned %v", err)
 	}
 
 	queuedRequests := make(chan func())
