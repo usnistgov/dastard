@@ -94,7 +94,11 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 			nextBlock <- &block
 			return
 		}
-		_, _, err = dev.conn.ReadFromUDP(p)
+		if _, _, err = dev.conn.ReadFromUDP(p); err != nil {
+			block := dataBlock{err: err}
+			nextBlock <- &block
+			return
+		}
 		readTime := time.Now()
 		header, data := parsePacket(p)
 		if dev.nchan != int(header.Nchan) {
@@ -170,6 +174,7 @@ func (rs *RoachSource) StartRun() error {
 			go dev.readPackets(rs.nextBlock)
 		}
 		<-rs.abortSelf
+		rs.Delete()
 	}()
 	return nil
 }
