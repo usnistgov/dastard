@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"unsafe"
 )
 
 // RoachDevice represents a single ROACH device producing data by UDP packets
@@ -111,9 +112,15 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 		block.segments = make([]DataSegment, dev.nchan)
 		block.nSamp = int(header.Nsamp)
 		block.err = err
+		ns := len(data) / dev.nchan
+		if ns != block.nSamp {
+			fmt.Printf("Warning: block length=%d, want %d\n", len(data), dev.nchan*block.nSamp)
+			fmt.Printf("header: %v, len(data)=%d\n", header, len(data))
+			block.nSamp = ns
+		}
 		for i := 0; i < dev.nchan; i++ {
-			raw := make([]RawType, header.Nsamp)
-			for j := 0; j < int(header.Nsamp); j++ {
+			raw := make([]RawType, block.nSamp)
+			for j := 0; j < block.nSamp; j++ {
 				raw[j] = data[i+dev.nchan*j]
 			}
 			block.segments[i] = DataSegment{
@@ -169,12 +176,30 @@ func (rs *RoachSource) Delete() {
 // start 1 goroutine per UDP source to wait on the data and package it properly.
 func (rs *RoachSource) StartRun() error {
 	go func() {
+		defer rs.Delete()
 		defer close(rs.nextBlock)
+		nextBlock := make(chan *dataBlock)
 		for _, dev := range rs.active {
-			go dev.readPackets(rs.nextBlock)
+			go dev.readPackets(nextBlock)
 		}
-		<-rs.abortSelf
-		rs.Delete()
+
+		lastHB := time.Now()
+		for {
+			select {
+			case <-rs.abortSelf:
+				return
+			case block := <-nextBlock:
+				now := time.Now()
+				if rs.heartbeats != nil {
+					timeDiff := now.Sub(lastHB)
+					totalBytes := block.nSamp * len(block.segments) * int(unsafe.Sizeof(RawType(0)))
+					rs.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
+						Time: timeDiff.Seconds()}
+				}
+				lastHB = now
+				rs.nextBlock <- block
+			}
+		}
 	}()
 	return nil
 }
