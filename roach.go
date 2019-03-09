@@ -84,50 +84,109 @@ func (dev *RoachDevice) samplePacket() error {
 	return err
 }
 
-// readPackets
+// readPackets watches for UDP data from the Roach and sends it on chan nextBlock.
+// One trick is that the UDP packets are small and can come many thousand per second.
+// We should bundle these up into larger blocks and send these more like 10-100
+// times per second.
 func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
-	p := make([]byte, 16384)
+	// The packetBundleTime is how much data is bundled together before futher
+	// processing. The packetKeepaliveTime is how long we wait for even one packet
+	// before declaring the ROACH source dead.
+	const packetBundleTime = 50 * time.Millisecond
+	const packetKeepaliveTime = 2 * time.Second
+	const packetMaxSize = 16384
+
 	var err error
+	keepAlive := time.Now().Add(packetKeepaliveTime)
+
+	// Two loops:
+	// Outer loop over larger blocks sent on nextBlock
 	for {
-		deadline := time.Now().Add(time.Second)
+		savedPackets := make([][]byte, 0, 100)
+
+		// This deadline tells us when to stop collecting packets and bundle them
+		deadline := time.Now().Add(packetBundleTime)
 		if err = dev.conn.SetReadDeadline(deadline); err != nil {
 			block := dataBlock{err: err}
 			nextBlock <- &block
 			return
 		}
-		if _, _, err = dev.conn.ReadFromUDP(p); err != nil {
-			block := dataBlock{err: err}
-			nextBlock <- &block
-			return
+
+		// Inner loop over single UDP packets
+		var readTime time.Time // Time of last packet read.
+		for {
+			p := make([]byte, packetMaxSize)
+			_, _, err = dev.conn.ReadFromUDP(p)
+			readTime = time.Now()
+
+			// Handle the "normal error" of a timeout, then all other read errors
+			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+				fmt.Printf("Timed out after reading %d packets\n", len(savedPackets))
+				err = nil
+				break
+			} else if err != nil {
+				block := dataBlock{err: err}
+				nextBlock <- &block
+				return
+			}
+			savedPackets = append(savedPackets, p)
 		}
-		readTime := time.Now()
-		header, data := parsePacket(p)
-		if dev.nchan != int(header.Nchan) {
-			err = fmt.Errorf("RoachDevice Nchan changed from %d -> %d", dev.nchan,
-				header.Nchan)
+		// Bundling timeout expired but there were no data.
+		if len(savedPackets) == 0 {
+			if time.Now().After(keepAlive) {
+				block := dataBlock{err: fmt.Errorf("ROACH source timed out after %v", packetKeepaliveTime)}
+				nextBlock <- &block
+				return
+			}
+			continue
 		}
-		firstlastDelay := time.Duration(header.Nsamp-1) * dev.period
+
+		keepAlive = time.Now().Add(packetKeepaliveTime)
+
+		// Now process multiple packets into a dataBlock
+		totalNsamp := 0
+		allData := make([][]RawType, 0, len(savedPackets))
+		nsamp := make([]int, 0, len(savedPackets))
+		var firstFramenum FrameIndex
+		for i, p := range savedPackets {
+			header, data := parsePacket(p)
+			if dev.nchan != int(header.Nchan) {
+				err = fmt.Errorf("RoachDevice Nchan changed from %d -> %d", dev.nchan,
+					header.Nchan)
+			}
+			if i == 0 {
+				firstFramenum = FrameIndex(header.Sampnum)
+			}
+			allData = append(allData, data)
+			nsamp = append(nsamp, int(header.Nsamp))
+			totalNsamp += nsamp[i]
+			ns := len(data) / dev.nchan
+			if ns != nsamp[i] {
+				fmt.Printf("Warning: block length=%d, want %d\n", len(data), dev.nchan*nsamp[i])
+				fmt.Printf("header: %v, len(data)=%d\n", header, len(data))
+				nsamp[i] = ns
+			}
+		}
+		firstlastDelay := time.Duration(totalNsamp-1) * dev.period
 		firstTime := readTime.Add(-firstlastDelay)
 		block := new(dataBlock)
 		block.segments = make([]DataSegment, dev.nchan)
-		block.nSamp = int(header.Nsamp)
+		block.nSamp = totalNsamp
 		block.err = err
-		ns := len(data) / dev.nchan
-		if ns != block.nSamp {
-			fmt.Printf("Warning: block length=%d, want %d\n", len(data), dev.nchan*block.nSamp)
-			fmt.Printf("header: %v, len(data)=%d\n", header, len(data))
-			block.nSamp = ns
-		}
 		for i := 0; i < dev.nchan; i++ {
 			raw := make([]RawType, block.nSamp)
-			for j := 0; j < block.nSamp; j++ {
-				raw[j] = data[i+dev.nchan*j]
+			idx := 0
+			for idxdata, data := range allData {
+				for j := 0; j < nsamp[idxdata]; j++ {
+					raw[idx+j] = data[i+dev.nchan*j]
+				}
+				idx += nsamp[idxdata]
 			}
 			block.segments[i] = DataSegment{
 				rawData:         raw,
 				signed:          true,
 				framesPerSample: 1,
-				firstFramenum:   FrameIndex(header.Sampnum),
+				firstFramenum:   firstFramenum,
 				firstTime:       firstTime,
 				framePeriod:     dev.period,
 			}
@@ -137,7 +196,6 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 			return
 		}
 	}
-	return
 }
 
 // NewRoachSource creates a new RoachSource.
@@ -152,6 +210,7 @@ func (rs *RoachSource) Sample() error {
 	if len(rs.active) <= 0 {
 		return fmt.Errorf("No Roach devices are configured")
 	}
+	rs.nchan = 0
 	for _, device := range rs.active {
 		err := device.samplePacket()
 		if err != nil {
@@ -184,19 +243,23 @@ func (rs *RoachSource) StartRun() error {
 		}
 
 		lastHB := time.Now()
+		totalBytes := 0
 		for {
 			select {
 			case <-rs.abortSelf:
 				return
 			case block := <-nextBlock:
 				now := time.Now()
-				if rs.heartbeats != nil {
-					timeDiff := now.Sub(lastHB)
-					totalBytes := block.nSamp * len(block.segments) * int(unsafe.Sizeof(RawType(0)))
+				timeDiff := now.Sub(lastHB)
+				totalBytes += block.nSamp * len(block.segments) * int(unsafe.Sizeof(RawType(0)))
+
+				// Don't send heartbeats too often! Once per 100 ms only.
+				if rs.heartbeats != nil && timeDiff > 100*time.Millisecond {
 					rs.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 						Time: timeDiff.Seconds()}
+					lastHB = now
+					totalBytes = 0
 				}
-				lastHB = now
 				rs.nextBlock <- block
 			}
 		}

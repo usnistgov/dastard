@@ -289,6 +289,10 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	var wg sync.WaitGroup
 	for i, dsp := range ds.processors {
+		if i >= len(block.segments) {
+			fmt.Printf("Oh crap! block has %d segments but Source has %d processors",
+				len(block.segments), len(ds.processors))
+		}
 		segment := block.segments[i]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
