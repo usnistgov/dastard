@@ -10,20 +10,24 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
-// TriggerCounter takes advantage of the fact that TriggerBroker provides a synchronization point
-// to count triggers for all channels in sync
+// TriggerCounter is a per-channel struct that counts triggers over an interval of
+// FrameIndex values and stores a slice of messages about the count. It does not
+// send these messages anywhere; that's the job of the TriggerBroker.
+// It takes advantage of the fact that TriggerBroker provides a synchronization point
+// so several TriggerCounters can count triggers for all channels in sync.
+// Counts triggers between the FrameIndex values of [lo, hi] to learn trigger rate.
 type TriggerCounter struct {
-	channelIndex         int
-	hi                   FrameIndex // the highest value for which we should observer triggers
-	lo                   FrameIndex // observations below this value are errors
-	hiTime               time.Time
-	countsSeen           int
-	stepDuration         time.Duration
-	sampleRate           float64
-	keyFrame             FrameIndex // keyFrame occured at keyTime to the best of our knowledge
-	keyTime              time.Time
-	haveObservedKeyFrame bool
-	messages             []triggerCounterMessage
+	channelIndex int
+	hi           FrameIndex // the highest FrameIndex for which we should count triggers
+	lo           FrameIndex // count trigs starting at this FrameIndex (earlier are errors)
+	hiTime       time.Time  // expected real-world time corresponding to hi
+	countsSeen   int
+	stepDuration time.Duration
+	sampleRate   float64
+	keyTime      time.Time  // the time of a recent correspondence between time and FrameIndex
+	keyFrame     FrameIndex // keyFrame occured at keyTime to the best of our knowledge
+	initialized  bool
+	messages     []triggerCounterMessage
 }
 
 type triggerCounterMessage struct {
@@ -44,34 +48,39 @@ func NewTriggerCounter(channelIndex int, stepDuration time.Duration) TriggerCoun
 	return TriggerCounter{channelIndex: channelIndex, stepDuration: stepDuration, messages: make([]triggerCounterMessage, 0)}
 }
 
-func (tc *TriggerCounter) messageAndReset() {
-	if tc.haveObservedKeyFrame {
-		message := triggerCounterMessage{hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
-		tc.messages = append(tc.messages, message)
-		tc.countsSeen = 0
-		tc.hiTime = tc.hiTime.Add(tc.stepDuration)
-		tc.lo = tc.hi + 1
-		tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
-	} else {
-		hiTime := tc.keyTime.Round(tc.stepDuration)
-		if hiTime.Before(tc.keyTime) {
-			// hiTime is the first multiple of stepDuration after keyTime
-			hiTime = hiTime.Add(tc.stepDuration)
-		}
-		tc.hiTime = hiTime
-		tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
-		lo := tc.hi - FrameIndex(roundint(tc.sampleRate*tc.stepDuration.Seconds())) + 1
-		tc.lo = lo
-		tc.haveObservedKeyFrame = true
+// initialize initializes the counter by starting the trigger-count "integration period"
+func (tc *TriggerCounter) initialize() {
+	// Set hiTime (end of the integration period) to the first multiple of stepDuration after keyTime
+	hiTime := tc.keyTime.Round(tc.stepDuration)
+	if hiTime.Before(tc.keyTime) {
+		hiTime = hiTime.Add(tc.stepDuration)
 	}
+	tc.hiTime = hiTime
+
+	tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
+	tc.lo = tc.hi - FrameIndex(roundint(tc.sampleRate*tc.stepDuration.Seconds())) + 1
+	tc.initialized = true
+}
+
+// messageAndReset appends a new triggerCounterMessage to our slice of them and
+// reset to count triggers in the subsequent interval.
+func (tc *TriggerCounter) messageAndReset() {
+	message := triggerCounterMessage{hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
+	tc.messages = append(tc.messages, message)
+	tc.countsSeen = 0
+	tc.hiTime = tc.hiTime.Add(tc.stepDuration)
+	tc.lo = tc.hi + 1
+	tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
 }
 
 func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
+	// Update keyFrame and keyTime to have a relatively recent correspondence between
+	// the real-world time and frame number.
 	tc.keyFrame = tList.keyFrame
 	tc.keyTime = tList.keyTime
 	tc.sampleRate = tList.sampleRate
-	if !tc.haveObservedKeyFrame {
-		tc.messageAndReset()
+	if !tc.initialized {
+		tc.initialize()
 	}
 	for _, frame := range tList.frames {
 		if frame > tc.hi {
@@ -86,7 +95,6 @@ func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
 		tc.countsSeen++
 	}
 	if tList.lastFrameThatWillNeverTrigger > tc.hi {
-		// fmt.Println("resetting due to lastFrameThatWillNeverTrigger")
 		tc.messageAndReset()
 	}
 	return nil
