@@ -590,6 +590,11 @@ func RunRPCServer(portrpc int, block bool) {
 	if err == nil {
 		sourceControl.ConfigureAbacoSource(&asc, &okay)
 	}
+	var rsc RoachSourceConfig
+	err = viper.UnmarshalKey("roach", &rsc)
+	if err == nil {
+		sourceControl.ConfigureRoachSource(&rsc, &okay)
+	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle

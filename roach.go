@@ -131,7 +131,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 			}
 			savedPackets = append(savedPackets, p)
 		}
-		// Bundling timeout expired but there were no data.
+		// Bundling timeout expired. Were there were no data?
 		if len(savedPackets) == 0 {
 			if time.Now().After(keepAlive) {
 				block := dataBlock{err: fmt.Errorf("ROACH source timed out after %v", packetKeepaliveTime)}
