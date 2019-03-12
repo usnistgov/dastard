@@ -92,7 +92,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 	// The packetBundleTime is how much data is bundled together before futher
 	// processing. The packetKeepaliveTime is how long we wait for even one packet
 	// before declaring the ROACH source dead.
-	const packetBundleTime = 50 * time.Millisecond
+	const packetBundleTime = 100 * time.Millisecond
 	const packetKeepaliveTime = 2 * time.Second
 	const packetMaxSize = 16384
 
@@ -121,7 +121,6 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 
 			// Handle the "normal error" of a timeout, then all other read errors
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-				fmt.Printf("Timed out after reading %d packets\n", len(savedPackets))
 				err = nil
 				break
 			} else if err != nil {
@@ -294,6 +293,18 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 			return err
 		}
 		rs.active = append(rs.active, dev)
+	}
+	for i, dev := range rs.active {
+		if i == 0 {
+			rs.samplePeriod = dev.period
+			rs.sampleRate = dev.rate
+		} else if rs.samplePeriod != dev.period {
+			return fmt.Errorf("Roach device %d period %v != device[0] period %v",
+				i, dev.period, rs.samplePeriod)
+		} else if rs.sampleRate != dev.rate {
+			return fmt.Errorf("Roach device %d rate %v != device[0] rate %v",
+				i, dev.rate, rs.sampleRate)
+		}
 	}
 	return nil
 }

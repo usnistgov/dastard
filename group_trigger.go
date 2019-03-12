@@ -87,7 +87,7 @@ func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
 			tc.messageAndReset()
 		}
 		if frame > tc.hi {
-			return fmt.Errorf("frame %v still higher than tc.hi=%v after reset", frame, tc.hi)
+			return fmt.Errorf("frame %v still higher than tc.hi=%v after reset (Δf=%d)", frame, tc.hi, frame-tc.hi)
 		}
 		if frame < tc.lo {
 			return fmt.Errorf("observed count before lo=%v, frame=%v", tc.lo, frame)
