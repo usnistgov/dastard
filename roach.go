@@ -16,6 +16,7 @@ type RoachDevice struct {
 	period time.Duration // Sampling period = 1/rate
 	nchan  int
 	conn   *net.UDPConn // active UDP connection
+	lastS  FrameIndex
 }
 
 // RoachSource represents multiple ROACH devices
@@ -172,6 +173,19 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 		block.segments = make([]DataSegment, dev.nchan)
 		block.nSamp = totalNsamp
 		block.err = err
+		warning := ""
+		if firstFramenum-dev.lastS != FrameIndex(totalNsamp) {
+			d := int(firstFramenum-dev.lastS) - totalNsamp
+			if d > 0 {
+				warning = fmt.Sprintf("  **** %6d samples this block or %6d too few", totalNsamp, d)
+			} else {
+				warning = fmt.Sprintf("  **** %6d samples this block or %6d too many", totalNsamp, -d)
+			}
+		}
+
+		fmt.Printf("Sample %9d  Δs = %7d%s\n",
+			firstFramenum, firstFramenum-dev.lastS, warning)
+		dev.lastS = firstFramenum
 		for i := 0; i < dev.nchan; i++ {
 			raw := make([]RawType, block.nSamp)
 			idx := 0
