@@ -179,7 +179,7 @@ func TestRoachSource(t *testing.T) {
 		t.Errorf("RoachSource.Configure should fail when source is Active, but it didn't")
 	}
 
-	timeout := time.NewTimer(1 * time.Second)
+	timeout := time.NewTimer(200 * time.Millisecond)
 	select {
 	case <-timeout.C:
 		t.Errorf("RoachDevice.readPackets launched but no data received after timeout")
