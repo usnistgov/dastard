@@ -13,6 +13,9 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
+// lanceroFBOffset gives the location of the frame bit is in bytes 2, 6, 10...
+const lanceroFBOffset int = 2
+
 func TestLancero(t *testing.T) {
 	// call flag.Parse() here if TestMain uses flags
 	devs, err := EnumerateLanceroDevices()
@@ -88,7 +91,7 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 			}
 			// log.Printf("Found buffers with %9d total bytes, bytes read previously=%10d\n", totalBytes, bytesRead)
 			if totalBytes > 0 {
-				q, p, n, err := FindFrameBits(buffer)
+				q, p, n, err := FindFrameBits(buffer, lanceroFBOffset)
 				bytesPerFrame := 4 * (p - q)
 				if err != nil {
 					log.Println("Error in findFrameBits:", err)
@@ -170,7 +173,7 @@ func (f frameBitFindTestDataMaker) bytes() []byte {
 
 func TestFindFrameBits(t *testing.T) {
 	b := frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 2, leadingWords: 0}.bytes()
-	firstWord, secondWord, nConsecutive, err := FindFrameBits(b)
+	firstWord, secondWord, nConsecutive, err := FindFrameBits(b, lanceroFBOffset)
 	if err != nil {
 		t.Error(err)
 	}
@@ -184,7 +187,7 @@ func TestFindFrameBits(t *testing.T) {
 		t.Errorf("have %v, want 2", nConsecutive)
 	}
 	b = frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 2, leadingWords: 0}.bytes()
-	firstWord, secondWord, nConsecutive, err = FindFrameBits(b[4 : len(b)-1])
+	firstWord, secondWord, nConsecutive, err = FindFrameBits(b[4:len(b)-1], lanceroFBOffset)
 	// start mid frame bits
 	if err != nil {
 		t.Error(err)
@@ -199,7 +202,7 @@ func TestFindFrameBits(t *testing.T) {
 		t.Errorf("have %v, want 2", nConsecutive)
 	}
 	b = frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 2, leadingWords: 10}.bytes()
-	firstWord, secondWord, nConsecutive, err = FindFrameBits(b)
+	firstWord, secondWord, nConsecutive, err = FindFrameBits(b, lanceroFBOffset)
 	if err != nil {
 		t.Error(err)
 	}
@@ -213,7 +216,7 @@ func TestFindFrameBits(t *testing.T) {
 		t.Errorf("have %v, want 2", nConsecutive)
 	}
 	b = frameBitFindTestDataMaker{frames: 100, nrows: 8, ncols: 8, leadingWords: 0}.bytes()
-	firstWord, secondWord, nConsecutive, err = FindFrameBits(b)
+	firstWord, secondWord, nConsecutive, err = FindFrameBits(b, lanceroFBOffset)
 	if err != nil {
 		t.Error(err)
 	}
