@@ -541,6 +541,9 @@ func RunRPCServer(portrpc int, block bool) {
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
 	err := viper.UnmarshalKey("simpulse", &spc)
+	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
+		spc.Nchan = 1
+	}
 	if err == nil {
 		err0 := sourceControl.ConfigureSimPulseSource(&spc, &okay)
 		if err0 != nil {
