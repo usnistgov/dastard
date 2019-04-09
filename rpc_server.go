@@ -542,17 +542,29 @@ func RunRPCServer(portrpc int, block bool) {
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
 	err := viper.UnmarshalKey("simpulse", &spc)
 	if err == nil {
-		sourceControl.ConfigureSimPulseSource(&spc, &okay)
+		err0 := sourceControl.ConfigureSimPulseSource(&spc, &okay)
+		if err0 != nil {
+			panic(err0)
+		}
 	}
 	var tsc TriangleSourceConfig
 	err = viper.UnmarshalKey("triangle", &tsc)
 	if err == nil {
-		sourceControl.ConfigureTriangleSource(&tsc, &okay)
+		err0 := sourceControl.ConfigureTriangleSource(&tsc, &okay)
+		if err0 != nil {
+			panic(err0)
+		}
 	}
 	var lsc LanceroSourceConfig
 	err = viper.UnmarshalKey("lancero", &lsc)
+	if lsc.Nsamp == 0 { // default to a valid Nsamp value to avoid ConfigureLanceroSource throwing an error
+		lsc.Nsamp = 16
+	}
 	if err == nil {
-		sourceControl.ConfigureLanceroSource(&lsc, &okay)
+		err0 := sourceControl.ConfigureLanceroSource(&lsc, &okay)
+		if err0 != nil {
+			panic(err0)
+		}
 	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
