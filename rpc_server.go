@@ -552,6 +552,9 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var tsc TriangleSourceConfig
 	err = viper.UnmarshalKey("triangle", &tsc)
+	if tsc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
+		tsc.Nchan = 1
+	}
 	if err == nil {
 		err0 := sourceControl.ConfigureTriangleSource(&tsc, &okay)
 		if err0 != nil {
