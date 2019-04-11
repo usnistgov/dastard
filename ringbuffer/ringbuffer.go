@@ -1,7 +1,6 @@
 package ringbuffer
 
 import (
-	"fmt"
 	"os"
 	"syscall"
 	"unsafe"
@@ -36,7 +35,7 @@ func NewRingBuffer(rawName, descName string) (rb *RingBuffer, err error) {
 	return rb, nil
 }
 
-// create make a writeable buffer and is only for testing
+// create makes a writeable buffer and is only for testing
 func (rb *RingBuffer) create(bufsize int) (err error) {
 	rb.writeable = true
 	file, err := shm.Open(rb.descName, os.O_RDWR|os.O_CREATE, 0660)
@@ -47,7 +46,6 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 	fd := int(rb.descFile.Fd())
 	descsize := 4096
 	if err = syscall.Ftruncate(fd, int64(descsize)); err != nil {
-		fmt.Printf("Problem is here in Ftruncate")
 		return err
 	}
 	rb.descSlice, err = syscall.Mmap(fd, 0, descsize, syscall.PROT_WRITE, syscall.MAP_SHARED)
@@ -76,7 +74,44 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 	return nil
 }
 
-// unlink removes a writeable buffer and is only for testing
+func (rb *RingBuffer) write(data []byte) (written int, err error) {
+	w := rb.desc.writePointer
+	r := rb.desc.readPointer
+	cap := rb.desc.bufferSize
+	available := int(cap - (w - r + 1))
+	if len(data) > available {
+		written = available
+	} else {
+		written = len(data)
+	}
+	wAfter := w + uint64(written)
+	dataWraps := wAfter/cap > w/cap
+	rawbegin := w % cap
+	rawend := wAfter % cap
+	if dataWraps {
+		rawend = cap
+	}
+	firstblocksize := int(rawend - rawbegin)
+	copy(rb.raw[rawbegin:rawend], data[0:firstblocksize])
+	if dataWraps {
+		nextblocksize := written - firstblocksize
+		copy(rb.raw[0:nextblocksize], data[firstblocksize:])
+	}
+	rb.desc.writePointer = wAfter
+	return
+
+}
+
+// bytesWriteable tells how many bytes can be written. Actual answer may be larger,
+// if reading is underway.
+func (rb *RingBuffer) bytesWriteable() int {
+	w := rb.desc.writePointer
+	r := rb.desc.readPointer
+	cap := rb.desc.bufferSize
+	return int(cap - (w - r))
+}
+
+// unlink removes a writeable buffer's shared memory regions
 func (rb *RingBuffer) unlink() (err error) {
 	if err = shm.Unlink(rb.rawName); err != nil {
 		return err
@@ -109,7 +144,7 @@ func (rb *RingBuffer) Open() (err error) {
 	}
 	rb.rawFile = file
 	fd = int(rb.rawFile.Fd())
-	rb.raw, err = syscall.Mmap(fd, 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
+	rb.raw, err = syscall.Mmap(fd, 0, int(rb.desc.bufferSize), syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		return err
 	}
@@ -155,6 +190,9 @@ func (rb *RingBuffer) Read(size int) (data []byte, bytesRead int, err error) {
 	} else {
 		bytesRead = size
 	}
+	if bytesRead <= 0 {
+		return []byte{}, 0, nil
+	}
 	rAfter := r + uint64(bytesRead)
 	dataWraps := rAfter/cap > r/cap
 	rawbegin := r % cap
@@ -171,6 +209,19 @@ func (rb *RingBuffer) Read(size int) (data []byte, bytesRead int, err error) {
 	return
 }
 
+// BytesReadable tells how many bytes can be read. Actual answer may be larger,
+// if writing is underway.
+func (rb *RingBuffer) BytesReadable() int {
+	w := rb.desc.writePointer
+	r := rb.desc.readPointer
+	cap := rb.desc.bufferSize
+	if w-r >= cap {
+		return int(cap - 1)
+	}
+	return int(w - r)
+}
+
+// DiscardAll removes all readable bytes and empties the buffer.
 func (rb *RingBuffer) DiscardAll() (err error) {
 	rb.desc.readPointer = rb.desc.writePointer
 	return nil
