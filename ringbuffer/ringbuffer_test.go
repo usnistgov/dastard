@@ -209,6 +209,17 @@ func TestBufferWriteRead(t *testing.T) {
 			expect, len(data), nbytes, expect, expect)
 	}
 
+	// Now try to write more than the buffer can hold
+	zeros := make([]byte, buffersize+20)
+	written, err := writebuf.write(zeros)
+	if err != nil {
+		t.Errorf("writebuf.write() of buffer of size %d errors", len(zeros))
+	}
+	if written >= buffersize {
+		t.Errorf("writebuf.write() of buffer of size %d writes %d bytes, want < %d",
+			len(zeros), written, buffersize)
+	}
+
 	// Done with writing and reading. Close buffers.
 	if err = b.Close(); err != nil {
 		t.Error("Failed RingBuffer.Close", err)
