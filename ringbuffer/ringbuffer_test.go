@@ -163,6 +163,51 @@ func TestBufferWriteRead(t *testing.T) {
 			t.Errorf("b.Read() returned data[%d:%d] = %v, want 0xbead5678", i, i+4, data[i:i+4])
 		}
 	}
+	readable = b.BytesReadable()
+	if readable != 0 {
+		t.Errorf("b.BytesReadable() returns %d, want 0", readable)
+	}
+
+	// Finally, write and read consecutive values, wrapping around the boundary
+	w := b.desc.writePointer
+	cap := b.desc.bufferSize
+	nwrite := 100 + int(cap-(w%cap))
+	consec := make([]byte, nwrite)
+	for i := 0; i < nwrite; i++ {
+		consec[i] = byte(i)
+	}
+	writebuf.write(consec)
+	expect = nwrite
+	readable = b.BytesReadable()
+	if readable != expect {
+		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
+	}
+	data, nbytes, err = b.Read(expect)
+	if err != nil {
+		t.Errorf("Failed to b.Read(%d)", expect)
+	} else if nbytes != expect || len(data) != expect {
+		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
+			expect, len(data), nbytes, expect, expect)
+	}
+	for i := 0; i < nwrite; i++ {
+		if data[i] != byte(i) {
+			t.Errorf("b.Read() returned data[%d] = %d, want %d", i, data[i], byte(i))
+		}
+	}
+
+	// Now write a certain amount and try to read more than that.
+	writebuf.write(consec)
+	readable = b.BytesReadable()
+	if readable != expect {
+		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
+	}
+	data, nbytes, err = b.Read(expect + 1000)
+	if err != nil {
+		t.Errorf("Failed to b.Read(%d)", expect)
+	} else if nbytes != expect || len(data) != expect {
+		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
+			expect, len(data), nbytes, expect, expect)
+	}
 
 	// Done with writing and reading. Close buffers.
 	if err = b.Close(); err != nil {
