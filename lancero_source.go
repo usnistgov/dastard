@@ -125,6 +125,14 @@ type LanceroSourceConfig struct {
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	ls.sourceStateLock.Lock()
 	defer ls.sourceStateLock.Unlock()
+
+	// populate AvailableCards before any possible errors
+	config.AvailableCards = make([]int, 0)
+	for k := range ls.devices {
+		config.AvailableCards = append(config.AvailableCards, k)
+	}
+	sort.Ints(config.AvailableCards)
+
 	if ls.sourceState != Inactive {
 		return fmt.Errorf("cannot Configure a LanceroSource if it's not Inactive")
 	}
@@ -154,11 +162,6 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 		dev.fiberMask = config.FiberMask
 		dev.clockMhz = config.ClockMhz
 	}
-	config.AvailableCards = make([]int, 0)
-	for k := range ls.devices {
-		config.AvailableCards = append(config.AvailableCards, k)
-	}
-	sort.Ints(config.AvailableCards)
 
 	ls.nsamp = config.Nsamp
 	return err
