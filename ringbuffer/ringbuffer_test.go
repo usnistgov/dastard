@@ -2,6 +2,8 @@ package ringbuffer
 
 import (
 	"testing"
+
+	"github.com/fabiokung/shm"
 )
 
 func TestBufferOpenClose(t *testing.T) {
@@ -9,6 +11,12 @@ func TestBufferOpenClose(t *testing.T) {
 	goodname2 := "will_exist_description"
 	badname1 := "does_not_exist"
 	badname2 := "does_not_exist_either"
+
+	// In case these memory regions exist from earlier tests, remove them.
+	names := []string{goodname1, goodname2, badname1, badname2}
+	for _, name := range names {
+		shm.Unlink(name)
+	}
 
 	// Now test the writeable buffer, which we need for testing.
 	writebuf, err := NewRingBuffer(goodname1, goodname2)
@@ -56,6 +64,12 @@ func TestBufferOpenClose(t *testing.T) {
 func TestBufferWriteRead(t *testing.T) {
 	name1 := "test_ring_buffer"
 	name2 := "test_ring_description"
+	// In case these memory regions exist from earlier tests, remove them.
+	names := []string{name1, name2}
+	for _, name := range names {
+		shm.Unlink(name)
+	}
+
 	writebuf, err := NewRingBuffer(name1, name2)
 	if err != nil {
 		t.Error("Failed NewRingBuffer", err)
@@ -70,6 +84,14 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 	if err = b.Open(); err != nil {
 		t.Error("Failed RingBuffer.Open", err)
+	}
+
+	data, nbytes, err := b.Read(0)
+	if err != nil {
+		t.Error("Failed to b.Read(0)")
+	} else if nbytes != 0 || len(data) > 0 {
+		t.Errorf("b.Read(0) returned len(data)=%d, nbytes=%d, want 0 and 0",
+			len(data), nbytes)
 	}
 
 	if err = b.Close(); err != nil {

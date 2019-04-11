@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"unsafe"
 
 	"github.com/fabiokung/shm"
 )
@@ -17,7 +18,8 @@ type bufferDescription struct {
 
 // RingBuffer describes the shared-memory ring buffer filled by DEED.
 type RingBuffer struct {
-	desc      []byte
+	descSlice []byte
+	desc      *bufferDescription
 	raw       []byte
 	rawName   string
 	descName  string
@@ -43,15 +45,20 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 	}
 	rb.descFile = file
 	fd := int(rb.descFile.Fd())
-	size := 4096
-	if err = syscall.Ftruncate(fd, int64(size)); err != nil {
-		fmt.Printf("Problem is here")
+	descsize := 4096
+	if err = syscall.Ftruncate(fd, int64(descsize)); err != nil {
+		fmt.Printf("Problem is here in Ftruncate")
 		return err
 	}
-	rb.desc, err = syscall.Mmap(fd, 0, size, syscall.PROT_WRITE, syscall.MAP_SHARED)
+	rb.descSlice, err = syscall.Mmap(fd, 0, descsize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		return err
 	}
+	rb.desc = (*bufferDescription)(unsafe.Pointer(&rb.descSlice[0]))
+	rb.desc.writePointer = 0
+	rb.desc.readPointer = 0
+	rb.desc.bufferSize = uint64(bufsize)
+	rb.desc.bytesLost = 0
 
 	file, err = shm.Open(rb.rawName, os.O_RDWR|os.O_CREATE, 0660)
 	if err != nil {
@@ -82,17 +89,18 @@ func (rb *RingBuffer) unlink() (err error) {
 
 // Open opens the ring buffer shared memory regions and memory maps them.
 func (rb *RingBuffer) Open() (err error) {
-	file, err := shm.Open(rb.descName, os.O_RDONLY, 0600)
+	file, err := shm.Open(rb.descName, os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
 	rb.descFile = file
 	fd := int(rb.descFile.Fd())
 	size := 4096
-	rb.desc, err = syscall.Mmap(fd, 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
+	rb.descSlice, err = syscall.Mmap(fd, 0, size, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		return err
 	}
+	rb.desc = (*bufferDescription)(unsafe.Pointer(&rb.descSlice[0]))
 
 	file, err = shm.Open(rb.rawName, os.O_RDONLY, 0600)
 	if err != nil {
@@ -117,7 +125,7 @@ func (rb *RingBuffer) Close() (err error) {
 		rb.raw = nil
 	}
 	if rb.desc != nil {
-		if err = syscall.Munmap(rb.desc); err != nil {
+		if err = syscall.Munmap(rb.descSlice); err != nil {
 			return
 		}
 		rb.desc = nil
@@ -134,5 +142,36 @@ func (rb *RingBuffer) Close() (err error) {
 		}
 		rb.descFile = nil
 	}
+	return nil
+}
+
+func (rb *RingBuffer) Read(size int) (data []byte, bytesRead int, err error) {
+	w := rb.desc.writePointer
+	r := rb.desc.readPointer
+	cap := rb.desc.bufferSize
+	available := int(w - r)
+	if size > available {
+		bytesRead = available
+	} else {
+		bytesRead = size
+	}
+	rAfter := r + uint64(bytesRead)
+	dataWraps := rAfter/cap > r/cap
+	rawbegin := r % cap
+	rawend := rAfter % cap
+	if dataWraps {
+		rawend = cap
+	}
+	data = rb.raw[rawbegin:rawend]
+	if dataWraps {
+		nextblocksize := bytesRead - len(data)
+		data = append(data, rb.raw[0:nextblocksize]...)
+	}
+	rb.desc.readPointer = rAfter
+	return
+}
+
+func (rb *RingBuffer) DiscardAll() (err error) {
+	rb.desc.readPointer = rb.desc.writePointer
 	return nil
 }
