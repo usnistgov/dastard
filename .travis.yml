@@ -1,6 +1,6 @@
 language: go
 
-dist: trusty
+dist: xenial
 sudo: required
 
 go:
@@ -8,15 +8,20 @@ go:
 
 go_import_path: github.com/usnistgov/dastard
 
-before_install:
-  - sudo add-apt-repository ppa:ondrej/php -y   # for libsodium
-  - sudo apt-get -qq update
-  - sudo apt-get install -y libsodium-dev libzmq3 libzmq3-dev
-
 addons:
   apt:
     sources:
-    - sourceline: 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_14.04/ ./'
-      key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_14.04/Release.key'
+    - sourceline: 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/ ./'
+      key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/Release.key'
     packages:
-    - libczmq-dev
+    - libczmq-dev libzmq3 libzmq3-dev
+
+cache:
+  apt: true
+  directories:
+  - $HOME/libsodium
+
+install:
+  - ./travis-install-libsodium.sh
+  - export PKG_CONFIG_PATH=$HOME/libsodium/lib/pkgconfig
+  - export LD_LIBRARY_PATH=$HOME/libsodium/lib
