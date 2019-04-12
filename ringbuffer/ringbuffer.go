@@ -74,6 +74,7 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 	return nil
 }
 
+// write adds data bytes to the buffer and is only for testing
 func (rb *RingBuffer) write(data []byte) (written int, err error) {
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
@@ -180,18 +181,21 @@ func (rb *RingBuffer) Close() (err error) {
 	return nil
 }
 
-func (rb *RingBuffer) Read(size int) (data []byte, bytesRead int, err error) {
+// Read reads a byte slice from the buffer of size no larger than size.
+// It is not an error to request more bytes than the buffer could hold.
+func (rb *RingBuffer) Read(size int) (data []byte, err error) {
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
 	cap := rb.desc.bufferSize
 	available := int(w - r)
+	var bytesRead int
 	if size > available {
 		bytesRead = available
 	} else {
 		bytesRead = size
 	}
 	if bytesRead <= 0 {
-		return []byte{}, 0, nil
+		return []byte{}, nil
 	}
 	rAfter := r + uint64(bytesRead)
 	dataWraps := rAfter/cap > r/cap
@@ -207,6 +211,11 @@ func (rb *RingBuffer) Read(size int) (data []byte, bytesRead int, err error) {
 	}
 	rb.desc.readPointer = rAfter
 	return
+}
+
+// ReadAll reads all the bytes available in the buffer.
+func (rb *RingBuffer) ReadAll() (data []byte, err error) {
+	return rb.Read(int(rb.desc.bufferSize))
 }
 
 // BytesReadable tells how many bytes can be read. Actual answer may be larger,

@@ -96,12 +96,12 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// Test that reading 0 reads 0.
-	data, nbytes, err := b.Read(0)
+	data, err := b.Read(0)
 	if err != nil {
 		t.Error("Failed to b.Read(0)")
-	} else if nbytes != 0 || len(data) > 0 {
-		t.Errorf("b.Read(0) returned len(data)=%d, nbytes=%d, want 0 and 0",
-			len(data), nbytes)
+	} else if len(data) > 0 {
+		t.Errorf("b.Read(0) returned len(data)=%d, want 0 and 0",
+			len(data))
 	}
 
 	// There are <expect> bytes in the buffer. Test that reading them works.
@@ -113,12 +113,12 @@ func TestBufferWriteRead(t *testing.T) {
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
 	}
-	data, nbytes, err = b.Read(expect)
+	data, err = b.Read(expect)
 	if err != nil {
 		t.Errorf("Failed to b.Read(%d)", expect)
-	} else if nbytes != expect || len(data) != expect {
-		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
-			expect, len(data), nbytes, expect, expect)
+	} else if len(data) != expect {
+		t.Errorf("b.Read(%d) returned len(data)=%d, want %d",
+			expect, len(data), expect)
 	}
 	readable = b.BytesReadable()
 	if readable != 0 {
@@ -126,23 +126,23 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// There are 0 bytes in the buffer. Verify that.
-	data, nbytes, err = b.Read(expect)
+	data, err = b.Read(expect)
 	if err != nil {
 		t.Errorf("Failed to b.Read(%d) when empty", expect)
-	} else if nbytes != 0 || len(data) != 0 {
-		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
-			expect, len(data), nbytes, 0, 0)
+	} else if len(data) != 0 {
+		t.Errorf("b.Read(%d) returned len(data)=%d, want %d",
+			expect, len(data), 0)
 	}
 
 	// Now put bytes in the buffer, clear it, and verify that there are 0.
 	writebuf.write(deadbeef)
 	b.DiscardAll()
-	data, nbytes, err = b.Read(expect)
+	data, err = b.Read(expect)
 	if err != nil {
 		t.Errorf("Failed to b.Read(%d) when empty", expect)
-	} else if nbytes != 0 || len(data) != 0 {
-		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
-			expect, len(data), nbytes, 0, 0)
+	} else if len(data) != 0 {
+		t.Errorf("b.Read(%d) returned len(data)=%d, want %d",
+			expect, len(data), 0)
 	}
 
 	// Now put different bytes in the buffer, verify that they are the right values.
@@ -151,12 +151,12 @@ func TestBufferWriteRead(t *testing.T) {
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
 	}
-	data, nbytes, err = b.Read(expect)
+	data, err = b.Read(expect)
 	if err != nil {
-		t.Errorf("Failed to b.Read(%d)", expect)
-	} else if nbytes != expect || len(data) != expect {
-		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
-			expect, len(data), nbytes, expect, expect)
+		t.Errorf("Failed to b.Read(%d): %v", expect, err)
+	} else if len(data) != expect {
+		t.Errorf("b.Read(%d) returned len(data)=%d, want %d",
+			expect, len(data), expect)
 	}
 	for i := 0; i < len(data); i += 4 {
 		if data[i] != 0xbe || data[i+1] != 0xad || data[i+2] != 0x56 || data[i+3] != 0x78 {
@@ -168,7 +168,7 @@ func TestBufferWriteRead(t *testing.T) {
 		t.Errorf("b.BytesReadable() returns %d, want 0", readable)
 	}
 
-	// Finally, write and read consecutive values, wrapping around the boundary
+	// Write and read consecutive values, wrapping around the boundary
 	w := b.desc.writePointer
 	cap := b.desc.bufferSize
 	nwrite := 100 + int(cap-(w%cap))
@@ -182,12 +182,12 @@ func TestBufferWriteRead(t *testing.T) {
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
 	}
-	data, nbytes, err = b.Read(expect)
+	data, err = b.Read(expect)
 	if err != nil {
 		t.Errorf("Failed to b.Read(%d)", expect)
-	} else if nbytes != expect || len(data) != expect {
-		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
-			expect, len(data), nbytes, expect, expect)
+	} else if len(data) != expect {
+		t.Errorf("b.Read(%d) returned len(data)=%d, want %d",
+			expect, len(data), expect)
 	}
 	for i := 0; i < nwrite; i++ {
 		if data[i] != byte(i) {
@@ -201,12 +201,12 @@ func TestBufferWriteRead(t *testing.T) {
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
 	}
-	data, nbytes, err = b.Read(expect + 1000)
+	data, err = b.Read(expect + 1000)
 	if err != nil {
 		t.Errorf("Failed to b.Read(%d)", expect)
-	} else if nbytes != expect || len(data) != expect {
-		t.Errorf("b.Read(%d) returned len(data)=%d, nbytes=%d, want %d and %d",
-			expect, len(data), nbytes, expect, expect)
+	} else if len(data) != expect {
+		t.Errorf("b.Read(%d) returned len(data)=%d, want %d",
+			expect, len(data), expect)
 	}
 
 	// Now try to write more than the buffer can hold
@@ -218,6 +218,18 @@ func TestBufferWriteRead(t *testing.T) {
 	if written >= buffersize {
 		t.Errorf("writebuf.write() of buffer of size %d writes %d bytes, want < %d",
 			len(zeros), written, buffersize)
+	}
+
+	// Empty the buffer, write some, and test ReadAll.
+	if err = b.DiscardAll(); err != nil {
+		t.Error("b.DiscardAll() fails: ", err)
+	}
+	writebuf.write(deadbeef)
+	data, err = b.ReadAll()
+	if err != nil {
+		t.Error("b.ReadAll() fails: ", err)
+	} else if len(data) != len(deadbeef) {
+		t.Errorf("b.ReadAll() returns %d bytes, want %d", len(data), len(deadbeef))
 	}
 
 	// Done with writing and reading. Close buffers.
