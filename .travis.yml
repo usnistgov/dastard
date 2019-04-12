@@ -14,7 +14,7 @@ addons:
     - sourceline: 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/ ./'
       key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/Release.key'
     packages:
-    - libczmq-dev libzmq3 libzmq3-dev
+    - libczmq-dev libzmq3-dev
 
 cache:
   apt: true
