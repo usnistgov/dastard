@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/usnistgov/dastard/lancero"
 )
 
@@ -91,6 +92,12 @@ func TestNoHardwareSource(t *testing.T) {
 		source.ncards++
 	}
 	// above is essentially NewLanceroSource
+	cg, err7 := source.ReadCringeGlobals("lancero/test_data/cringeGlobals.json")
+	if err7 != nil {
+		t.Error(err7)
+	}
+	spew.Dump(cg)
+	source.InjestCringeGlobals(cg)
 
 	config := LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
 		ActiveCards: make([]int, nLancero)}

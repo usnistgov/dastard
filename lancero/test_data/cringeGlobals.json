@@ -1,0 +1,10 @@
+{
+    "SETT": 18, 
+    "seqln": 28, 
+    "lsync": 30, 
+    "testpattern": 2, 
+    "propagationdelay": 9, 
+    "NSAMP": 10, 
+    "carddelay": 7,
+    "XPT": 3
+}

@@ -1,7 +1,9 @@
 package dastard
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -366,6 +368,46 @@ func (device *LanceroDevice) sampleCard() error {
 // Imperfect round to nearest integer
 func roundint(x float64) int {
 	return int(x + math.Copysign(0.5, x))
+}
+
+type cringeGlobals struct {
+	SETT             int `json:"SETT"`
+	SquenceLength    int `json:"seqln"`
+	Lsync            int `json:"lsync"`
+	TestPattern      int `json:"testpattern"`
+	PropagationDelay int `json:"propagationdelay"`
+	NSAMP            int `json:"NSAMP"`
+	CardDelay        int `json:"carddelay"`
+	XPT              int `json:"XPT"`
+}
+
+// ReadCringeGlobals loads the cringeGlobals.json file into a cringeGlobals struct
+func (ls *LanceroSource) ReadCringeGlobals(jsonPath string) (cringeGlobals, error) {
+	jsonFile, err := os.Open(jsonPath)
+	defer jsonFile.Close()
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		return cringeGlobals{}, err
+	}
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	var cg cringeGlobals
+	// unmarshal our byteArray which contains our
+	// jsonFile's content into 'cg'
+	err = json.Unmarshal(byteValue, &cg)
+	if err != nil {
+		return cringeGlobals{}, err
+	}
+	return cg, nil
+}
+
+// InjestCringeGlobals changes NSAMP, nrows and lsync to match the values from cg
+func (ls *LanceroSource) InjestCringeGlobals(cg cringeGlobals) {
+	ls.nsamp = cg.NSAMP
+	for _, dev := range ls.devices {
+		dev.nrows = cg.SquenceLength
+		dev.lsync = cg.Lsync
+	}
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
