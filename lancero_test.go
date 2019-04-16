@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/usnistgov/dastard/lancero"
 )
 
@@ -14,13 +13,16 @@ func TestChannelOrder(t *testing.T) {
 	if err != nil {
 		t.Error("NewLanceroSource failed:", err)
 	}
-	d0 := LanceroDevice{devnum: 0, nrows: 4, ncols: 4}
-	d1 := LanceroDevice{devnum: 0, nrows: 3, ncols: 3}
+	d0 := LanceroDevice{devnum: 0, nrows: 4, ncols: 4, cardDelay: 1}
+	d1 := LanceroDevice{devnum: 1, nrows: 3, ncols: 3, cardDelay: 1}
 	ls.devices[0] = &d0
 	ls.devices[1] = &d1
 	config := LanceroSourceConfig{FiberMask: 0xbeef, ActiveCards: []int{0, 1, 2},
 		CardDelay: []int{1, 1, 1}}
 	ls.Configure(&config)
+	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
+	ls.devices[0].nrows = 4
+	ls.devices[1].nrows = 3
 
 	if len(ls.active) > 2 {
 		t.Errorf("ls.active contains %d cards, want 2", len(ls.active))
@@ -43,6 +45,9 @@ func TestChannelOrder(t *testing.T) {
 
 	config.ActiveCards = []int{0}
 	ls.Configure(&config)
+	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
+	ls.devices[0].nrows = 4
+	ls.devices[1].nrows = 3
 	ls.updateChanOrderMap()
 	for i, v := range ls.chan2readoutOrder {
 		if v != expect[i] {
@@ -52,6 +57,9 @@ func TestChannelOrder(t *testing.T) {
 
 	config.ActiveCards = []int{1}
 	ls.Configure(&config)
+	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
+	ls.devices[0].nrows = 4
+	ls.devices[1].nrows = 3
 	ls.updateChanOrderMap()
 	for i, v := range ls.chan2readoutOrder {
 		if v != expect[i+32]-32 {
@@ -92,20 +100,14 @@ func TestNoHardwareSource(t *testing.T) {
 		source.ncards++
 	}
 	// above is essentially NewLanceroSource
-	cg, err7 := source.ReadCringeGlobals("lancero/test_data/cringeGlobals.json")
-	if err7 != nil {
-		t.Error(err7)
-	}
-	spew.Dump(cg)
-	source.InjestCringeGlobals(cg)
 
-	config := LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
+	config := LanceroSourceConfig{CardDelay: cardDelay,
 		ActiveCards: make([]int, nLancero)}
 	if err := source.Configure(&config); err == nil && nLancero > 1 {
 		t.Error("expected error for re-using a device")
 	}
-	config = LanceroSourceConfig{ClockMhz: 125, CardDelay: cardDelay,
-		ActiveCards: activeCards, Nsamp: 1}
+	config = LanceroSourceConfig{CardDelay: cardDelay,
+		ActiveCards: activeCards}
 	if err := source.Configure(&config); err != nil {
 		t.Error(err)
 	}
@@ -114,18 +116,18 @@ func TestNoHardwareSource(t *testing.T) {
 			t.Errorf("AvailableCards not populated correctly. AvailableCards %v", config.AvailableCards)
 		}
 	}
-	config.Nsamp = 499
 
-	if err := source.Configure(&config); err == nil {
-		t.Error("LanceroSource.Configure should fail with Nsamp>16")
+	// Start will call sampleCard
+	// sampleCard will calculate nrows and lsync
+	// if nrows doesn't match, it will error
+	// if lsync doesn't match, it will give a warning
+	// since these values from from cringeGlobals.json, we need to manully set them to match before this test
+	for _, dev := range source.devices {
+		dev.nrows = nrowsSet
+		dev.lsync = linePeriodSet // we we calculate different values for lsync here, don't freak out over warnings
 	}
-	config.Nsamp = 4
-	if err := source.Configure(&config); err != nil {
-		t.Error("LanceroSource.Configure fails:", err)
-	}
-
 	if err := Start(source, nil, 256, 1024); err != nil {
-		source.Stop()
+		//source.Stop() // source.Stop should work here, but it fails and we don't see the error message from t.Fatal
 		t.Fatal(err)
 	}
 	defer source.Stop()
