@@ -71,6 +71,7 @@ func parsePacket(packet []byte) (header packetHeader, data []RawType) {
 			panic(fmt.Sprintln("binary.Read failed:", err))
 		}
 	case 4:
+		// this just throws away two bytes from each 4 byte word
 		data4 := make([]RawType, header.Nchan*header.Nsamp*2)
 		if err := binary.Read(buf, binary.BigEndian, &data4); err != nil {
 			panic(fmt.Sprintln("binary.Read failed:", err))
