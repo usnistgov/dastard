@@ -56,18 +56,30 @@ type packetHeader struct {
 }
 
 // parsePacket converts a roach packet into its constituent packetHeader and
-// raw data. For now, assume all data are 2 bytes long and thus == RawType.
-// TODO: In the future, we might need to accept 4-byte data and convert it
-// (by rounding) into 2-byte data.
+// raw data.
 // TODO: verify that we don't need to add 0x8000 to convert signed->unsigned.
 func parsePacket(packet []byte) (header packetHeader, data []RawType) {
 	buf := bytes.NewReader(packet)
 	if err := binary.Read(buf, binary.BigEndian, &header); err != nil {
-		fmt.Println("binary.Read failed:", err)
+		panic(fmt.Sprintln("binary.Read failed:", err))
 	}
 	data = make([]RawType, header.Nchan*header.Nsamp)
-	if err := binary.Read(buf, binary.BigEndian, &data); err != nil {
-		fmt.Println("binary.Read failed:", err)
+	wordLen := int(1 << (header.Flags & 0x3)) // data word length in bytes
+	switch wordLen {
+	case 2:
+		if err := binary.Read(buf, binary.BigEndian, &data); err != nil {
+			panic(fmt.Sprintln("binary.Read failed:", err))
+		}
+	case 4:
+		data4 := make([]RawType, header.Nchan*header.Nsamp)
+		if err := binary.Read(buf, binary.BigEndian, &data4); err != nil {
+			panic(fmt.Sprintln("binary.Read failed:", err))
+		}
+		for i := range data {
+			data[i] = data4[i*2]
+		}
+	default:
+		panic(fmt.Sprintf("wordLen %v not implemented", wordLen))
 	}
 	return header, data
 }

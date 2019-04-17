@@ -179,7 +179,7 @@ func TestRoachSource(t *testing.T) {
 		t.Errorf("RoachSource.Configure should fail when source is Active, but it didn't")
 	}
 
-	timeout := time.NewTimer(200 * time.Millisecond)
+	timeout := time.NewTimer(500 * time.Millisecond) // this was 200 Millisecond, but tests hung sometimes so I made it bigger
 	select {
 	case <-timeout.C:
 		t.Errorf("RoachDevice.readPackets launched but no data received after timeout")
@@ -200,8 +200,8 @@ func TestRoachSource(t *testing.T) {
 		if block.nSamp < 10 {
 			t.Errorf("RoachSource block.nSamp = %d, want at least 10", block.nSamp)
 		}
+		<-timeout.C
 	}
-	<-timeout.C
 
 	err = rs.Stop()
 	if err != nil {

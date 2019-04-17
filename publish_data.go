@@ -310,7 +310,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 	const headerVersion = uint8(0)
 	dataType := uint8(3)
 	if rec.signed {
-		dataType--
+		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
 	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
