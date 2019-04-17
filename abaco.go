@@ -70,7 +70,7 @@ func (device *AbacoDevice) sampleCard() error {
 
 	// Then discard the first 2 FIFOs worth of data, to be safe
 	for bytesToDiscard := 128 * 1024; bytesToDiscard > 0; {
-		data, err := device.ring.Read(bytesToDiscard)
+		data, err := device.ring.ReadMinimum(bytesToDiscard)
 		if err != nil {
 			return err
 		}
@@ -78,11 +78,11 @@ func (device *AbacoDevice) sampleCard() error {
 	}
 
 	// Now get the data we actually want
-	data, err := device.ring.Read(32768)
+	data, err := device.ring.ReadMinimum(32768)
 	if err != nil {
 		return err
 	}
-	log.Print("Abaco bytes read: ", len(data))
+	log.Print("Abaco bytes read for FindFrameBits: ", len(data))
 
 	q, p, n, err3 := lancero.FindFrameBits(data, abacoFBOffset)
 	if err3 == nil {
@@ -306,7 +306,8 @@ func (as *AbacoSource) stop() error {
 }
 
 // enumerateAbacoDevices returns a list of abaco device numbers that exist
-// in the devfs. If /dev/xdma0_c2h_0 exists, then 0 is added to the list.
+// in the devfs. If /dev/xdma0_c2h_X exists, then X is added to the list.
+// Does not yet handle cards other than xdma0.
 func enumerateAbacoDevices() (devices []int, err error) {
 	MAXDEVICES := 8
 	for id := 0; id < MAXDEVICES; id++ {

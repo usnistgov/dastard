@@ -1,8 +1,10 @@
 package ringbuffer
 
 import (
+	"fmt"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/fabiokung/shm"
@@ -215,6 +217,19 @@ func (rb *RingBuffer) Read(size int) (data []byte, err error) {
 
 // ReadAll reads all the bytes available in the buffer.
 func (rb *RingBuffer) ReadAll() (data []byte, err error) {
+	return rb.Read(int(rb.desc.bufferSize))
+}
+
+// ReadMinimum blocks until it can read at least minimum bytes.
+// It does this by sleeping in 1 ms units
+func (rb *RingBuffer) ReadMinimum(minimum int) (data []byte, err error) {
+	if uint64(minimum) >= rb.desc.bufferSize {
+		return nil, fmt.Errorf("Cannot call ReadMinimum(%d), want < %d", minimum,
+			rb.desc.bufferSize)
+	}
+	for rb.BytesReadable() < minimum {
+		time.Sleep(time.Millisecond)
+	}
 	return rb.Read(int(rb.desc.bufferSize))
 }
 
