@@ -9,22 +9,24 @@ import (
 	"time"
 
 	"github.com/usnistgov/dastard/lancero"
+	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-// AbacoDevice represents a single Abaco device-special file.
+// AbacoDevice represents a single Abaco device-special file and the ring buffer
+// that stores its data.
 type AbacoDevice struct {
-	cardnum    int
-	devnum     int
-	nrows      int
-	ncols      int
-	nchan      int
-	frameSize  int // frame size, in bytes
-	File       *os.File
-	buffersize int
-	buffer     []byte
+	cardnum   int
+	devnum    int
+	nrows     int
+	ncols     int
+	nchan     int
+	frameSize int // frame size, in bytes
+	ring      *ringbuffer.RingBuffer
+	// buffersize int
+	// buffer     []byte
 }
 
-// NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading
+// NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
 // For now, assume card 0 with channels 0,1,2,... We can add a second card later.
 func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 	dev = new(AbacoDevice)
@@ -34,17 +36,18 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 		return nil, fmt.Errorf("NewAbacoDevice only supports devnum=0")
 	}
 
-	// fname := fmt.Sprintf("/dev/xdma%d_c2h_%d", dev.cardnum, devnum)
-	fname := fmt.Sprintf("/var/tmp/abacopipe")
-	if dev.File, err = os.OpenFile(fname, os.O_RDONLY, 0666); err != nil {
+	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_%d_buffer", dev.cardnum, devnum)
+	shmNameDesc := fmt.Sprintf("xdma%d_c2h_%d_description", dev.cardnum, devnum)
+	if dev.ring, err = ringbuffer.NewRingBuffer(shmNameBuffer, shmNameDesc); err != nil {
 		return nil, err
 	}
-	dev.buffersize = 1024 * 1024 // How to choose the size of the read buffer???
-	dev.buffer = make([]byte, dev.buffersize)
+	// dev.buffersize = 1024 * 1024 // How to choose the size of the read buffer???
+	// dev.buffer = make([]byte, dev.buffersize)
 	return dev, nil
 }
 
 // abacoFBOffset gives the location of the frame bit is in bytes 0, 4, 8...
+// (In the TDM system, this value is 2, meaning frame bits are in 2, 6, 10...)
 const abacoFBOffset int = 0
 
 // sampleCard samples the data from a single card to scan for frame bits.
@@ -57,16 +60,31 @@ const abacoFBOffset int = 0
 // 4. Scan for frame bits
 // 5. Store info that we've learned in AbacoSource or per device.
 func (device *AbacoDevice) sampleCard() error {
-	// Read the device: two full buffers AND ignore the leading 2 FIFOs in the 2nd
-	for i := 0; i < 2; i++ {
-		nb, err := device.File.Read(device.buffer)
+	// Open the device and discard whatever is in the buffer
+	if err := device.ring.Open(); err != nil {
+		return err
+	}
+	if err := device.ring.DiscardAll(); err != nil {
+		return err
+	}
+
+	// Then discard the first 2 FIFOs worth of data, to be safe
+	for bytesToDiscard := 128 * 1024; bytesToDiscard > 0; {
+		data, err := device.ring.Read(bytesToDiscard)
 		if err != nil {
 			return err
 		}
-		log.Print("Abaco bytes read: ", nb)
+		bytesToDiscard -= len(data)
 	}
 
-	q, p, n, err3 := lancero.FindFrameBits(device.buffer[128*1024:], abacoFBOffset)
+	// Now get the data we actually want
+	data, err := device.ring.Read(32768)
+	if err != nil {
+		return err
+	}
+	log.Print("Abaco bytes read: ", len(data))
+
+	q, p, n, err3 := lancero.FindFrameBits(data, abacoFBOffset)
 	if err3 == nil {
 		device.ncols = n
 		device.nrows = (p - q) / n
@@ -218,6 +236,12 @@ func (as *AbacoSource) launchAbacoReader() {
 		defer close(as.buffersChan)
 		timeout := time.NewTicker(timeoutPeriod)
 
+		for _, dev := range as.active {
+			if err := dev.ring.DiscardAll(); err != nil {
+				panic("AbacoDevice.ring.DiscardAll failed")
+			}
+		}
+
 		for {
 			go func() {
 				// read from the data pipe
@@ -227,17 +251,16 @@ func (as *AbacoSource) launchAbacoReader() {
 				datacopies := make([][]RawType, as.nchan)
 				nchanPrevDevices := 0
 				for _, dev := range as.active {
-					nb, err := dev.File.Read(dev.buffer)
+					localBuffer, err := dev.ring.ReadAll()
 					if err != nil {
-						panic("AbacoDevice.File.Read failed")
+						panic("AbacoDevice.ring.ReadAll failed")
 					}
+					nb := len(localBuffer)
 					bframes := nb / dev.frameSize
 					if bframes < framesUsed {
 						framesUsed = bframes
 					}
 
-					localBuffer := make([]byte, nb)
-					copy(localBuffer, dev.buffer[:nb])
 					rawBuffer := bytesToRawType(localBuffer)
 					for i := 0; i < dev.nchan; i++ {
 						datacopies[i+nchanPrevDevices] = make([]RawType, framesUsed)
