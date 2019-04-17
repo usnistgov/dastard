@@ -230,38 +230,57 @@ type AbacoBuffersType struct {
 
 //
 func (as *AbacoSource) launchAbacoReader() {
-	timeoutPeriod := 2 * time.Second
+	timeoutPeriod := 5 * time.Second
+	readPeriod := 50 * time.Millisecond
 	go func() {
-		as.buffersChan = make(chan AbacoBuffersType, 100)
-		defer close(as.buffersChan)
-		timeout := time.NewTicker(timeoutPeriod)
-
+		// Start by emptying all data from each device's ring buffer.
 		for _, dev := range as.active {
 			if err := dev.ring.DiscardAll(); err != nil {
 				panic("AbacoDevice.ring.DiscardAll failed")
 			}
 		}
 
+		as.buffersChan = make(chan AbacoBuffersType, 100)
+		defer close(as.buffersChan)
+		timeout := time.NewTimer(timeoutPeriod)
+		ticker := time.NewTimer(readPeriod)
+		defer ticker.Stop()
+		defer timeout.Stop()
+
 		for {
-			go func() {
-				// read from the data pipe
-				// send filled buffer (and bytes actually read) on a channel
+			select {
+			case <-as.abortSelf:
+				log.Printf("Abaco read was aborted")
+				return
+
+			case <-timeout.C:
+				// Handle failure to return
+				log.Printf("Abaco read timed out")
+				return
+
+			case <-ticker.C:
+				// read from the ring buffer
+				// send bytes actually read on a channel
 				framesUsed := math.MaxInt64
 				totalBytes := 0
 				datacopies := make([][]RawType, as.nchan)
 				nchanPrevDevices := 0
-				for _, dev := range as.active {
-					localBuffer, err := dev.ring.ReadAll()
+				for devnum, dev := range as.active {
+					bytesData, err := dev.ring.ReadAll()
 					if err != nil {
 						panic("AbacoDevice.ring.ReadAll failed")
 					}
-					nb := len(localBuffer)
+					nb := len(bytesData)
 					bframes := nb / dev.frameSize
 					if bframes < framesUsed {
 						framesUsed = bframes
 					}
+					log.Printf("Read device #%d, total of %d bytes = %d frames",
+						devnum, nb, bframes)
 
-					rawBuffer := bytesToRawType(localBuffer)
+					// This is the demultiplexing step. Loops over channels,
+					// then over frames.
+					rawBuffer := bytesToRawType(bytesData)
 					for i := 0; i < dev.nchan; i++ {
 						datacopies[i+nchanPrevDevices] = make([]RawType, framesUsed)
 						dc := datacopies[i+nchanPrevDevices]
@@ -276,24 +295,17 @@ func (as *AbacoSource) launchAbacoReader() {
 				if len(as.buffersChan) == cap(as.buffersChan) {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan)))
 				}
+				log.Printf("About to send on buffersChan")
 				as.buffersChan <- AbacoBuffersType{
 					datacopies: datacopies,
 					// lastSampleTime: lastSampleTime,
 					// timeDiff: timeDiff,
-					totalBytes: totalBytes}
-			}()
-			select {
-			case <-as.abortSelf:
-				// close anything that needs closing
-				return
-
-			case <-timeout.C:
-				// Handle failure to return
-				log.Printf("Abaco read timed out")
-				return
-
-			case <-as.buffersChan:
-				// Send the data on for further processing
+					totalBytes: totalBytes,
+				}
+				log.Printf("Sent something on buffersChan (%d bytes)", totalBytes)
+				if totalBytes > 0 {
+					timeout.Reset(timeoutPeriod)
+				}
 			}
 		}
 	}()
