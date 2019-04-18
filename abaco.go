@@ -402,16 +402,44 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	// THIS function isn't written yet!!!
 	datacopies := buffersMsg.datacopies
-	// lastSampleTime := buffersMsg.lastSampleTime
-	// timeDiff := buffersMsg.timeDiff
-	// totalBytes := buffersMsg.totalBytes
-	// framesUsed := len(datacopies[0])
+	lastSampleTime := buffersMsg.lastSampleTime
+	timeDiff := buffersMsg.timeDiff
+	totalBytes := buffersMsg.totalBytes
+	framesUsed := len(datacopies[0])
+
 	// Backtrack to find the time associated with the first sample.
-	// segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / as.sampleRate))
-	// firstTime := lastSampleTime.Add(-segDuration)
+	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / as.sampleRate))
+	firstTime := lastSampleTime.Add(-segDuration)
 	block := new(dataBlock)
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
+
+	// In the Lancero data this is where we scan for external triggers.
+	// That doesn't exist yet in Abaco.
+
+	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
+		data := datacopies[channelIndex]
+		seg := DataSegment{
+			rawData:         data,
+			framesPerSample: 1, // This will be changed later if decimating
+			framePeriod:     as.samplePeriod,
+			firstFramenum:   as.nextFrameNum,
+			firstTime:       firstTime,
+		}
+		block.segments[channelIndex] = seg
+		block.nSamp = len(data)
+	}
+	as.nextFrameNum += FrameIndex(framesUsed)
+	if as.heartbeats != nil {
+		as.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
+			Time: timeDiff.Seconds()}
+	}
+	now := time.Now()
+	delay := now.Sub(lastSampleTime)
+	if delay > 100*time.Millisecond {
+		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(as.buffersChan), cap(as.buffersChan), now.Sub(firstTime))
+	}
+
 	return block
 }
 
