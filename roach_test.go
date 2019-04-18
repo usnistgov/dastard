@@ -103,9 +103,9 @@ func TestRoachDevice(t *testing.T) {
 			t.Errorf("RoachDevice block has %d data segments, want %d", len(block.segments), dev.nchan)
 		}
 		for i, seg := range block.segments {
-			if seg.rawData[0] != RawType(i) {
+			if seg.rawData[0] != RawType(i/4) {
 				t.Errorf("RoachDevice block.segments[%d][0] = %d, want %d",
-					i, seg.rawData[0], i)
+					i, seg.rawData[0], i/4)
 			}
 			if len(seg.rawData) != block.nSamp {
 				t.Errorf("RoachDevice block.segments[%d] length=%d, want %d", i, len(seg.rawData), block.nSamp)
@@ -189,9 +189,9 @@ func TestRoachSource(t *testing.T) {
 			t.Errorf("RoachSource block has %d data segments, want %d", len(block.segments), dev.nchan)
 		}
 		for i, seg := range block.segments {
-			if seg.rawData[0] != RawType(i) {
+			if seg.rawData[0] != RawType(i/4) {
 				t.Errorf("RoachSource block.segments[%d][0] = %d, want %d",
-					i, seg.rawData[0], i)
+					i, seg.rawData[0], i/4)
 			}
 			if len(seg.rawData) != block.nSamp {
 				t.Errorf("RoachSource block.segments[%d] length=%d, want %d", i, len(seg.rawData), block.nSamp)
