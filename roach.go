@@ -98,6 +98,7 @@ func NewRoachDevice(host string, rate float64) (dev *RoachDevice, err error) {
 		return nil, err
 	}
 	conn, err := net.ListenUDP("udp", raddr)
+	conn.SetReadBuffer(100000000)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +243,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				fmt.Printf("header: %v, len(data)=%d\n", header, len(data))
 				nsamp[i] = ns
 			}
-			fmt.Println("i, header.Sampnum", i, header.Sampnum)
+			// fmt.Println("i, header.Sampnum", i, header.Sampnum)
 		}
 		firstlastDelay := time.Duration(totalNsamp-1) * dev.period
 		firstTime := readTime.Add(-firstlastDelay)
