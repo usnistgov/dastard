@@ -306,7 +306,64 @@ func (as *AbacoSource) readerMainLoop() {
 			}
 		}
 	}
+}
+
+// getNextBlock returns the channel on which data sources send data and any errors.
+// More importantly, wait on this returned channel to await the source having a data block.
+// This goroutine will end by putting a valid or error-ish dataBlock onto as.nextBlock.
+// If the block has a non-nil error, this goroutine will also close as.nextBlock.
+// The AbacoSource version also has to monitor the timeout channel and wait for
+// the buffersChan to yield real, valid Abaco data.
+// TODO: if there are any configuations that can change mid-run (analogous to Mix
+// for Lancero), we'll also want to handle those changes in this loop.
+func (as *AbacoSource) getNextBlock() chan *dataBlock {
+	panicTime := time.Duration(cap(as.buffersChan)) * as.readPeriod
+	go func() {
+		for {
+			// This select statement was formerly the ls.blockingRead method
+			select {
+			case <-time.After(panicTime):
+				panic(fmt.Sprintf("timeout, no data from Abaco after %v / %v", panicTime, as.readPeriod))
+
+			case buffersMsg, ok := <-as.buffersChan:
+				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
+				if buffersMsg.datacopies == nil || !ok {
+					block := new(dataBlock)
+					if err := as.stop(); err != nil {
+						block.err = err
+						as.nextBlock <- block
+					}
+					close(as.nextBlock)
+					return
+				}
+
+				// as.buffersChan contained valid data, so act on it.
+				block := as.distributeData(buffersMsg)
+				as.nextBlock <- block
+				if block.err != nil {
+					close(as.nextBlock)
+				}
+				return
+			}
+		}
 	}()
+	return as.nextBlock
+
+}
+
+func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
+	datacopies := buffersMsg.datacopies
+	// lastSampleTime := buffersMsg.lastSampleTime
+	// timeDiff := buffersMsg.timeDiff
+	// totalBytes := buffersMsg.totalBytes
+	// framesUsed := len(datacopies[0])
+	// Backtrack to find the time associated with the first sample.
+	// segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / as.sampleRate))
+	// firstTime := lastSampleTime.Add(-segDuration)
+	block := new(dataBlock)
+	nchan := len(datacopies)
+	block.segments = make([]DataSegment, nchan)
+	return block
 }
 
 // stop ends the data streaming on all active abaco devices.
