@@ -22,8 +22,6 @@ type AbacoDevice struct {
 	nchan     int
 	frameSize int // frame size, in bytes
 	ring      *ringbuffer.RingBuffer
-	// buffersize int
-	// buffer     []byte
 }
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
@@ -41,8 +39,6 @@ func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
 	if dev.ring, err = ringbuffer.NewRingBuffer(shmNameBuffer, shmNameDesc); err != nil {
 		return nil, err
 	}
-	// dev.buffersize = 1024 * 1024 // How to choose the size of the read buffer???
-	// dev.buffer = make([]byte, dev.buffersize)
 	return dev, nil
 }
 
@@ -271,10 +267,10 @@ func (as *AbacoSource) StartRun() error {
 // AbacoBuffersType is an internal message type used to allow
 // a goroutine to read from the Abaco card and put data on a buffered channel
 type AbacoBuffersType struct {
-	datacopies [][]RawType
-	// lastSampleTime time.Time
-	// timeDiff       time.Duration
-	totalBytes int
+	datacopies     [][]RawType
+	lastSampleTime time.Time
+	timeDiff       time.Duration
+	totalBytes     int
 }
 
 //
@@ -307,8 +303,10 @@ func (as *AbacoSource) readerMainLoop() {
 			totalBytes := 0
 			datacopies := make([][]RawType, as.nchan)
 			nchanPrevDevices := 0
+			var lastSampleTime time.Time
 			for devnum, dev := range as.active {
 				bytesData, err := dev.ring.ReadAll()
+				lastSampleTime = time.Now()
 				if err != nil {
 					panic("AbacoDevice.ring.ReadAll failed")
 				}
@@ -334,15 +332,21 @@ func (as *AbacoSource) readerMainLoop() {
 				}
 				totalBytes += nb
 			}
+			timeDiff := lastSampleTime.Sub(as.lastread)
+			if timeDiff > 2*as.readPeriod {
+				fmt.Println("timeDiff in abaco reader", timeDiff)
+			}
+			as.lastread = lastSampleTime
+
 			if len(as.buffersChan) == cap(as.buffersChan) {
 				panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan)))
 			}
 			log.Printf("About to send on buffersChan")
 			as.buffersChan <- AbacoBuffersType{
-				datacopies: datacopies,
-				// lastSampleTime: lastSampleTime,
-				// timeDiff: timeDiff,
-				totalBytes: totalBytes,
+				datacopies:     datacopies,
+				lastSampleTime: lastSampleTime,
+				timeDiff:       timeDiff,
+				totalBytes:     totalBytes,
 			}
 			log.Printf("Sent something on buffersChan (%d bytes)", totalBytes)
 			if totalBytes > 0 {
