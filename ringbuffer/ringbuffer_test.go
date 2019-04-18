@@ -2,6 +2,7 @@ package ringbuffer
 
 import (
 	"testing"
+	"time"
 
 	"github.com/fabiokung/shm"
 )
@@ -230,6 +231,33 @@ func TestBufferWriteRead(t *testing.T) {
 		t.Error("b.ReadAll() fails: ", err)
 	} else if len(data) != len(deadbeef) {
 		t.Errorf("b.ReadAll() returns %d bytes, want %d", len(data), len(deadbeef))
+	}
+
+	// Empty the buffer, try ReadMinimum first, then fill after a delay
+	if err = b.DiscardAll(); err != nil {
+		t.Error("b.DiscardAll() fails: ", err)
+	}
+	msize := 100
+	shortmessage := make([]byte, msize)
+	for i := 0; i < msize; i++ {
+		shortmessage[i] = byte(i)
+	}
+	writebuf.write(shortmessage)
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		writebuf.write(shortmessage)
+	}()
+	read, err := b.ReadMinimum(2 * msize)
+	if err != nil {
+		t.Errorf("b.ReadMinimum(%d) fails", 2*msize)
+	}
+	if len(read) != 2*msize {
+		t.Errorf("b.ReadMinimum(%d) returns %d bytes",
+			2*msize, read)
+	}
+	if _, err = b.ReadMinimum(buffersize * 2); err == nil {
+		t.Errorf("b.ReadMinimum(%d) should fail for buffer size %d",
+			2*buffersize, buffersize)
 	}
 
 	// Done with writing and reading. Close buffers.
