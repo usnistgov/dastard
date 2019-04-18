@@ -878,6 +878,9 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	stream.firstFramenum = segment.firstFramenum - framesNowInStream
 	stream.firstTime = segment.firstTime.Add(-timeNowInStream)
 	stream.rawData = append(stream.rawData, segment.rawData...)
+	stream.signed = segment.signed // there are multiple sources of true on wether something is signed
+	// this syncs with segment.signed which comes from deep in a datasource
+	// but there is also AnySource.signed which seems indepdendent
 	stream.samplesSeen += len(segment.rawData)
 }
 

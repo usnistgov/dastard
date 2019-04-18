@@ -17,6 +17,7 @@ type RoachDevice struct {
 	nchan  int
 	conn   *net.UDPConn // active UDP connection
 	nextS  FrameIndex
+	unwrap []*PhaseUnwrapper
 }
 
 // RoachSource represents multiple ROACH devices
@@ -26,6 +27,64 @@ type RoachSource struct {
 	readPeriod time.Duration
 	// buffersChan chan AbacoBuffersType
 	AnySource
+}
+
+type PhaseUnwrapper struct {
+	lastVal   int16
+	offset    int16
+	highCount int
+	lowCount  int
+}
+
+// UnwrapInPlace unwraps in place
+func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
+
+	// as read from the Roach
+	// data bytes representing a 2s complement integer
+	// where 2^14 is 1 phi0
+	// so int(data[i])/2^14 is a number from -0.5 to 0.5 phi0
+	// after this function we want 2^12 to be 1 phi0
+	// 2^12 = 4096
+	// 2^14 = 16384
+	bits_to_keep := uint(14)
+	bits_to_shift := 16 - bits_to_keep
+	one_equiv := int16(1) << (bits_to_keep - 3)
+	two_equiv := one_equiv << 1
+	//phi0_lim := (4 * (1 << (16 - bits_to_keep)) / 2) - 1
+	for i, rawVal := range *data {
+		v := int16(rawVal) >> bits_to_shift
+		delta := v - u.lastVal
+		if delta > one_equiv {
+			u.offset -= two_equiv
+		} else if delta < -one_equiv {
+			u.offset += two_equiv
+		}
+		if u.offset >= two_equiv {
+			u.highCount += 1
+			u.lowCount = 0
+		} else if u.offset <= -two_equiv {
+			u.lowCount += 1
+			u.highCount = 0
+		} else {
+			u.lowCount = 0
+			u.highCount = 0
+		}
+		if u.highCount > 2000 {
+			u.offset -= two_equiv
+			u.highCount = 0
+		} else if u.lowCount > 2000 {
+			u.offset += two_equiv
+			u.lowCount = 0
+		}
+		// if v != u.lastVal {
+		// 	fmt.Printf("lowCount %v, highCount %v, v %v, offset %v, v-offset %v, one_equiv %v, two_equiv %v\n",
+		// 		u.lowCount, u.highCount, float64(v)/float64(one_equiv),
+		// 		float64(u.offset)/float64(one_equiv), float64(v)/float64(one_equiv)-float64(u.offset)/float64(one_equiv),
+		// 		one_equiv, two_equiv)
+		// }
+		(*data)[i] = RawType(v + u.offset)
+		u.lastVal = v
+	}
 }
 
 // NewRoachDevice creates a new RoachDevice.
@@ -95,6 +154,10 @@ func (dev *RoachDevice) samplePacket() error {
 	_, _, err := dev.conn.ReadFromUDP(p)
 	header, _ := parsePacket(p)
 	dev.nchan = int(header.Nchan)
+	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
+	for i := range dev.unwrap {
+		dev.unwrap[i] = &(PhaseUnwrapper{})
+	}
 	return err
 }
 
@@ -179,6 +242,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				fmt.Printf("header: %v, len(data)=%d\n", header, len(data))
 				nsamp[i] = ns
 			}
+			fmt.Println("i, header.Sampnum", i, header.Sampnum)
 		}
 		firstlastDelay := time.Duration(totalNsamp-1) * dev.period
 		firstTime := readTime.Add(-firstlastDelay)
@@ -208,6 +272,8 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				}
 				idx += nsamp[idxdata]
 			}
+			unwrap := dev.unwrap[i]
+			unwrap.UnwrapInPlace(&raw)
 			block.segments[i] = DataSegment{
 				rawData:         raw,
 				signed:          true,
