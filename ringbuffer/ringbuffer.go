@@ -215,6 +215,17 @@ func (rb *RingBuffer) Read(size int) (data []byte, err error) {
 	return
 }
 
+// ReadMultipleOf will return a multiple (possibly 0) of chunksize bytes.
+func (rb *RingBuffer) ReadMultipleOf(chunksize int) (data []byte, err error) {
+	if uint64(chunksize) >= rb.desc.bufferSize {
+		return nil, fmt.Errorf("Cannot call ReadMultipleOf(%d), want < %d", chunksize,
+			rb.desc.bufferSize)
+	}
+	available := rb.BytesReadable()
+	nchunks := available / chunksize
+	return rb.Read(chunksize * nchunks)
+}
+
 // ReadAll reads all the bytes available in the buffer.
 func (rb *RingBuffer) ReadAll() (data []byte, err error) {
 	return rb.Read(int(rb.desc.bufferSize))

@@ -260,6 +260,41 @@ func TestBufferWriteRead(t *testing.T) {
 			2*buffersize, buffersize)
 	}
 
+	// Empty the buffer, try ReadMultipleOf first, then fill and try again
+	if err = b.DiscardAll(); err != nil {
+		t.Error("b.DiscardAll() fails: ", err)
+	}
+	writebuf.write(shortmessage)
+	data, err = b.ReadMultipleOf(msize * 2)
+	if err != nil {
+		t.Errorf("b.ReadMultipleOf(%d) fails", msize*2)
+	}
+	if len(data) > 0 {
+		t.Errorf("b.ReadMultipleOf(%d) returns %d bytes, expect 0",
+			msize*2, len(data))
+	}
+	data, err = b.ReadMultipleOf(msize / 2)
+	if err != nil {
+		t.Errorf("b.ReadMultipleOf(%d) fails", msize/2)
+	}
+	if len(data) != msize {
+		t.Errorf("b.ReadMultipleOf(%d) returns %d bytes, expect %d",
+			msize/2, len(data), msize)
+	}
+	writebuf.write(shortmessage)
+	data, err = b.ReadMultipleOf(msize - 1)
+	if err != nil {
+		t.Errorf("b.ReadMultipleOf(%d) fails", msize-1)
+	}
+	if len(data) != msize-1 {
+		t.Errorf("b.ReadMultipleOf(%d) returns %d bytes, expect %d",
+			msize-1, len(data), msize-1)
+	}
+	if _, err = b.ReadMultipleOf(buffersize * 2); err == nil {
+		t.Errorf("b.ReadMultipleOf(%d) should fail for buffer size %d",
+			2*buffersize, buffersize)
+	}
+
 	// Done with writing and reading. Close buffers.
 	if err = b.Close(); err != nil {
 		t.Error("Failed RingBuffer.Close", err)
