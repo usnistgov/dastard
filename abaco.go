@@ -89,11 +89,55 @@ func (device *AbacoDevice) sampleCard() error {
 		device.ncols = n
 		device.nrows = (p - q) / n
 		device.nchan = device.ncols * device.nrows
-		device.frameSize = device.ncols * device.nrows * 4
+		device.frameSize = device.ncols * device.nrows * 2
 	} else {
 		fmt.Printf("Error in FindFrameBits: %v", err3)
+		return err3
 	}
-	return nil
+	return device.DiscardPartialFrame(data)
+}
+
+// DiscardPartialFrame reads and discards between [0, device.frameSize-1]
+// bytes from the device's ring buffer, so that future reads will be aligned
+// to the start of a frame.
+func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
+	if len(lastdata) < device.frameSize {
+		return fmt.Errorf("DiscardPartialFrame failed: given %d bytes, need %d",
+			len(lastdata), device.frameSize)
+	}
+	// Can ignore all but the last 1 frame of data
+	lastdata = lastdata[len(lastdata)-device.frameSize:]
+	indexrow0 := -1
+	for i := 0; i < device.frameSize; i += 4 {
+		if lastdata[i]&0x1 != 0 {
+			indexrow0 = i / 4
+			break
+		}
+	}
+	if indexrow0 < 0 {
+		return fmt.Errorf("DiscardPartialFrame found no frame bits")
+	}
+	indexrow1 := -1
+	for i := 4*indexrow0 + 4; i < device.frameSize; i += 4 {
+		if lastdata[i]&0x1 == 0 {
+			indexrow1 = i / 4
+			break
+		}
+	}
+	bytesToRead := 0
+	if indexrow0 > 0 { // started checking after row 0
+		bytesToRead = indexrow0 * 4
+	} else { // started checking during (or at start of) row 0
+		if indexrow1-indexrow0 == device.ncols {
+			bytesToRead = 0
+		} else {
+			nrow0missed := device.ncols - (indexrow1 - indexrow0)
+			bytesToRead = device.frameSize - 4*nrow0missed
+		}
+
+	}
+	_, err := device.ring.ReadMinimum(bytesToRead)
+	return err
 }
 
 // AbacoSource represents all Abaco devices that can potentially supply data.
@@ -352,6 +396,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 }
 
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
+	// THIS function isn't written yet!!!
 	datacopies := buffersMsg.datacopies
 	// lastSampleTime := buffersMsg.lastSampleTime
 	// timeDiff := buffersMsg.timeDiff
