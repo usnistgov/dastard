@@ -85,7 +85,7 @@ func (device *AbacoDevice) sampleCard() error {
 		device.ncols = n
 		device.nrows = (p - q) / n
 		device.nchan = device.ncols * device.nrows
-		device.frameSize = device.ncols * device.nrows * 2
+		device.frameSize = device.ncols * device.nrows * 4 // For now: 4 bytes/sample
 	} else {
 		fmt.Printf("Error in FindFrameBits: %v", err3)
 		return err3
@@ -104,7 +104,8 @@ func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
 	// Can ignore all but the last 1 frame of data
 	lastdata = lastdata[len(lastdata)-device.frameSize:]
 	indexrow0 := -1
-	for i := 0; i < device.frameSize; i += 4 {
+	fmt.Printf("Raw lastdata: %v\n", lastdata)
+	for i := abacoFBOffset; i < device.frameSize; i += 4 {
 		if lastdata[i]&0x1 != 0 {
 			indexrow0 = i / 4
 			break
@@ -114,7 +115,7 @@ func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
 		return fmt.Errorf("DiscardPartialFrame found no frame bits")
 	}
 	indexrow1 := -1
-	for i := 4*indexrow0 + 4; i < device.frameSize; i += 4 {
+	for i := 4*indexrow0 + 4 + abacoFBOffset; i < device.frameSize; i += 4 {
 		if lastdata[i]&0x1 == 0 {
 			indexrow1 = i / 4
 			break
