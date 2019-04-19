@@ -24,6 +24,7 @@ type FrameIndex int64
 // SourceState is used to indicate the active/inactive/transition state of data sources
 type SourceState int
 
+// Names for the possible values of SourceState
 const (
 	Inactive SourceState = iota // Source is not active
 	Starting                    // Source is in transition to Active state
@@ -43,7 +44,6 @@ type DataSource interface {
 	SetStateStarting() error
 	getNextBlock() chan *dataBlock
 	Nchan() int
-	Signed() []bool
 	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
 	ComputeWritingState() WritingState
@@ -245,7 +245,6 @@ type AnySource struct {
 	chanNames    []string      // one name per channel
 	chanNumbers  []int         // names have format "prefixNumber", this is the number
 	rowColCodes  []RowColCode  // one RowColCode per channel
-	signed       []bool        // is the raw data signed, one per channel
 	voltsPerArb  []float32     // the physical units per arb, one per channel
 	sampleRate   float64       // samples per second
 	samplePeriod time.Duration // time per sample
@@ -288,6 +287,10 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	var wg sync.WaitGroup
 	for i, dsp := range ds.processors {
+		if i >= len(block.segments) {
+			fmt.Printf("Oh crap! block has %d segments but Source has %d processors",
+				len(block.segments), len(ds.processors))
+		}
 		segment := block.segments[i]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
@@ -624,12 +627,14 @@ func (ds *AnySource) Running() bool {
 	return ds.GetState() == Active
 }
 
+// GetState returns the sourceState value in a race-free fashion
 func (ds *AnySource) GetState() SourceState {
 	ds.sourceStateLock.Lock()
 	defer ds.sourceStateLock.Unlock()
 	return ds.sourceState
 }
 
+// SetStateStarting sets the sourceState value to Starting in a race-free fashion
 func (ds *AnySource) SetStateStarting() error {
 	ds.sourceStateLock.Lock()
 	defer ds.sourceStateLock.Unlock()
@@ -638,16 +643,6 @@ func (ds *AnySource) SetStateStarting() error {
 		return nil
 	}
 	return fmt.Errorf("cannot Start() a source that's %v, not Inactive", ds.sourceState)
-}
-
-// Signed returns a per-channel value: whether data are signed ints.
-func (ds *AnySource) Signed() []bool {
-	// Objects containing an AnySource can override this, but default is here:
-	// all channels are unsigned.
-	if ds.signed == nil {
-		ds.signed = make([]bool, ds.nchan)
-	}
-	return ds.signed
 }
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
@@ -697,7 +692,6 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
-	signed := ds.Signed()
 	vpa := ds.VoltsPerArb()
 
 	// Load last trigger state from config file
@@ -731,7 +725,6 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 		dsp := NewDataStreamProcessor(channelIndex, ds.broker, Npresamples, Nsamples)
 		dsp.Name = ds.chanNames[channelIndex]
 		dsp.SampleRate = ds.sampleRate
-		dsp.stream.signed = signed[channelIndex]
 		dsp.stream.voltsPerArb = vpa[channelIndex]
 		ds.processors[channelIndex] = dsp
 
@@ -871,6 +864,9 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	stream.firstFramenum = segment.firstFramenum - framesNowInStream
 	stream.firstTime = segment.firstTime.Add(-timeNowInStream)
 	stream.rawData = append(stream.rawData, segment.rawData...)
+	stream.signed = segment.signed // there are multiple sources of true on wether something is signed
+	// this syncs with segment.signed which comes from deep in a datasource
+	// but there is also AnySource.signed which seems indepdendent
 	stream.samplesSeen += len(segment.rawData)
 }
 
