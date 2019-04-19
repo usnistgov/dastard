@@ -54,11 +54,16 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	for i, rawVal := range *data {
 		v := int16(rawVal) >> bits_to_shift
 		delta := v - u.lastVal
+
+		// short term unwrapping
 		if delta > one_equiv {
 			u.offset -= two_equiv
 		} else if delta < -one_equiv {
 			u.offset += two_equiv
 		}
+
+		// long term keeping baseline at same phi0
+		// if the offset is nonzero for a long time, set it to zero
 		if u.offset >= two_equiv {
 			u.highCount += 1
 			u.lowCount = 0
@@ -69,19 +74,11 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 			u.lowCount = 0
 			u.highCount = 0
 		}
-		if u.highCount > 2000 {
-			u.offset -= two_equiv
+		if (u.highCount > 2000) || (u.lowCount > 2000) { // 2000 should be a setable parameter
+			u.offset = 0
 			u.highCount = 0
-		} else if u.lowCount > 2000 {
-			u.offset += two_equiv
 			u.lowCount = 0
 		}
-		// if v != u.lastVal {
-		// 	fmt.Printf("lowCount %v, highCount %v, v %v, offset %v, v-offset %v, one_equiv %v, two_equiv %v\n",
-		// 		u.lowCount, u.highCount, float64(v)/float64(one_equiv),
-		// 		float64(u.offset)/float64(one_equiv), float64(v)/float64(one_equiv)-float64(u.offset)/float64(one_equiv),
-		// 		one_equiv, two_equiv)
-		// }
 		(*data)[i] = RawType(v + u.offset)
 		u.lastVal = v
 	}
