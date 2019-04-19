@@ -46,28 +46,28 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	// after this function we want 2^12 to be 1 phi0
 	// 2^12 = 4096
 	// 2^14 = 16384
-	bits_to_keep := uint(14)
-	bits_to_shift := 16 - bits_to_keep
-	one_equiv := int16(1) << (bits_to_keep - 3)
-	two_equiv := one_equiv << 1
+	bitsToKeep := uint(14)
+	bitsToShift := 16 - bitsToKeep
+	onePi := int16(1) << (bitsToKeep - 3)
+	twoPi := onePi << 1
 	//phi0_lim := (4 * (1 << (16 - bits_to_keep)) / 2) - 1
 	for i, rawVal := range *data {
-		v := int16(rawVal) >> bits_to_shift
+		v := int16(rawVal) >> bitsToShift
 		delta := v - u.lastVal
 
 		// short term unwrapping
-		if delta > one_equiv {
-			u.offset -= two_equiv
-		} else if delta < -one_equiv {
-			u.offset += two_equiv
+		if delta > onePi {
+			u.offset -= twoPi
+		} else if delta < -onePi {
+			u.offset += twoPi
 		}
 
 		// long term keeping baseline at same phi0
 		// if the offset is nonzero for a long time, set it to zero
-		if u.offset >= two_equiv {
+		if u.offset >= twoPi {
 			u.highCount += 1
 			u.lowCount = 0
-		} else if u.offset <= -two_equiv {
+		} else if u.offset <= -twoPi {
 			u.lowCount += 1
 			u.highCount = 0
 		} else {
