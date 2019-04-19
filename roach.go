@@ -259,7 +259,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 			} else {
 				warning = fmt.Sprintf("  **** %6d samples this block or %6d too many", totalNsamp, -d)
 			}
-			fmt.Printf("Sample %9d  Δs = %7d%s\n",
+			fmt.Printf("POTENTIAL DROPPED DATA: Sample %9d  Δs = %7d%s\n",
 				firstFramenum, firstFramenum-dev.nextS, warning)
 		}
 
