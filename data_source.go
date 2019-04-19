@@ -44,7 +44,6 @@ type DataSource interface {
 	SetStateStarting() error
 	getNextBlock() chan *dataBlock
 	Nchan() int
-	Signed() []bool
 	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
 	ComputeWritingState() WritingState
@@ -246,7 +245,6 @@ type AnySource struct {
 	chanNames    []string      // one name per channel
 	chanNumbers  []int         // names have format "prefixNumber", this is the number
 	rowColCodes  []RowColCode  // one RowColCode per channel
-	signed       []bool        // is the raw data signed, one per channel
 	voltsPerArb  []float32     // the physical units per arb, one per channel
 	sampleRate   float64       // samples per second
 	samplePeriod time.Duration // time per sample
@@ -647,16 +645,6 @@ func (ds *AnySource) SetStateStarting() error {
 	return fmt.Errorf("cannot Start() a source that's %v, not Inactive", ds.sourceState)
 }
 
-// Signed returns a per-channel value: whether data are signed ints.
-func (ds *AnySource) Signed() []bool {
-	// Objects containing an AnySource can override this, but default is here:
-	// all channels are unsigned.
-	if ds.signed == nil {
-		ds.signed = make([]bool, ds.nchan)
-	}
-	return ds.signed
-}
-
 // VoltsPerArb returns a per-channel value scaling raw into volts.
 func (ds *AnySource) VoltsPerArb() []float32 {
 	// Objects containing an AnySource can set this up, but here is the default
@@ -704,7 +692,6 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
-	signed := ds.Signed()
 	vpa := ds.VoltsPerArb()
 
 	// Load last trigger state from config file
@@ -738,7 +725,6 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 		dsp := NewDataStreamProcessor(channelIndex, ds.broker, Npresamples, Nsamples)
 		dsp.Name = ds.chanNames[channelIndex]
 		dsp.SampleRate = ds.sampleRate
-		dsp.stream.signed = signed[channelIndex]
 		dsp.stream.voltsPerArb = vpa[channelIndex]
 		ds.processors[channelIndex] = dsp
 

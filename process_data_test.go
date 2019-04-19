@@ -188,18 +188,8 @@ func TestDataSignedness(t *testing.T) {
 	// TODO: use a no-hardware source to test this!
 	var ls LanceroSource
 	ls.nchan = 4
-	ls.signed = make([]bool, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		ls.signed[i] = true
-	}
 	ls.PrepareRun(256, 1024)
 	defer ls.Stop()
-	for i, dsp := range ls.processors {
-		expect := (i % 2) == 0
-		if dsp.stream.signed != expect {
-			t.Errorf("LanceroSource.processors[%d].stream.signed is %t, want %t", i, dsp.stream.signed, expect)
-		}
-	}
 
 	errsig := []RawType{3, 3, 1, 1, 65535, 65535, 65533, 65533,
 		65533, 65535, 65535, 1, 1, 3, 65535, 1, 65530, 6, 65500, 36}

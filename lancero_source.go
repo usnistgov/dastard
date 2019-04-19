@@ -226,10 +226,6 @@ func (ls *LanceroSource) Sample() error {
 	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
 	ls.updateChanOrderMap()
 
-	ls.signed = make([]bool, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		ls.signed[i] = true
-	}
 	ls.voltsPerArb = make([]float32, ls.nchan)
 	for i := 0; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1.0 / (4096. * float32(ls.nsamp))

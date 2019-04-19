@@ -309,7 +309,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 
 	const headerVersion = uint8(0)
 	dataType := uint8(3)
-	if rec.signed {
+	if rec.signed { // DataSegment.signed is set deep within a source, then dsp.signed is set equal to DataSegment.signed in process data, then DataRecord.signed is set equal to dsp.signed upon record generation
 		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
