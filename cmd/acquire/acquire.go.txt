@@ -92,14 +92,14 @@ func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 					if err == io.EOF {
 						return
 					} else if err != nil {
-						log.Printf("ERROR ", err)
+						log.Printf("ERROR %v", err)
 						return
 					}
 				}
 				if err == io.EOF {
 					return
 				} else if err != nil {
-					log.Printf("ERROR ", err)
+					log.Printf("ERROR %v", err)
 					return
 				}
 			} else {
@@ -112,7 +112,7 @@ func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 					if err == io.EOF {
 						return
 					} else if err != nil {
-						log.Printf("ERROR ", err)
+						log.Printf("ERROR %v", err)
 						return
 					}
 				}

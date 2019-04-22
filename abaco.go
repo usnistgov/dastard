@@ -154,7 +154,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.devices = make(map[int]*AbacoDevice)
 
 	devnums, err := enumerateAbacoDevices()
-	fmt.Printf("enumerateAbacoDevices returns %v\n", devnums)
+	// fmt.Printf("enumerateAbacoDevices returns %v\n", devnums)
 	if err != nil {
 		return source, err
 	}
@@ -172,7 +172,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	if source.Ndevices == 0 && len(devnums) > 0 {
 		return source, fmt.Errorf("could not open any of /dev/xdma0_c2h_*, though devnums %v exist", devnums)
 	}
-	fmt.Printf("NewAbacoSource has %d devices\n", source.Ndevices)
+	// fmt.Printf("NewAbacoSource has %d devices\n", source.Ndevices)
 	return source, nil
 }
 

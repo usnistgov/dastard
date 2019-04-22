@@ -24,12 +24,12 @@ import (
 // the Dastard data sources.
 // TODO: consider renaming -> DastardControl (5/11/18)
 type SourceControl struct {
-	simPulses *SimPulseSource
-	triangle  *TriangleSource
-	lancero   *LanceroSource
-	abaco     *AbacoSource
-	erroring  *ErroringSource
-	// TODO: Add sources for ROACH
+	simPulses      *SimPulseSource
+	triangle       *TriangleSource
+	lancero        *LanceroSource
+	roach          *RoachSource
+	abaco          *AbacoSource
+	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
 
@@ -56,12 +56,15 @@ func NewSourceControl() *SourceControl {
 	sc.erroring = NewErroringSource()
 	lan, _ := NewLanceroSource()
 	sc.lancero = lan
+	sc.roach, _ = NewRoachSource()
 	sc.abaco, _ = NewAbacoSource()
 
 	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle.heartbeats = sc.heartbeats
 	sc.erroring.heartbeats = sc.heartbeats
 	sc.lancero.heartbeats = sc.heartbeats
+	sc.roach.heartbeats = sc.heartbeats
+	sc.abaco.heartbeats = sc.heartbeats
 
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
@@ -129,11 +132,21 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	return err
 }
 
-// ConfigureAbacoSource configures the abaco cards.
+// ConfigureAbacoSource configures the Abaco cards.
 func (s *SourceControl) ConfigureAbacoSource(args *AbacoSourceConfig, reply *bool) error {
 	log.Printf("ConfigureAbacoSource: \n")
 	err := s.abaco.Configure(args)
 	s.clientUpdates <- ClientUpdate{"ABACO", args}
+	*reply = (err == nil)
+	log.Printf("Result is okay=%t\n", *reply)
+	return err
+}
+
+// ConfigureRoachSource configures the abaco cards.
+func (s *SourceControl) ConfigureRoachSource(args *RoachSourceConfig, reply *bool) error {
+	log.Printf("ConfigureRoachSource: \n")
+	err := s.roach.Configure(args)
+	s.clientUpdates <- ClientUpdate{"ROACH", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t\n", *reply)
 	return err
@@ -279,6 +292,10 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.ActiveSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
+	case "ROACHSOURCE":
+		s.ActiveSource = DataSource(s.roach)
+		s.status.SourceName = "Roach"
+
 	case "ABACOSOURCE":
 		s.ActiveSource = DataSource(s.abaco)
 		s.status.SourceName = "Abaco"
@@ -286,8 +303,6 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	case "ERRORINGSOURCE":
 		s.ActiveSource = DataSource(s.erroring)
 		s.status.SourceName = "Erroring"
-
-	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
@@ -592,6 +607,11 @@ func RunRPCServer(portrpc int, block bool) {
 	err = viper.UnmarshalKey("abaco", &asc)
 	if err == nil {
 		sourceControl.ConfigureAbacoSource(&asc, &okay)
+	}
+	var rsc RoachSourceConfig
+	err = viper.UnmarshalKey("roach", &rsc)
+	if err == nil {
+		sourceControl.ConfigureRoachSource(&rsc, &okay)
 	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false

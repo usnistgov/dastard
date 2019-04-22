@@ -229,10 +229,6 @@ func (ls *LanceroSource) Sample() error {
 	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
 	ls.updateChanOrderMap()
 
-	ls.signed = make([]bool, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		ls.signed[i] = true
-	}
 	ls.voltsPerArb = make([]float32, ls.nchan)
 	for i := 0; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1.0 / (4096. * float32(ls.nsamp))
@@ -660,7 +656,8 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
-		if channelIndex%2 == 1 { // feedback channel needs more processing
+		isFeedbackChannel := (channelIndex%2 == 1)
+		if isFeedbackChannel { // feedback channel needs more processing
 			mix := ls.Mix[channelIndex]
 			errData := datacopies[ls.chan2readoutOrder[channelIndex-1]]
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.errorScale
@@ -672,6 +669,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 			framePeriod:     ls.samplePeriod,
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
+			signed:          !isFeedbackChannel,
 		}
 		block.segments[channelIndex] = seg
 		block.nSamp = len(data)
