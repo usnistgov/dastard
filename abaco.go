@@ -24,37 +24,42 @@ type AbacoDevice struct {
 	ring      *ringbuffer.RingBuffer
 }
 
-// NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
-// For now, assume card 0 with channels 0,1,2,... We can add a second card later.
-func NewAbacoDevice(devnum int) (dev *AbacoDevice, err error) {
-	dev = new(AbacoDevice)
-	dev.cardnum = 0 // Force card zero for now
-	dev.devnum = devnum
-	if devnum != 0 {
-		return nil, fmt.Errorf("NewAbacoDevice only supports devnum=0")
-	}
+const maxAbacoCards = 4    // Don't allow more than this many cards.
+const maxAbacoChannels = 8 // Don't allow more than this many channels per card.
 
-	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_%d_buffer", dev.cardnum, devnum)
-	shmNameDesc := fmt.Sprintf("xdma%d_c2h_%d_description", dev.cardnum, devnum)
+// NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
+func NewAbacoDevice(cardnum, devnum int) (dev *AbacoDevice, err error) {
+	if cardnum >= maxAbacoCards || cardnum < 0 {
+		return nil, fmt.Errorf("NewAbacoDevice() got cardnum=%d, want [0,%d]",
+			cardnum, maxAbacoCards-1)
+	}
+	if devnum >= maxAbacoChannels || devnum < 0 {
+		return nil, fmt.Errorf("NewAbacoDevice() got devnum=%d, want [0,%d]",
+			devnum, maxAbacoChannels-1)
+	}
+	dev = new(AbacoDevice)
+	dev.cardnum = cardnum
+	dev.devnum = devnum
+
+	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_%d_buffer", dev.cardnum, dev.devnum)
+	shmNameDesc := fmt.Sprintf("xdma%d_c2h_%d_description", dev.cardnum, dev.devnum)
 	if dev.ring, err = ringbuffer.NewRingBuffer(shmNameBuffer, shmNameDesc); err != nil {
 		return nil, err
 	}
 	return dev, nil
 }
 
-// abacoFBOffset gives the location of the frame bit is in bytes 0, 4, 8...
-// (In the TDM system, this value is 2, meaning frame bits are in 2, 6, 10...)
+// abacoFBOffset gives the location of the frame bits: in bytes 0, 4, 8...
+// (In the TDM system, this value is 2, meaning frame bits are in bytes 2, 6, 10....)
 const abacoFBOffset int = 0
 
 // sampleCard samples the data from a single card to scan for frame bits.
 // For Abaco µMUX systems, we need to discard one DMA buffer worth of stale data,
 // then check the data after that for frame bit info.
-// 1. Open the user file and query it for the data rate, number of channels (?),
-//    firmware FIFO size, and firmware version.
-// 2. Read at least 2 FIFOs plus enough data to discern frame bits
-// 3. Discard 2 FIFOs
-// 4. Scan for frame bits
-// 5. Store info that we've learned in AbacoSource or per device.
+// 1. Discard all data currently in the ring buffer.
+// 2. Discard 2 FIFOs worth of new data (John says sometimes needed).
+// 3. Read 32k: enough data to discern frame bits; scan for frame bits
+// 4. Store info that we've learned in AbacoSource or per device.
 func (device *AbacoDevice) sampleCard() error {
 	// Open the device and discard whatever is in the buffer
 	if err := device.ring.Open(); err != nil {
@@ -153,33 +158,33 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.name = "Abaco"
 	source.devices = make(map[int]*AbacoDevice)
 
-	devnums, err := enumerateAbacoDevices()
-	// fmt.Printf("enumerateAbacoDevices returns %v\n", devnums)
+	deviceCodes, err := enumerateAbacoDevices()
+	// fmt.Printf("enumerateAbacoDevices returns %v\n", deviceCodes)
 	if err != nil {
 		return source, err
 	}
 
-	for _, dnum := range devnums {
-		ad, err := NewAbacoDevice(dnum)
+	for _, code := range deviceCodes {
+		cnum := code / 10
+		dnum := code % 10
+		ad, err := NewAbacoDevice(cnum, dnum)
 		if err != nil {
-			log.Printf("warning: failed to open /dev/xdma0_c2h_%d", dnum)
+			log.Printf("warning: failed to create ring buffer for /dev/xdma%d_c2h_%d, though it should exist", cnum, dnum)
 			continue
 		}
-		// cardnum = 0 // For now, only card 0 is allowed.
-		source.devices[dnum] = ad
+		source.devices[code] = ad
 		source.Ndevices++
 	}
-	if source.Ndevices == 0 && len(devnums) > 0 {
-		return source, fmt.Errorf("could not open any of /dev/xdma0_c2h_*, though devnums %v exist", devnums)
+	if source.Ndevices == 0 && len(deviceCodes) > 0 {
+		return source, fmt.Errorf("could not create ring buffer for any of /dev/xdma*_c2h_*, though deviceCodes %v exist", deviceCodes)
 	}
-	// fmt.Printf("NewAbacoSource has %d devices\n", source.Ndevices)
 	return source, nil
 }
 
-// Delete closes all Abaco cards
+// Delete closes the ring buffers for all Abaco devices
 func (as *AbacoSource) Delete() {
-	for i := range as.devices {
-		fmt.Printf("Closing device %d.\n", i)
+	for _, dev := range as.devices {
+		dev.ring.Close()
 	}
 }
 
@@ -210,14 +215,9 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	// Activate the cards listed in the config request.
 	as.active = make([]*AbacoDevice, 0)
 	for i, c := range config.ActiveCards {
-		if c < 0 || c >= len(as.devices) {
-			log.Printf("Warning: could not activate device %d, as there are only 0-%d\n",
-				c, len(as.devices)-1)
-			continue
-		}
 		dev := as.devices[c]
 		if dev == nil {
-			err = fmt.Errorf("i=%v, c=%v, device == nil", i, c)
+			err = fmt.Errorf("i=%v, c=%v (card %d, dev %d), device == nil", i, c, c/10, c%10)
 			break
 		}
 		if contains(as.active, dev) {
@@ -240,8 +240,7 @@ func (as *AbacoSource) Sample() error {
 		return fmt.Errorf("No Abaco devices are active")
 	}
 	for _, device := range as.active {
-		err := device.sampleCard()
-		if err != nil {
+		if err := device.sampleCard(); err != nil {
 			return err
 		}
 		as.nchan += device.ncols * device.nrows
@@ -401,7 +400,6 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 }
 
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
-	// THIS function isn't written yet!!!
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
@@ -447,6 +445,9 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 // stop ends the data streaming on all active abaco devices.
 func (as *AbacoSource) stop() error {
 	// loop over as.active and do any needed stopping functions.
+	for _, dev := range as.active {
+		dev.ring.Close()
+	}
 	return nil
 }
 
@@ -454,19 +455,20 @@ func (as *AbacoSource) stop() error {
 // in the devfs. If /dev/xdma0_c2h_X exists, then X is added to the list.
 // Does not yet handle cards other than xdma0.
 func enumerateAbacoDevices() (devices []int, err error) {
-	MAXDEVICES := 8
-	for id := 0; id < MAXDEVICES; id++ {
-		name := fmt.Sprintf("/dev/xdma0_c2h_%d", id)
-		info, err := os.Stat(name)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			} else {
-				return devices, err
+	for cnum := 0; cnum < maxAbacoCards; cnum++ {
+		for id := 0; id < maxAbacoChannels; id++ {
+			name := fmt.Sprintf("/dev/xdma%d_c2h_%d", cnum, id)
+			info, err := os.Stat(name)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				} else {
+					return devices, err
+				}
 			}
-		}
-		if (info.Mode() & os.ModeDevice) != 0 {
-			devices = append(devices, id)
+			if (info.Mode() & os.ModeDevice) != 0 {
+				devices = append(devices, 10*cnum+id)
+			}
 		}
 	}
 	return devices, nil
