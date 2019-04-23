@@ -388,7 +388,7 @@ func roundint(x float64) int {
 }
 
 type cringeGlobals struct {
-	Sett             int `json:"SETT"`
+	Settle           int `json:"SETT"`
 	SequenceLength   int `json:"seqln"`
 	Lsync            int `json:"lsync"`
 	TestPattern      int `json:"testpattern"`
