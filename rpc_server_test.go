@@ -429,6 +429,9 @@ func TestMain(m *testing.M) {
 	log.SetOutput(f)
 	lancero.SetLogOutput(f)
 
+	// set global cringeGlobalsPath to point to test file
+	cringeGlobalsPath = "lancero/test_data/cringeGlobals.json"
+
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
 		panic(err)

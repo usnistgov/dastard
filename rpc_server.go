@@ -594,9 +594,6 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var lsc LanceroSourceConfig
 	err = viper.UnmarshalKey("lancero", &lsc)
-	if lsc.Nsamp == 0 { // default to a valid Nsamp value to avoid ConfigureLanceroSource throwing an error
-		lsc.Nsamp = 16
-	}
 	if err == nil {
 		err0 := sourceControl.ConfigureLanceroSource(&lsc, &okay)
 		if err0 != nil {
@@ -671,7 +668,7 @@ func RunRPCServer(portrpc int, block bool) {
 					for {
 						err := server.ServeRequest(codec)
 						if err != nil {
-							log.Printf("server stopped: %v", err)
+							//spew.Dump(codec)
 							break
 						}
 					}

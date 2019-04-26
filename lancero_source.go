@@ -1,11 +1,15 @@
 package dastard
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
 	"os/signal"
+	"os/user"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -96,7 +100,7 @@ func (ls *LanceroSource) Delete() {
 	}
 }
 
-// used to make sure the same device isn't used twice
+// contains is used to make sure the same device isn't used twice
 func contains(s []*LanceroDevice, e *LanceroDevice) bool {
 	for _, a := range s {
 		if a == e {
@@ -111,12 +115,17 @@ func contains(s []*LanceroDevice, e *LanceroDevice) bool {
 // be permanent, but I do think ClockMhz is necessarily the same for all cards.
 type LanceroSourceConfig struct {
 	FiberMask         uint32
-	ClockMhz          int
-	Nsamp             int
 	CardDelay         []int
 	ActiveCards       []int
-	AvailableCards    []int
 	ShouldAutoRestart bool
+	DastardOutput     LanceroDastardOutputJSON
+}
+
+// LanceroDastardOutputJSON is used to return values over the JSON RPC which cannot be set over the JSON rpc
+type LanceroDastardOutputJSON struct {
+	Nsamp          int
+	ClockMHz       int
+	AvailableCards []int
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
@@ -130,23 +139,31 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	defer ls.sourceStateLock.Unlock()
 
 	// populate AvailableCards before any possible errors
-	config.AvailableCards = make([]int, 0)
+	config.DastardOutput.AvailableCards = make([]int, 0)
 	for k := range ls.devices {
-		config.AvailableCards = append(config.AvailableCards, k)
+		config.DastardOutput.AvailableCards = append(config.DastardOutput.AvailableCards, k)
 	}
-	sort.Ints(config.AvailableCards)
+	sort.Ints(config.DastardOutput.AvailableCards)
+
+	var cg cringeGlobals
+	cg, err = cringeGlobalsRead(cringeGlobalsPath)
+	if err != nil {
+		return err
+	}
+	//fmt.Println("read cringeGlobals in LanceroSource.Configure")
+	//spew.Dump(cg)
 
 	if ls.sourceState != Inactive {
 		return fmt.Errorf("cannot Configure a LanceroSource if it's not Inactive")
 	}
 
 	// Error if Nsamp not in [1,16].
-	if config.Nsamp > 16 || config.Nsamp < 1 {
-		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", config.Nsamp)
+	if cg.Nsamp > 16 || cg.Nsamp < 1 {
+		return fmt.Errorf("LanceroSourceConfig.Nsamp=%d but requires 1<=NSAMP<=16", cg.Nsamp)
 	}
 
 	ls.active = make([]*LanceroDevice, 0)
-	ls.clockMhz = config.ClockMhz
+	ls.clockMhz = cg.ClockMHz
 	ls.shouldAutoRestart = config.ShouldAutoRestart
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
@@ -163,10 +180,15 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 			dev.cardDelay = config.CardDelay[i]
 		}
 		dev.fiberMask = config.FiberMask
-		dev.clockMhz = config.ClockMhz
+		dev.clockMhz = cg.ClockMHz
+		dev.nrows = cg.SequenceLength
+		dev.lsync = cg.Lsync
 	}
 
-	ls.nsamp = config.Nsamp
+	ls.nsamp = cg.Nsamp
+	config.DastardOutput.Nsamp = cg.Nsamp
+	config.DastardOutput.ClockMHz = cg.ClockMHz
+
 	return err
 }
 
@@ -317,6 +339,7 @@ func (device *LanceroDevice) sampleCard() error {
 	minDuration := 200 * time.Millisecond // the NoHardware tests can fail if this is too long, since I test with multiple lancero devices, the first device has to wait for all other devices to finish
 	var bytesReadSinceTimeFix0 int64
 	frameBitsHandled := false
+	var calculatedNrows int
 	for timeFix.Sub(timeFix0) < minDuration {
 		// notice above we called AvailableBuffer and discarded data, noted timeFix0
 		// here we read for at least minDuration, counting all bytes read (hopefully reading for this long will make lsync reliably correct)
@@ -342,7 +365,7 @@ func (device *LanceroDevice) sampleCard() error {
 				q, p, n, err3 := lancero.FindFrameBits(buffer, lanceroFBOffset)
 				if err3 == nil {
 					device.ncols = n
-					device.nrows = (p - q) / n
+					calculatedNrows = (p - q) / n
 					device.frameSize = device.ncols * device.nrows * 4
 					frameBitsHandled = true
 				} else {
@@ -354,7 +377,13 @@ func (device *LanceroDevice) sampleCard() error {
 	}
 	if frameBitsHandled {
 		periodNS := timeFix.Sub(timeFix0).Nanoseconds() / (bytesReadSinceTimeFix0 / int64(device.frameSize))
-		device.lsync = roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
+		calculatedLsync := roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
+		if calculatedLsync != device.lsync {
+			fmt.Printf("WARNING: calculated lsync=%d, but have lsync=%d\n", calculatedLsync, device.lsync)
+		}
+		if calculatedNrows != device.nrows {
+			return fmt.Errorf("calculatedNrows=%d does not match nrows=%d\n", calculatedNrows, device.nrows)
+		}
 		log.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
 			device.nrows, periodNS, device.lsync)
 		return nil
@@ -365,6 +394,53 @@ func (device *LanceroDevice) sampleCard() error {
 // Imperfect round to nearest integer
 func roundint(x float64) int {
 	return int(x + math.Copysign(0.5, x))
+}
+
+type cringeGlobals struct {
+	Settle           int `json:"SETT"`
+	SequenceLength   int `json:"seqln"`
+	Lsync            int `json:"lsync"`
+	TestPattern      int `json:"testpattern"`
+	PropagationDelay int `json:"propagationdelay"`
+	Nsamp            int `json:"NSAMP"`
+	BAD16CardDelay   int `json:"carddelay"`
+	XPT              int `json:"XPT"`
+	ClockMHz         int
+}
+
+// cringeGlobalsPath calculate the path to ~/.cringe/cringeGlobals.json by expanding the ~
+func cringeGlobalsCalculatePath() string {
+	usr, err := user.Current()
+	if err != nil {
+		panic(err) // I don't have a plan to handle this error meaningfully, so just panic, we can always change it later if we figure out how to deal with it
+	}
+	dir := usr.HomeDir
+	path := filepath.Join(dir, ".cringe", "cringeGlobals.json")
+	log.Println("cringeGlobalsPath", path)
+	return path
+}
+
+var cringeGlobalsPath = cringeGlobalsCalculatePath()
+
+// cringeGlobalsRead loads the cringeGlobals.json file into a cringeGlobals struct
+func cringeGlobalsRead(jsonPath string) (cringeGlobals, error) {
+	jsonFile, err := os.Open(jsonPath)
+	defer jsonFile.Close()
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		return cringeGlobals{}, err
+	}
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	var cg cringeGlobals
+	// unmarshal our byteArray which contains our
+	// jsonFile's content into 'cg'
+	err = json.Unmarshal(byteValue, &cg)
+	if err != nil {
+		return cringeGlobals{}, err
+	}
+	cg.ClockMHz = 125 // Cringe should write this, but it's always 125 MHz for now
+	return cg, nil
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
