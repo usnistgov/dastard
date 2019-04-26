@@ -309,8 +309,8 @@ func messageRecords(rec *DataRecord) [][]byte {
 
 	const headerVersion = uint8(0)
 	dataType := uint8(3)
-	if rec.signed {
-		dataType--
+	if rec.signed { // DataSegment.signed is set deep within a source, then dsp.signed is set equal to DataSegment.signed in process data, then DataRecord.signed is set equal to dsp.signed upon record generation
+		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
 	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
@@ -328,7 +328,8 @@ func messageRecords(rec *DataRecord) [][]byte {
 	return [][]byte{header.Bytes(), data}
 }
 
-// Two library-global variables to allow sharing of zmq publisher sockets
+// Two library-global variables to allow sharing of zmq publisher sockets:
+
 // PubRecordsChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
 var PubRecordsChan chan []*DataRecord
 

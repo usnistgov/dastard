@@ -32,6 +32,9 @@ type LanceroDevice struct {
 	card        lancero.Lanceroer
 }
 
+// lanceroFBOffset gives the location of the frame bit is in bytes 2, 6, 10...
+const lanceroFBOffset int = 2
+
 // BuffersChanType is an internal message type used to allow
 // a goroutine to read from the Lancero card and put data on a buffered channel
 type BuffersChanType struct {
@@ -248,10 +251,6 @@ func (ls *LanceroSource) Sample() error {
 	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
 	ls.updateChanOrderMap()
 
-	ls.signed = make([]bool, ls.nchan)
-	for i := 0; i < ls.nchan; i += 2 {
-		ls.signed[i] = true
-	}
 	ls.voltsPerArb = make([]float32, ls.nchan)
 	for i := 0; i < ls.nchan; i += 2 {
 		ls.voltsPerArb[i] = 1.0 / (4096. * float32(ls.nsamp))
@@ -363,14 +362,14 @@ func (device *LanceroDevice) sampleCard() error {
 			if !frameBitsHandled {
 				buffer = append(buffer, b...) // only append if framebits havent been handled, to reduce unneeded memory usage
 				log.Println(lancero.OdDashTX(buffer, 10))
-				q, p, n, err3 := lancero.FindFrameBits(buffer)
+				q, p, n, err3 := lancero.FindFrameBits(buffer, lanceroFBOffset)
 				if err3 == nil {
 					device.ncols = n
 					calculatedNrows = (p - q) / n
 					device.frameSize = device.ncols * device.nrows * 4
 					frameBitsHandled = true
 				} else {
-					fmt.Printf("Error in findFrameBits: %v", err3)
+					fmt.Printf("Error in FindFrameBits: %v", err3)
 				}
 			}
 			lan.ReleaseBytes(len(b))
@@ -513,7 +512,7 @@ func (ls *LanceroSource) StartRun() error {
 			if len(bytes) <= 0 {
 				continue
 			}
-			firstWord, _, _, err := lancero.FindFrameBits(bytes)
+			firstWord, _, _, err := lancero.FindFrameBits(bytes, lanceroFBOffset)
 			// should check for correct number of columns/rows again?
 			if err == nil {
 				if firstWord > 0 {
@@ -578,7 +577,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 				// check for changes in nrow, ncol and lsync
 				for ibuf, dev := range ls.active {
 					buffer := buffers[ibuf]
-					q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer))
+					q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer), lanceroFBOffset)
 					if err != nil {
 						panic(fmt.Sprintf("Error in findFrameBits: %v", err))
 					}
@@ -733,7 +732,8 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
-		if channelIndex%2 == 1 { // feedback channel needs more processing
+		isFeedbackChannel := (channelIndex%2 == 1)
+		if isFeedbackChannel { // feedback channel needs more processing
 			mix := ls.Mix[channelIndex]
 			errData := datacopies[ls.chan2readoutOrder[channelIndex-1]]
 			//	MixRetardFb alters data in place to mix some of errData in based on mix.errorScale
@@ -745,6 +745,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 			framePeriod:     ls.samplePeriod,
 			firstFramenum:   ls.nextFrameNum,
 			firstTime:       firstTime,
+			signed:          !isFeedbackChannel,
 		}
 		block.segments[channelIndex] = seg
 		block.nSamp = len(data)
