@@ -114,8 +114,15 @@ type LanceroSourceConfig struct {
 	FiberMask         uint32
 	CardDelay         []int
 	ActiveCards       []int
-	AvailableCards    []int
 	ShouldAutoRestart bool
+	DastardOutput     LanceroDastardOutputJSON
+}
+
+// LanceroDastardOutputJSON is used to return values over the JSON RPC which cannot be set over the JSON rpc
+type LanceroDastardOutputJSON struct {
+	Nsamp          int
+	ClockMHz       int
+	AvailableCards []int
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
@@ -129,11 +136,11 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	defer ls.sourceStateLock.Unlock()
 
 	// populate AvailableCards before any possible errors
-	config.AvailableCards = make([]int, 0)
+	config.DastardOutput.AvailableCards = make([]int, 0)
 	for k := range ls.devices {
-		config.AvailableCards = append(config.AvailableCards, k)
+		config.DastardOutput.AvailableCards = append(config.DastardOutput.AvailableCards, k)
 	}
-	sort.Ints(config.AvailableCards)
+	sort.Ints(config.DastardOutput.AvailableCards)
 
 	var cg cringeGlobals
 	cg, err = cringeGlobalsRead(cringeGlobalsPath)
@@ -176,6 +183,9 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	}
 
 	ls.nsamp = cg.Nsamp
+	config.DastardOutput.Nsamp = cg.Nsamp
+	config.DastardOutput.ClockMHz = cg.ClockMHz
+
 	return err
 }
 
