@@ -668,9 +668,7 @@ func RunRPCServer(portrpc int, block bool) {
 					for {
 						err := server.ServeRequest(codec)
 						if err != nil {
-							log.Printf("server error: %v", err)
-							log.Printf("codec:")
-							spew.Dump(codec)
+							//spew.Dump(codec)
 							break
 						}
 					}

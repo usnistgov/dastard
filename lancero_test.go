@@ -112,8 +112,8 @@ func TestNoHardwareSource(t *testing.T) {
 		t.Error(err)
 	}
 	for i := 0; i < nLancero; i++ {
-		if config.ActiveCards[i] != config.AvailableCards[i] {
-			t.Errorf("AvailableCards not populated correctly. AvailableCards %v", config.AvailableCards)
+		if config.ActiveCards[i] != config.DastardOutput.AvailableCards[i] {
+			t.Errorf("AvailableCards not populated correctly. AvailableCards %v", config.DastardOutput.AvailableCards)
 		}
 	}
 
