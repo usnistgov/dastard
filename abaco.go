@@ -236,6 +236,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 
 // Sample determines key data facts by sampling some initial data.
 func (as *AbacoSource) Sample() error {
+	as.nchan = 0
 	if len(as.active) <= 0 {
 		return fmt.Errorf("No Abaco devices are active")
 	}
