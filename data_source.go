@@ -42,6 +42,7 @@ type DataSource interface {
 	Running() bool
 	GetState() SourceState
 	SetStateStarting() error
+	SetStateInactive() error
 	getNextBlock() chan *dataBlock
 	Nchan() int
 	VoltsPerArb() []float32
@@ -115,10 +116,12 @@ func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int
 	}
 
 	if err := ds.Sample(); err != nil {
+		ds.SetStateInactive()
 		return err
 	}
 
 	if err := ds.PrepareRun(Npresamp, Nsamples); err != nil {
+		ds.SetStateInactive()
 		return err
 	}
 
@@ -254,6 +257,7 @@ type AnySource struct {
 	abortSelf    chan struct{}   // Signal to the core loop of active sources to stop
 	nextBlock    chan *dataBlock // Signal from the core loop that a block is ready to process
 	broker       *TriggerBroker
+	configError  error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
@@ -643,6 +647,14 @@ func (ds *AnySource) SetStateStarting() error {
 		return nil
 	}
 	return fmt.Errorf("cannot Start() a source that's %v, not Inactive", ds.sourceState)
+}
+
+// SetStateInactive sets the sourceState value to Inactive in a race-free fashion
+func (ds *AnySource) SetStateInactive() error {
+	ds.sourceStateLock.Lock()
+	defer ds.sourceStateLock.Unlock()
+	ds.sourceState = Inactive
+	return nil
 }
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
