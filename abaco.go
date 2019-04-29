@@ -281,7 +281,7 @@ func (as *AbacoSource) readerMainLoop() {
 	as.buffersChan = make(chan AbacoBuffersType, 100)
 	defer close(as.buffersChan)
 	timeout := time.NewTimer(timeoutPeriod)
-	ticker := time.NewTimer(as.readPeriod)
+	ticker := time.NewTicker(as.readPeriod)
 	defer ticker.Stop()
 	defer timeout.Stop()
 
