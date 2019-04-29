@@ -254,6 +254,7 @@ type AnySource struct {
 	abortSelf    chan struct{}   // Signal to the core loop of active sources to stop
 	nextBlock    chan *dataBlock // Signal from the core loop that a block is ready to process
 	broker       *TriggerBroker
+	configError  error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
