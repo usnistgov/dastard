@@ -236,6 +236,10 @@ func (ls *LanceroSource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64
 
 // Sample determines key data facts by sampling some initial data.
 func (ls *LanceroSource) Sample() error {
+	// Cannot start this process if configuration failed.
+	if ls.configError != nil {
+		return ls.configError
+	}
 	ls.dataBlockCount = 0
 	ls.nchan = 0
 	for _, device := range ls.active {

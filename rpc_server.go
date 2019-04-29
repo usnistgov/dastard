@@ -126,6 +126,8 @@ func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, repl
 func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply *bool) error {
 	log.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
 	err := s.lancero.Configure(args)
+	// Remember any errors for later, when we try to start the source.
+	s.lancero.configError = err
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMhz, s.lancero.ncards)
@@ -583,7 +585,8 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var tsc TriangleSourceConfig
 	err = viper.UnmarshalKey("triangle", &tsc)
-	if tsc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
+	// Default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
+	if tsc.Nchan == 0 {
 		tsc.Nchan = 1
 	}
 	if err == nil {
@@ -595,10 +598,9 @@ func RunRPCServer(portrpc int, block bool) {
 	var lsc LanceroSourceConfig
 	err = viper.UnmarshalKey("lancero", &lsc)
 	if err == nil {
-		err0 := sourceControl.ConfigureLanceroSource(&lsc, &okay)
-		if err0 != nil {
-			panic(err0)
-		}
+		_ = sourceControl.ConfigureLanceroSource(&lsc, &okay)
+		// Don't panic on config errors: they are expected on any system w/o Lancero cards.
+		// That is, we are intentionally NOT checking any error returned by ConfigureLanceroSource.
 	}
 	var asc AbacoSourceConfig
 	err = viper.UnmarshalKey("abaco", &asc)
