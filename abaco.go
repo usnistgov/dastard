@@ -83,7 +83,7 @@ func (device *AbacoDevice) sampleCard() error {
 	if err != nil {
 		return err
 	}
-	log.Print("Abaco bytes read for FindFrameBits: ", len(data))
+	log.Printf("Read %d Abaco bytes for FindFrameBits.", len(data))
 
 	q, p, n, err3 := lancero.FindFrameBits(data, abacoFBOffset)
 	if err3 == nil {
@@ -109,7 +109,7 @@ func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
 	// Can ignore all but the last 1 frame of data
 	lastdata = lastdata[len(lastdata)-device.frameSize:]
 	indexrow0 := -1
-	fmt.Printf("Raw lastdata: %v\n", lastdata)
+	fmt.Printf("Raw lastdata (data retaining only exactly 1 frame): %v\n", lastdata)
 	for i := abacoFBOffset; i < device.frameSize; i += 4 {
 		if lastdata[i]&0x1 != 0 {
 			indexrow0 = i / 4
@@ -117,7 +117,7 @@ func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
 		}
 	}
 	if indexrow0 < 0 {
-		return fmt.Errorf("DiscardPartialFrame found no frame bits")
+		return fmt.Errorf("DiscardPartialFrame found no frame bits in 1 frame's worth of data")
 	}
 	indexrow1 := -1
 	for i := 4*indexrow0 + 4 + abacoFBOffset; i < device.frameSize; i += 4 {
@@ -281,7 +281,7 @@ func (as *AbacoSource) readerMainLoop() {
 	as.buffersChan = make(chan AbacoBuffersType, 100)
 	defer close(as.buffersChan)
 	timeout := time.NewTimer(timeoutPeriod)
-	ticker := time.NewTimer(as.readPeriod)
+	ticker := time.NewTicker(as.readPeriod)
 	defer ticker.Stop()
 	defer timeout.Stop()
 
@@ -315,8 +315,8 @@ func (as *AbacoSource) readerMainLoop() {
 				if bframes < framesUsed {
 					framesUsed = bframes
 				}
-				log.Printf("Read device #%d, total of %d bytes = %d frames",
-					devnum, nb, bframes)
+				log.Printf("Read Abaco device #%d, total of %d bytes = %d frames + %d extra bytes",
+					devnum, nb, bframes, nb-bframes*dev.frameSize)
 
 				// This is the demultiplexing step. Loops over channels,
 				// then over frames.
@@ -371,11 +371,16 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 			// This select statement was formerly the ls.blockingRead method
 			select {
 			case <-time.After(panicTime):
-				panic(fmt.Sprintf("timeout, no data from Abaco after %v / %v", panicTime, as.readPeriod))
+				panic(fmt.Sprintf("timeout; no data from Abaco received after %v (readPeriod: %v)", panicTime, as.readPeriod))
 
 			case buffersMsg, ok := <-as.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
+					if ok {
+						fmt.Print("as.buffersChan received empty data block")
+					} else {
+						fmt.Print("as.buffersChan was closed")
+					}
 					block := new(dataBlock)
 					if err := as.stop(); err != nil {
 						block.err = err
