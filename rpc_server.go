@@ -585,7 +585,8 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var tsc TriangleSourceConfig
 	err = viper.UnmarshalKey("triangle", &tsc)
-	if tsc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
+	// Default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
+	if tsc.Nchan == 0 {
 		tsc.Nchan = 1
 	}
 	if err == nil {
@@ -597,8 +598,9 @@ func RunRPCServer(portrpc int, block bool) {
 	var lsc LanceroSourceConfig
 	err = viper.UnmarshalKey("lancero", &lsc)
 	if err == nil {
-		sourceControl.ConfigureLanceroSource(&lsc, &okay)
-		// Don't panic on config errors: they are expected on a system w/o Lancero cards!
+		_ = sourceControl.ConfigureLanceroSource(&lsc, &okay)
+		// Don't panic on config errors: they are expected on any system w/o Lancero cards.
+		// That is, we are intentionally NOT checking any error returned by ConfigureLanceroSource.
 	}
 	var asc AbacoSourceConfig
 	err = viper.UnmarshalKey("abaco", &asc)
