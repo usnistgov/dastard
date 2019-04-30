@@ -50,11 +50,13 @@ func TestBufferOpenClose(t *testing.T) {
 	if err != nil {
 		t.Error("Failed NewRingBuffer", err)
 	}
-	if err = r.Open(); err != nil {
-		t.Error("Failed RingBuffer.Open", err)
-	}
-	if err = r.Close(); err != nil {
-		t.Error("Failed RingBuffer.Close", err)
+	for i := 0; i < 4; i++ {
+		if err = r.Open(); err != nil {
+			t.Error("Failed RingBuffer.Open", err)
+		}
+		if err = r.Close(); err != nil {
+			t.Error("Failed RingBuffer.Close", err)
+		}
 	}
 
 	if err = writebuf.Close(); err != nil {
