@@ -243,9 +243,13 @@ func TestBufferWriteRead(t *testing.T) {
 		shortmessage[i] = byte(i)
 	}
 	writebuf.write(shortmessage)
+
+	// Need this goroutine to close a channel: prevents an apparent race condition
+	doneSleepTest := make(chan interface{})
 	go func() {
 		time.Sleep(5 * time.Millisecond)
 		writebuf.write(shortmessage)
+		close(doneSleepTest)
 	}()
 	read, err := b.ReadMinimum(2 * msize)
 	if err != nil {
@@ -299,6 +303,7 @@ func TestBufferWriteRead(t *testing.T) {
 	if err = b.Close(); err != nil {
 		t.Error("Failed RingBuffer.Close", err)
 	}
+	<-doneSleepTest // prevent an apparent race condition
 	if err = writebuf.Close(); err != nil {
 		t.Error("Failed RingBuffer.Close", err)
 	}
