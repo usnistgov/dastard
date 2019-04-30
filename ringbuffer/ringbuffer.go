@@ -136,20 +136,30 @@ func (rb *RingBuffer) Open() (err error) {
 	size := 4096
 	rb.descSlice, err = syscall.Mmap(fd, 0, size, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
+		rb.Close()
 		return err
 	}
 	rb.desc = (*bufferDescription)(unsafe.Pointer(&rb.descSlice[0]))
+	if rb.desc == nil {
+		rb.Close()
+		return fmt.Errorf("RingBuffer.desc pointer = nil")
+	}
 
 	file, err = shm.Open(rb.rawName, os.O_RDONLY, 0600)
 	if err != nil {
-		rb.descFile.Close()
+		rb.Close()
 		return err
 	}
 	rb.rawFile = file
 	fd = int(rb.rawFile.Fd())
 	rb.raw, err = syscall.Mmap(fd, 0, int(rb.desc.bufferSize), syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
+		rb.Close()
 		return err
+	}
+	if rb.raw == nil {
+		rb.Close()
+		return fmt.Errorf("RingBuffer.raw pointer = nil")
 	}
 	return nil
 }
