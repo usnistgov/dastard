@@ -123,9 +123,14 @@ type LanceroSourceConfig struct {
 
 // LanceroDastardOutputJSON is used to return values over the JSON RPC which cannot be set over the JSON rpc
 type LanceroDastardOutputJSON struct {
-	Nsamp          int
-	ClockMHz       int
-	AvailableCards []int
+	Nsamp            int
+	ClockMHz         int
+	AvailableCards   []int
+	Lsync            int
+	Settle           int
+	SequenceLength   int
+	PropagationDelay int
+	BAD16CardDelay   int
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
@@ -188,6 +193,11 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	ls.nsamp = cg.Nsamp
 	config.DastardOutput.Nsamp = cg.Nsamp
 	config.DastardOutput.ClockMHz = cg.ClockMHz
+	config.DastardOutput.Lsync = cg.Lsync
+	config.DastardOutput.Settle = cg.Settle
+	config.DastardOutput.SequenceLength = cg.SequenceLength
+	config.DastardOutput.PropagationDelay = cg.PropagationDelay
+	config.DastardOutput.BAD16CardDelay = cg.BAD16CardDelay
 
 	return err
 }
