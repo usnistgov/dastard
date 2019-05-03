@@ -125,8 +125,9 @@ func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int
 		return err
 	}
 
-	ds.RunDoneActivate() // Will call RunDoneDeactivate when CoreLoop returns.
+	ds.RunDoneActivate() // We'll call RunDoneDeactivate when CoreLoop returns.
 	if err := ds.StartRun(); err != nil {
+		ds.RunDoneDeactivate()
 		return err
 	}
 
@@ -185,6 +186,7 @@ func (ds *AnySource) Stop() error {
 		fmt.Println("deleteme: called Stop on a Starting source; how to handle this??")
 
 	case Active:
+		log.Println("AnySource.Stop() was called to stop an active source")
 		// This is the normal case: Stop on an Active source
 
 	case Stopping:
