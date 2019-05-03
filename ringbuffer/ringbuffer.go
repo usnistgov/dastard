@@ -21,6 +21,7 @@ type bufferDescription struct {
 type RingBuffer struct {
 	descSlice []byte
 	desc      *bufferDescription
+	size      uint64
 	raw       []byte
 	rawName   string
 	descName  string
@@ -59,6 +60,7 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 	rb.desc.readPointer = 0
 	rb.desc.bufferSize = uint64(bufsize)
 	rb.desc.bytesLost = 0
+	rb.size = rb.desc.bufferSize
 
 	file, err = shm.Open(rb.rawName, os.O_RDWR|os.O_CREATE, 0660)
 	if err != nil {
@@ -144,6 +146,7 @@ func (rb *RingBuffer) Open() (err error) {
 		rb.Close()
 		return fmt.Errorf("RingBuffer.desc pointer = nil")
 	}
+	rb.size = rb.desc.bufferSize
 
 	file, err = shm.Open(rb.rawName, os.O_RDONLY, 0600)
 	if err != nil {
@@ -161,6 +164,7 @@ func (rb *RingBuffer) Open() (err error) {
 		rb.Close()
 		return fmt.Errorf("RingBuffer.raw pointer = nil")
 	}
+	fmt.Printf("Ring.Open succeeds. desc = %p\n", rb.desc)
 	return nil
 }
 
@@ -172,11 +176,12 @@ func (rb *RingBuffer) Close() (err error) {
 		}
 		rb.raw = nil
 	}
-	if rb.desc != nil {
+	rb.desc = nil
+	if rb.descSlice != nil {
 		if err = syscall.Munmap(rb.descSlice); err != nil {
 			return
 		}
-		rb.desc = nil
+		rb.descSlice = nil
 	}
 	if rb.rawFile != nil {
 		if err = rb.rawFile.Close(); err != nil {
@@ -196,6 +201,9 @@ func (rb *RingBuffer) Close() (err error) {
 // Read reads a byte slice from the buffer of size no larger than size.
 // It is not an error to request more bytes than the buffer could hold.
 func (rb *RingBuffer) Read(size int) (data []byte, err error) {
+	if rb.desc == nil {
+		return []byte{}, fmt.Errorf("Could not RingBuffer.Read with nil ring description pointer.")
+	}
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
 	cap := rb.desc.bufferSize
@@ -227,9 +235,9 @@ func (rb *RingBuffer) Read(size int) (data []byte, err error) {
 
 // ReadMultipleOf will return a multiple (possibly 0) of chunksize bytes.
 func (rb *RingBuffer) ReadMultipleOf(chunksize int) (data []byte, err error) {
-	if uint64(chunksize) >= rb.desc.bufferSize {
+	if uint64(chunksize) >= rb.size {
 		return nil, fmt.Errorf("Cannot call ReadMultipleOf(%d), want < %d", chunksize,
-			rb.desc.bufferSize)
+			rb.size)
 	}
 	available := rb.BytesReadable()
 	nchunks := available / chunksize
@@ -238,20 +246,23 @@ func (rb *RingBuffer) ReadMultipleOf(chunksize int) (data []byte, err error) {
 
 // ReadAll reads all the bytes available in the buffer.
 func (rb *RingBuffer) ReadAll() (data []byte, err error) {
-	return rb.Read(int(rb.desc.bufferSize))
+	if uintptr(unsafe.Pointer(rb.desc)) < 0x1000 {
+		fmt.Printf("RingBuffer.ReadAll with rb.desc=%p\n", rb.desc)
+	}
+	return rb.Read(int(rb.size))
 }
 
 // ReadMinimum blocks until it can read at least minimum bytes.
 // It does this by sleeping in 1 ms units
 func (rb *RingBuffer) ReadMinimum(minimum int) (data []byte, err error) {
-	if uint64(minimum) >= rb.desc.bufferSize {
+	if uint64(minimum) >= rb.size {
 		return nil, fmt.Errorf("Cannot call ReadMinimum(%d), want < %d", minimum,
 			rb.desc.bufferSize)
 	}
 	for rb.BytesReadable() < minimum {
 		time.Sleep(time.Millisecond)
 	}
-	return rb.Read(int(rb.desc.bufferSize))
+	return rb.Read(int(rb.size))
 }
 
 // BytesReadable tells how many bytes can be read. Actual answer may be larger,
