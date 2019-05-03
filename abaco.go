@@ -65,6 +65,7 @@ func (device *AbacoDevice) sampleCard() error {
 	if err := device.ring.Open(); err != nil {
 		return err
 	}
+	fmt.Printf("Device ring.Open returns no error.\n")
 	if err := device.ring.DiscardAll(); err != nil {
 		return err
 	}
@@ -142,6 +143,29 @@ func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
 	return err
 }
 
+// enumerateAbacoDevices returns a list of abaco device numbers that exist
+// in the devfs. If /dev/xdma0_c2h_X exists, then X is added to the list.
+// Does not yet handle cards other than xdma0.
+func enumerateAbacoDevices() (devices []int, err error) {
+	for cnum := 0; cnum < maxAbacoCards; cnum++ {
+		for id := 0; id < maxAbacoChannels; id++ {
+			name := fmt.Sprintf("/dev/xdma%d_c2h_%d", cnum, id)
+			info, err := os.Stat(name)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				} else {
+					return devices, err
+				}
+			}
+			if (info.Mode() & os.ModeDevice) != 0 {
+				devices = append(devices, 10*cnum+id)
+			}
+		}
+	}
+	return devices, nil
+}
+
 // AbacoSource represents all Abaco devices that can potentially supply data.
 type AbacoSource struct {
 	devices     map[int]*AbacoDevice
@@ -159,7 +183,6 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.devices = make(map[int]*AbacoDevice)
 
 	deviceCodes, err := enumerateAbacoDevices()
-	// fmt.Printf("enumerateAbacoDevices returns %v\n", deviceCodes)
 	if err != nil {
 		return source, err
 	}
@@ -246,6 +269,8 @@ func (as *AbacoSource) Sample() error {
 		}
 		as.nchan += device.ncols * device.nrows
 	}
+	as.sampleRate = 8125000.0 // HACK! For now, assume a value.
+	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
 
 	return nil
 }
@@ -309,6 +334,7 @@ func (as *AbacoSource) readerMainLoop() {
 				bytesData, err := dev.ring.ReadAll()
 				lastSampleTime = time.Now()
 				if err != nil {
+					fmt.Printf("AbacoDevice.ring.ReadAll failed with error: %v", err)
 					panic("AbacoDevice.ring.ReadAll failed")
 				}
 				nb := len(bytesData)
@@ -372,7 +398,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 			// This select statement was formerly the ls.blockingRead method
 			select {
 			case <-time.After(panicTime):
-				panic(fmt.Sprintf("timeout, no data from Abaco after %v / %v", panicTime, as.readPeriod))
+				panic(fmt.Sprintf("timeout, no data from Abaco after %v / readPeriod is %v", panicTime, as.readPeriod))
 
 			case buffersMsg, ok := <-as.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
@@ -397,7 +423,6 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 		}
 	}()
 	return as.nextBlock
-
 }
 
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
@@ -450,27 +475,4 @@ func (as *AbacoSource) stop() error {
 		dev.ring.Close()
 	}
 	return nil
-}
-
-// enumerateAbacoDevices returns a list of abaco device numbers that exist
-// in the devfs. If /dev/xdma0_c2h_X exists, then X is added to the list.
-// Does not yet handle cards other than xdma0.
-func enumerateAbacoDevices() (devices []int, err error) {
-	for cnum := 0; cnum < maxAbacoCards; cnum++ {
-		for id := 0; id < maxAbacoChannels; id++ {
-			name := fmt.Sprintf("/dev/xdma%d_c2h_%d", cnum, id)
-			info, err := os.Stat(name)
-			if err != nil {
-				if os.IsNotExist(err) {
-					continue
-				} else {
-					return devices, err
-				}
-			}
-			if (info.Mode() & os.ModeDevice) != 0 {
-				devices = append(devices, 10*cnum+id)
-			}
-		}
-	}
-	return devices, nil
 }
