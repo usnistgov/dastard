@@ -256,7 +256,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	if s.status.Npresamp == sizes.Npre && s.status.Nsamples == sizes.Nsamp {
 		return nil // no change requested
 	}
-	if s.ActiveSource.ComputeWritingState().Active {
+	if s.ActiveSource.WritingIsActive() {
 		return fmt.Errorf("Stop writing before changing record lengths")
 	}
 
@@ -448,13 +448,13 @@ func (s *SourceControl) WriteComment(comment *string, reply *bool) error {
 // ReadComment reads the contents of comment.txt if it exists, otherwise returns err
 func (s *SourceControl) ReadComment(zero *int, reply *string) error {
 	if !s.isSourceActive {
-		return fmt.Errorf("cant read comment with no active source")
+		return fmt.Errorf("cannot read comment with no active source")
 	} else if *zero != 0 {
-		return fmt.Errorf("please pass an the value 0, as it will be ignored, you passed %v", zero)
+		return fmt.Errorf("please pass in the value 0, as it will be ignored, you passed %v", zero)
 	}
 	ws := s.ActiveSource.ComputeWritingState()
 	if !ws.Active {
-		return fmt.Errorf("cant read comment when not actively writing")
+		return fmt.Errorf("cannot read comment when not actively writing")
 	}
 	commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
 	b, err := ioutil.ReadFile(commentFilename)
