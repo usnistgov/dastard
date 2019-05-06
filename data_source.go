@@ -413,167 +413,120 @@ func makeDirectory(basepath string) (string, error) {
 // For WriteLJH22 == true and/or WriteLJH3 == true all channels will have writing enabled
 // For WriteOFF == true, only chanels with projectors set will have writing enabled
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
-	type Request int
-	const (
-		Invalid Request = iota
-		Start
-		Pause
-		Unpause
-		Stop
-	)
+	start := false
 	requestStr := strings.ToUpper(config.Request)
-	var request Request
 	switch {
-	case strings.HasPrefix(requestStr, "START"):
-		request = Start
 	case strings.HasPrefix(requestStr, "PAUSE"):
-		request = Pause
-	case strings.HasPrefix(requestStr, "UNPAUSE"):
-		request = Unpause
-	case strings.HasPrefix(requestStr, "STOP"):
-		request = Stop
-	default:
-		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive. \"UNPAUSE label\" is also ok",
-			config.Request)
-	}
-
-	var filenamePattern, path string
-
-	if request == Start {
-		if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
-			return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
-		}
-
 		for _, dsp := range ds.processors {
-			if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
-				return fmt.Errorf(
-					"Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
-					dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
-			}
+			dsp.DataPublisher.SetPause(true)
 		}
+		ds.writingState.Paused = true
+		return nil
 
-		path = ds.writingState.BasePath
-		if len(config.Path) > 0 {
-			path = config.Path
-		}
-		var err error
-		filenamePattern, err = makeDirectory(path)
-		if err != nil {
-			return fmt.Errorf("Could not make directory: %s", err.Error())
-		}
-		if config.WriteOFF {
-			// throw an error if no channels have projectors set
-			// only channels with projectors set will have OFF files enabled
-			anyProjectorsSet := false
-			for _, dsp := range ds.processors {
-				if !(dsp.projectors.IsZero() || dsp.basis.IsZero()) {
-					anyProjectorsSet = true
-					break
-				}
+	case strings.HasPrefix(requestStr, "UNPAUSE"):
+		if len(config.Request) > 7 {
+			// validate format of command "UNPAUSE label"
+			if config.Request[7:8] != " " || len(config.Request) == 8 {
+				return fmt.Errorf("request format invalid. got::\n%v\nwant someting like: \"UNPAUSE label\"", config.Request)
 			}
-			if !anyProjectorsSet {
-				return fmt.Errorf("no projectors are loaded, OFF files require projectors")
-			}
-		}
-	} else if request == Unpause && len(config.Request) > 7 {
-		// validate format of command "UNPAUSE label"
-		if config.Request[7:8] != " " || len(config.Request) == 8 {
-			return fmt.Errorf("request format invalid. got::\n%v\nwant someting like: \"UNPAUSE label\"", config.Request)
-		}
-		if len(config.Request) > 7 { // "UNPAUSE label" format already validated
 			stateLabel := config.Request[8:]
 			if err := ds.SetExperimentStateLabel(time.Now(), stateLabel); err != nil {
 				return err
 			}
 		}
-	}
-
-	switch {
-	case request == Pause:
-		for _, dsp := range ds.processors {
-			dsp.DataPublisher.SetPause(true)
-		}
-		ds.writingState.Paused = true
-
-	case request == Unpause:
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(false)
 		}
-
 		ds.writingState.Paused = false
+		return nil
 
-	case request == Stop:
+	case strings.HasPrefix(requestStr, "STOP"):
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
-		ds.writingState.Active = false
-		ds.writingState.Paused = false
-		ds.writingState.FilenamePattern = ""
-		ds.SetExperimentStateLabel(time.Now(), "STOP")
-		if ds.writingState.experimentStateFile != nil {
-			if err := ds.writingState.experimentStateFile.Close(); err != nil {
-				return fmt.Errorf("failed to close experimentStatefile, err: %v", err)
-			}
-		}
-		ds.writingState.experimentStateFile = nil
-		ds.writingState.ExperimentStateFilename = ""
-		ds.writingState.ExperimentStateLabel = ""
-		ds.writingState.ExperimentStateLabelUnixNano = 0
-		if ds.writingState.externalTriggerFile != nil {
-			if err := ds.writingState.externalTriggerFileBufferedWriter.Flush(); err != nil {
-				return fmt.Errorf("failed to flush externalTriggerFileBufferedWriter, err: %v", err)
-			}
-			if err := ds.writingState.externalTriggerFile.Close(); err != nil {
-				return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
-			}
-			ds.writingState.externalTriggerFileBufferedWriter = nil
-		}
-		ds.writingState.externalTriggerNumberObserved = 0
-		ds.writingState.ExternalTriggerFilename = ""
+		return ds.writingState.Stop()
 
-	case request == Start:
-		channelsWithOff := 0
-		for i, dsp := range ds.processors {
-			timebase := 1.0 / dsp.SampleRate
-			rccode := ds.rowColCodes[i]
-			nrows := rccode.rows()
-			ncols := rccode.cols()
-			rowNum := rccode.row()
-			colNum := rccode.col()
-			fps := 1
-			if dsp.Decimate {
-				fps = dsp.DecimateLevel
-			}
-			if config.WriteLJH22 {
-				filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
-				dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
-					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
-					ds.name, ds.chanNames[i], ds.chanNumbers[i])
-			}
-			if config.WriteOFF && !dsp.projectors.IsZero() {
-				filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
-				dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
-					timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
-					ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
-					dsp.modelDescription)
-				channelsWithOff++
-			}
-			if config.WriteLJH3 {
-				filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
-				dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, filename)
+	case strings.HasPrefix(requestStr, "START"):
+		start = true
+
+	default:
+		return fmt.Errorf("WriteControl config.Request=%q, must be one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive. \"UNPAUSE label\" is also ok",
+			config.Request)
+	}
+
+	if !start {
+		return fmt.Errorf("should reach here only in the case of a START request to WriteControl. config=%v", config)
+	}
+
+	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
+		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
+	}
+
+	for _, dsp := range ds.processors {
+		if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
+			return fmt.Errorf(
+				"Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
+				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
+		}
+	}
+
+	path := ds.writingState.BasePath
+	if len(config.Path) > 0 {
+		path = config.Path
+	}
+	var err error
+	filenamePattern, err := makeDirectory(path)
+	if err != nil {
+		return fmt.Errorf("Could not make directory: %s", err.Error())
+	}
+	if config.WriteOFF {
+		// throw an error if no channels have projectors set
+		// only channels with projectors set will have OFF files enabled
+		anyProjectorsSet := false
+		for _, dsp := range ds.processors {
+			if !(dsp.projectors.IsZero() || dsp.basis.IsZero()) {
+				anyProjectorsSet = true
+				break
 			}
 		}
-		ds.writingState.Active = true
-		ds.writingState.Paused = false
-		ds.writingState.BasePath = path
-		ds.writingState.FilenamePattern = filenamePattern
-		ds.writingState.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
-		ds.writingState.ExternalTriggerFilename = fmt.Sprintf(filenamePattern, "external_trigger", "bin")
-		ds.SetExperimentStateLabel(time.Now(), "START")
+		if !anyProjectorsSet {
+			return fmt.Errorf("no projectors are loaded, OFF files require projectors")
+		}
 	}
-	return nil
+	channelsWithOff := 0
+	for i, dsp := range ds.processors {
+		timebase := 1.0 / dsp.SampleRate
+		rccode := ds.rowColCodes[i]
+		nrows := rccode.rows()
+		ncols := rccode.cols()
+		rowNum := rccode.row()
+		colNum := rccode.col()
+		fps := 1
+		if dsp.Decimate {
+			fps = dsp.DecimateLevel
+		}
+		if config.WriteLJH22 {
+			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
+			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
+				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				ds.name, ds.chanNames[i], ds.chanNumbers[i])
+		}
+		if config.WriteOFF && !dsp.projectors.IsZero() {
+			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
+			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
+				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
+				dsp.modelDescription)
+			channelsWithOff++
+		}
+		if config.WriteLJH3 {
+			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
+			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, filename)
+		}
+	}
+	return ds.writingState.Start(filenamePattern, path)
 }
 
 // ComputeWritingState doesn't need to compute, but just returns the writingState
