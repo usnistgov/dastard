@@ -336,26 +336,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 // SetExperimentStateLabel writes to a file with name like XXX_experiment_state.txt
 // the file is created upon the first call to this function for a given file writing
 func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel string) error {
-	if ds.writingState.experimentStateFile == nil {
-		// create state file if neccesary
-		var err error
-		ds.writingState.experimentStateFile, err = os.Create(ds.writingState.ExperimentStateFilename)
-		if err != nil {
-			return fmt.Errorf("%v, filename: %v", err, ds.writingState.ExperimentStateFilename)
-		}
-		// write header
-		_, err1 := ds.writingState.experimentStateFile.WriteString("# unix time in nanoseconds, state label\n")
-		if err1 != nil {
-			return err
-		}
-	}
-	ds.writingState.ExperimentStateLabel = stateLabel
-	ds.writingState.ExperimentStateLabelUnixNano = timestamp.UnixNano()
-	_, err := ds.writingState.experimentStateFile.WriteString(fmt.Sprintf("%v, %v\n", ds.writingState.ExperimentStateLabelUnixNano, stateLabel))
-	if err != nil {
-		return err
-	}
-	return nil
+	return ds.writingState.SetExperimentStateLabel(timestamp, stateLabel)
 }
 
 //HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
@@ -593,23 +574,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.SetExperimentStateLabel(time.Now(), "START")
 	}
 	return nil
-}
-
-// WritingState monitors the state of file writing.
-type WritingState struct {
-	Active                            bool
-	Paused                            bool
-	BasePath                          string
-	FilenamePattern                   string
-	experimentStateFile               *os.File
-	ExperimentStateFilename           string
-	ExperimentStateLabel              string
-	ExperimentStateLabelUnixNano      int64
-	ExternalTriggerFilename           string
-	externalTriggerNumberObserved     int
-	externalTriggerFileBufferedWriter *bufio.Writer
-	externalTriggerTicker             *time.Ticker
-	externalTriggerFile               *os.File
 }
 
 // ComputeWritingState doesn't need to compute, but just returns the writingState
