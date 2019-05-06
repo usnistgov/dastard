@@ -413,7 +413,6 @@ func makeDirectory(basepath string) (string, error) {
 // For WriteLJH22 == true and/or WriteLJH3 == true all channels will have writing enabled
 // For WriteOFF == true, only chanels with projectors set will have writing enabled
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
-	start := false
 	requestStr := strings.ToUpper(config.Request)
 	switch {
 	case strings.HasPrefix(requestStr, "PAUSE"):
@@ -421,7 +420,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.SetPause(true)
 		}
 		ds.writingState.Paused = true
-		return nil
 
 	case strings.HasPrefix(requestStr, "UNPAUSE"):
 		if len(config.Request) > 7 {
@@ -438,7 +436,6 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.SetPause(false)
 		}
 		ds.writingState.Paused = false
-		return nil
 
 	case strings.HasPrefix(requestStr, "STOP"):
 		for _, dsp := range ds.processors {
@@ -449,17 +446,17 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		return ds.writingState.Stop()
 
 	case strings.HasPrefix(requestStr, "START"):
-		start = true
+		return ds.writeControlStart(config)
 
 	default:
 		return fmt.Errorf("WriteControl config.Request=%q, must be one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive. \"UNPAUSE label\" is also ok",
 			config.Request)
 	}
+	return nil
+}
 
-	if !start {
-		return fmt.Errorf("should reach here only in the case of a START request to WriteControl. config=%v", config)
-	}
-
+// writeControlStart handles the most complex case of WriteControl: starting to write.
+func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
 		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
 	}
