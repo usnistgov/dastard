@@ -256,7 +256,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	if s.status.Npresamp == sizes.Npre && s.status.Nsamples == sizes.Nsamp {
 		return nil // no change requested
 	}
-	if s.ActiveSource.ComputeWritingState().Active {
+	if s.ActiveSource.WritingIsActive() {
 		return fmt.Errorf("Stop writing before changing record lengths")
 	}
 

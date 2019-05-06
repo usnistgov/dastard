@@ -48,6 +48,7 @@ type DataSource interface {
 	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
 	ComputeWritingState() WritingState
+	WritingIsActive() bool
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
 	ConfigureProjectorsBases(int, mat.Dense, mat.Dense, string) error
@@ -526,9 +527,14 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	return ds.writingState.Start(filenamePattern, path)
 }
 
-// ComputeWritingState doesn't need to compute, but just returns the writingState
+// ComputeWritingState returns a partial copy of the writingState
 func (ds *AnySource) ComputeWritingState() WritingState {
-	return ds.writingState
+	return ds.writingState.ComputeState()
+}
+
+// WritingIsActive returns whether the current writers are active
+func (ds *AnySource) WritingIsActive() bool {
+	return ds.writingState.IsActive()
 }
 
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[channelIndex]

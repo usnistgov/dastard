@@ -26,6 +26,31 @@ type WritingState struct {
 	sync.Mutex
 }
 
+// IsActive will return ws.Active, with propert locking
+func (ws *WritingState) IsActive() bool {
+	ws.Lock()
+	defer ws.Unlock()
+	return ws.Active
+}
+
+// ComputeState will return a property-by-property copy of the WritingState.
+// It will not copy the "active" features like open files, tickers, etc.
+func (ws *WritingState) ComputeState() WritingState {
+	ws.Lock()
+	defer ws.Unlock()
+	var copyState WritingState
+	copyState.Active = ws.Active
+	copyState.Paused = ws.Paused
+	copyState.BasePath = ws.BasePath
+	copyState.FilenamePattern = ws.FilenamePattern
+	copyState.ExperimentStateFilename = ws.ExperimentStateFilename
+	copyState.ExperimentStateLabel = ws.ExperimentStateLabel
+	copyState.ExperimentStateLabelUnixNano = ws.ExperimentStateLabelUnixNano
+	copyState.ExternalTriggerFilename = ws.ExternalTriggerFilename
+	copyState.externalTriggerNumberObserved = ws.externalTriggerNumberObserved
+	return copyState
+}
+
 // Start will set the WritingState to begin writing
 func (ws *WritingState) Start(filenamePattern, path string) error {
 	ws.Lock()
