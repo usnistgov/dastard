@@ -432,11 +432,33 @@ func makeDirectory(basepath string) (string, error) {
 // For WriteLJH22 == true and/or WriteLJH3 == true all channels will have writing enabled
 // For WriteOFF == true, only chanels with projectors set will have writing enabled
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
-	request := strings.ToUpper(config.Request)
+	type Request int
+	const (
+		Invalid Request = iota
+		Start
+		Pause
+		Unpause
+		Stop
+	)
+	requestStr := strings.ToUpper(config.Request)
+	var request Request
+	switch {
+	case strings.HasPrefix(requestStr, "START"):
+		request = Start
+	case strings.HasPrefix(requestStr, "PAUSE"):
+		request = Pause
+	case strings.HasPrefix(requestStr, "UNPAUSE"):
+		request = Unpause
+	case strings.HasPrefix(requestStr, "STOP"):
+		request = Stop
+	default:
+		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive. \"UNPAUSE label\" is also ok",
+			config.Request)
+	}
+
 	var filenamePattern, path string
 
-	// first check for possible errors, then take the lock and do the work
-	if strings.HasPrefix(request, "START") {
+	if request == Start {
 		if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
 			return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
 		}
@@ -472,7 +494,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 				return fmt.Errorf("no projectors are loaded, OFF files require projectors")
 			}
 		}
-	} else if strings.HasPrefix(request, "UNPAUSE") && len(config.Request) > 7 {
+	} else if request == Unpause && len(config.Request) > 7 {
 		// validate format of command "UNPAUSE label"
 		if config.Request[7:8] != " " || len(config.Request) == 8 {
 			return fmt.Errorf("request format invalid. got::\n%v\nwant someting like: \"UNPAUSE label\"", config.Request)
@@ -484,27 +506,22 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			}
 		}
 	}
-	if !(strings.HasPrefix(request, "START") || strings.HasPrefix(request, "STOP") ||
-		strings.HasPrefix(request, "PAUSE") || strings.HasPrefix(request, "UNPAUSE")) {
-		return fmt.Errorf("WriteControl config.Request=%q, need one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive. \"UNPAUSE label\" is also ok",
-			config.Request)
-	}
 
-	// Hold the lock before doing actual changes
-	if strings.HasPrefix(request, "PAUSE") {
+	switch {
+	case request == Pause:
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(true)
 		}
 		ds.writingState.Paused = true
 
-	} else if strings.HasPrefix(request, "UNPAUSE") {
+	case request == Unpause:
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.SetPause(false)
 		}
 
 		ds.writingState.Paused = false
 
-	} else if strings.HasPrefix(request, "STOP") {
+	case request == Stop:
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveOFF()
@@ -535,7 +552,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 		ds.writingState.externalTriggerNumberObserved = 0
 		ds.writingState.ExternalTriggerFilename = ""
 
-	} else if strings.HasPrefix(request, "START") {
+	case request == Start:
 		channelsWithOff := 0
 		for i, dsp := range ds.processors {
 			timebase := 1.0 / dsp.SampleRate
