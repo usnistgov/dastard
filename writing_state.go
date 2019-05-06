@@ -71,8 +71,11 @@ func (ws *WritingState) Stop() error {
 	ws.Active = false
 	ws.Paused = false
 	ws.FilenamePattern = ""
-	ws.setExperimentStateLabel(time.Now(), "STOP")
 	if ws.experimentStateFile != nil {
+		if err := ws.setExperimentStateLabel(time.Now(), "STOP"); err != nil {
+			return err
+		}
+
 		if err := ws.experimentStateFile.Close(); err != nil {
 			return fmt.Errorf("failed to close experimentStatefile, err: %v", err)
 		}
@@ -110,7 +113,7 @@ func (ws *WritingState) setExperimentStateLabel(timestamp time.Time, stateLabel 
 		var err error
 		ws.experimentStateFile, err = os.Create(ws.ExperimentStateFilename)
 		if err != nil {
-			return fmt.Errorf("%v, filename: %v", err, ws.ExperimentStateFilename)
+			return fmt.Errorf("%v, filename: <%v>", err, ws.ExperimentStateFilename)
 		}
 		// write header
 		_, err1 := ws.experimentStateFile.WriteString("# unix time in nanoseconds, state label\n")
