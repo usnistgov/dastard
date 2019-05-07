@@ -347,13 +347,23 @@ func (as *AbacoSource) readerMainLoop() {
 
 				// This is the demultiplexing step. Loops over channels,
 				// then over frames.
-				rawBuffer := bytesToRawType(bytesData)
+
+				// Encoding note May 7, 2019:
+				// Abaco raw data are 32 bit data in the form of binary number:
+				// (MSB) wwwwwwf ffffffff ffffffff fffffssr (LSB)
+				// w = whole number of phi0 (7)
+				// f = fractions of a phi0 (22)
+				// s = sync bits (2)
+				// r = frame bit (1)
+				// Our plan: omit the 12 lowest bits, giving us wwwfffff ffffffff.
+				// Reserving 3 upper whole-nuber bits lets us phase unwrap 8 full times.
+				int32Buffer := bytesToInt32(bytesData)
 				for i := 0; i < dev.nchan; i++ {
 					datacopies[i+nchanPrevDevices] = make([]RawType, framesUsed)
 					dc := datacopies[i+nchanPrevDevices]
 					idx := i
 					for j := 0; j < framesUsed; j++ {
-						dc[j] = rawBuffer[idx]
+						dc[j] = RawType(int32Buffer[idx] >> 12)
 						idx += dev.nchan
 					}
 				}

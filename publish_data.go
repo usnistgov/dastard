@@ -422,3 +422,14 @@ func bytesToRawType(b []byte) []RawType {
 	data := *(*[]RawType)(unsafe.Pointer(&header))
 	return data
 }
+
+// bytesToInt32 converts a []byte slice to an []int32 slice, which is
+// how we interpret the raw Abaco data.
+func bytesToInt32(b []byte) []int32 {
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&b))
+	const ratio = int(unsafe.Sizeof(int32(0)))
+	header.Cap /= ratio // byte takes up ratio times the space of RawType
+	header.Len /= ratio
+	data := *(*[]int32)(unsafe.Pointer(&header))
+	return data
+}
