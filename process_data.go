@@ -42,7 +42,7 @@ func (dsp *DataStreamProcessor) removeProjectorsBasis() {
 }
 
 // SetProjectorsBasis sets .projectors and .basis to the arguments, returns an error if the sizes are not right
-func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis mat.Dense, modelDescription string) error {
+func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors *mat.Dense, basis *mat.Dense, modelDescription string) error {
 	rows, cols := projectors.Dims()
 	nbases := rows
 	if dsp.NSamples != cols {
@@ -55,8 +55,8 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors mat.Dense, basis m
 	if brows != dsp.NSamples {
 		return fmt.Errorf("basis has wrong size, has rows: %v, want: %v", brows, dsp.NSamples)
 	}
-	dsp.projectors = projectors
-	dsp.basis = basis
+	dsp.projectors = *projectors
+	dsp.basis = *basis
 	dsp.modelDescription = modelDescription
 	return nil
 }
@@ -219,11 +219,9 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			if cols != len(rec.data) {
 				panic("projections for variable length records not implemented")
 			}
-			projectors := &dsp.projectors
-			basis := &dsp.basis
 
-			modelCoefs.MulVec(projectors, &dataVec)
-			modelFull.MulVec(basis, &modelCoefs)
+			modelCoefs.MulVec(&dsp.projectors, &dataVec)
+			modelFull.MulVec(&dsp.basis, &modelCoefs)
 			residual.SubVec(&dataVec, &modelFull)
 
 			// copy modelCoefs into rec.modelCoefs

@@ -51,7 +51,7 @@ type DataSource interface {
 	WritingIsActive() bool
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
-	ConfigureProjectorsBases(int, mat.Dense, mat.Dense, string) error
+	ConfigureProjectorsBases(int, *mat.Dense, *mat.Dense, string) error
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(*MixFractionObject) ([]float64, error)
 	WriteControl(*WriteControlConfig) error
@@ -538,7 +538,7 @@ func (ds *AnySource) WritingIsActive() bool {
 }
 
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[channelIndex]
-func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense, modelDescription string) error {
+func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors *mat.Dense, basis *mat.Dense, modelDescription string) error {
 	if channelIndex >= len(ds.processors) || channelIndex < 0 {
 		return fmt.Errorf("channelIndex out of range, channelIndex=%v, len(ds.processors)=%v", channelIndex, len(ds.processors))
 	}

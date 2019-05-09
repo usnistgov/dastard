@@ -82,7 +82,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0, 1, 0,
 			0, 0, 1,
 			0, 0, 0})
-	if err := dsp.SetProjectorsBasis(*projectors3, *basis3, "test model"); err != nil {
+	if err := dsp.SetProjectorsBasis(projectors3, basis3, "test model"); err != nil {
 		t.Error(err)
 	}
 	dsp.AnalyzeData(records)
@@ -104,7 +104,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 			0,
 			0,
 			0})
-	if err := dsp.SetProjectorsBasis(*projectors1, *basis1, "test model"); err != nil {
+	if err := dsp.SetProjectorsBasis(projectors1, basis1, "test model"); err != nil {
 		t.Error(err)
 	}
 	dsp.AnalyzeData(records)
@@ -292,7 +292,7 @@ func BenchmarkAnalyze(b *testing.B) {
 			if bm.nbases > 0 {
 				projectors := mat.NewDense(bm.nbases, bm.nsamples, make([]float64, bm.nbases*bm.nsamples))
 				basis := mat.NewDense(bm.nsamples, bm.nbases, make([]float64, bm.nbases*bm.nsamples))
-				if err := dsp.SetProjectorsBasis(*projectors, *basis, "test model"); err != nil {
+				if err := dsp.SetProjectorsBasis(projectors, basis, "test model"); err != nil {
 					b.Error(err)
 				}
 			}
