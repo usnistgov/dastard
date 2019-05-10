@@ -19,12 +19,12 @@ type DataStreamProcessor struct {
 	LastTrigger          FrameIndex
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
-	projectors           mat.Dense
+	projectors           *mat.Dense
 	modelDescription     string
 	// realtime analysis is disable if projectors .IsZero
 	// otherwise projectors must be size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
-	basis mat.Dense
+	basis *mat.Dense
 	// if not projectors.IsZero basis must be size
 	// (NSamples, nbases) such that basis*modelCoefs = modeled_data
 	DecimateState
@@ -55,8 +55,8 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors *mat.Dense, basis 
 	if brows != dsp.NSamples {
 		return fmt.Errorf("basis has wrong size, has rows: %v, want: %v", brows, dsp.NSamples)
 	}
-	dsp.projectors = *projectors
-	dsp.basis = *basis
+	dsp.projectors = projectors
+	dsp.basis = basis
 	dsp.modelDescription = modelDescription
 	return nil
 }
@@ -78,8 +78,8 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, NPresamples
 		stream: *stream, NSamples: NSamples, NPresamples: NPresamples,
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
-	dsp.projectors.Reset()              // dsp.projectors is set to zero value
-	dsp.basis.Reset()                   // dsp.basis is set to zero value
+	dsp.projectors = &mat.Dense{}       // dsp.projectors is set to zero value
+	dsp.basis = &mat.Dense{}            // dsp.basis is set to zero value
 	dsp.edgeMultiSetInitialState()      // set up edgeMulti in known state
 	return &dsp
 }
@@ -220,8 +220,8 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 				panic("projections for variable length records not implemented")
 			}
 
-			modelCoefs.MulVec(&dsp.projectors, &dataVec)
-			modelFull.MulVec(&dsp.basis, &modelCoefs)
+			modelCoefs.MulVec(dsp.projectors, &dataVec)
+			modelFull.MulVec(dsp.basis, &modelCoefs)
 			residual.SubVec(&dataVec, &modelFull)
 
 			// copy modelCoefs into rec.modelCoefs

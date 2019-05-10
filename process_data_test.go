@@ -35,7 +35,7 @@ func TestAnalyze(t *testing.T) {
 	rec := &DataRecord{data: d, presamples: 4}
 	records := []*DataRecord{rec}
 
-	dsp := &DataStreamProcessor{NPresamples: 4, NSamples: len(d)}
+	dsp := &DataStreamProcessor{NPresamples: 4, NSamples: len(d), projectors: &mat.Dense{}, basis: &mat.Dense{}}
 	dsp.AnalyzeData(records)
 
 	expect := RTExpect{

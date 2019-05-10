@@ -515,7 +515,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
-				ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
+				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
 				dsp.modelDescription)
 			channelsWithOff++
 		}
