@@ -63,7 +63,7 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors *mat.Dense, basis 
 
 // HasProjectors return true if projectors are loaded
 func (dsp *DataStreamProcessor) HasProjectors() bool {
-	return !dsp.projectors.IsZero()
+	return (dsp.projectors != nil) && (!dsp.projectors.IsZero())
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.

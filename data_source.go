@@ -484,7 +484,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		// only channels with projectors set will have OFF files enabled
 		anyProjectorsSet := false
 		for _, dsp := range ds.processors {
-			if !(dsp.projectors.IsZero() || dsp.basis.IsZero()) {
+			if dsp.HasProjectors() {
 				anyProjectorsSet = true
 				break
 			}
@@ -511,7 +511,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i])
 		}
-		if config.WriteOFF && !dsp.projectors.IsZero() {
+		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
