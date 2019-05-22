@@ -49,7 +49,7 @@ func TestOff(t *testing.T) {
 	w.Flush()
 	stat, _ := os.Stat("off_test.off")
 	sizeHeader := stat.Size()
-	if err := w.WriteRecord(0, 0, 0, 0, 0, 0, make([]float32, 3)); err != nil {
+	if err := w.WriteRecord(0, 0, 123456, 0, 0, .123456, make([]float32, 3)); err != nil {
 		t.Error(err)
 	}
 	w.Flush()

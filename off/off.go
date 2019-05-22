@@ -15,7 +15,6 @@ package off
 
 import (
 	"bufio"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,12 +59,12 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	writer.ChannelName = ChannelName
 	writer.ChannelNumberMatchingName = ChannelNumberMatchingName
 	writer.FileFormat = "OFF"
-	writer.FileFormatVersion = "0.1.0"
+	writer.FileFormatVersion = "0.2.0"
 	writer.MaxPresamples = MaxPresamples
 	writer.FramePeriodSeconds = FramePeriodSeconds
 	writer.NumberOfBases, _ = Projectors.Dims()
 	writer.ModelInfo = ModelInfo{Projectors: *NewArrayJsoner(Projectors), Basis: *NewArrayJsoner(Basis),
-		Description: ModelDescription}
+		Description: ModelDescription, projectors: Projectors, basis: Basis}
 	writer.CreationInfo = CreationInfo{DastardVersion: DastardVersion, GitHash: GitHash,
 		SourceName: SourceName, CreationTime: time.Now()}
 	writer.ReadoutInfo = ReadoutInfo
@@ -76,22 +75,24 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 // ModelInfo stores info related to the model (aka basis, aka projectors) for printing to the file header, aids with json formatting
 type ModelInfo struct {
 	Projectors  ArrayJsoner
+	projectors  *mat.Dense
 	Basis       ArrayJsoner
+	basis       *mat.Dense
 	Description string
 }
 
 // ArrayJsoner aids in formatting arrays for writing to JSON
 type ArrayJsoner struct {
-	RowMajorFloat64ValuesBase64 string
-	Rows                        int
-	Cols                        int
+	Rows    int
+	Cols    int
+	SavedAs string
 }
 
 // NewArrayJsoner creates an ArrayJsoner from a mat.Dense
 func NewArrayJsoner(array *mat.Dense) *ArrayJsoner {
 	v := new(ArrayJsoner)
 	v.Rows, v.Cols = array.Dims()
-	v.RowMajorFloat64ValuesBase64 = base64.StdEncoding.EncodeToString(getbytes.FromSliceFloat64(array.RawMatrix().Data))
+	v.SavedAs = "float64 binary data after header and before records. projectors first then basis, nbytes = rows*cols*8 for each projectors and basis"
 	return v
 }
 
@@ -127,15 +128,21 @@ func (w *Writer) WriteHeader() error {
 	if w.headerWritten {
 		return errors.New("header already written")
 	}
-	s, err := json.MarshalIndent(w, "", "    ")
-	if err != nil {
+	s, err0 := json.MarshalIndent(w, "", "    ")
+	if err0 != nil {
+		return err0
+	}
+	if _, err := w.writer.Write(s); err != nil {
 		return err
 	}
-	if _, err1 := w.writer.Write(s); err != nil {
-		return err1
+	if _, err := w.writer.WriteString("\n"); err != nil {
+		return err
 	}
-	if _, err1 := w.writer.WriteString("\n"); err != nil {
-		return err1
+	if _, err := w.writer.Write(getbytes.FromSliceFloat64(w.ModelInfo.projectors.RawMatrix().Data)); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromSliceFloat64(w.ModelInfo.basis.RawMatrix().Data)); err != nil {
+		return err
 	}
 	w.headerWritten = true
 	return nil
