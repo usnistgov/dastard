@@ -605,12 +605,14 @@ func RunRPCServer(portrpc int, block bool) {
 	var asc AbacoSourceConfig
 	err = viper.UnmarshalKey("abaco", &asc)
 	if err == nil {
-		sourceControl.ConfigureAbacoSource(&asc, &okay)
+		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)
+		// intentionally not chcecking for configure errors since it might fail on non abaco systems
 	}
 	var rsc RoachSourceConfig
 	err = viper.UnmarshalKey("roach", &rsc)
 	if err == nil {
-		sourceControl.ConfigureRoachSource(&rsc, &okay)
+		_ = sourceControl.ConfigureRoachSource(&rsc, &okay)
+		// intentionally not chcecking for configure errors since it might fail on non roach systems
 	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
@@ -625,6 +627,13 @@ func RunRPCServer(portrpc int, block bool) {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", wsSend}
+	}
+
+	var mapFileName string
+	err = viper.UnmarshalKey("tesmapfile", &mapFileName)
+	if err == nil {
+		_ = mapServer.Load(&mapFileName, &okay)
+		// intentially not checking for error, it ok if we fail to load a map file
 	}
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
