@@ -469,16 +469,6 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
 	}
-
-	path := ds.writingState.BasePath
-	if len(config.Path) > 0 {
-		path = config.Path
-	}
-	var err error
-	filenamePattern, err := makeDirectory(path)
-	if err != nil {
-		return fmt.Errorf("Could not make directory: %s", err.Error())
-	}
 	if config.WriteOFF {
 		// throw an error if no channels have projectors set
 		// only channels with projectors set will have OFF files enabled
@@ -493,6 +483,16 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			return fmt.Errorf("no projectors are loaded, OFF files require projectors")
 		}
 	}
+	path := ds.writingState.BasePath
+	if len(config.Path) > 0 {
+		path = config.Path
+	}
+	var err error
+	filenamePattern, err := makeDirectory(path)
+	if err != nil {
+		return fmt.Errorf("Could not make directory: %s", err.Error())
+	}
+
 	channelsWithOff := 0
 	for i, dsp := range ds.processors {
 		timebase := 1.0 / dsp.SampleRate
