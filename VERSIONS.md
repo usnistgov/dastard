@@ -1,6 +1,7 @@
 ## DASTARD Versions
 
-**0.2.2** December 7, 2018 (in progress)
+**0.2.2** December 19, 2018
+* External triggers
 
 **0.2.1** December 7, 2018
 * Make mix command accept an array of new mix values and report all back to clients.
@@ -10,11 +11,11 @@
 * Get record lengths correct when starting a source.
 
 **0.2.0** October 5, 2018
-* Redesign the internals of Dastard to eliminate data races between RPC services 
+* Redesign the internals of Dastard to eliminate data races between RPC services
   that try to change data processing and the actual processing. Use more channels.
 
 **0.1.2** September 28, 2018
-* Uses an internal buffered channel to queue Lancero data for processing so that 
+* Uses an internal buffered channel to queue Lancero data for processing so that
   we can survive 1-second-plus delays in processing (writing seems to be the
   particular problem).
 
