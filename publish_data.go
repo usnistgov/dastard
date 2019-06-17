@@ -373,7 +373,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetSndhwm(3000) // not really sure how to choose this
+	pubSocket.SetOption(czmq.SockSetSndhwm(3000)) // not really sure how to choose this
 	// but at 8x30 TDM we have 480 channels, so we can only cache
 	// about 2 messages per channel at the default of 1000
 	// I think I was missing packets when using easyClient set to autotrigger
