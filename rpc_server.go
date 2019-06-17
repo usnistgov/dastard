@@ -32,6 +32,7 @@ type SourceControl struct {
 	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
+	mapServer      *MapServer
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
@@ -229,7 +230,7 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 		return err
 	}
 	f := func() {
-		errcpb := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription)
+		errcpb := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, &projectors, &basis, pbo.ModelDescription)
 		if errcpb == nil {
 			s.status.ChannelsWithProjectors = s.ActiveSource.ChannelsWithProjectors()
 		}
@@ -383,10 +384,12 @@ type WriteControlConfig struct {
 	WriteLJH22 bool   // turn on one or more file formats
 	WriteOFF   bool
 	WriteLJH3  bool
+	m          *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 
 // WriteControl requests start/stop/pause/unpause data writing
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
+	config.m = s.mapServer.m
 	f := func() {
 		err := s.ActiveSource.WriteControl(config)
 		if err == nil {
@@ -605,17 +608,20 @@ func RunRPCServer(portrpc int, block bool) {
 	var asc AbacoSourceConfig
 	err = viper.UnmarshalKey("abaco", &asc)
 	if err == nil {
-		sourceControl.ConfigureAbacoSource(&asc, &okay)
+		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)
+		// intentionally not chcecking for configure errors since it might fail on non abaco systems
 	}
 	var rsc RoachSourceConfig
 	err = viper.UnmarshalKey("roach", &rsc)
 	if err == nil {
-		sourceControl.ConfigureRoachSource(&rsc, &okay)
+		_ = sourceControl.ConfigureRoachSource(&rsc, &okay)
+		// intentionally not chcecking for configure errors since it might fail on non roach systems
 	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle
 	sourceControl.isSourceActive = false
+	sourceControl.mapServer = mapServer
 	if err == nil {
 		sourceControl.broadcastStatus()
 	}
@@ -625,6 +631,13 @@ func RunRPCServer(portrpc int, block bool) {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", wsSend}
+	}
+
+	var mapFileName string
+	err = viper.UnmarshalKey("tesmapfile", &mapFileName)
+	if err == nil {
+		_ = mapServer.Load(&mapFileName, &okay)
+		// intentially not checking for error, it ok if we fail to load a map file
 	}
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients

@@ -30,7 +30,8 @@ func TestOff(t *testing.T) {
 			0, 0, 0})
 
 	w := NewWriter("off_test.off", 0, "chan1", 1, 100, 200, 9.6e-6, projectors, basis, "dummy model for testing",
-		"DastardVersion Placeholder", "GitHash Placeholder", "SourceName Placeholder", TimeDivisionMultiplexingInfo{})
+		"DastardVersion Placeholder", "GitHash Placeholder", "SourceName Placeholder", TimeDivisionMultiplexingInfo{},
+		PixelInfo{})
 	if err := w.CreateFile(); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestOff(t *testing.T) {
 	w.Flush()
 	stat, _ := os.Stat("off_test.off")
 	sizeHeader := stat.Size()
-	if err := w.WriteRecord(0, 0, 0, 0, 0, 0, make([]float32, 3)); err != nil {
+	if err := w.WriteRecord(0, 0, 123456, 0, 0, .123456, make([]float32, 3)); err != nil {
 		t.Error(err)
 	}
 	w.Flush()

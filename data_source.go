@@ -51,7 +51,7 @@ type DataSource interface {
 	WritingIsActive() bool
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
-	ConfigureProjectorsBases(int, mat.Dense, mat.Dense, string) error
+	ConfigureProjectorsBases(int, *mat.Dense, *mat.Dense, string) error
 	ChangeTriggerState(*FullTriggerState) error
 	ConfigureMixFraction(*MixFractionObject) ([]float64, error)
 	WriteControl(*WriteControlConfig) error
@@ -471,7 +471,20 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
 	}
-
+	if config.WriteOFF {
+		// throw an error if no channels have projectors set
+		// only channels with projectors set will have OFF files enabled
+		anyProjectorsSet := false
+		for _, dsp := range ds.processors {
+			if dsp.HasProjectors() {
+				anyProjectorsSet = true
+				break
+			}
+		}
+		if !anyProjectorsSet {
+			return fmt.Errorf("no projectors are loaded, OFF files require projectors")
+		}
+	}
 	path := ds.writingState.BasePath
 	if len(config.Path) > 0 {
 		path = config.Path
@@ -481,20 +494,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	if err != nil {
 		return fmt.Errorf("Could not make directory: %s", err.Error())
 	}
-	if config.WriteOFF {
-		// throw an error if no channels have projectors set
-		// only channels with projectors set will have OFF files enabled
-		anyProjectorsSet := false
-		for _, dsp := range ds.processors {
-			if !(dsp.projectors.IsZero() || dsp.basis.IsZero()) {
-				anyProjectorsSet = true
-				break
-			}
-		}
-		if !anyProjectorsSet {
-			return fmt.Errorf("no projectors are loaded, OFF files require projectors")
-		}
-	}
+
 	channelsWithOff := 0
 	for i, dsp := range ds.processors {
 		timebase := 1.0 / dsp.SampleRate
@@ -504,6 +504,15 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		rowNum := rccode.row()
 		colNum := rccode.col()
 		fps := 1
+		var pixel Pixel
+		if config.m != nil && len(config.m.Pixels) >= i {
+			pixel = config.m.Pixels[i]
+		} else {
+			const MaxUint = ^uint(0)
+			const MaxInt = int(MaxUint >> 1)
+			const MinInt = -MaxInt - 1 // cauclate MinInt following https://stackoverflow.com/questions/6878590/the-maximum-value-for-an-int-type-in-go
+			pixel = Pixel{Name: "no map information", X: MinInt, Y: MinInt}
+		}
 		if dsp.Decimate {
 			fps = dsp.DecimateLevel
 		}
@@ -511,14 +520,14 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
-				ds.name, ds.chanNames[i], ds.chanNumbers[i])
+				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
 		}
-		if config.WriteOFF && !dsp.projectors.IsZero() {
+		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
-				ds.name, ds.chanNames[i], ds.chanNumbers[i], &dsp.projectors, &dsp.basis,
-				dsp.modelDescription)
+				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
+				dsp.modelDescription, pixel)
 			channelsWithOff++
 		}
 		if config.WriteLJH3 {
@@ -540,7 +549,7 @@ func (ds *AnySource) WritingIsActive() bool {
 }
 
 // ConfigureProjectorsBases calls SetProjectorsBasis on ds.processors[channelIndex]
-func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors mat.Dense, basis mat.Dense, modelDescription string) error {
+func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors *mat.Dense, basis *mat.Dense, modelDescription string) error {
 	if channelIndex >= len(ds.processors) || channelIndex < 0 {
 		return fmt.Errorf("channelIndex out of range, channelIndex=%v, len(ds.processors)=%v", channelIndex, len(ds.processors))
 	}

@@ -51,13 +51,14 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 	Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
 	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
-	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string) {
+	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string, pixel Pixel) {
 	ReadoutInfo := off.TimeDivisionMultiplexingInfo{NumberOfRows: NumberOfRows,
 		NumberOfColumns: NumberOfColumns,
 		NumberOfChans:   NumberOfChans,
 		ColumnNum:       colNum, RowNum: rowNum}
+	PixelInfo := off.PixelInfo{XPosition: pixel.X, YPosition: pixel.Y, Name: pixel.Name}
 	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
-		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo)
+		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo)
 	dp.OFF = w
 	dp.numberWritten = 0
 }
@@ -108,7 +109,7 @@ func (dp *DataPublisher) RemoveLJH3() {
 func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
 	Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
-	FileName, sourceName, chanName string, ChannelNumberMatchingName int) {
+	FileName, sourceName, chanName string, ChannelNumberMatchingName int, pixel Pixel) {
 	w := ljh.Writer{ChannelIndex: ChannelIndex,
 		Presamples:                Presamples,
 		Samples:                   Samples,
@@ -126,6 +127,9 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 		SourceName:                sourceName,
 		ColumnNum:                 colNum,
 		RowNum:                    rowNum,
+		PixelXPosition:            pixel.X,
+		PixelYPosition:            pixel.Y,
+		PixelName:                 pixel.Name,
 	}
 	dp.LJH22 = &w
 	dp.WritingPaused = false
@@ -369,7 +373,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetSndhwm(3000) // not really sure how to choose this
+	pubSocket.SetOption(czmq.SockSetSndhwm(3000)) // not really sure how to choose this
 	// but at 8x30 TDM we have 480 channels, so we can only cache
 	// about 2 messages per channel at the default of 1000
 	// I think I was missing packets when using easyClient set to autotrigger
