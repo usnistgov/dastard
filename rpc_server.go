@@ -32,6 +32,7 @@ type SourceControl struct {
 	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
+	mapServer      *MapServer
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
@@ -383,10 +384,12 @@ type WriteControlConfig struct {
 	WriteLJH22 bool   // turn on one or more file formats
 	WriteOFF   bool
 	WriteLJH3  bool
+	m          *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 
 // WriteControl requests start/stop/pause/unpause data writing
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
+	config.m = s.mapServer.m
 	f := func() {
 		err := s.ActiveSource.WriteControl(config)
 		if err == nil {
@@ -618,6 +621,7 @@ func RunRPCServer(portrpc int, block bool) {
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle
 	sourceControl.isSourceActive = false
+	sourceControl.mapServer = mapServer
 	if err == nil {
 		sourceControl.broadcastStatus()
 	}
