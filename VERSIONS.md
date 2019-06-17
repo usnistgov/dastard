@@ -1,8 +1,14 @@
 ## DASTARD Versions
 
+**0.2.4** June 17, 2019
+* Read Cringe global variable data file.
+* Lancero LSYNC stored by Cringe; read by Dastard.
+* Refactored WriteControl object.
+* Use pointers to `mat.Dense` as recommended by its author.
+* Write detector positions in OFF file headers; new OFF version.
+
 **0.2.3** April 19, 2019
 * ROACH source works.
-
 
 **0.2.2** December 19, 2018
 * External triggers
