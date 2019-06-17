@@ -147,19 +147,23 @@ func (lan *Lancero) InspectAdapter() uint32 {
 	return lan.adapter.inspect()
 }
 
-// FindFrameBits returns q,p,n,err
+// FindFrameBits (buffer, offset) studies the buffer and returns (q,p,n,err).
+// buffer is the raw data; offset is the byte where frame bits are expected in
+// in the least significant bit. So if the offset is b, frame bits will be expected
+// in buffer[b]&1, buffer[b+4]&1, buffer[b+8]&1, etc.
+//
 // q index of word with first frame bit following non-frame index
 // p index of word with next  frame bit following non-frame index
 // word means 4 bytes: errLerrMfbkLfbkM (L=least signifiant byte, M=most significant byte)
 // n number of consecutive words with frame bit set, starting at q
 // err is nil if q,p,n all found as expected
-func FindFrameBits(b []byte) (int, int, int, error) {
+func FindFrameBits(b []byte, offset int) (int, int, int, error) {
 	const frameMask = byte(1)
 	var q, p, n int
 
 	var seenWordWithoutFrameBit bool
 	var frameBitInPreviousWord bool
-	for i := 2; i < len(b); i += 4 {
+	for i := offset; i < len(b); i += 4 {
 		if seenWordWithoutFrameBit {
 			if frameBitInPreviousWord && !(frameMask&b[i] == 1) { // first look for lack of frame bit
 				frameBitInPreviousWord = true

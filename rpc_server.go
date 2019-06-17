@@ -24,11 +24,12 @@ import (
 // the Dastard data sources.
 // TODO: consider renaming -> DastardControl (5/11/18)
 type SourceControl struct {
-	simPulses *SimPulseSource
-	triangle  *TriangleSource
-	lancero   *LanceroSource
-	erroring  *ErroringSource
-	// TODO: Add sources for ROACH, Abaco
+	simPulses      *SimPulseSource
+	triangle       *TriangleSource
+	lancero        *LanceroSource
+	roach          *RoachSource
+	abaco          *AbacoSource
+	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
 
@@ -55,11 +56,15 @@ func NewSourceControl() *SourceControl {
 	sc.erroring = NewErroringSource()
 	lan, _ := NewLanceroSource()
 	sc.lancero = lan
+	sc.roach, _ = NewRoachSource()
+	sc.abaco, _ = NewAbacoSource()
 
 	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle.heartbeats = sc.heartbeats
 	sc.erroring.heartbeats = sc.heartbeats
 	sc.lancero.heartbeats = sc.heartbeats
+	sc.roach.heartbeats = sc.heartbeats
+	sc.abaco.heartbeats = sc.heartbeats
 
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
@@ -124,6 +129,26 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
 	*reply = (err == nil)
 	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMhz, s.lancero.ncards)
+	return err
+}
+
+// ConfigureAbacoSource configures the Abaco cards.
+func (s *SourceControl) ConfigureAbacoSource(args *AbacoSourceConfig, reply *bool) error {
+	log.Printf("ConfigureAbacoSource: \n")
+	err := s.abaco.Configure(args)
+	s.clientUpdates <- ClientUpdate{"ABACO", args}
+	*reply = (err == nil)
+	log.Printf("Result is okay=%t\n", *reply)
+	return err
+}
+
+// ConfigureRoachSource configures the abaco cards.
+func (s *SourceControl) ConfigureRoachSource(args *RoachSourceConfig, reply *bool) error {
+	log.Printf("ConfigureRoachSource: \n")
+	err := s.roach.Configure(args)
+	s.clientUpdates <- ClientUpdate{"ROACH", args}
+	*reply = (err == nil)
+	log.Printf("Result is okay=%t\n", *reply)
 	return err
 }
 
@@ -202,11 +227,11 @@ func (s *SourceControl) ConfigureProjectorsBasis(pbo *ProjectorsBasisObject, rep
 		return err
 	}
 	f := func() {
-		err := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription)
-		if err == nil {
+		errcpb := s.ActiveSource.ConfigureProjectorsBases(pbo.ChannelIndex, projectors, basis, pbo.ModelDescription)
+		if errcpb == nil {
 			s.status.ChannelsWithProjectors = s.ActiveSource.ChannelsWithProjectors()
 		}
-		s.queuedResults <- err
+		s.queuedResults <- errcpb
 	}
 	err = s.runLaterIfActive(f)
 	*reply = (err == nil)
@@ -267,11 +292,17 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.ActiveSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
+	case "ROACHSOURCE":
+		s.ActiveSource = DataSource(s.roach)
+		s.status.SourceName = "Roach"
+
+	case "ABACOSOURCE":
+		s.ActiveSource = DataSource(s.abaco)
+		s.status.SourceName = "Abaco"
+
 	case "ERRORINGSOURCE":
 		s.ActiveSource = DataSource(s.erroring)
 		s.status.SourceName = "Erroring"
-
-	// TODO: Add cases here for ROACH, ABACO, etc.
 
 	default:
 		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
@@ -541,18 +572,46 @@ func RunRPCServer(portrpc int, block bool) {
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
 	err := viper.UnmarshalKey("simpulse", &spc)
+	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
+		spc.Nchan = 1
+	}
 	if err == nil {
-		sourceControl.ConfigureSimPulseSource(&spc, &okay)
+		err0 := sourceControl.ConfigureSimPulseSource(&spc, &okay)
+		if err0 != nil {
+			panic(err0)
+		}
 	}
 	var tsc TriangleSourceConfig
 	err = viper.UnmarshalKey("triangle", &tsc)
+	if tsc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
+		tsc.Nchan = 1
+	}
 	if err == nil {
-		sourceControl.ConfigureTriangleSource(&tsc, &okay)
+		err0 := sourceControl.ConfigureTriangleSource(&tsc, &okay)
+		if err0 != nil {
+			panic(err0)
+		}
 	}
 	var lsc LanceroSourceConfig
 	err = viper.UnmarshalKey("lancero", &lsc)
+	if lsc.Nsamp == 0 { // default to a valid Nsamp value to avoid ConfigureLanceroSource throwing an error
+		lsc.Nsamp = 16
+	}
 	if err == nil {
-		sourceControl.ConfigureLanceroSource(&lsc, &okay)
+		err0 := sourceControl.ConfigureLanceroSource(&lsc, &okay)
+		if err0 != nil {
+			panic(err0)
+		}
+	}
+	var asc AbacoSourceConfig
+	err = viper.UnmarshalKey("abaco", &asc)
+	if err == nil {
+		sourceControl.ConfigureAbacoSource(&asc, &okay)
+	}
+	var rsc RoachSourceConfig
+	err = viper.UnmarshalKey("roach", &rsc)
+	if err == nil {
+		sourceControl.ConfigureRoachSource(&rsc, &okay)
 	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false

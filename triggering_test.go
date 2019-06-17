@@ -356,6 +356,7 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it.
 	sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
+	segment.signed = dsp.stream.signed // dsp.stream.signed is later set equal to segment.signed
 	dsp.stream.samplesSeen = 0
 	var primaries, secondaries []*DataRecord
 	for i := 0; i < nRepeat; i++ {
