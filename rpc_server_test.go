@@ -235,7 +235,7 @@ func TestServer(t *testing.T) {
 			t.Errorf("want %q, have %q", "hello\n", *reply)
 		}
 	}
-	stateLabelArg := StateLabelConfig{Label: "testlabel"}
+	stateLabelArg := StateLabelConfig{Label: "testlabel", WaitForError: true}
 	if err1 := client.Call("SourceControl.SetExperimentStateLabel", &stateLabelArg, &okay); err1 != nil {
 		t.Error(err1)
 	}
