@@ -92,6 +92,7 @@ func (ws *WritingState) Stop() error {
 			return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
 		}
 		ws.externalTriggerFileBufferedWriter = nil
+		ws.externalTriggerFile = nil
 	}
 	ws.externalTriggerNumberObserved = 0
 	ws.ExternalTriggerFilename = ""
