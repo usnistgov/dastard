@@ -341,21 +341,24 @@ var PubSummariesChan chan []*DataRecord
 // that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs.
 // This way even if goroutines in different threads want to publish records, they all use the same
 // zmq port. The goroutine can be stopped by closing PubRecordsChan.
-func configurePubRecordsSocket() (err error) {
+func configurePubRecordsSocket() error {
 	if PubRecordsChan != nil {
 		return fmt.Errorf("run configurePubRecordsSocket only one time")
 	}
+	var err error
 	PubRecordsChan, err = startSocket(Ports.Trigs, messageRecords)
-	return
+	PubRecordsClosedChan = make(chan struct{})
+	return err
 }
 
 // configurePubSummariesSocket should be run exactly one time; analogue of configurePubRecordsSocket
-func configurePubSummariesSocket() (err error) {
+func configurePubSummariesSocket() error {
 	if PubSummariesChan != nil {
 		return fmt.Errorf("run configurePubSummariesSocket only one time")
 	}
+	var err error
 	PubSummariesChan, err = startSocket(Ports.Summaries, messageSummaries)
-	return
+	return err
 }
 
 // startSocket sets up a ZMQ publisher socket and starts a goroutine to publish
@@ -369,8 +372,9 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetSndhwm(3000) // not really sure how to choose this
-	// but at 8x30 TDM we have 480 channels, so we can only cache
+	pubSocket.SetSndhwm(1) // not really sure how to choose this
+	pubSocket.SetLinger(0) // set linger 0 so closing and reopening the socket flushes buffer
+	// but at 8x30 TDM we have 480 channels, so we can cache
 	// about 2 messages per channel at the default of 1000
 	// I think I was missing packets when using easyClient set to autotrigger
 	// with 0 delay and 5000 sample records as 160ns row time
@@ -378,10 +382,10 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 		return nil, err
 	}
 	go func() {
-		defer pubSocket.Destroy()
 		for {
 			records, ok := <-pubchan
 			if !ok { // Destroy socket when pubchan is closed and drained
+				pubSocket.Destroy()
 				return
 			}
 			for _, record := range records {
