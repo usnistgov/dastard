@@ -347,7 +347,6 @@ func configurePubRecordsSocket() error {
 	}
 	var err error
 	PubRecordsChan, err = startSocket(Ports.Trigs, messageRecords)
-	PubRecordsClosedChan = make(chan struct{})
 	return err
 }
 
@@ -368,16 +367,12 @@ func configurePubSummariesSocket() error {
 // *** This looks like it could be replaced by PubChanneler, but tests show terrible
 // performance with Channeler ***
 func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
-	const publishChannelDepth = 500
+	const publishChannelDepth = 500 // not totally sure how to choose this, but it should probably be
+	// at least as large as number of channels
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetSndhwm(1) // not really sure how to choose this
-	pubSocket.SetLinger(0) // set linger 0 so closing and reopening the socket flushes buffer
-	// but at 8x30 TDM we have 480 channels, so we can cache
-	// about 2 messages per channel at the default of 1000
-	// I think I was missing packets when using easyClient set to autotrigger
-	// with 0 delay and 5000 sample records as 160ns row time
+	pubSocket.SetSndhwm(1) // use no zmq buffer, so pubchan is our only send buffer
 	if err != nil {
 		return nil, err
 	}
