@@ -345,21 +345,23 @@ var PubSummariesChan chan []*DataRecord
 // that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs.
 // This way even if goroutines in different threads want to publish records, they all use the same
 // zmq port. The goroutine can be stopped by closing PubRecordsChan.
-func configurePubRecordsSocket() (err error) {
+func configurePubRecordsSocket() error {
 	if PubRecordsChan != nil {
 		return fmt.Errorf("run configurePubRecordsSocket only one time")
 	}
+	var err error
 	PubRecordsChan, err = startSocket(Ports.Trigs, messageRecords)
-	return
+	return err
 }
 
 // configurePubSummariesSocket should be run exactly one time; analogue of configurePubRecordsSocket
-func configurePubSummariesSocket() (err error) {
+func configurePubSummariesSocket() error {
 	if PubSummariesChan != nil {
 		return fmt.Errorf("run configurePubSummariesSocket only one time")
 	}
+	var err error
 	PubSummariesChan, err = startSocket(Ports.Summaries, messageSummaries)
-	return
+	return err
 }
 
 // startSocket sets up a ZMQ publisher socket and starts a goroutine to publish
@@ -369,23 +371,20 @@ func configurePubSummariesSocket() (err error) {
 // *** This looks like it could be replaced by PubChanneler, but tests show terrible
 // performance with Channeler ***
 func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
-	const publishChannelDepth = 500
+	const publishChannelDepth = 500 // not totally sure how to choose this, but it should probably be
+	// at least as large as number of channels
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetOption(czmq.SockSetSndhwm(3000)) // not really sure how to choose this
-	// but at 8x30 TDM we have 480 channels, so we can only cache
-	// about 2 messages per channel at the default of 1000
-	// I think I was missing packets when using easyClient set to autotrigger
-	// with 0 delay and 5000 sample records as 160ns row time
+	pubSocket.SetOption(czmq.SockSetSndhwm(1)) // use no zmq buffer, rely only on pubchan as buffer	
 	if err != nil {
 		return nil, err
 	}
 	go func() {
-		defer pubSocket.Destroy()
 		for {
 			records, ok := <-pubchan
 			if !ok { // Destroy socket when pubchan is closed and drained
+				pubSocket.Destroy()
 				return
 			}
 			for _, record := range records {

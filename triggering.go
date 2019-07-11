@@ -584,7 +584,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 		for _, st := range secondaryTrigList {
 			secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
 		}
-		return
+		return records, secondaries
 	}
 
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
@@ -632,7 +632,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	// trigger algorithms should not inspect the last NSamples samples
 	// fmt.Printf("Trimmed. %7d samples remain (requested %7d)\n", dsp.stream.TrimKeepingN(dsp.NSamples), dsp.NSamples)
 	dsp.stream.TrimKeepingN(dsp.NSamples)
-	return
+	return records, secondaries
 }
 
 // RecordSlice attaches the methods of sort.Interface to slices, sorting in increasing order.

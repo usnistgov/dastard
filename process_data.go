@@ -106,15 +106,20 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 // ConfigureTrigger sets this stream's trigger state.
 func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
 	dsp.TriggerState = state
+	dsp.LastTrigger = 0 // forget the Last Trigger, so that all channels will auto trigger
+	// at the same starting point when you send new trigger settings
 	dsp.edgeMultiSetInitialState()
 }
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	records, _ := dsp.TriggerData()
+	records, secondaries := dsp.TriggerData()
 	dsp.AnalyzeData(records)                                       // add analysis results to records in-place
 	if err := dsp.DataPublisher.PublishData(records); err != nil { // publish and save data, when enabled
+		panic(err)
+	}
+	if err := dsp.DataPublisher.PublishData(secondaries); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
 	segment.processed = true
