@@ -376,7 +376,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetSndhwm(1) // use no zmq buffer, so pubchan is our only send buffer
+	pubSocket.SetOption(czmq.SockSetSndhwm(1)) // use no zmq buffer, rely only on pubchan as buffer	
 	if err != nil {
 		return nil, err
 	}
