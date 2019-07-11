@@ -39,6 +39,7 @@ type Writer struct {
 	ModelInfo                 ModelInfo
 	CreationInfo              CreationInfo
 	ReadoutInfo               TimeDivisionMultiplexingInfo
+	PixelInfo                 PixelInfo
 
 	// items not serialized to JSON header
 	recordsWritten int
@@ -53,7 +54,7 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	MaxPresamples int, MaxSamples int, FramePeriodSeconds float64,
 	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string,
 	DastardVersion string, GitHash string, SourceName string,
-	ReadoutInfo TimeDivisionMultiplexingInfo) *Writer {
+	ReadoutInfo TimeDivisionMultiplexingInfo, pixelInfo PixelInfo) *Writer {
 	writer := new(Writer)
 	writer.ChannelIndex = ChannelIndex
 	writer.ChannelName = ChannelName
@@ -68,6 +69,7 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	writer.CreationInfo = CreationInfo{DastardVersion: DastardVersion, GitHash: GitHash,
 		SourceName: SourceName, CreationTime: time.Now()}
 	writer.ReadoutInfo = ReadoutInfo
+	writer.PixelInfo = pixelInfo
 	writer.fileName = fileName
 	return writer
 }
@@ -79,6 +81,12 @@ type ModelInfo struct {
 	Basis       ArrayJsoner
 	basis       *mat.Dense
 	Description string
+}
+
+type PixelInfo struct {
+	XPosition int
+	YPosition int
+	Name      string
 }
 
 // ArrayJsoner aids in formatting arrays for writing to JSON

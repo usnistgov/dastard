@@ -32,6 +32,7 @@ type SourceControl struct {
 	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
+	mapServer      *MapServer
 
 	status        ServerStatus
 	clientUpdates chan<- ClientUpdate
@@ -383,10 +384,12 @@ type WriteControlConfig struct {
 	WriteLJH22 bool   // turn on one or more file formats
 	WriteOFF   bool
 	WriteLJH3  bool
+	m          *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 
 // WriteControl requests start/stop/pause/unpause data writing
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
+	config.m = s.mapServer.m
 	f := func() {
 		err := s.ActiveSource.WriteControl(config)
 		if err == nil {
@@ -401,19 +404,35 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 
 // StateLabelConfig is the argument type of SetExperimentStateLabel
 type StateLabelConfig struct {
-	Label string
+	Label        string
+	WaitForError bool // False (the default) will return ASAP and panic if there is an error
+	// True will wait for a response and return any error, but will be slower (~50 ms typical, slower possible)
 }
 
 // SetExperimentStateLabel sets the experiment state label in the _experiment_state file
 // The timestamp is fixed as soon as the RPC command is recieved
 func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply *bool) error {
 	timestamp := time.Now()
-	f := func() {
-		s.queuedResults <- s.ActiveSource.SetExperimentStateLabel(timestamp, config.Label)
+	if config.WaitForError {
+		f := func() {
+			s.queuedResults <- s.ActiveSource.SetExperimentStateLabel(timestamp, config.Label)
+		}
+		err := s.runLaterIfActive(f)
+		*reply = (err == nil)
+		return err
+	} else {
+		f := func() {
+			s.queuedResults <- s.ActiveSource.SetExperimentStateLabel(timestamp, config.Label)
+		}
+		f2 := func() {
+			err := s.runLaterIfActive(f)
+			if err != nil {
+				panic(fmt.Sprintf("error with WaitForError==false in SetExperimentStateLabel. %s", spew.Sdump(err)))
+			}
+		}
+		go f2()
+		return nil
 	}
-	err := s.runLaterIfActive(f)
-	*reply = (err == nil)
-	return err
 }
 
 // WriteComment writes the comment to comment.txt
@@ -569,7 +588,8 @@ func RunRPCServer(portrpc int, block bool) {
 	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
 
 	// Load stored settings, and transfer saved configuration
-	// from Viper to relevant objects.
+	// from Viper to relevant objects. Note that these items are saved
+	// in client_updater.go
 	var okay bool
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
@@ -618,6 +638,7 @@ func RunRPCServer(portrpc int, block bool) {
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle
 	sourceControl.isSourceActive = false
+	sourceControl.mapServer = mapServer
 	if err == nil {
 		sourceControl.broadcastStatus()
 	}

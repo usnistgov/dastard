@@ -22,25 +22,24 @@ func setPortnumbers(base int) {
 	Ports.Summaries = base + 4
 }
 
-var githash = "githash not computed"
-var buildDate = "build date not computed"
-
 // BuildInfo can contain compile-time information about the build
 type BuildInfo struct {
-	Version  string
-	Githash  string
-	Date     string
-	RunStart time.Time
+	Version string
+	Githash string
+	Date    string
 }
 
 // Build is a global holding compile-time information about the build
 var Build = BuildInfo{
-	Version: "0.2.2",
+	Version: "0.2.4",
 	Githash: "no git hash computed",
 	Date:    "no build date computed",
 }
 
+// DastardStartTime is a global holding the time init() was run
+var DastardStartTime time.Time
+
 func init() {
 	setPortnumbers(5500)
-	Build.RunStart = time.Now()
+	DastardStartTime = time.Now()
 }

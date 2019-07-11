@@ -502,21 +502,30 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		rowNum := rccode.row()
 		colNum := rccode.col()
 		fps := 1
+		var pixel Pixel
+		if config.m != nil && len(config.m.Pixels) >= i {
+			pixel = config.m.Pixels[i]
+		} else {
+			const MaxUint = ^uint(0)
+			const MaxInt = int(MaxUint >> 1)
+			const MinInt = -MaxInt - 1 // cauclate MinInt following https://stackoverflow.com/questions/6878590/the-maximum-value-for-an-int-type-in-go
+			pixel = Pixel{Name: "no map information", X: MinInt, Y: MinInt}
+		}
 		if dsp.Decimate {
 			fps = dsp.DecimateLevel
 		}
 		if config.WriteLJH22 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
-				ds.name, ds.chanNames[i], ds.chanNumbers[i])
+				timebase, DastardStartTime, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				timebase, DastardStartTime, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
-				dsp.modelDescription)
+				dsp.modelDescription, pixel)
 			channelsWithOff++
 		}
 		if config.WriteLJH3 {

@@ -30,7 +30,8 @@ func TestOff(t *testing.T) {
 			0, 0, 0})
 
 	w := NewWriter("off_test.off", 0, "chan1", 1, 100, 200, 9.6e-6, projectors, basis, "dummy model for testing",
-		"DastardVersion Placeholder", "GitHash Placeholder", "SourceName Placeholder", TimeDivisionMultiplexingInfo{})
+		"DastardVersion Placeholder", "GitHash Placeholder", "SourceName Placeholder", TimeDivisionMultiplexingInfo{},
+		PixelInfo{})
 	if err := w.CreateFile(); err != nil {
 		t.Fatal(err)
 	}

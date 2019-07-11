@@ -69,6 +69,9 @@ type Writer struct {
 	ChannelNumberMatchingName int
 	ColumnNum                 int
 	RowNum                    int
+	PixelXPosition            int
+	PixelYPosition            int
+	PixelName                 string
 
 	file   *os.File
 	writer *bufio.Writer
@@ -176,11 +179,14 @@ Number of samples per point: %d
 Timestamp offset (s): %.6f
 Server Start Time: %s
 First Record Time: %s
+Pixel X Position: %d
+Pixel Y Position: %d
+Pixel Name: %s
 Timebase: %e
 #End of Header
 `, w.DastardVersion, w.GitHash, w.SourceName, rowColText, w.NumberOfChans,
 		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.Presamples, w.Samples, w.FramesPerSample,
-		timestamp, starttime, firstrec, w.Timebase,
+		timestamp, starttime, firstrec, w.PixelXPosition, w.PixelYPosition, w.PixelName, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
