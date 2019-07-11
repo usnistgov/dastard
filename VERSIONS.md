@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.2.5 pre** July 11, 2019
+* reset triggering memory on changing trigger settings
+
 **0.2.4** June 17, 2019
 * Read Cringe global variable data file.
 * Lancero LSYNC stored by Cringe; read by Dastard.
