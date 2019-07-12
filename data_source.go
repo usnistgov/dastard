@@ -503,7 +503,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		colNum := rccode.col()
 		fps := 1
 		var pixel Pixel
-		if config.m != nil && len(config.m.Pixels) >= i {
+		if config.m != nil && len(config.m.Pixels) > i {
 			pixel = config.m.Pixels[i]
 		} else {
 			const MaxUint = ^uint(0)
