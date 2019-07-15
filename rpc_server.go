@@ -384,12 +384,12 @@ type WriteControlConfig struct {
 	WriteLJH22 bool   // turn on one or more file formats
 	WriteOFF   bool
 	WriteLJH3  bool
-	m          *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
+	Map        *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 
 // WriteControl requests start/stop/pause/unpause data writing
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
-	config.m = s.mapServer.m
+	config.Map = s.mapServer.Map
 	f := func() {
 		err := s.ActiveSource.WriteControl(config)
 		if err == nil {

@@ -494,6 +494,13 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	}
 
 	channelsWithOff := 0
+	channelsPerPixel := ds.ChannelsPerPixel()
+	if config.Map != nil {
+		if len(config.Map.Pixels) != ds.nchan/channelsPerPixel {
+			return fmt.Errorf("have map length %v, want %v, want value calculated as (nchan %v / channelsPerPixel %v)",
+				len(config.Map.Pixels), ds.nchan/channelsPerPixel, ds.nchan, channelsPerPixel)
+		}
+	}
 	for i, dsp := range ds.processors {
 		timebase := 1.0 / dsp.SampleRate
 		rccode := ds.rowColCodes[i]
@@ -502,9 +509,12 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		rowNum := rccode.row()
 		colNum := rccode.col()
 		fps := 1
+		// map information is all or nothing, either all pixel get info from the map file or none do
 		var pixel Pixel
-		if config.m != nil && len(config.m.Pixels) > i {
-			pixel = config.m.Pixels[i]
+
+		if config.Map != nil {
+			channelNumber := ds.chanNumbers[i]
+			pixel = config.Map.Pixels[channelNumber-1]
 		} else {
 			const MaxUint = ^uint(0)
 			const MaxInt = int(MaxUint >> 1)
@@ -570,6 +580,27 @@ func (ds *AnySource) ChannelsWithProjectors() []int {
 // Nchan returns the current number of valid channels in the data source.
 func (ds *AnySource) Nchan() int {
 	return ds.nchan
+}
+
+// ChannelsPerPixel return the number of challes per pixel, eg 2 for LanceroSource since each pixel has chan and err
+func (ds *AnySource) ChannelsPerPixel() int {
+
+	// minMax return the minimum and maximum value of an int slice
+	minMax := func(array []int) (int, int) {
+		var max int = array[0]
+		var min int = array[0]
+		for _, value := range array {
+			if max < value {
+				max = value
+			}
+			if min > value {
+				min = value
+			}
+		}
+		return min, max
+	}
+	_, max := minMax(ds.chanNumbers)
+	return max / ds.nchan
 }
 
 // Running tells whether the source is actively running.
