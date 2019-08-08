@@ -52,7 +52,7 @@ func readMap(filename string) (*Map, error) {
 
 // MapServer is the RPC service that loads and broadcasts TES maps
 type MapServer struct {
-	Map           *Map
+	m             *Map
 	clientUpdates chan<- ClientUpdate
 }
 
@@ -67,23 +67,12 @@ func (ms *MapServer) Load(filename *string, reply *bool) error {
 	if err != nil {
 		return err
 	}
-	ms.Map = m
+	ms.m = m
 	ms.broadcastMap()
-	return nil
-}
-
-// Unload forgets the current map file
-func (ms *MapServer) Unload(zero *int, reply *bool) error {
-	ms.Map = nil
-	ms.broadcastMap()
-	*reply = true
-	// I can't usre broadcastMap here because i just set ms.Map = nil
-	ms.clientUpdates <- ClientUpdate{"TESMAPFILE", "no map file"}
-	ms.clientUpdates <- ClientUpdate{"TESMAP", "no map loaded"}
 	return nil
 }
 
 func (ms *MapServer) broadcastMap() {
-	ms.clientUpdates <- ClientUpdate{"TESMAPFILE", ms.Map.Filename}
-	ms.clientUpdates <- ClientUpdate{"TESMAP", ms.Map}
+	ms.clientUpdates <- ClientUpdate{"TESMAPFILE", ms.m.Filename}
+	ms.clientUpdates <- ClientUpdate{"TESMAP", ms.m}
 }
