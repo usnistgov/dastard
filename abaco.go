@@ -154,17 +154,18 @@ func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
 func enumerateAbacoDevices() (devices []int, err error) {
 	for cnum := 0; cnum < maxAbacoCards; cnum++ {
 		for id := 0; id < maxAbacoChannels; id++ {
-			name := fmt.Sprintf("/dev/xdma%d_c2h_%d", cnum, id)
+			name := fmt.Sprintf("/dev/shm/xdma%d_c2h_%d_description", cnum, id)
 			info, err := os.Stat(name)
 			if err != nil {
 				if os.IsNotExist(err) {
+					fmt.Printf("no such name: %s\n", name)
 					continue
 				} else {
 					return devices, err
 				}
 			}
-			if (info.Mode() & os.ModeDevice) != 0 {
-				devices = append(devices, 10*cnum+id)
+			if (info.Mode() & os.ModeDevice) != 0 || true {
+				devices =append(devices, 10*cnum+id)
 			}
 		}
 	}
