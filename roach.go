@@ -52,7 +52,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	twoPi := onePi << 1
 	//phi0_lim := (4 * (1 << (16 - bits_to_keep)) / 2) - 1
 	for i, rawVal := range *data {
-		v := int16(rawVal) >> bitsToShift
+		v := int16(rawVal*2) >> bitsToShift // *2 for ABACO HACK!! FIX TO GENERALIZE
 		delta := v - u.lastVal
 
 		// short term unwrapping

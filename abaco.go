@@ -22,6 +22,7 @@ type AbacoDevice struct {
 	nchan     int
 	frameSize int // frame size, in bytes
 	ring      *ringbuffer.RingBuffer
+	unwrap    []*PhaseUnwrapper
 }
 
 const maxAbacoCards = 4    // Don't allow more than this many cards.
@@ -95,6 +96,10 @@ func (device *AbacoDevice) sampleCard() error {
 	} else {
 		fmt.Printf("Error in FindFrameBits: %v", err3)
 		return err3
+	}
+	device.unwrap = make([]*PhaseUnwrapper, device.nchan)
+	for i := range device.unwrap {
+		device.unwrap[i] = &(PhaseUnwrapper{})
 	}
 	return device.DiscardPartialFrame(data)
 }
@@ -269,7 +274,7 @@ func (as *AbacoSource) Sample() error {
 		}
 		as.nchan += device.ncols * device.nrows
 	}
-	as.sampleRate = 8125000.0 // HACK! For now, assume a value.
+	as.sampleRate = 125000.0 // HACK! For now, assume a value.
 	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
 
 	return nil
@@ -342,8 +347,8 @@ func (as *AbacoSource) readerMainLoop() {
 				if bframes < framesUsed {
 					framesUsed = bframes
 				}
-				// log.Printf("Read Abaco device #%d, total of %d bytes = %d frames + %d extra bytes",
-				// 	devnum, nb, bframes, nb-bframes*dev.frameSize)
+				// log.Printf("Read Abaco device %v, total of %d bytes = %d frames + %d extra bytes",
+				// 	dev, nb, bframes, nb-bframes*dev.frameSize)
 
 				// This is the demultiplexing step. Loops over channels,
 				// then over frames.
