@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"time"
+	"sync"
 
 	"github.com/usnistgov/dastard/lancero"
 	"github.com/usnistgov/dastard/ringbuffer"
@@ -458,18 +459,31 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	// In the Lancero data this is where we scan for external triggers.
 	// That doesn't exist yet in Abaco.
 
+	// we should loop over devices here
+	dev := as.devices[0]
+
+	var wg sync.WaitGroup
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
-		data := datacopies[channelIndex]
-		seg := DataSegment{
-			rawData:         data,
-			framesPerSample: 1, // This will be changed later if decimating
-			framePeriod:     as.samplePeriod,
-			firstFramenum:   as.nextFrameNum,
-			firstTime:       firstTime,
-		}
-		block.segments[channelIndex] = seg
-		block.nSamp = len(data)
+		wg.Add(1)
+		go func(channelIndex int) {
+			defer wg.Done()
+			data := datacopies[channelIndex]
+			unwrap := dev.unwrap[channelIndex]
+			// _ = unwrap
+			unwrap.UnwrapInPlace(&data)
+			seg := DataSegment{
+				rawData:         data,
+				framesPerSample: 1, // This will be changed later if decimating
+				framePeriod:     as.samplePeriod,
+				firstFramenum:   as.nextFrameNum,
+				firstTime:       firstTime,
+				signed:          true,
+			}
+			block.segments[channelIndex] = seg
+			block.nSamp = len(data)
+		}(channelIndex)
 	}
+	wg.Wait()
 	as.nextFrameNum += FrameIndex(framesUsed)
 	if as.heartbeats != nil {
 		as.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
