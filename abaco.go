@@ -367,11 +367,23 @@ func (as *AbacoSource) readerMainLoop() {
 				int32Buffer := bytesToInt32(bytesData)
 				for i := 0; i < dev.nchan; i++ {
 					datacopies[i+nchanPrevDevices] = make([]RawType, framesUsed)
-					dc := datacopies[i+nchanPrevDevices]
-					idx := i
-					for j := 0; j < framesUsed; j++ {
-						dc[j] = RawType(int32Buffer[idx] >> 12)
-						idx += dev.nchan
+				}
+				// for i := 0; i < dev.nchan; i++ {
+				// 	dc := datacopies[i+nchanPrevDevices]
+				// 	idx := i
+				// 	for j := 0; j < framesUsed; j++ {
+				// 		// dc[j] = RawType(int32Buffer[idx] >> 12)
+				// 		dc[j] = RawType(int32Buffer[idx] >> 16)
+				// 		idx += dev.nchan
+				// 	}
+				// }
+				// Try reversing loop order
+				for j := 0; j < framesUsed; j++ {
+					for i := 0; i < dev.nchan; i++ {
+						dc := datacopies[i+nchanPrevDevices]
+						idx := i+j*dev.nchan
+						// dc[j] = RawType(int32Buffer[idx] >> 12)
+						dc[j] = RawType(int32Buffer[idx] >> 16)
 					}
 				}
 				totalBytes += nb
