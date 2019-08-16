@@ -1,7 +1,8 @@
 package dastard
 
 // Contain the ClientUpdater object, which publishes JSON-encoded messages
-// giving the latest DASTARD state.
+// giving the latest DASTARD state. Most of these messages are saved to
+// disk with viper.
 
 import (
 	"encoding/json"

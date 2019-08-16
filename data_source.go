@@ -505,7 +505,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		colNum := rccode.col()
 		fps := 1
 		var pixel Pixel
-		if config.m != nil && len(config.m.Pixels) >= i {
+		if config.m != nil && len(config.m.Pixels) > i {
 			pixel = config.m.Pixels[i]
 		} else {
 			const MaxUint = ^uint(0)
@@ -519,13 +519,13 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		if config.WriteLJH22 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				timebase, DastardStartTime, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, Build.RunStart, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				timebase, DastardStartTime, nrows, ncols, ds.nchan, rowNum, colNum, filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
 				dsp.modelDescription, pixel)
 			channelsWithOff++
