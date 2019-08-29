@@ -33,13 +33,13 @@ func readMap(filename string) (*Map, error) {
 	if _, err := fmt.Fscanf(file, "spacing: %d\n", &m.Spacing); err != nil {
 		return nil, err
 	}
-
+	var matterChannums bool
 	for {
 		var chnum int
 		var p Pixel
 		_, err := fmt.Fscanf(file, "%d %d %d %s", &chnum, &p.X, &p.Y, &p.Name)
 		if err == io.EOF {
-			return m, nil
+			break
 		}
 		if err != nil {
 			fmt.Println(m)
@@ -47,7 +47,29 @@ func readMap(filename string) (*Map, error) {
 			return m, err
 		}
 		m.Pixels = append(m.Pixels, p)
+		if len(m.Pixels) == 2 {
+			if chnum == 3 {
+				matterChannums = true
+				fmt.Println("reading map with matter style channel numbers in legacy mode")
+			}
+		}
+		if len(m.Pixels) > 2 {
+			if matterChannums {
+				matterChannum := 2*len(m.Pixels) - 1
+				if chnum != matterChannum {
+					return nil, fmt.Errorf("readMap: have chnum %v, want matterChannum %v (matter channel number legacy mode)", chnum, matterChannum)
+				}
+			} else {
+				channelNumber := len(m.Pixels)
+				if chnum != channelNumber {
+					return nil, fmt.Errorf("readMap: have chnum %v, want channelNumber %v", chnum, channelNumber)
+
+				}
+			}
+		}
+
 	}
+	return m, nil
 }
 
 // MapServer is the RPC service that loads and broadcasts TES maps
