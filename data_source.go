@@ -165,7 +165,7 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 			}
 			if err := ds.ProcessSegments(block); err != nil {
 				log.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
-				panic("panic stops source when processSegments fails")
+				panic("panic to stop source when processSegments, this seems to keep the lancero working better than stopping the source")
 			}
 			// In some sources, ds.getNextBlock has to be called again to initiate the next
 			// data acquisition step (Lancero specifically).
@@ -244,21 +244,22 @@ type dataBlock struct {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan        int           // how many channels to provide
-	name         string        // what kind of source is this?
-	chanNames    []string      // one name per channel
-	chanNumbers  []int         // names have format "prefixNumber", this is the number
-	rowColCodes  []RowColCode  // one RowColCode per channel
-	voltsPerArb  []float32     // the physical units per arb, one per channel
-	sampleRate   float64       // samples per second
-	samplePeriod time.Duration // time per sample
-	lastread     time.Time
-	nextFrameNum FrameIndex // frame number for the next frame we will receive
-	processors   []*DataStreamProcessor
-	abortSelf    chan struct{}   // Signal to the core loop of active sources to stop
-	nextBlock    chan *dataBlock // Signal from the core loop that a block is ready to process
-	broker       *TriggerBroker
-	configError  error // Any error that arose when configuring the source (before Start)
+	nchan                  int           // how many channels to provide
+	name                   string        // what kind of source is this?
+	chanNames              []string      // one name per channel
+	chanNumbers            []int         // names have format "prefixNumber", this is the number
+	rowColCodes            []RowColCode  // one RowColCode per channel
+	voltsPerArb            []float32     // the physical units per arb, one per channel
+	sampleRate             float64       // samples per second
+	samplePeriod           time.Duration // time per sample
+	lastread               time.Time
+	nextFrameNum           FrameIndex // frame number for the next frame we will receive
+	previousLastSampleTime time.Time
+	processors             []*DataStreamProcessor
+	abortSelf              chan struct{}   // Signal to the core loop of active sources to stop
+	nextBlock              chan *dataBlock // Signal from the core loop that a block is ready to process
+	broker                 *TriggerBroker
+	configError            error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
@@ -291,11 +292,11 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 // It's a more synchronous version of each dsp launching its own goroutine
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	var wg sync.WaitGroup
+	if len(ds.processors) != len(block.segments) {
+		panic(fmt.Sprintf("Oh crap! block has %d segments but Source has %d processors",
+			len(block.segments), len(ds.processors)))
+	}
 	for i, dsp := range ds.processors {
-		if i >= len(block.segments) {
-			fmt.Printf("Oh crap! block has %d segments but Source has %d processors",
-				len(block.segments), len(ds.processors))
-		}
 		segment := block.segments[i]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
@@ -319,8 +320,12 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	for i, dsp := range ds.processors {
 		numberWritten[i] = dsp.numberWritten
 	}
-	err := ds.HandleExternalTriggers(block.externalTriggerRowcounts)
-	if err != nil {
+	if err := ds.HandleExternalTriggers(block.externalTriggerRowcounts); err != nil {
+		return err
+	}
+
+	// all segments will have the same value for droppedFrames and firstFramenum, so we just look at the first segment here
+	if err := ds.HandlePotentialDroppedData(block.segments[0].droppedFrames, int(block.segments[0].firstFramenum)); err != nil {
 		return err
 	}
 	if ds.writingState.Active && !ds.writingState.Paused {
@@ -338,6 +343,52 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 // the file is created upon the first call to this function for a given file writing
 func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel string) error {
 	return ds.writingState.SetExperimentStateLabel(timestamp, stateLabel)
+}
+
+//HandlePotentialDroppedData writes to a file in the case that a data drop is detected
+//data drop refers to a case where a read from a source, eg the LanceroSource misses some frames of data
+func (ds *AnySource) HandlePotentialDroppedData(droppedFrames, firstFramenum int) error {
+
+	if ds.writingState.dataDropFileBufferedWriter == nil && droppedFrames > 0 {
+		// create file
+		var err error
+		ds.writingState.dataDropFile, err = os.Create(ds.writingState.DataDropFilename)
+		if err != nil {
+			return fmt.Errorf("cannot create DataDropFile, %v", err)
+		}
+		ds.writingState.dataDropFileBufferedWriter = bufio.NewWriter(ds.writingState.dataDropFile)
+		// write header
+		_, err = ds.writingState.dataDropFileBufferedWriter.WriteString("# firstFramenum after drop, number of dropped frames\n")
+		if err != nil {
+			return fmt.Errorf("cannot write header to dataDroFileBufferedWriter, err %v", err)
+		}
+	}
+	ds.writingState.dataDropsObserved += 1
+	if droppedFrames > 0 {
+		line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
+		_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
+		if err != nil {
+			return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
+		}
+		fmt.Printf("DATA DROP. firstFramenum %v, droppedFrames %v\n", firstFramenum, droppedFrames)
+	}
+	select { // occasionally flush file and send messae about number of observed data drops
+	case <-ds.writingState.dataDropTicker.C:
+		// flush file
+		if ds.writingState.dataDropFileBufferedWriter != nil {
+			err := ds.writingState.dataDropFileBufferedWriter.Flush()
+			if err != nil {
+				return fmt.Errorf("cannot flush dataDropFileBufferedWriter, err %v", err)
+			}
+		}
+		// send message
+		clientMessageChan <- ClientUpdate{tag: "DATADROP",
+			state: struct {
+				TotalObserved int
+			}{TotalObserved: ds.writingState.dataDropsObserved}} // only exported fields are serialized
+	default:
+	}
+	return nil
 }
 
 //HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
@@ -647,6 +698,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 
 	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
 	ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
+	ds.writingState.dataDropTicker = time.NewTicker(time.Second * 10)
 
 	// Launch goroutines to drain the data produced by this source
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
@@ -779,6 +831,7 @@ type DataSegment struct {
 	framePeriod     time.Duration
 	voltsPerArb     float32
 	processed       bool
+	droppedFrames   int // normally zero, positive if dropped frames detected
 	// facts about the data source?
 }
 
