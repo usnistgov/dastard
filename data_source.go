@@ -325,7 +325,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	}
 
 	// all segments will have the same value for droppedFrames and firstFramenum, so we just look at the first segment here
-	if err := ds.HandlePotentialDroppedData(block.segments[0].droppedFrames, int(block.segments[0].firstFramenum)); err != nil {
+	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFramenum)); err != nil {
 		return err
 	}
 	if ds.writingState.Active && !ds.writingState.Paused {
@@ -347,7 +347,7 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 
 //HandlePotentialDroppedData writes to a file in the case that a data drop is detected
 //data drop refers to a case where a read from a source, eg the LanceroSource misses some frames of data
-func (ds *AnySource) HandlePotentialDroppedData(droppedFrames, firstFramenum int) error {
+func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 
 	if ds.writingState.dataDropFileBufferedWriter == nil && droppedFrames > 0 {
 		// create file
