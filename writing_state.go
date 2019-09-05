@@ -23,6 +23,11 @@ type WritingState struct {
 	externalTriggerFileBufferedWriter *bufio.Writer
 	externalTriggerTicker             *time.Ticker
 	externalTriggerFile               *os.File
+	DataDropFilename                  string
+	dataDropsObserved                 int
+	dataDropFileBufferedWriter        *bufio.Writer
+	dataDropTicker                    *time.Ticker
+	dataDropFile                      *os.File
 	sync.Mutex
 }
 
@@ -61,6 +66,7 @@ func (ws *WritingState) Start(filenamePattern, path string) error {
 	ws.FilenamePattern = filenamePattern
 	ws.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	ws.ExternalTriggerFilename = fmt.Sprintf(filenamePattern, "external_trigger", "bin")
+	ws.DataDropFilename = fmt.Sprintf(filenamePattern, "data_drop", "txt")
 	return ws.setExperimentStateLabel(time.Now(), "START")
 }
 
@@ -94,8 +100,19 @@ func (ws *WritingState) Stop() error {
 		ws.externalTriggerFileBufferedWriter = nil
 		ws.externalTriggerFile = nil
 	}
+	if ws.dataDropFile != nil {
+		if err := ws.dataDropFileBufferedWriter.Flush(); err != nil {
+			return fmt.Errorf("failed to flush externalTriggerFileBufferedWriter, err: %v", err)
+		}
+		if err := ws.externalTriggerFile.Close(); err != nil {
+			return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
+		}
+		ws.dataDropFileBufferedWriter = nil
+		ws.dataDropFile = nil
+	}
 	ws.externalTriggerNumberObserved = 0
 	ws.ExternalTriggerFilename = ""
+	ws.DataDropFilename = ""
 	return nil
 }
 

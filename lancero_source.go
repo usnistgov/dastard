@@ -38,10 +38,11 @@ const lanceroFBOffset int = 2
 // BuffersChanType is an internal message type used to allow
 // a goroutine to read from the Lancero card and put data on a buffered channel
 type BuffersChanType struct {
-	datacopies     [][]RawType
-	lastSampleTime time.Time
-	timeDiff       time.Duration
-	totalBytes     int
+	datacopies       [][]RawType
+	lastSampleTime   time.Time
+	timeDiff         time.Duration
+	totalBytes       int
+	dataDropDetected bool
 }
 
 // LanceroSource is a DataSource that handles 1 or more lancero devices.
@@ -59,6 +60,7 @@ type LanceroSource struct {
 	mixRequests              chan *MixFractionObject
 	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	externalTriggerLastState bool
+	previousLastSampleTime   time.Time
 	AnySource
 }
 
@@ -569,14 +571,31 @@ func (ls *LanceroSource) launchLanceroReader() {
 				var buffers [][]RawType
 				framesUsed := math.MaxInt64
 				var lastSampleTime time.Time
-
+				var dataDropDetected bool
 				for _, dev := range ls.active {
 
 					b, timeFix, err := dev.card.AvailableBuffer()
 					if err != nil {
 						panic("Warning: AvailableBuffer failed")
 					}
-					buffers = append(buffers, bytesToRawType(b))
+					q, p, ncols, err := lancero.FindFrameBits(b, lanceroFBOffset)
+					nrows := (p - q) / ncols
+					if ncols != dev.ncols || nrows != dev.nrows {
+						panic(fmt.Sprintf("ncols have %v, want %v. nrows have %v, want %v",
+							ncols, dev.ncols, nrows, dev.nrows))
+					}
+					firstWord := q
+					if firstWord > 0 {
+						dataDropDetected = true
+						// align to next frame start
+						buffers = append(buffers, bytesToRawType(b[firstWord*4:]))
+						log.Printf("DATA DROP, first word = %v\n", firstWord)
+						if len(ls.active) > 1 {
+							panic("dropped data, handling multiple devices not yet implemented")
+						}
+					} else {
+						buffers = append(buffers, bytesToRawType(b))
+					}
 					bframes := len(b) / dev.frameSize
 					if bframes < framesUsed {
 						framesUsed = bframes
@@ -588,25 +607,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 					fmt.Println("timeDiff in lancero reader", timeDiff)
 				}
 				ls.lastread = lastSampleTime
-				// check for changes in nrow, ncol and lsync
-				for ibuf, dev := range ls.active {
-					buffer := buffers[ibuf]
-					q, p, n, err := lancero.FindFrameBits(rawTypeToBytes(buffer), lanceroFBOffset)
-					if err != nil {
-						panic(fmt.Sprintf("Error in findFrameBits: %v", err))
-					}
-					qExpect := dev.ncols * dev.nrows
-					// FindFrameBits q is the index of the first frame bit after a non frame bit
-					ncols := n
-					nrows := (p - q) / n
-					periodNS := timeDiff.Nanoseconds() / int64(framesUsed)
-					lsync := roundint((float64(periodNS) / 1000) * float64(dev.clockMhz) / float64(nrows))
-					if q != qExpect || ncols != dev.ncols || nrows != dev.nrows || framesUsed <= 0 {
-						fmt.Printf("(Not checking lsync) have ibuf %v, q %v, ncols %v, nrows %v, lsync %v, framesUsed %v\nwant q %v, ncols %v, nrows %v, lsync %v, dataBlockCount %v\n",
-							ibuf, q, ncols, nrows, lsync, framesUsed, qExpect, dev.ncols, dev.nrows, dev.lsync, ls.dataBlockCount)
-						panic("error reading from lancero, probably let buffer overfill")
-					}
-				}
+
 				// Consume framesUsed frames of data from each channel.
 				// Careful! This slice of slices will be in lancero READOUT order:
 				// r0c0, r0c1, r0c2, etc.
@@ -646,7 +647,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
-					timeDiff: timeDiff, totalBytes: totalBytes}
+					timeDiff: timeDiff, totalBytes: totalBytes, dataDropDetected: dataDropDetected}
 			}
 		}
 	}()
@@ -714,6 +715,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	timeDiff := buffersMsg.timeDiff
 	totalBytes := buffersMsg.totalBytes
 	framesUsed := len(datacopies[0])
+	dataDropDetected := buffersMsg.dataDropDetected
 
 	// Backtrack to find the time associated with the first sample.
 	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / ls.sampleRate))
@@ -744,6 +746,12 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	}
 	block.externalTriggerRowcounts = externalTriggerRowcounts
 
+	var droppedFrames int
+	if dataDropDetected {
+		droppedDuration := lastSampleTime.Sub(ls.previousLastSampleTime)
+		droppedFrames = roundint(droppedDuration.Seconds() * ls.sampleRate)
+	}
+
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
 		isFeedbackChannel := (channelIndex%2 == 1)
@@ -757,14 +765,16 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating
 			framePeriod:     ls.samplePeriod,
-			firstFramenum:   ls.nextFrameNum,
+			firstFramenum:   ls.nextFrameNum + FrameIndex(droppedFrames),
 			firstTime:       firstTime,
 			signed:          !isFeedbackChannel,
+			droppedFrames:   droppedFrames,
 		}
 		block.segments[channelIndex] = seg
 		block.nSamp = len(data)
 	}
 	ls.nextFrameNum += FrameIndex(framesUsed)
+	ls.previousLastSampleTime = lastSampleTime
 	if ls.heartbeats != nil {
 		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
 			Time: timeDiff.Seconds()}
