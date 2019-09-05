@@ -4,6 +4,7 @@
 * Abaco data source works for streaming data (not packets).
 * Reset triggering memory on changing trigger settings.
 * Fix `goczmq` API for socket options.
+* Fix handling of, and absence of, map files.
 
 **0.2.4** June 17, 2019
 * Read Cringe global variable data file.
