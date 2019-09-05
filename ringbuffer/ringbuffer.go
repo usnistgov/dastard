@@ -11,10 +11,12 @@ import (
 )
 
 type bufferDescription struct {
+	magic        uint32
+	version      uint32
 	writePointer uint64
 	readPointer  uint64
 	bufferSize   uint64
-	bytesLost    uint64
+	packetSize   uint64
 }
 
 // RingBuffer describes the shared-memory ring buffer filled by DEED.
@@ -56,10 +58,12 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 		return err
 	}
 	rb.desc = (*bufferDescription)(unsafe.Pointer(&rb.descSlice[0]))
+	rb.desc.magic = 0xb0ffde5c
+	rb.desc.version = 0x01020003
 	rb.desc.writePointer = 0
 	rb.desc.readPointer = 0
 	rb.desc.bufferSize = uint64(bufsize)
-	rb.desc.bytesLost = 0
+	rb.desc.packetSize = 0
 	rb.size = rb.desc.bufferSize
 
 	file, err = shm.Open(rb.rawName, os.O_RDWR|os.O_CREATE, 0660)

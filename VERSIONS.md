@@ -1,7 +1,9 @@
 ## DASTARD Versions
 
-**0.2.5 pre** July 11, 2019
-* reset triggering memory on changing trigger settings
+**0.2.5** September 5, 2019
+* Abaco data source works for streaming data (not packets).
+* Reset triggering memory on changing trigger settings.
+* Fix `goczmq` API for socket options.
 
 **0.2.4** June 17, 2019
 * Read Cringe global variable data file.
