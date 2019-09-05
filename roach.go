@@ -36,8 +36,10 @@ type PhaseUnwrapper struct {
 	lowCount  int
 }
 
+const roachScale RawType = 1 // How to scale the raw data in UnwrapInPlace
+
 // UnwrapInPlace unwraps in place
-func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
+func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType, scale RawType) {
 
 	// as read from the Roach
 	// data bytes representing a 2s complement integer
@@ -52,7 +54,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	twoPi := onePi << 1
 	//phi0_lim := (4 * (1 << (16 - bits_to_keep)) / 2) - 1
 	for i, rawVal := range *data {
-		v := int16(rawVal*2) >> bitsToShift // *2 for ABACO HACK!! FIX TO GENERALIZE
+		v := int16(rawVal*scale) >> bitsToShift // scale=2 for ABACO HACK!! FIX TO GENERALIZE
 		delta := v - u.lastVal
 
 		// short term unwrapping
@@ -271,7 +273,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				idx += nsamp[idxdata]
 			}
 			unwrap := dev.unwrap[i]
-			unwrap.UnwrapInPlace(&raw)
+			unwrap.UnwrapInPlace(&raw, roachScale)
 			block.segments[i] = DataSegment{
 				rawData:         raw,
 				signed:          true,

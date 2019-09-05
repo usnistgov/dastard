@@ -164,7 +164,7 @@ func (rb *RingBuffer) Open() (err error) {
 		rb.Close()
 		return fmt.Errorf("RingBuffer.raw pointer = nil")
 	}
-	fmt.Printf("Ring.Open succeeds. desc = %p\n", rb.desc)
+	// fmt.Printf("Ring.Open succeeds. desc = %p\n", rb.desc)
 	return nil
 }
 

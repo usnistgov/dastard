@@ -6,8 +6,8 @@ import (
 	"math"
 	"os"
 	"sort"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/usnistgov/dastard/lancero"
 	"github.com/usnistgov/dastard/ringbuffer"
@@ -28,6 +28,7 @@ type AbacoDevice struct {
 
 const maxAbacoCards = 4    // Don't allow more than this many cards.
 const maxAbacoChannels = 8 // Don't allow more than this many channels per card.
+const abacoScale RawType = 2
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
 func NewAbacoDevice(cardnum, devnum int) (dev *AbacoDevice, err error) {
@@ -159,14 +160,13 @@ func enumerateAbacoDevices() (devices []int, err error) {
 			info, err := os.Stat(name)
 			if err != nil {
 				if os.IsNotExist(err) {
-					fmt.Printf("no such name: %s\n", name)
 					continue
 				} else {
 					return devices, err
 				}
 			}
-			if (info.Mode() & os.ModeDevice) != 0 || true {
-				devices =append(devices, 10*cnum+id)
+			if (info.Mode()&os.ModeDevice) != 0 || true {
+				devices = append(devices, 10*cnum+id)
 			}
 		}
 	}
@@ -381,7 +381,7 @@ func (as *AbacoSource) readerMainLoop() {
 				for j := 0; j < framesUsed; j++ {
 					for i := 0; i < dev.nchan; i++ {
 						dc := datacopies[i+nchanPrevDevices]
-						idx := i+j*dev.nchan
+						idx := i + j*dev.nchan
 						// dc[j] = RawType(int32Buffer[idx] >> 12)
 						dc[j] = RawType(int32Buffer[idx] >> 16)
 					}
@@ -482,7 +482,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 			data := datacopies[channelIndex]
 			unwrap := dev.unwrap[channelIndex]
 			// _ = unwrap
-			unwrap.UnwrapInPlace(&data)
+			unwrap.UnwrapInPlace(&data, abacoScale)
 			seg := DataSegment{
 				rawData:         data,
 				framesPerSample: 1, // This will be changed later if decimating
