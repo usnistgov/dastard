@@ -28,6 +28,7 @@ type WritingState struct {
 	dataDropFileBufferedWriter        *bufio.Writer
 	dataDropTicker                    *time.Ticker
 	dataDropFile                      *os.File
+	dataDropHaveSentAMessage          bool
 	sync.Mutex
 }
 

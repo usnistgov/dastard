@@ -384,12 +384,16 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 				return fmt.Errorf("cannot flush dataDropFileBufferedWriter, err %v", err)
 			}
 		}
+
+	default:
+	}
+	if droppedFrames > 0 || !ds.writingState.dataDropHaveSentAMessage {
 		// send message
 		clientMessageChan <- ClientUpdate{tag: "DATADROP",
 			state: struct {
 				TotalObserved int
 			}{TotalObserved: ds.writingState.dataDropsObserved}} // only exported fields are serialized
-	default:
+		ds.writingState.dataDropHaveSentAMessage = true
 	}
 	return nil
 }
