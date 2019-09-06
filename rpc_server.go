@@ -446,6 +446,7 @@ func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply 
 		f2 := func() {
 			err := s.runLaterIfActive(f)
 			if err != nil {
+				// panic here since this error could never be returned
 				panic(fmt.Sprintf("error with WaitForError==false in SetExperimentStateLabel. %s", spew.Sdump(err)))
 			}
 		}
