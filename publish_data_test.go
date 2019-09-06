@@ -165,7 +165,7 @@ func TestRawTypeToX(t *testing.T) {
 	}
 	for i, v := range expect {
 		if c[i] != v {
-			t.Errorf("rawTypeToUint16[%d] = %v, want %v", i, c[i], v)
+			t.Errorf("rawTypeToUint16(b)[%d] = %v, want %v", i, c[i], v)
 		}
 	}
 
@@ -176,6 +176,17 @@ func TestRawTypeToX(t *testing.T) {
 	for i, val := range d {
 		if d2[i] != val {
 			t.Errorf("bytesToRawType(b)[%d] = 0x%x, want 0x%x", i, d2[i], val)
+		}
+	}
+
+	d3 := bytesToInt32(b)
+	if len(d3) != len(b)/4 {
+		t.Errorf("bytesToInt32() length %d, want %d", len(d3), len(b)/4)
+	}
+	for i := 0; i < len(d3); i++ {
+		expected := int32(d[2*i]) + int32(d[2*i+1])<<16
+		if d3[i] != expected {
+			t.Errorf("bytesToInt32(b)[%d] = %v, want %v", i, d3[i], expected)
 		}
 	}
 }
