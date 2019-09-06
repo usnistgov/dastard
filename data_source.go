@@ -365,8 +365,9 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 			return fmt.Errorf("cannot write header to dataDroFileBufferedWriter, err %v", err)
 		}
 	}
-	ds.writingState.dataDropsObserved += 1
 	if droppedFrames > 0 {
+		ds.writingState.dataDropsObserved += 1
+
 		line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
 		_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
 		if err != nil {
