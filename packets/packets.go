@@ -52,6 +52,9 @@ func Header(data io.Reader) (h *PacketHeader, err error) {
 	if err = binary.Read(data, binary.BigEndian, &h.payloadLength); err != nil {
 		return nil, err
 	}
+	if h.payloadLength%8 != 0 {
+		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", h.payloadLength)
+	}
 	var magic uint32
 	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
 		return nil, err
@@ -68,7 +71,8 @@ func Header(data io.Reader) (h *PacketHeader, err error) {
 	return h, nil
 }
 
-// type HeadTimestamp struct{}
+// HeadTimestamp represents a single timestamp in the header
+type HeadTimestamp uint64
 
 // HeadCounter represents a counter found in a packet header
 type HeadCounter struct {
@@ -120,7 +124,19 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 		switch t {
 		case 0x0: //NULL
 			// do nothing
+
 		case 0x11: // timestamps
+			var x uint16
+			var y uint32
+			if err = binary.Read(data, binary.BigEndian, &x); err != nil {
+				return result, err
+			}
+			if err = binary.Read(data, binary.BigEndian, &y); err != nil {
+				return result, err
+			}
+			tstamp := HeadTimestamp(x) << 32
+			tstamp += HeadTimestamp(y)
+			result = append(result, tstamp)
 
 		case 0x12: // counter
 			ctr := new(HeadCounter)

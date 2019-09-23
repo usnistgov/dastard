@@ -67,6 +67,9 @@ func TestHeader(t *testing.T) {
 	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 8, 0xff, 0, 0xee, 0, 0, 0, 0})); err2 == nil {
 		t.Errorf("Header should fail if sequence number cannot be read")
 	}
+	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 9, 8, 0xff, 0, 0xee, 0, 0, 0, 0, 0, 0, 0, 0})); err2 == nil {
+		t.Errorf("Header should fail if payload length is not a multiple of 8")
+	}
 }
 
 func counterToPacket(c *HeadCounter) []byte {
@@ -78,7 +81,17 @@ func counterToPacket(c *HeadCounter) []byte {
 	return buf.Bytes()
 }
 
+func timestampToPacket(t HeadTimestamp) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, byte(0x11))
+	binary.Write(buf, binary.BigEndian, byte(1))
+	binary.Write(buf, binary.BigEndian, uint16(t>>32))
+	binary.Write(buf, binary.BigEndian, uint32(t))
+	return buf.Bytes()
+}
+
 func TestTLVs(t *testing.T) {
+	// Try a counter
 	c := HeadCounter{1234, 987654321}
 	cp := counterToPacket(&c)
 	tlvs, err := readTLV(bytes.NewReader(cp), 8)
@@ -96,6 +109,23 @@ func TestTLVs(t *testing.T) {
 
 	default:
 		t.Errorf("expected type HeadCounter, got %v", hc)
+	}
+
+	// Try a timestamp
+	ts := HeadTimestamp(1234567890123)
+	tp := timestampToPacket(ts)
+	tlvs, err = readTLV(bytes.NewReader(tp), 8)
+	if err != nil {
+		t.Errorf("readTLV() for HeadTimestamp returns %v", err)
+	}
+	switch hts := tlvs[0].(type) {
+	case HeadTimestamp:
+		if hts != ts {
+			t.Errorf("HeadTimestamp = %d, want %d", hts, ts)
+		}
+
+	default:
+		t.Errorf("expected type HeadTimestamp, got %v", hts)
 	}
 
 	// Try a payload format TLV
@@ -178,6 +208,12 @@ func TestTLVs(t *testing.T) {
 	}
 	if _, err := readTLV(bytes.NewReader([]byte{0x21, 0x2}), 8); err == nil {
 		t.Errorf("readTLV with L=2 but size-8 string should error")
+	}
+	if _, err := readTLV(bytes.NewReader([]byte{0x11, 0x1}), 8); err == nil {
+		t.Errorf("readTLV without timestamp upper bytes should error")
+	}
+	if _, err := readTLV(bytes.NewReader([]byte{0x11, 0x1, 0, 0}), 8); err == nil {
+		t.Errorf("readTLV without timestamp lower bytes should error")
 	}
 	if _, err := readTLV(bytes.NewReader([]byte{0x12, 0x2}), 16); err == nil {
 		t.Errorf("readTLV with L>1 counters should error")
