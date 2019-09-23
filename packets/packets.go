@@ -34,7 +34,7 @@ type PacketHeader struct {
 }
 
 // PACKETMAGIC is the packet header's magic number.
-const PACKETMAGIC uint32 = 0x08ff00ee
+const PACKETMAGIC uint32 = 0x810b00ff
 
 // Header returns a PacketHeader read from an io.reader
 func Header(data io.Reader) (h *PacketHeader, err error) {

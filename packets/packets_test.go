@@ -61,13 +61,13 @@ func TestHeader(t *testing.T) {
 	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 1, 2, 3, 4})); err2 == nil {
 		t.Errorf("Header should fail if magic is wrong")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 8, 0xff, 0, 0xee})); err2 == nil {
+	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff})); err2 == nil {
 		t.Errorf("Header should fail if source ID cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 8, 0xff, 0, 0xee, 0, 0, 0, 0})); err2 == nil {
+	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0})); err2 == nil {
 		t.Errorf("Header should fail if sequence number cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 9, 8, 0xff, 0, 0xee, 0, 0, 0, 0, 0, 0, 0, 0})); err2 == nil {
+	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 9, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0, 0, 0, 0, 0})); err2 == nil {
 		t.Errorf("Header should fail if payload length is not a multiple of 8")
 	}
 }
