@@ -3,6 +3,7 @@ package dastard
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 )
 
@@ -39,5 +40,32 @@ func TestHeader(t *testing.T) {
 	}
 	if hdr2.sequenceNumber != hdr1.sequenceNumber {
 		t.Errorf("Header sequence number is 0x%x, want 0x%x", hdr2.sequenceNumber, hdr1.sequenceNumber)
+	}
+}
+
+func counterToPacket(c *HeadCounter) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, byte(0x12))
+	binary.Write(buf, binary.BigEndian, byte(1))
+	binary.Write(buf, binary.BigEndian, c.ID)
+	binary.Write(buf, binary.BigEndian, c.Count)
+	return buf.Bytes()
+}
+
+func TestTLVs(t *testing.T) {
+	c := HeadCounter{1234, 987654321}
+	cp := counterToPacket(&c)
+	tlvs, err := readTLV(bytes.NewReader(cp), 8)
+	if err != nil {
+		t.Errorf("readTLV() returns %v", err)
+	}
+	switch x := tlvs[0].(type) {
+	case HeadCounter:
+
+	default:
+		fmt.Printf("c:  %v\n", c)
+		fmt.Printf("cp: %v\n", cp)
+		fmt.Printf("tlv0: %v\n", tlvs[0])
+		t.Errorf("expected type HeadCounter, got %v", x)
 	}
 }
