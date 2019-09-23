@@ -1,4 +1,4 @@
-package dastard
+package packets
 
 import (
 	"encoding/binary"
@@ -105,7 +105,10 @@ func (h *HeadPayloadFormat) addDimension(t reflect.Kind) error {
 func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 	var t uint8
 	var tlvsize uint8
-	for size >= 8 {
+	for size > 0 {
+		if size < 8 {
+			return result, fmt.Errorf("readTLV needs to read multiples of 8 bytes")
+		}
 		if err = binary.Read(data, binary.BigEndian, &t); err != nil {
 			return result, err
 		}
@@ -118,13 +121,15 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 		}
 		if t == 0x12 { // Counter
 			ctr := new(HeadCounter)
+			if tlvsize != 1 {
+				return result, fmt.Errorf("TLV counter size %d, must be size 1 (32 bits) as currently implemented", tlvsize)
+			}
 			if err = binary.Read(data, binary.BigEndian, &ctr.ID); err != nil {
 				return result, err
 			}
 			if err = binary.Read(data, binary.BigEndian, &ctr.Count); err != nil {
 				return result, err
 			}
-			fmt.Printf("New ctr! %v\n", ctr)
 			result = append(result, ctr)
 
 		} else if t == 0x21 { // Payload format descriptor
