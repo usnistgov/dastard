@@ -80,8 +80,8 @@ type HeadCounter struct {
 	Count int32
 }
 
-// HeadPayloadFormat represents the payload format header item.
-type HeadPayloadFormat struct {
+// headPayloadFormat represents the payload format header item.
+type headPayloadFormat struct {
 	bigendian bool
 	rawfmt    string
 	nvals     int
@@ -93,7 +93,7 @@ type headChannelOffset uint32
 
 // addDimension adds a new value of type t to the payload array.
 // Currently, it is an error to have a mix of types, though this design could be changed if needed.
-func (h *HeadPayloadFormat) addDimension(t reflect.Kind) error {
+func (h *headPayloadFormat) addDimension(t reflect.Kind) error {
 	if h.dtype == reflect.Invalid || h.dtype == t {
 		h.dtype = t
 		h.nvals++
@@ -102,9 +102,10 @@ func (h *HeadPayloadFormat) addDimension(t reflect.Kind) error {
 	return fmt.Errorf("Cannot use type %v in header already of type %v", t, h.dtype)
 }
 
-// type HeadPayloadShape struct {
-// 	Sizes []int16
-// }
+// headPayloadShape describes the multi-dimensional shape of the payload
+type headPayloadShape struct {
+	Sizes []int16
+}
 
 // readTLV reads data for size bytes, generating a list of all TLV objects
 func readTLV(data io.Reader, size int) (result []interface{}, err error) {
@@ -159,7 +160,7 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			if n, err := data.Read(b); err != nil || n < len(b) {
 				return result, err
 			}
-			pfmt := new(HeadPayloadFormat)
+			pfmt := new(headPayloadFormat)
 			pfmt.rawfmt = string(b)
 			for _, c := range pfmt.rawfmt {
 				switch c {
@@ -192,6 +193,17 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			result = append(result, pfmt)
 
 		case 0x22: // Payload shape
+			shape := new(headPayloadShape)
+			var d int16
+			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
+				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
+					return result, err
+				}
+				if d > 0 {
+					shape.Sizes = append(shape.Sizes, d)
+				}
+			}
+			result = append(result, shape)
 
 		case 0x23: // Channel offset
 			var pad uint16

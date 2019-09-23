@@ -90,6 +90,20 @@ func timestampToPacket(t headTimestamp) []byte {
 	return buf.Bytes()
 }
 
+func payloadshapeToPacket(ps *headPayloadShape) []byte {
+	buf := new(bytes.Buffer)
+	n8 := 1 + len(ps.Sizes)/4
+	binary.Write(buf, binary.BigEndian, byte(0x22))
+	binary.Write(buf, binary.BigEndian, byte(n8))
+	for _, s := range ps.Sizes {
+		binary.Write(buf, binary.BigEndian, s)
+	}
+	for i := len(ps.Sizes) % 4; i < 3; i++ {
+		binary.Write(buf, binary.BigEndian, int16(0))
+	}
+	return buf.Bytes()
+}
+
 func chanOffsetToPacket(off headChannelOffset) []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, byte(0x23))
@@ -156,19 +170,19 @@ func TestTLVs(t *testing.T) {
 	x := []byte{0x21, 1, '>', 'i', 'i', 0, 0, 0}
 	tlvs, err = readTLV(bytes.NewReader(x), 8)
 	if err != nil {
-		t.Errorf("readTLV() for HeadPayloadFormat returns %v", err)
+		t.Errorf("readTLV() for headPayloadFormat returns %v", err)
 	}
 	if len(tlvs) != 1 {
-		t.Errorf("readTLV() for HeadPayloadFormat returns array length %d, want 1", len(tlvs))
+		t.Errorf("readTLV() for headPayloadFormat returns array length %d, want 1", len(tlvs))
 	}
 	switch hpf := tlvs[0].(type) {
-	case *HeadPayloadFormat:
+	case *headPayloadFormat:
 		if !hpf.bigendian {
-			t.Errorf("HeadPayloadFormat.bigendian is false, want true")
+			t.Errorf("headPayloadFormat.bigendian is false, want true")
 		}
 
 	default:
-		t.Errorf("expected type HeadPayloadFormat, got %v", hpf)
+		t.Errorf("expected type headPayloadFormat, got %v", hpf)
 	}
 	x[4] = 'Q'
 	if _, err = readTLV(bytes.NewReader(x), 8); err == nil {
@@ -203,21 +217,42 @@ func TestTLVs(t *testing.T) {
 			t.Errorf("readTLV failed on format string '%s'", string(x[2:]))
 		}
 		if len(tlvs) != 1 {
-			t.Errorf("readTLV() for HeadPayloadFormat returns array length %d, want 1", len(tlvs))
+			t.Errorf("readTLV() for headPayloadFormat returns array length %d, want 1", len(tlvs))
 		}
-		h, ok := tlvs[0].(*HeadPayloadFormat)
+		h, ok := tlvs[0].(*headPayloadFormat)
 		if !ok {
-			t.Errorf("readTLV()[0] is %v, fails type assertion to &HeadPayloadFormat", tlvs[0])
+			t.Errorf("readTLV()[0] is %v, fails type assertion to &headPayloadFormat", tlvs[0])
 		}
 		if h.dtype != test.dtype {
-			t.Errorf("readTLV for HeadPayloadFormat is dtype %v for tag '%c', want %v", h.dtype, test.tag, test.dtype)
+			t.Errorf("readTLV for headPayloadFormat is dtype %v for tag '%c', want %v", h.dtype, test.tag, test.dtype)
 		}
 		if h.bigendian {
-			t.Errorf("readTLV for HeadPayloadFormat is big endian, want little endian")
+			t.Errorf("readTLV for headPayloadFormat is big endian, want little endian")
 		}
 		if h.nvals != 1 {
-			t.Errorf("readTLV for HeadPayloadFormat has nvals %d, want 1", h.nvals)
+			t.Errorf("readTLV for headPayloadFormat has nvals %d, want 1", h.nvals)
 		}
+	}
+
+	// Try payload shape
+	ps := new(headPayloadShape)
+	ps.Sizes = append(ps.Sizes, int16(5))
+	ps.Sizes = append(ps.Sizes, int16(6))
+	pp := payloadshapeToPacket(ps)
+	tlvs, err = readTLV(bytes.NewReader(pp), 8)
+	if err != nil {
+		t.Errorf("readTLV() for headPayloadShape returns %v", err)
+	}
+	if len(tlvs) != 1 {
+		t.Errorf("readTLV() for headPayloadShape returns array length %d, want 1", len(tlvs))
+	}
+	switch hps := tlvs[0].(type) {
+	case *headPayloadShape:
+		if len(hps.Sizes) != len(ps.Sizes) {
+			t.Errorf("headPayloadShape # dimensions = %d, want %d", len(hps.Sizes), len(ps.Sizes))
+		}
+	default:
+		t.Errorf("expected type headPayloadShape, got %v", hps)
 	}
 
 	// Make sure errors happen when packet is incomplete
@@ -250,6 +285,9 @@ func TestTLVs(t *testing.T) {
 	}
 	if _, err := readTLV(bytes.NewReader([]byte{0x21, 1}), 8); err == nil {
 		t.Errorf("readTLV on payload format with short string should error")
+	}
+	if _, err := readTLV(bytes.NewReader([]byte{0x22, 1, 0}), 8); err == nil {
+		t.Errorf("readTLV on channel offset without any dimensions should error")
 	}
 	if _, err := readTLV(bytes.NewReader([]byte{0x23, 1, 0}), 8); err == nil {
 		t.Errorf("readTLV on channel offset without padding should error")
