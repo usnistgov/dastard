@@ -68,8 +68,6 @@ func Header(data io.Reader) (h *PacketHeader, err error) {
 	return h, nil
 }
 
-// type HeadNull struct{}
-//
 // type HeadTimestamp struct{}
 
 // HeadCounter represents a counter found in a packet header
@@ -82,7 +80,7 @@ type HeadCounter struct {
 type HeadPayloadFormat struct {
 	bigendian bool
 	rawfmt    string
-	ndim      int
+	nvals     int
 	dtype     reflect.Kind
 }
 
@@ -91,10 +89,10 @@ type HeadPayloadFormat struct {
 func (h *HeadPayloadFormat) addDimension(t reflect.Kind) error {
 	if h.dtype == reflect.Invalid || h.dtype == t {
 		h.dtype = t
-		h.ndim++
+		h.nvals++
 		return nil
 	}
-	return fmt.Errorf("Cannot use type %v to header already of type %v", t, h.dtype)
+	return fmt.Errorf("Cannot use type %v in header already of type %v", t, h.dtype)
 }
 
 // type HeadPayloadShape struct {
@@ -119,7 +117,12 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			return result, fmt.Errorf("TLV type %d has len 8*%d, but remaining hdr size is %d",
 				t, tlvsize, size)
 		}
-		if t == 0x12 { // Counter
+		switch t {
+		case 0x0: //NULL
+			// do nothing
+		case 0x11: // timestamps
+
+		case 0x12: // counter
 			ctr := new(HeadCounter)
 			if tlvsize != 1 {
 				return result, fmt.Errorf("TLV counter size %d, must be size 1 (32 bits) as currently implemented", tlvsize)
@@ -132,7 +135,7 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			}
 			result = append(result, ctr)
 
-		} else if t == 0x21 { // Payload format descriptor
+		case 0x21: // Payload format descriptor
 			b := make([]byte, 8*int(tlvsize)-2)
 			if n, err := data.Read(b); err != nil || n < len(b) {
 				return result, err
@@ -141,30 +144,39 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			pfmt.rawfmt = string(b)
 			for _, c := range pfmt.rawfmt {
 				switch c {
+				case 0:
+					// ignore null characters
 				case '!', '>':
 					pfmt.bigendian = true
 				case '<':
 					pfmt.bigendian = false
 				case 'h':
-					pfmt.addDimension(reflect.Int16)
+					err = pfmt.addDimension(reflect.Int16)
 				case 'H':
-					pfmt.addDimension(reflect.Uint16)
+					err = pfmt.addDimension(reflect.Uint16)
 				case 'i', 'l':
-					pfmt.addDimension(reflect.Int32)
+					err = pfmt.addDimension(reflect.Int32)
 				case 'I', 'L':
-					pfmt.addDimension(reflect.Uint32)
+					err = pfmt.addDimension(reflect.Uint32)
 				case 'q':
-					pfmt.addDimension(reflect.Int64)
+					err = pfmt.addDimension(reflect.Int64)
 				case 'Q':
-					pfmt.addDimension(reflect.Uint64)
+					err = pfmt.addDimension(reflect.Uint64)
 				default:
 					return result, fmt.Errorf("Unknown data format character '%c' in format '%s'",
 						c, pfmt.rawfmt)
 				}
+				if err != nil {
+					return result, err
+				}
 			}
+			result = append(result, pfmt)
 
-		} else if t == 0x22 { // Payload shape descriptor
+		case 0x22: // Payload shape
+		case 0x23: // Channel offset
 
+		default:
+			return result, fmt.Errorf("Unknown TLV type %d", t)
 		}
 
 		size -= 8 * int(tlvsize)

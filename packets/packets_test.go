@@ -3,6 +3,7 @@ package packets
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
 	"testing"
 )
 
@@ -82,7 +83,7 @@ func TestTLVs(t *testing.T) {
 	cp := counterToPacket(&c)
 	tlvs, err := readTLV(bytes.NewReader(cp), 8)
 	if err != nil {
-		t.Errorf("readTLV() returns %v", err)
+		t.Errorf("readTLV() for HeadCounter returns %v", err)
 	}
 	switch hc := tlvs[0].(type) {
 	case *HeadCounter:
@@ -95,6 +96,74 @@ func TestTLVs(t *testing.T) {
 
 	default:
 		t.Errorf("expected type HeadCounter, got %v", hc)
+	}
+
+	// Try a payload format TLV
+	x := []byte{0x21, 1, '>', 'i', 'i', 0, 0, 0}
+	tlvs, err = readTLV(bytes.NewReader(x), 8)
+	if err != nil {
+		t.Errorf("readTLV() for HeadPayloadFormat returns %v", err)
+	}
+	if len(tlvs) != 1 {
+		t.Errorf("readTLV() for HeadPayloadFormat returns array length %d, want 1", len(tlvs))
+	}
+	switch hpf := tlvs[0].(type) {
+	case *HeadPayloadFormat:
+		if !hpf.bigendian {
+			t.Errorf("HeadPayloadFormat.bigendian is false, want true")
+		}
+
+	default:
+		t.Errorf("expected type HeadPayloadFormat, got %v", hpf)
+	}
+	x[4] = 'Q'
+	if _, err = readTLV(bytes.NewReader(x), 8); err == nil {
+		t.Errorf("Expect error on readTLV with conflicting format characters")
+	}
+	x[3] = 'a'
+	if _, err = readTLV(bytes.NewReader(x), 8); err == nil {
+		t.Errorf("Expect error on readTLV with unknown format character")
+	}
+
+	// Check all types
+	x[2] = '<'
+	x[3] = 'a'
+	x[4] = 0
+	var tests = []struct {
+		tag   byte
+		dtype reflect.Kind
+	}{
+		{'h', reflect.Int16},
+		{'H', reflect.Uint16},
+		{'i', reflect.Int32},
+		{'l', reflect.Int32},
+		{'I', reflect.Uint32},
+		{'L', reflect.Uint32},
+		{'q', reflect.Int64},
+		{'Q', reflect.Uint64},
+	}
+	for _, test := range tests {
+		x[3] = test.tag
+		tlvs, err = readTLV(bytes.NewReader(x), 8)
+		if err != nil {
+			t.Errorf("readTLV failed on format string '%s'", string(x[2:]))
+		}
+		if len(tlvs) != 1 {
+			t.Errorf("readTLV() for HeadPayloadFormat returns array length %d, want 1", len(tlvs))
+		}
+		h, ok := tlvs[0].(*HeadPayloadFormat)
+		if !ok {
+			t.Errorf("readTLV()[0] is %v, fails type assertion to &HeadPayloadFormat", tlvs[0])
+		}
+		if h.dtype != test.dtype {
+			t.Errorf("readTLV for HeadPayloadFormat is dtype %v for tag '%c', want %v", h.dtype, test.tag, test.dtype)
+		}
+		if h.bigendian {
+			t.Errorf("readTLV for HeadPayloadFormat is big endian, want little endian")
+		}
+		if h.nvals != 1 {
+			t.Errorf("readTLV for HeadPayloadFormat has nvals %d, want 1", h.nvals)
+		}
 	}
 
 	// Make sure errors happen when packet is incomplete
@@ -118,5 +187,11 @@ func TestTLVs(t *testing.T) {
 	}
 	if _, err := readTLV(bytes.NewReader([]byte{0x12, 0x1, 0, 0}), 8); err == nil {
 		t.Errorf("readTLV without counter value should error")
+	}
+	if _, err := readTLV(bytes.NewReader([]byte{0x21, 1}), 8); err == nil {
+		t.Errorf("readTLV on payload format with short string should error")
+	}
+	if _, err := readTLV(bytes.NewReader([]byte{0xff, 1}), 8); err == nil {
+		t.Errorf("readTLV on unknown type should error")
 	}
 }
