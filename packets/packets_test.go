@@ -3,6 +3,7 @@ package packets
 import (
 	"bytes"
 	"encoding/binary"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -19,7 +20,7 @@ func headerToPacket(h *PacketHeader) []byte {
 }
 
 func TestHeader(t *testing.T) {
-	hdr1 := PacketHeader{0x11, 16, 0, 0x44, 0x55, nil}
+	hdr1 := PacketHeader{0x11, 16, 0, 0x44, 0x55, nil, nil, 0, nil}
 	data := headerToPacket(&hdr1)
 
 	hdr2, err := Header(bytes.NewReader(data))
@@ -300,5 +301,26 @@ func TestTLVs(t *testing.T) {
 	}
 	if _, err := readTLV(bytes.NewReader([]byte{0xff, 1}), 8); err == nil {
 		t.Errorf("readTLV on unknown type should error")
+	}
+}
+
+func TestExamplePackets(t *testing.T) {
+	datasource := "../testData/test1.bin"
+	f, err := os.Open(datasource)
+	if err != nil {
+		t.Errorf("could not open %s", datasource)
+	}
+	defer f.Close()
+
+	h, err := Header(f)
+	if err != nil {
+		t.Errorf("could not read header from %s: %v", datasource, err)
+	}
+	// fmt.Printf("header: %v\n", h)
+	// for i, z := range h.otherTLV {
+	// 	fmt.Printf("%3d: %v %v\n", i, reflect.TypeOf(z), z)
+	// }
+	if h.offset != 0 {
+		t.Errorf("header channel offset %d, want 0", h.offset)
 	}
 }

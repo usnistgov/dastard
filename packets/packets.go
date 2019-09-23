@@ -25,12 +25,20 @@ import (
 
 // PacketHeader represents the header of an Abaco data packet
 type PacketHeader struct {
+	// Items in the required part of the header
 	version        uint8
 	headerLength   uint8
 	payloadLength  uint16
 	sourceID       uint32
 	sequenceNumber uint32
-	otherTLV       interface{}
+
+	// Expected TLV objects. If 0 or 2+ examples, this cannot be processed
+	format *headPayloadFormat
+	shape  *headPayloadShape
+	offset headChannelOffset
+
+	// Any other TLV objects.
+	otherTLV []interface{}
 }
 
 // PACKETMAGIC is the packet header's magic number.
@@ -68,6 +76,24 @@ func Header(data io.Reader) (h *PacketHeader, err error) {
 	if err = binary.Read(data, binary.BigEndian, &h.sequenceNumber); err != nil {
 		return nil, err
 	}
+	allTLV, err := readTLV(data, h.headerLength-MINLENGTH)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, tlv := range allTLV {
+		switch val := tlv.(type) {
+		case headChannelOffset:
+			h.offset = val
+		case *headPayloadShape:
+			h.shape = val
+		case *headPayloadFormat:
+			h.format = val
+		default:
+			h.otherTLV = append(h.otherTLV, val)
+		}
+	}
+
 	return h, nil
 }
 
@@ -108,7 +134,7 @@ type headPayloadShape struct {
 }
 
 // readTLV reads data for size bytes, generating a list of all TLV objects
-func readTLV(data io.Reader, size int) (result []interface{}, err error) {
+func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 	var t uint8
 	var tlvsize uint8
 	for size > 0 {
@@ -121,7 +147,7 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 		if err = binary.Read(data, binary.BigEndian, &tlvsize); err != nil {
 			return result, err
 		}
-		if 8*int(tlvsize) > size {
+		if 8*tlvsize > size {
 			return result, fmt.Errorf("TLV type %d has len 8*%d, but remaining hdr size is %d",
 				t, tlvsize, size)
 		}
@@ -164,8 +190,8 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			pfmt.rawfmt = string(b)
 			for _, c := range pfmt.rawfmt {
 				switch c {
-				case 0:
-					// ignore null characters
+				case 0, ' ':
+					// ignore null and space characters
 				case '!', '>':
 					pfmt.bigendian = true
 				case '<':
@@ -223,7 +249,7 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			return result, fmt.Errorf("Unknown TLV type %d", t)
 		}
 
-		size -= 8 * int(tlvsize)
+		size -= 8 * tlvsize
 	}
 	return
 }
