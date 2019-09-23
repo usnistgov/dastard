@@ -585,18 +585,21 @@ func (ls *LanceroSource) launchLanceroReader() {
 							ncols, dev.ncols, nrows, dev.nrows))
 					}
 					firstWord := q
-					if firstWord > 0 {
+					var bframes int
+					if firstWord != dev.ncols*dev.nrows {
 						dataDropDetected = true
 						// align to next frame start
 						buffers = append(buffers, bytesToRawType(b[firstWord*4:]))
+						bframes = len(b[firstWord*4:]) / dev.frameSize
 						log.Printf("DATA DROP, first word = %v\n", firstWord)
 						if len(ls.active) > 1 {
 							panic("dropped data, handling multiple devices not yet implemented")
 						}
 					} else {
 						buffers = append(buffers, bytesToRawType(b))
+						bframes = len(b) / dev.frameSize
+
 					}
-					bframes := len(b) / dev.frameSize
 					if bframes < framesUsed {
 						framesUsed = bframes
 						lastSampleTime = timeFix

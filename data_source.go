@@ -350,30 +350,31 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 //HandlePotentialDroppedData writes to a file in the case that a data drop is detected
 //data drop refers to a case where a read from a source, eg the LanceroSource misses some frames of data
 func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
-
-	if ds.writingState.dataDropFileBufferedWriter == nil && droppedFrames > 0 {
-		// create file
-		var err error
-		ds.writingState.dataDropFile, err = os.Create(ds.writingState.DataDropFilename)
-		if err != nil {
-			return fmt.Errorf("cannot create DataDropFile, %v", err)
-		}
-		ds.writingState.dataDropFileBufferedWriter = bufio.NewWriter(ds.writingState.dataDropFile)
-		// write header
-		_, err = ds.writingState.dataDropFileBufferedWriter.WriteString("# firstFramenum after drop, number of dropped frames\n")
-		if err != nil {
-			return fmt.Errorf("cannot write header to dataDroFileBufferedWriter, err %v", err)
-		}
-	}
 	if droppedFrames > 0 {
-		ds.writingState.dataDropsObserved += 1
-
-		line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
-		_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
-		if err != nil {
-			return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
-		}
+		ds.writingState.dataDropsObserved++
 		fmt.Printf("DATA DROP. firstFramenum %v, droppedFrames %v\n", firstFramenum, droppedFrames)
+		if ds.writingState.IsActive() {
+			if ds.writingState.dataDropFileBufferedWriter == nil {
+				// create file
+				var err error
+				ds.writingState.dataDropFile, err = os.Create(ds.writingState.DataDropFilename)
+				if err != nil {
+					return fmt.Errorf("cannot create DataDropFile filename `%v`: err: %v",
+						ds.writingState.DataDropFilename, err)
+				}
+				ds.writingState.dataDropFileBufferedWriter = bufio.NewWriter(ds.writingState.dataDropFile)
+				// write header
+				_, err = ds.writingState.dataDropFileBufferedWriter.WriteString("# firstFramenum after drop, number of dropped frames\n")
+				if err != nil {
+					return fmt.Errorf("cannot write header to dataDroFileBufferedWriter, err %v", err)
+				}
+			}
+			line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
+			_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
+			if err != nil {
+				return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
+			}
+		}
 	}
 	select { // occasionally flush file and send messae about number of observed data drops
 	case <-ds.writingState.dataDropTicker.C:
