@@ -71,8 +71,8 @@ func Header(data io.Reader) (h *PacketHeader, err error) {
 	return h, nil
 }
 
-// HeadTimestamp represents a single timestamp in the header
-type HeadTimestamp uint64
+// headTimestamp represents a single timestamp in the header
+type headTimestamp uint64
 
 // HeadCounter represents a counter found in a packet header
 type HeadCounter struct {
@@ -87,6 +87,9 @@ type HeadPayloadFormat struct {
 	nvals     int
 	dtype     reflect.Kind
 }
+
+// headChannelOffset represents the offset of the first channel in this packet
+type headChannelOffset uint32
 
 // addDimension adds a new value of type t to the payload array.
 // Currently, it is an error to have a mix of types, though this design could be changed if needed.
@@ -134,8 +137,8 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			if err = binary.Read(data, binary.BigEndian, &y); err != nil {
 				return result, err
 			}
-			tstamp := HeadTimestamp(x) << 32
-			tstamp += HeadTimestamp(y)
+			tstamp := headTimestamp(x) << 32
+			tstamp += headTimestamp(y)
 			result = append(result, tstamp)
 
 		case 0x12: // counter
@@ -189,7 +192,20 @@ func readTLV(data io.Reader, size int) (result []interface{}, err error) {
 			result = append(result, pfmt)
 
 		case 0x22: // Payload shape
+
 		case 0x23: // Channel offset
+			var pad uint16
+			var offset headChannelOffset
+			if err = binary.Read(data, binary.BigEndian, &pad); err != nil {
+				return result, err
+			}
+			if pad != 0 {
+				return result, fmt.Errorf("channel offset packet contains padding %du, want 0", pad)
+			}
+			if err = binary.Read(data, binary.BigEndian, &offset); err != nil {
+				return result, err
+			}
+			result = append(result, offset)
 
 		default:
 			return result, fmt.Errorf("Unknown TLV type %d", t)
