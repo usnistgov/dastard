@@ -7,24 +7,8 @@ import (
 	"reflect"
 )
 
-// PacketTLV represents a Type-Length-Value item from the packet header.
-// type PacketTLV struct {
-// 	TLVType byte // code for this TLV's type
-// 	Length  int  // length in bytes
-// 	Value   interface{}
-// }
-
-// ByteToPacketTLV converts a []byte slice to a new *PacketTLV.
-// func ByteToPacketTLV(data []byte) *PacketTLV {
-// 	p := new(PacketTLV)
-// 	p.TLVType = data[0]
-// 	p.Length = 8 * int(data[1])
-// 	p.Value = data[2:p.Length]
-// 	return p
-// }
-
-// PacketHeader represents the header of an Abaco data packet
-type PacketHeader struct {
+// Packet represents the header of an Abaco data packet
+type Packet struct {
 	// Items in the required part of the header
 	version        uint8
 	headerLength   uint8
@@ -39,14 +23,17 @@ type PacketHeader struct {
 
 	// Any other TLV objects.
 	otherTLV []interface{}
+
+	// The data payload
+	data interface{}
 }
 
 // PACKETMAGIC is the packet header's magic number.
 const PACKETMAGIC uint32 = 0x810b00ff
 
-// Header returns a PacketHeader read from an io.reader
-func Header(data io.Reader) (h *PacketHeader, err error) {
-	h = new(PacketHeader)
+// ReadPacket Header returns a Packet read from an io.reader
+func ReadPacket(data io.Reader) (h *Packet, err error) {
+	h = new(Packet)
 	if err = binary.Read(data, binary.BigEndian, &h.version); err != nil {
 		return nil, err
 	}
@@ -94,6 +81,27 @@ func Header(data io.Reader) (h *PacketHeader, err error) {
 		}
 	}
 
+	if h.payloadLength > 0 && h.format != nil {
+		switch h.format.dtype {
+		case reflect.Int16:
+			result := make([]int16, h.payloadLength/2)
+			if err = binary.Read(data, h.format.endian, result); err != nil {
+				return nil, err
+			}
+			h.data = result
+
+		case reflect.Int32:
+			result := make([]int32, h.payloadLength/4)
+			if err = binary.Read(data, h.format.endian, result); err != nil {
+				return nil, err
+			}
+			h.data = result
+
+		default:
+			return nil, fmt.Errorf("Did not know how to read type %v", h.format.dtype)
+		}
+	}
+
 	return h, nil
 }
 
@@ -108,10 +116,11 @@ type HeadCounter struct {
 
 // headPayloadFormat represents the payload format header item.
 type headPayloadFormat struct {
-	bigendian bool
-	rawfmt    string
-	nvals     int
-	dtype     reflect.Kind
+	endian  binary.ByteOrder
+	rawfmt  string
+	nvals   int
+	wordlen int
+	dtype   reflect.Kind
 }
 
 // headChannelOffset represents the offset of the first channel in this packet
@@ -119,10 +128,11 @@ type headChannelOffset uint32
 
 // addDimension adds a new value of type t to the payload array.
 // Currently, it is an error to have a mix of types, though this design could be changed if needed.
-func (h *headPayloadFormat) addDimension(t reflect.Kind) error {
+func (h *headPayloadFormat) addDimension(t reflect.Kind, nb int) error {
 	if h.dtype == reflect.Invalid || h.dtype == t {
 		h.dtype = t
 		h.nvals++
+		h.wordlen += nb
 		return nil
 	}
 	return fmt.Errorf("Cannot use type %v in header already of type %v", t, h.dtype)
@@ -193,21 +203,27 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 				case 0, ' ':
 					// ignore null and space characters
 				case '!', '>':
-					pfmt.bigendian = true
+					pfmt.endian = binary.BigEndian
 				case '<':
-					pfmt.bigendian = false
+					pfmt.endian = binary.LittleEndian
+				case 'x':
+					err = pfmt.addDimension(reflect.Invalid, 1)
+				case 'b':
+					err = pfmt.addDimension(reflect.Int8, 1)
+				case 'B':
+					err = pfmt.addDimension(reflect.Uint8, 1)
 				case 'h':
-					err = pfmt.addDimension(reflect.Int16)
+					err = pfmt.addDimension(reflect.Int16, 2)
 				case 'H':
-					err = pfmt.addDimension(reflect.Uint16)
+					err = pfmt.addDimension(reflect.Uint16, 2)
 				case 'i', 'l':
-					err = pfmt.addDimension(reflect.Int32)
+					err = pfmt.addDimension(reflect.Int32, 4)
 				case 'I', 'L':
-					err = pfmt.addDimension(reflect.Uint32)
+					err = pfmt.addDimension(reflect.Uint32, 4)
 				case 'q':
-					err = pfmt.addDimension(reflect.Int64)
+					err = pfmt.addDimension(reflect.Int64, 8)
 				case 'Q':
-					err = pfmt.addDimension(reflect.Uint64)
+					err = pfmt.addDimension(reflect.Uint64, 8)
 				default:
 					return result, fmt.Errorf("Unknown data format character '%c' in format '%s'",
 						c, pfmt.rawfmt)

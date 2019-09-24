@@ -3,12 +3,14 @@ package packets
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"os"
 	"reflect"
 	"testing"
+	// "github.com/davecgh/go-spew/spew"
 )
 
-func headerToPacket(h *PacketHeader) []byte {
+func headerToPacket(h *Packet) []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, h.version)
 	binary.Write(buf, binary.BigEndian, h.headerLength)
@@ -20,56 +22,56 @@ func headerToPacket(h *PacketHeader) []byte {
 }
 
 func TestHeader(t *testing.T) {
-	hdr1 := PacketHeader{0x11, 16, 0, 0x44, 0x55, nil, nil, 0, nil}
+	hdr1 := Packet{0x11, 16, 0, 0x44, 0x55, nil, nil, 0, nil, nil}
 	data := headerToPacket(&hdr1)
 
-	hdr2, err := Header(bytes.NewReader(data))
+	hdr2, err := ReadPacket(bytes.NewReader(data))
 	if err != nil {
-		t.Errorf("Header() returns error %v", err)
+		t.Errorf("ReadPacket() returns error %v", err)
 	}
 	if hdr2.version != hdr1.version {
-		t.Errorf("Header version is 0x%x, want 0x%x", hdr2.version, hdr1.version)
+		t.Errorf("ReadPacket version is 0x%x, want 0x%x", hdr2.version, hdr1.version)
 	}
 	if hdr2.headerLength != hdr1.headerLength {
-		t.Errorf("Header length is 0x%x, want 0x%x", hdr2.headerLength, hdr1.headerLength)
+		t.Errorf("ReadPacket length is 0x%x, want 0x%x", hdr2.headerLength, hdr1.headerLength)
 	}
 	if hdr2.payloadLength != hdr1.payloadLength {
-		t.Errorf("Header payload length is 0x%x, want 0x%x", hdr2.payloadLength, hdr1.payloadLength)
+		t.Errorf("ReadPacket payload length is 0x%x, want 0x%x", hdr2.payloadLength, hdr1.payloadLength)
 	}
 	if hdr2.sourceID != hdr1.sourceID {
-		t.Errorf("Header source ID is 0x%x, want 0x%x", hdr2.sourceID, hdr1.sourceID)
+		t.Errorf("ReadPacket source ID is 0x%x, want 0x%x", hdr2.sourceID, hdr1.sourceID)
 	}
 	if hdr2.sequenceNumber != hdr1.sequenceNumber {
-		t.Errorf("Header sequence number is 0x%x, want 0x%x", hdr2.sequenceNumber, hdr1.sequenceNumber)
+		t.Errorf("ReadPacket sequence number is 0x%x, want 0x%x", hdr2.sequenceNumber, hdr1.sequenceNumber)
 	}
 
 	// Make sure incomplete headers fail
-	if _, err2 := Header(bytes.NewReader([]byte{})); err2 == nil {
-		t.Errorf("Header should fail if version cannot be read")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{})); err2 == nil {
+		t.Errorf("ReadPacket should fail if version cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0})); err2 == nil {
-		t.Errorf("Header should fail if header length cannot be read")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0})); err2 == nil {
+		t.Errorf("ReadPacket should fail if header length cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 15})); err2 == nil {
-		t.Errorf("Header should fail if header length < 16")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 15})); err2 == nil {
+		t.Errorf("ReadPacket should fail if header length < 16")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16})); err2 == nil {
-		t.Errorf("Header should fail if payload length cannot be read")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16})); err2 == nil {
+		t.Errorf("ReadPacket should fail if payload length cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0})); err2 == nil {
-		t.Errorf("Header should fail if magic cannot be read")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0})); err2 == nil {
+		t.Errorf("ReadPacket should fail if magic cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 1, 2, 3, 4})); err2 == nil {
-		t.Errorf("Header should fail if magic is wrong")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 1, 2, 3, 4})); err2 == nil {
+		t.Errorf("ReadPacket should fail if magic is wrong")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff})); err2 == nil {
-		t.Errorf("Header should fail if source ID cannot be read")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff})); err2 == nil {
+		t.Errorf("ReadPacket should fail if source ID cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0})); err2 == nil {
-		t.Errorf("Header should fail if sequence number cannot be read")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0})); err2 == nil {
+		t.Errorf("ReadPacket should fail if sequence number cannot be read")
 	}
-	if _, err2 := Header(bytes.NewReader([]byte{0, 16, 0, 9, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0, 0, 0, 0, 0})); err2 == nil {
-		t.Errorf("Header should fail if payload length is not a multiple of 8")
+	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 9, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0, 0, 0, 0, 0})); err2 == nil {
+		t.Errorf("ReadPacket should fail if payload length is not a multiple of 8")
 	}
 }
 
@@ -178,8 +180,8 @@ func TestTLVs(t *testing.T) {
 	}
 	switch hpf := tlvs[0].(type) {
 	case *headPayloadFormat:
-		if !hpf.bigendian {
-			t.Errorf("headPayloadFormat.bigendian is false, want true")
+		if hpf.endian != binary.BigEndian {
+			t.Errorf("headPayloadFormat.endian is %v, want BigEndian", hpf.endian)
 		}
 
 	default:
@@ -202,6 +204,8 @@ func TestTLVs(t *testing.T) {
 		tag   byte
 		dtype reflect.Kind
 	}{
+		{'b', reflect.Int8},
+		{'B', reflect.Uint8},
 		{'h', reflect.Int16},
 		{'H', reflect.Uint16},
 		{'i', reflect.Int32},
@@ -227,8 +231,8 @@ func TestTLVs(t *testing.T) {
 		if h.dtype != test.dtype {
 			t.Errorf("readTLV for headPayloadFormat is dtype %v for tag '%c', want %v", h.dtype, test.tag, test.dtype)
 		}
-		if h.bigendian {
-			t.Errorf("readTLV for headPayloadFormat is big endian, want little endian")
+		if h.endian == binary.BigEndian {
+			t.Errorf("readTLV for headPayloadFormat is BigEndian, want LittleEndian")
 		}
 		if h.nvals != 1 {
 			t.Errorf("readTLV for headPayloadFormat has nvals %d, want 1", h.nvals)
@@ -312,15 +316,16 @@ func TestExamplePackets(t *testing.T) {
 	}
 	defer f.Close()
 
-	h, err := Header(f)
-	if err != nil {
-		t.Errorf("could not read header from %s: %v", datasource, err)
-	}
-	// fmt.Printf("header: %v\n", h)
-	// for i, z := range h.otherTLV {
-	// 	fmt.Printf("%3d: %v %v\n", i, reflect.TypeOf(z), z)
-	// }
-	if h.offset != 0 {
-		t.Errorf("header channel offset %d, want 0", h.offset)
+	for {
+		h, err := ReadPacket(f)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			t.Errorf("could not read header from %s: %v", datasource, err)
+		}
+		if h.offset != 0 {
+			t.Errorf("header channel offset %d, want 0", h.offset)
+		}
+		// break
 	}
 }
