@@ -15,6 +15,7 @@ type Packet struct {
 	payloadLength  uint16
 	sourceID       uint32
 	sequenceNumber uint32
+	packetLength   int
 
 	// Expected TLV objects. If 0 or 2+ examples, this cannot be processed
 	format *headPayloadFormat
@@ -50,6 +51,7 @@ func ReadPacket(data io.Reader) (h *Packet, err error) {
 	if h.payloadLength%8 != 0 {
 		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", h.payloadLength)
 	}
+	h.packetLength = int(h.headerLength) + int(h.payloadLength)
 	var magic uint32
 	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
 		return nil, err
@@ -82,23 +84,32 @@ func ReadPacket(data io.Reader) (h *Packet, err error) {
 	}
 
 	if h.payloadLength > 0 && h.format != nil {
-		switch h.format.dtype {
-		case reflect.Int16:
-			result := make([]int16, h.payloadLength/2)
+		if len(h.format.dtype) == 1 {
+
+			switch h.format.dtype[0] {
+			case reflect.Int16:
+				result := make([]int16, h.payloadLength/2)
+				if err = binary.Read(data, h.format.endian, result); err != nil {
+					return nil, err
+				}
+				h.data = result
+
+			case reflect.Int32:
+				result := make([]int32, h.payloadLength/4)
+				if err = binary.Read(data, h.format.endian, result); err != nil {
+					return nil, err
+				}
+				h.data = result
+
+			default:
+				return nil, fmt.Errorf("Did not know how to read type %v", h.format.dtype)
+			}
+		} else {
+			result := make([]byte, h.payloadLength)
 			if err = binary.Read(data, h.format.endian, result); err != nil {
 				return nil, err
 			}
 			h.data = result
-
-		case reflect.Int32:
-			result := make([]int32, h.payloadLength/4)
-			if err = binary.Read(data, h.format.endian, result); err != nil {
-				return nil, err
-			}
-			h.data = result
-
-		default:
-			return nil, fmt.Errorf("Did not know how to read type %v", h.format.dtype)
 		}
 	}
 
@@ -118,9 +129,9 @@ type HeadCounter struct {
 type headPayloadFormat struct {
 	endian  binary.ByteOrder
 	rawfmt  string
-	nvals   int
 	wordlen int
-	dtype   reflect.Kind
+	nvals   int
+	dtype   []reflect.Kind
 }
 
 // headChannelOffset represents the offset of the first channel in this packet
@@ -129,13 +140,10 @@ type headChannelOffset uint32
 // addDimension adds a new value of type t to the payload array.
 // Currently, it is an error to have a mix of types, though this design could be changed if needed.
 func (h *headPayloadFormat) addDimension(t reflect.Kind, nb int) error {
-	if h.dtype == reflect.Invalid || h.dtype == t {
-		h.dtype = t
-		h.nvals++
-		h.wordlen += nb
-		return nil
-	}
-	return fmt.Errorf("Cannot use type %v in header already of type %v", t, h.dtype)
+	h.dtype = append(h.dtype, t)
+	h.nvals++
+	h.wordlen += nb
+	return nil
 }
 
 // headPayloadShape describes the multi-dimensional shape of the payload

@@ -22,7 +22,7 @@ func headerToPacket(h *Packet) []byte {
 }
 
 func TestHeader(t *testing.T) {
-	hdr1 := Packet{0x11, 16, 0, 0x44, 0x55, nil, nil, 0, nil, nil}
+	hdr1 := Packet{0x11, 16, 0, 0x44, 0x55, 16, nil, nil, 0, nil, nil}
 	data := headerToPacket(&hdr1)
 
 	hdr2, err := ReadPacket(bytes.NewReader(data))
@@ -188,8 +188,8 @@ func TestTLVs(t *testing.T) {
 		t.Errorf("expected type headPayloadFormat, got %v", hpf)
 	}
 	x[4] = 'Q'
-	if _, err = readTLV(bytes.NewReader(x), 8); err == nil {
-		t.Errorf("Expect error on readTLV with conflicting format characters")
+	if _, err = readTLV(bytes.NewReader(x), 8); err != nil {
+		t.Errorf("Error on readTLV with mixed format characters: %v", err)
 	}
 	x[3] = 'a'
 	if _, err = readTLV(bytes.NewReader(x), 8); err == nil {
@@ -228,7 +228,7 @@ func TestTLVs(t *testing.T) {
 		if !ok {
 			t.Errorf("readTLV()[0] is %v, fails type assertion to &headPayloadFormat", tlvs[0])
 		}
-		if h.dtype != test.dtype {
+		if h.dtype[0] != test.dtype {
 			t.Errorf("readTLV for headPayloadFormat is dtype %v for tag '%c', want %v", h.dtype, test.tag, test.dtype)
 		}
 		if h.endian == binary.BigEndian {
@@ -316,9 +316,9 @@ func TestExamplePackets(t *testing.T) {
 	}
 	defer f.Close()
 
-	for {
+	for i := 0; ; i++ {
 		h, err := ReadPacket(f)
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		} else if err != nil {
 			t.Errorf("could not read header from %s: %v", datasource, err)
@@ -326,6 +326,8 @@ func TestExamplePackets(t *testing.T) {
 		if h.offset != 0 {
 			t.Errorf("header channel offset %d, want 0", h.offset)
 		}
-		// break
+		// loc, _ := f.Seek(0, 1)
+		// fmt.Printf("Read packet %4d  of size %4d  fmt %s now at byte %8d\n", i,
+		// 	h.packetLength, h.format.rawfmt, loc)
 	}
 }
