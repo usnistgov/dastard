@@ -10,20 +10,9 @@ import (
 	// "github.com/davecgh/go-spew/spew"
 )
 
-func headerToPacket(h *Packet) []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, h.version)
-	binary.Write(buf, binary.BigEndian, h.headerLength)
-	binary.Write(buf, binary.BigEndian, h.payloadLength)
-	binary.Write(buf, binary.BigEndian, PACKETMAGIC)
-	binary.Write(buf, binary.BigEndian, h.sourceID)
-	binary.Write(buf, binary.BigEndian, h.sequenceNumber)
-	return buf.Bytes()
-}
-
 func TestHeader(t *testing.T) {
-	hdr1 := Packet{0x11, 16, 0, 0x44, 0x55, 16, nil, nil, 0, nil, nil}
-	data := headerToPacket(&hdr1)
+	hdr1 := NewPacket(0x11, 0x44, 0x55, 0)
+	data := hdr1.Bytes()
 
 	hdr2, err := ReadPacket(bytes.NewReader(data))
 	if err != nil {

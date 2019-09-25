@@ -1,6 +1,7 @@
 package packets
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -31,6 +32,35 @@ type Packet struct {
 
 // PACKETMAGIC is the packet header's magic number.
 const PACKETMAGIC uint32 = 0x810b00ff
+
+// NewPacket generates a new packet with the given facts. No data are configured or stored.
+func NewPacket(version uint8, sourceID uint32, sequenceNumber uint32, chanOffset int) *Packet {
+	p := new(Packet)
+	p.version = version
+	p.headerLength = 24 // will update as info is added
+	p.sourceID = sourceID
+	p.sequenceNumber = sequenceNumber
+	p.offset = headChannelOffset(chanOffset)
+	return p
+}
+
+// Bytes converts the Packet p to a []byte slice for transport.
+func (h *Packet) Bytes() []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, h.version)
+	binary.Write(buf, binary.BigEndian, h.headerLength)
+	binary.Write(buf, binary.BigEndian, h.payloadLength)
+	binary.Write(buf, binary.BigEndian, PACKETMAGIC)
+	binary.Write(buf, binary.BigEndian, h.sourceID)
+	binary.Write(buf, binary.BigEndian, h.sequenceNumber)
+
+	// Channel offset
+	binary.Write(buf, binary.BigEndian, byte(0x23))
+	binary.Write(buf, binary.BigEndian, byte(1))
+	binary.Write(buf, binary.BigEndian, uint16(0))
+	binary.Write(buf, binary.BigEndian, uint32(h.offset))
+	return buf.Bytes()
+}
 
 // ReadPacket Header returns a Packet read from an io.reader
 func ReadPacket(data io.Reader) (h *Packet, err error) {
