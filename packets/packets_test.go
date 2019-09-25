@@ -297,6 +297,56 @@ func TestTLVs(t *testing.T) {
 	}
 }
 
+func TestFullPackets(t *testing.T) {
+	p := NewPacket(12, 99, 100, 0)
+	p.Bytes()
+	nd := 100
+	dims := []int16{8}
+	d16 := make([]int16, nd)
+	d32 := make([]int32, nd)
+	d64 := make([]int64, nd)
+	for i := 0; i < nd; i++ {
+		d16[i] = 2 * int16(i)
+		d32[i] = 20 * int32(i)
+		d64[i] = 20 * int64(i)
+	}
+	alldata := []interface{}{d16, d32, d64}
+	for _, d := range alldata {
+		if err := p.NewData(d, dims); err != nil {
+			t.Errorf("Packet.NewData failed: %v", err)
+		}
+		b := p.Bytes()
+		p, err := ReadPacket(bytes.NewReader(b))
+		if err != nil {
+			t.Errorf("Could not ReadPacket: %s", err)
+			continue
+		} else if p == nil {
+			t.Errorf("Could not ReadPacket: returned nil")
+			continue
+		}
+		if p.data == nil {
+			t.Errorf("ReadPacket yielded no data, expect %v\n", reflect.TypeOf(d))
+		}
+
+	}
+
+	p.ClearData()
+	p.Bytes()
+
+	nd = 1024
+	d64 = make([]int64, nd)
+	for i := 0; i < nd; i++ {
+		d64[i] = int64(i)
+	}
+	if err := p.NewData(d64, dims); err == nil {
+		t.Errorf("Packet.NewData expected to fail with packet bigger than %d", maxPACKETLENGTH)
+	}
+
+	if err := p.NewData(64, dims); err == nil {
+		t.Errorf("Packet.NewData should error on arbitrary non-array data")
+	}
+}
+
 func TestExamplePackets(t *testing.T) {
 	datasource := "../testData/test1.bin"
 	f, err := os.Open(datasource)

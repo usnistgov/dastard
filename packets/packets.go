@@ -30,8 +30,9 @@ type Packet struct {
 	data interface{}
 }
 
-// PACKETMAGIC is the packet header's magic number.
-const PACKETMAGIC uint32 = 0x810b00ff
+// packetMAGIC is the packet header's magic number.
+const packetMAGIC uint32 = 0x810b00ff
+const maxPACKETLENGTH int = 8192
 
 // NewPacket generates a new packet with the given facts. No data are configured or stored.
 func NewPacket(version uint8, sourceID uint32, sequenceNumber uint32, chanOffset int) *Packet {
@@ -44,21 +45,102 @@ func NewPacket(version uint8, sourceID uint32, sequenceNumber uint32, chanOffset
 	return p
 }
 
+// ClearData removes the data payload from a packet.
+func (p *Packet) ClearData() error {
+	p.headerLength = 24
+	p.payloadLength = 0
+	p.packetLength = 24
+	p.format = nil
+	p.data = nil
+	p.shape = nil
+	return nil
+}
+
+// NewData adds data to the packet, and crates the format and shape TLV items to match.
+func (p *Packet) NewData(data interface{}, dims []int16) error {
+	ndim := len(dims)
+	p.headerLength = 24
+	pfmt := new(headPayloadFormat)
+	pfmt.dtype = make([]reflect.Kind, 1)
+	pfmt.endian = binary.LittleEndian
+	pfmt.nvals = 1
+	switch d := data.(type) {
+	case []int16:
+		pfmt.rawfmt = "<h"
+		pfmt.dtype[0] = reflect.Int16
+		pfmt.wordlen = 2
+		p.payloadLength = uint16(pfmt.wordlen * len(d))
+		p.data = d
+	case []int32:
+		pfmt.rawfmt = "<i"
+		pfmt.dtype[0] = reflect.Int32
+		pfmt.wordlen = 4
+		p.payloadLength = uint16(pfmt.wordlen * len(d))
+		p.data = d
+	case []int64:
+		pfmt.rawfmt = "<q"
+		pfmt.dtype[0] = reflect.Int64
+		pfmt.wordlen = 8
+		p.payloadLength = uint16(pfmt.wordlen * len(d))
+		p.data = d
+	default:
+		return fmt.Errorf("Could not handle Packet.NewData of type %v", reflect.TypeOf(d))
+	}
+	p.format = pfmt
+	p.headerLength += 8
+	p.shape = new(headPayloadShape)
+	p.shape.Sizes = make([]int16, 1)
+	for i := 0; i < ndim; i++ {
+		p.shape.Sizes[i] = dims[i]
+	}
+	p.headerLength += 8 * uint8(1+ndim/4)
+	p.packetLength = int(p.headerLength) + int(p.payloadLength)
+	if p.packetLength > maxPACKETLENGTH {
+		return fmt.Errorf("packet length %d exceeds max of %d", p.packetLength, maxPACKETLENGTH)
+	}
+	return nil
+}
+
 // Bytes converts the Packet p to a []byte slice for transport.
-func (h *Packet) Bytes() []byte {
+func (p *Packet) Bytes() []byte {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, h.version)
-	binary.Write(buf, binary.BigEndian, h.headerLength)
-	binary.Write(buf, binary.BigEndian, h.payloadLength)
-	binary.Write(buf, binary.BigEndian, PACKETMAGIC)
-	binary.Write(buf, binary.BigEndian, h.sourceID)
-	binary.Write(buf, binary.BigEndian, h.sequenceNumber)
+	binary.Write(buf, binary.BigEndian, p.version)
+	binary.Write(buf, binary.BigEndian, p.headerLength)
+	binary.Write(buf, binary.BigEndian, p.payloadLength)
+	binary.Write(buf, binary.BigEndian, packetMAGIC)
+	binary.Write(buf, binary.BigEndian, p.sourceID)
+	binary.Write(buf, binary.BigEndian, p.sequenceNumber)
 
 	// Channel offset
 	binary.Write(buf, binary.BigEndian, byte(0x23))
 	binary.Write(buf, binary.BigEndian, byte(1))
 	binary.Write(buf, binary.BigEndian, uint16(0))
-	binary.Write(buf, binary.BigEndian, uint32(h.offset))
+	binary.Write(buf, binary.BigEndian, uint32(p.offset))
+
+	if p.data != nil && p.shape != nil && p.format != nil {
+		binary.Write(buf, binary.BigEndian, byte(0x21))
+		binary.Write(buf, binary.BigEndian, byte(1))
+		fmt := []byte(p.format.rawfmt)
+		if len(fmt) > 6 {
+			fmt = fmt[:6]
+		}
+		for len(fmt) < 6 {
+			fmt = append(fmt, 0x0)
+		}
+		binary.Write(buf, binary.BigEndian, fmt)
+
+		binary.Write(buf, binary.BigEndian, byte(0x22))
+		binary.Write(buf, binary.BigEndian, byte(1+len(p.shape.Sizes)/4))
+		for i := 0; i < len(p.shape.Sizes); i++ {
+			binary.Write(buf, binary.BigEndian, p.shape.Sizes[i])
+		}
+		for i := len(p.shape.Sizes) % 4; i < 3; i++ {
+			zero := int16(0)
+			binary.Write(buf, binary.BigEndian, &zero)
+		}
+
+		binary.Write(buf, p.format.endian, p.data)
+	}
 	return buf.Bytes()
 }
 
@@ -86,8 +168,8 @@ func ReadPacket(data io.Reader) (h *Packet, err error) {
 	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
 		return nil, err
 	}
-	if magic != PACKETMAGIC {
-		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, PACKETMAGIC)
+	if magic != packetMAGIC {
+		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, packetMAGIC)
 	}
 	if err = binary.Read(data, binary.BigEndian, &h.sourceID); err != nil {
 		return nil, err
@@ -131,6 +213,13 @@ func ReadPacket(data io.Reader) (h *Packet, err error) {
 				}
 				h.data = result
 
+			case reflect.Int64:
+				result := make([]int64, h.payloadLength/8)
+				if err = binary.Read(data, h.format.endian, result); err != nil {
+					return nil, err
+				}
+				h.data = result
+
 			default:
 				return nil, fmt.Errorf("Did not know how to read type %v", h.format.dtype)
 			}
@@ -167,9 +256,9 @@ type headPayloadFormat struct {
 // headChannelOffset represents the offset of the first channel in this packet
 type headChannelOffset uint32
 
-// addDimension adds a new value of type t to the payload array.
+// addDataComponent adds a new component of type t to the payload array.
 // Currently, it is an error to have a mix of types, though this design could be changed if needed.
-func (h *headPayloadFormat) addDimension(t reflect.Kind, nb int) error {
+func (h *headPayloadFormat) addDataComponent(t reflect.Kind, nb int) error {
 	h.dtype = append(h.dtype, t)
 	h.nvals++
 	h.wordlen += nb
@@ -245,23 +334,23 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 				case '<':
 					pfmt.endian = binary.LittleEndian
 				case 'x':
-					err = pfmt.addDimension(reflect.Invalid, 1)
+					err = pfmt.addDataComponent(reflect.Invalid, 1)
 				case 'b':
-					err = pfmt.addDimension(reflect.Int8, 1)
+					err = pfmt.addDataComponent(reflect.Int8, 1)
 				case 'B':
-					err = pfmt.addDimension(reflect.Uint8, 1)
+					err = pfmt.addDataComponent(reflect.Uint8, 1)
 				case 'h':
-					err = pfmt.addDimension(reflect.Int16, 2)
+					err = pfmt.addDataComponent(reflect.Int16, 2)
 				case 'H':
-					err = pfmt.addDimension(reflect.Uint16, 2)
+					err = pfmt.addDataComponent(reflect.Uint16, 2)
 				case 'i', 'l':
-					err = pfmt.addDimension(reflect.Int32, 4)
+					err = pfmt.addDataComponent(reflect.Int32, 4)
 				case 'I', 'L':
-					err = pfmt.addDimension(reflect.Uint32, 4)
+					err = pfmt.addDataComponent(reflect.Uint32, 4)
 				case 'q':
-					err = pfmt.addDimension(reflect.Int64, 8)
+					err = pfmt.addDataComponent(reflect.Int64, 8)
 				case 'Q':
-					err = pfmt.addDimension(reflect.Uint64, 8)
+					err = pfmt.addDataComponent(reflect.Uint64, 8)
 				default:
 					return result, fmt.Errorf("Unknown data format character '%c' in format '%s'",
 						c, pfmt.rawfmt)
