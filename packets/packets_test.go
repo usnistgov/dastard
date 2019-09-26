@@ -316,18 +316,17 @@ func TestFullPackets(t *testing.T) {
 			t.Errorf("Packet.NewData failed: %v", err)
 		}
 		b := p.Bytes()
-		p, err := ReadPacket(bytes.NewReader(b))
+		pread, err := ReadPacket(bytes.NewReader(b))
 		if err != nil {
 			t.Errorf("Could not ReadPacket: %s", err)
 			continue
-		} else if p == nil {
+		} else if pread == nil {
 			t.Errorf("Could not ReadPacket: returned nil")
 			continue
 		}
-		if p.data == nil {
+		if pread.data == nil {
 			t.Errorf("ReadPacket yielded no data, expect %v\n", reflect.TypeOf(d))
 		}
-
 	}
 
 	p.ClearData()
@@ -345,6 +344,27 @@ func TestFullPackets(t *testing.T) {
 	if err := p.NewData(64, dims); err == nil {
 		t.Errorf("Packet.NewData should error on arbitrary non-array data")
 	}
+
+	const firstSeq = uint32(950)
+	p = NewPacket(12, 99, firstSeq-1, 0)
+	for i := firstSeq; i < firstSeq+10; i++ {
+		if err := p.NewData(d16, dims); err != nil {
+			t.Errorf("Packet.NewData failed: %s", err)
+		}
+		b := p.Bytes()
+		pread, err := ReadPacket(bytes.NewReader(b))
+		if err != nil {
+			t.Errorf("Could not ReadPacket: %s", err)
+			continue
+		} else if pread == nil {
+			t.Errorf("Could not ReadPacket: returned nil")
+			continue
+		}
+		if pread.sequenceNumber != i {
+			t.Errorf("Packet has sequence number %d, want %d", pread.sequenceNumber, i)
+		}
+	}
+
 }
 
 func TestExamplePackets(t *testing.T) {

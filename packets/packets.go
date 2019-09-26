@@ -56,6 +56,11 @@ func (p *Packet) ClearData() error {
 	return nil
 }
 
+func (p *Packet) String() string {
+	return fmt.Sprintf("Packet v0x%2.2x 0x%8.8x  Size (%2d+%5d)", p.version,
+		p.sequenceNumber, p.headerLength, p.payloadLength)
+}
+
 // NewData adds data to the packet, and crates the format and shape TLV items to match.
 func (p *Packet) NewData(data interface{}, dims []int16) error {
 	ndim := len(dims)
@@ -98,6 +103,7 @@ func (p *Packet) NewData(data interface{}, dims []int16) error {
 	if p.packetLength > maxPACKETLENGTH {
 		return fmt.Errorf("packet length %d exceeds max of %d", p.packetLength, maxPACKETLENGTH)
 	}
+	p.sequenceNumber++
 	return nil
 }
 
