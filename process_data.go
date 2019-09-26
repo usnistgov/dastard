@@ -21,11 +21,11 @@ type DataStreamProcessor struct {
 	stream               DataStream
 	projectors           *mat.Dense
 	modelDescription     string
-	// realtime analysis is disable if projectors .IsZero
+	// realtime analysis is disable if projectors .IsEmpty
 	// otherwise projectors must be size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
 	basis *mat.Dense
-	// if not projectors.IsZero basis must be size
+	// if not projectors.IsEmpty basis must be size
 	// (NSamples, nbases) such that basis*modelCoefs = modeled_data
 	DecimateState
 	TriggerState
@@ -63,7 +63,7 @@ func (dsp *DataStreamProcessor) SetProjectorsBasis(projectors *mat.Dense, basis 
 
 // HasProjectors return true if projectors are loaded
 func (dsp *DataStreamProcessor) HasProjectors() bool {
-	return (dsp.projectors != nil) && (!dsp.projectors.IsZero())
+	return (dsp.projectors != nil) && (!dsp.projectors.IsEmpty())
 }
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
