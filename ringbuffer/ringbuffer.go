@@ -40,8 +40,8 @@ func NewRingBuffer(rawName, descName string) (rb *RingBuffer, err error) {
 	return rb, nil
 }
 
-// create makes a writeable buffer and is only for testing
-func (rb *RingBuffer) create(bufsize int) (err error) {
+// Create makes a writeable buffer. Though exported, it's only for testing
+func (rb *RingBuffer) Create(bufsize int) (err error) {
 	rb.writeable = true
 	file, err := shm.Open(rb.descName, os.O_RDWR|os.O_CREATE, 0660)
 	if err != nil {
@@ -63,7 +63,7 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 	rb.desc.writePointer = 0
 	rb.desc.readPointer = 0
 	rb.desc.bufferSize = uint64(bufsize)
-	rb.desc.packetSize = 0
+	rb.desc.packetSize = 8192
 	rb.size = rb.desc.bufferSize
 
 	file, err = shm.Open(rb.rawName, os.O_RDWR|os.O_CREATE, 0660)
@@ -82,8 +82,8 @@ func (rb *RingBuffer) create(bufsize int) (err error) {
 	return nil
 }
 
-// write adds data bytes to the buffer and is only for testing
-func (rb *RingBuffer) write(data []byte) (written int, err error) {
+// Write adds data bytes to the buffer and is only for testing
+func (rb *RingBuffer) Write(data []byte) (written int, err error) {
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
 	cap := rb.desc.bufferSize
@@ -120,8 +120,8 @@ func (rb *RingBuffer) bytesWriteable() int {
 	return int(cap - (w - r))
 }
 
-// unlink removes a writeable buffer's shared memory regions
-func (rb *RingBuffer) unlink() (err error) {
+// Unlink removes a writeable buffer's shared memory regions
+func (rb *RingBuffer) Unlink() (err error) {
 	if err = shm.Unlink(rb.rawName); err != nil {
 		return err
 	}

@@ -24,8 +24,8 @@ func TestBufferOpenClose(t *testing.T) {
 	if err != nil {
 		t.Error("Failed NewRingBuffer")
 	}
-	defer writebuf.unlink()
-	if err = writebuf.create(8192); err != nil {
+	defer writebuf.Unlink()
+	if err = writebuf.Create(8192); err != nil {
 		t.Error("Failed RingBuffer.create", err)
 	}
 
@@ -78,7 +78,7 @@ func TestBufferWriteRead(t *testing.T) {
 		t.Error("Failed NewRingBuffer", err)
 	}
 	buffersize := 8192
-	if err = writebuf.create(buffersize); err != nil {
+	if err = writebuf.Create(buffersize); err != nil {
 		t.Error("Failed RingBuffer.create", err)
 	}
 	nbeef := 2000
@@ -88,7 +88,7 @@ func TestBufferWriteRead(t *testing.T) {
 		deadbeef = append(deadbeef, []byte{0xde, 0xad, 0xbe, 0xef}...)
 		bead5678 = append(bead5678, []byte{0xbe, 0xad, 0x56, 0x78}...)
 	}
-	writebuf.write(deadbeef)
+	writebuf.Write(deadbeef)
 
 	b, err := NewRingBuffer(name1, name2)
 	if err != nil {
@@ -138,7 +138,7 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// Now put bytes in the buffer, clear it, and verify that there are 0.
-	writebuf.write(deadbeef)
+	writebuf.Write(deadbeef)
 	b.DiscardAll()
 	data, err = b.Read(expect)
 	if err != nil {
@@ -149,7 +149,7 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// Now put different bytes in the buffer, verify that they are the right values.
-	writebuf.write(bead5678)
+	writebuf.Write(bead5678)
 	readable = b.BytesReadable()
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
@@ -179,7 +179,7 @@ func TestBufferWriteRead(t *testing.T) {
 	for i := 0; i < nwrite; i++ {
 		consec[i] = byte(i)
 	}
-	writebuf.write(consec)
+	writebuf.Write(consec)
 	expect = nwrite
 	readable = b.BytesReadable()
 	if readable != expect {
@@ -199,7 +199,7 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// Now write a certain amount and try to read more than that.
-	writebuf.write(consec)
+	writebuf.Write(consec)
 	readable = b.BytesReadable()
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
@@ -214,12 +214,12 @@ func TestBufferWriteRead(t *testing.T) {
 
 	// Now try to write more than the buffer can hold
 	zeros := make([]byte, buffersize+20)
-	written, err := writebuf.write(zeros)
+	written, err := writebuf.Write(zeros)
 	if err != nil {
-		t.Errorf("writebuf.write() of buffer of size %d errors", len(zeros))
+		t.Errorf("writebuf.Write() of buffer of size %d errors", len(zeros))
 	}
 	if written >= buffersize {
-		t.Errorf("writebuf.write() of buffer of size %d writes %d bytes, want < %d",
+		t.Errorf("writebuf.Write() of buffer of size %d writes %d bytes, want < %d",
 			len(zeros), written, buffersize)
 	}
 
@@ -227,7 +227,7 @@ func TestBufferWriteRead(t *testing.T) {
 	if err = b.DiscardAll(); err != nil {
 		t.Error("b.DiscardAll() fails: ", err)
 	}
-	writebuf.write(deadbeef)
+	writebuf.Write(deadbeef)
 	data, err = b.ReadAll()
 	if err != nil {
 		t.Error("b.ReadAll() fails: ", err)
@@ -244,13 +244,13 @@ func TestBufferWriteRead(t *testing.T) {
 	for i := 0; i < msize; i++ {
 		shortmessage[i] = byte(i)
 	}
-	writebuf.write(shortmessage)
+	writebuf.Write(shortmessage)
 
 	// Need this goroutine to close a channel: prevents an apparent race condition
 	doneSleepTest := make(chan interface{})
 	go func() {
 		time.Sleep(5 * time.Millisecond)
-		writebuf.write(shortmessage)
+		writebuf.Write(shortmessage)
 		close(doneSleepTest)
 	}()
 	read, err := b.ReadMinimum(2 * msize)
@@ -270,7 +270,7 @@ func TestBufferWriteRead(t *testing.T) {
 	if err = b.DiscardAll(); err != nil {
 		t.Error("b.DiscardAll() fails: ", err)
 	}
-	writebuf.write(shortmessage)
+	writebuf.Write(shortmessage)
 	data, err = b.ReadMultipleOf(msize * 2)
 	if err != nil {
 		t.Errorf("b.ReadMultipleOf(%d) fails", msize*2)
@@ -287,7 +287,7 @@ func TestBufferWriteRead(t *testing.T) {
 		t.Errorf("b.ReadMultipleOf(%d) returns %d bytes, expect %d",
 			msize/2, len(data), msize)
 	}
-	writebuf.write(shortmessage)
+	writebuf.Write(shortmessage)
 	data, err = b.ReadMultipleOf(msize - 1)
 	if err != nil {
 		t.Errorf("b.ReadMultipleOf(%d) fails", msize-1)
@@ -309,7 +309,7 @@ func TestBufferWriteRead(t *testing.T) {
 	if err = writebuf.Close(); err != nil {
 		t.Error("Failed RingBuffer.Close", err)
 	}
-	if err = writebuf.unlink(); err != nil {
+	if err = writebuf.Unlink(); err != nil {
 		t.Error("Failed RingBuffer.unlink", err)
 	}
 }
