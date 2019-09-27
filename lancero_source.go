@@ -561,6 +561,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 	ls.readPeriod = 50 * time.Millisecond
 	go func() {
 		ticker := time.NewTicker(ls.readPeriod)
+		lastSuccesfulRead := time.Now()
 		for {
 			select {
 			case <-ls.abortSelf:
@@ -568,49 +569,77 @@ func (ls *LanceroSource) launchLanceroReader() {
 				return
 
 			case <-ticker.C:
+				timeSinceLastSuccesfulRead := time.Now().Sub(lastSuccesfulRead)
+				if timeSinceLastSuccesfulRead > 5*time.Second {
+					panic("too long since last succesful read")
+				}
 				var buffers [][]RawType
 				framesUsed := math.MaxInt64
 				var lastSampleTime time.Time
 				var dataDropDetected bool
-				for _, dev := range ls.active {
-
-					b, timeFix, err := dev.card.AvailableBuffer()
-					if err != nil {
-						panic("Warning: AvailableBuffer failed")
-					}
-					q, p, ncols, err := lancero.FindFrameBits(b, lanceroFBOffset)
-					nrows := (p - q) / ncols
-					if ncols != dev.ncols || nrows != dev.nrows {
-						panic(fmt.Sprintf("ncols have %v, want %v. nrows have %v, want %v",
-							ncols, dev.ncols, nrows, dev.nrows))
-					}
-					firstWord := q
-					var bframes int
-					if firstWord != dev.ncols*dev.nrows {
-						dataDropDetected = true
-						// align to next frame start
-						buffers = append(buffers, bytesToRawType(b[firstWord*4:]))
-						bframes = len(b[firstWord*4:]) / dev.frameSize
-						log.Printf("DATA DROP, first word = %v\n", firstWord)
-						if len(ls.active) > 1 {
-							panic("dropped data, handling multiple devices not yet implemented")
-						}
-					} else {
-						buffers = append(buffers, bytesToRawType(b))
-						bframes = len(b) / dev.frameSize
-
-					}
-					if bframes < framesUsed {
-						framesUsed = bframes
-						lastSampleTime = timeFix
-					}
+				if len(ls.active) > 1 {
+					panic("dropped data, handling multiple devices not yet implemented")
 				}
+				dev := ls.active[0]
+				b, timeFix, err := dev.card.AvailableBuffer()
+				if err != nil {
+					panic("Warning: AvailableBuffer failed")
+				}
+				if len(b) < 3*dev.frameSize { // read is too small
+					fmt.Println("lancero read too small")
+					continue
+				}
+				q, p, ncols, err := lancero.FindFrameBits(b, lanceroFBOffset)
+				nrows := (p - q) / ncols
+				if dev.nrows != 24 {
+					panic(fmt.Sprintf("%v", dev.nrows))
+				}
+				if ncols != dev.ncols || nrows != dev.nrows || err != nil {
+					fmt.Printf("ncols have %v, want %v. nrows have %v, want %v, timeSinceLastSuccesfulRead %v\n",
+						ncols, dev.ncols, nrows, dev.nrows, timeSinceLastSuccesfulRead)
+					dev.card.ReleaseBytes(len(b))
+					continue
+				}
+				firstWord := q
+				// check for dataDrop
+				if firstWord != dev.ncols*dev.nrows {
+					// if data drop detected
+					// alter b and timeFix in place
+					dataDropDetected = true
+					// align to next frame start
+					dropFromStart := firstWord * 4
+					if firstWord == 0 {
+						panic("not sure what to do here, but it wont self fix")
+					}
+					dev.card.ReleaseBytes(dropFromStart) // we could instead remember dropFromStart and add it
+					// to the later call to ReleaseBytes
+					dropFromEnd := dev.frameSize - dropFromStart
+					if dropFromEnd <= 0 {
+						fmt.Printf("firstWord %v, dropFromStart %v, dropFromEnd %v\n", firstWord, dropFromEnd, dropFromStart)
+						panic("expect dropFromEnd>0")
+					}
+					b = b[dropFromStart : len(b)-dropFromEnd]
+					fractionOfSampledPeriod := float64(dropFromEnd) / float64(dev.frameSize)
+					timeFix = timeFix.Add(-ls.samplePeriod * time.Duration(fractionOfSampledPeriod))
+					log.Printf("DATA DROP, first word = %v\n", firstWord)
+
+				}
+				buffers = append(buffers, bytesToRawType(b))
+				bframes := len(b) / dev.frameSize
+				if bframes < framesUsed { // for multiple cards, take data amount equal to minimum across all cards
+					framesUsed = bframes
+					lastSampleTime = timeFix
+				}
+
 				timeDiff := lastSampleTime.Sub(ls.lastread)
 				if timeDiff > 2*ls.readPeriod {
 					fmt.Println("timeDiff in lancero reader", timeDiff)
 				}
 				ls.lastread = lastSampleTime
 
+				if framesUsed == math.MaxInt64 || framesUsed == 0 {
+					panic("should not get here")
+				}
 				// Consume framesUsed frames of data from each channel.
 				// Careful! This slice of slices will be in lancero READOUT order:
 				// r0c0, r0c1, r0c2, etc.
@@ -651,6 +680,9 @@ func (ls *LanceroSource) launchLanceroReader() {
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
 					timeDiff: timeDiff, totalBytes: totalBytes, dataDropDetected: dataDropDetected}
+				if !dataDropDetected {
+					lastSuccesfulRead = time.Now()
+				}
 			}
 		}
 	}()
