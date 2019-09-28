@@ -1,7 +1,9 @@
 package dastard
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"testing"
 
@@ -47,11 +49,22 @@ func TestGeneratePackets(t *testing.T) {
 			b = append(b, empty[:8192-len(b)]...)
 			rb.Write(b)
 		}
+		// Consume packetSize
 		contents, err := rb.ReadMultipleOf(8192)
 		if err != nil {
 			t.Errorf("Could not read buffer: %s", err)
 		}
-
-		fmt.Printf("Size read, still in buffer: %d %d\n", len(contents), rb.BytesReadable())
+		r := bytes.NewReader(contents)
+		for {
+			pkt, err := packets.ReadPacket(r)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Errorf("Error reading packets: %s", err)
+				break
+			}
+			fmt.Printf("Packet read: %s\n", pkt.String())
+		}
 	}
 }
