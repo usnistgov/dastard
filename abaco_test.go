@@ -2,7 +2,6 @@ package dastard
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"math"
 	"testing"
@@ -20,11 +19,12 @@ func TestGeneratePackets(t *testing.T) {
 		t.Fatalf("Could not open ringbuffer: %s", err)
 	}
 	defer rb.Unlink()
-	if err = rb.Create(128 * 8192); err != nil {
+	const packetAlign = 8192
+	if err = rb.Create(128 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
 
-	p := packets.NewPacket(10, 20, 30, 0)
+	p := packets.NewPacket(10, 20, 0x100, 0)
 
 	const Nchan = 8
 	const Nsamp = 20000
@@ -40,23 +40,30 @@ func TestGeneratePackets(t *testing.T) {
 	if stride*Nchan*2 > 8000 {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
-	empty := make([]byte, 8192)
+	empty := make([]byte, packetAlign)
 	dims := []int16{Nchan}
 	for repeats := 0; repeats < 3; repeats++ {
 		for i := 0; i < Nsamp; i += stride {
 			p.NewData(d[i:i+stride*Nchan], dims)
 			b := p.Bytes()
-			b = append(b, empty[:8192-len(b)]...)
+			b = append(b, empty[:packetAlign-len(b)]...)
 			rb.Write(b)
 		}
 		// Consume packetSize
-		contents, err := rb.ReadMultipleOf(8192)
+		contents, err := rb.ReadMultipleOf(packetAlign)
 		if err != nil {
 			t.Errorf("Could not read buffer: %s", err)
 		}
 		r := bytes.NewReader(contents)
 		for {
-			pkt, err := packets.ReadPacket(r)
+			bytesRemaining := r.Len()
+			_, err := packets.ReadPacket(r)
+			bytesUsed := bytesRemaining - r.Len()
+			if bytesUsed%packetAlign > 0 {
+				if _, err = r.Seek(int64(packetAlign-(bytesUsed%packetAlign)), io.SeekCurrent); err != nil {
+					t.Errorf("Could not seek")
+				}
+			}
 			if err == io.EOF {
 				break
 			}
@@ -64,7 +71,7 @@ func TestGeneratePackets(t *testing.T) {
 				t.Errorf("Error reading packets: %s", err)
 				break
 			}
-			fmt.Printf("Packet read: %s\n", pkt.String())
+			// fmt.Printf("Packet read: %s\n", pkt.String())
 		}
 	}
 }
