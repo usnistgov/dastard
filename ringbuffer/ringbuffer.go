@@ -16,7 +16,7 @@ type bufferDescription struct {
 	writePointer uint64
 	readPointer  uint64
 	bufferSize   uint64
-	packetSize   uint64
+	packetSize   int64
 }
 
 // RingBuffer describes the shared-memory ring buffer filled by DEED.
@@ -40,7 +40,7 @@ func NewRingBuffer(rawName, descName string) (rb *RingBuffer, err error) {
 	return rb, nil
 }
 
-// Create makes a writeable buffer. Though exported, it's only for testing
+// Create makes a writeable buffer. Though exported, it's only for testing.
 func (rb *RingBuffer) Create(bufsize int) (err error) {
 	rb.writeable = true
 	file, err := shm.Open(rb.descName, os.O_RDWR|os.O_CREATE, 0660)
@@ -82,7 +82,7 @@ func (rb *RingBuffer) Create(bufsize int) (err error) {
 	return nil
 }
 
-// Write adds data bytes to the buffer and is only for testing
+// Write adds data bytes to the buffer. Though exported, it's only for testing.
 func (rb *RingBuffer) Write(data []byte) (written int, err error) {
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
@@ -120,7 +120,7 @@ func (rb *RingBuffer) bytesWriteable() int {
 	return int(cap - (w - r))
 }
 
-// Unlink removes a writeable buffer's shared memory regions
+// Unlink removes a writeable buffer's shared memory regions.
 func (rb *RingBuffer) Unlink() (err error) {
 	if err = shm.Unlink(rb.rawName); err != nil {
 		return err
@@ -285,4 +285,12 @@ func (rb *RingBuffer) BytesReadable() int {
 func (rb *RingBuffer) DiscardAll() (err error) {
 	rb.desc.readPointer = rb.desc.writePointer
 	return nil
+}
+
+// PacketSize returns the packetSize held in the buffer description
+func (rb *RingBuffer) PacketSize() int64 {
+	if rb.desc == nil {
+		return -1
+	}
+	return rb.desc.packetSize
 }

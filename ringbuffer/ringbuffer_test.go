@@ -54,8 +54,14 @@ func TestBufferOpenClose(t *testing.T) {
 		if err = r.Open(); err != nil {
 			t.Error("Failed RingBuffer.Open", err)
 		}
+		if ps := r.PacketSize(); ps != 8192 {
+			t.Errorf("PacketSize()=%d, want 8192", ps)
+		}
 		if err = r.Close(); err != nil {
 			t.Error("Failed RingBuffer.Close", err)
+		}
+		if ps := r.PacketSize(); ps != -1 {
+			t.Errorf("Closed RingBuffer PacketSize()=%d, want -1", ps)
 		}
 	}
 
