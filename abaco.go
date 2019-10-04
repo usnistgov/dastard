@@ -1,7 +1,9 @@
 package dastard
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -9,145 +11,97 @@ import (
 	"sync"
 	"time"
 
-	"github.com/usnistgov/dastard/lancero"
+	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-// AbacoDevice represents a single Abaco device-special file and the ring buffer
-// that stores its data.
+// AbacoDevice represents a single shared-memory ring buffer
+// that stores an Abaco card's data.
 type AbacoDevice struct {
-	cardnum   int
-	devnum    int
-	nrows     int
-	ncols     int
-	nchan     int
-	frameSize int // frame size, in bytes
-	ring      *ringbuffer.RingBuffer
-	unwrap    []*PhaseUnwrapper
+	cardnum    int
+	nchan      int
+	firstchan  int
+	packetSize int // packet size, in bytes
+	ring       *ringbuffer.RingBuffer
+	unwrap     []*PhaseUnwrapper
 }
 
-const maxAbacoCards = 4    // Don't allow more than this many cards.
-const maxAbacoChannels = 8 // Don't allow more than this many channels per card.
+const maxAbacoCards = 4 // Don't allow more than this many cards.
 const abacoScale RawType = 2
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
-func NewAbacoDevice(cardnum, devnum int) (dev *AbacoDevice, err error) {
-	if cardnum >= maxAbacoCards || cardnum < 0 {
+func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
+	// Allow negative cardnum values, but for testing only!
+	if cardnum >= maxAbacoCards {
 		return nil, fmt.Errorf("NewAbacoDevice() got cardnum=%d, want [0,%d]",
 			cardnum, maxAbacoCards-1)
 	}
-	if devnum >= maxAbacoChannels || devnum < 0 {
-		return nil, fmt.Errorf("NewAbacoDevice() got devnum=%d, want [0,%d]",
-			devnum, maxAbacoChannels-1)
-	}
 	dev = new(AbacoDevice)
 	dev.cardnum = cardnum
-	dev.devnum = devnum
 
-	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_%d_buffer", dev.cardnum, dev.devnum)
-	shmNameDesc := fmt.Sprintf("xdma%d_c2h_%d_description", dev.cardnum, dev.devnum)
+	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_0_buffer", dev.cardnum)
+	shmNameDesc := fmt.Sprintf("xdma%d_c2h_0_description", dev.cardnum)
 	if dev.ring, err = ringbuffer.NewRingBuffer(shmNameBuffer, shmNameDesc); err != nil {
 		return nil, err
 	}
 	return dev, nil
 }
 
-// abacoFBOffset gives the location of the frame bits: in bytes 0, 4, 8...
-// (In the TDM system, this value is 2, meaning frame bits are in bytes 2, 6, 10....)
-const abacoFBOffset int = 0
-
-// sampleCard samples the data from a single card to scan for frame bits.
-// For Abaco µMUX systems, we need to discard one DMA buffer worth of stale data,
-// then check the data after that for frame bit info.
-// 1. Discard all data currently in the ring buffer.
-// 2. Discard 2 FIFOs worth of new data (John says sometimes needed).
-// 3. Read 32k: enough data to discern frame bits; scan for frame bits
-// 4. Store info that we've learned in AbacoSource or per device.
+// sampleCard samples the data from a single card to scan enough packets to
+// know the number of channels, data rate, etc.
+// Although it slows things down, it's best to discard all data in the ring
+// at the time we open it, because we have no idea how old the data are.
 func (device *AbacoDevice) sampleCard() error {
 	// Open the device and discard whatever is in the buffer
 	if err := device.ring.Open(); err != nil {
 		return err
 	}
-	fmt.Printf("Device ring.Open returns no error.\n")
 	if err := device.ring.DiscardAll(); err != nil {
 		return err
 	}
 
-	// Then discard the first 2 FIFOs worth of data, to be safe
-	for bytesToDiscard := 128 * 1024; bytesToDiscard > 0; {
-		data, err := device.ring.ReadMinimum(bytesToDiscard)
-		if err != nil {
-			return err
+	// Now get the data we actually want. Run for at least a minimum time
+	// or a minimum number of packets.
+	device.packetSize = int(device.ring.PacketSize())
+	const minPacketsToRead = 100 // Not sure this is a good minimum
+	maxDelay := time.Duration(200 * time.Millisecond)
+	timeOut := time.NewTimer(maxDelay)
+	for packetsRead := 0; packetsRead < minPacketsToRead; {
+		select {
+		case <-timeOut.C:
+			fmt.Println("AbacoDevice.sampleCard() timer expired")
+			break
+
+		default:
+			time.Sleep(5 * time.Millisecond)
+			data, err := device.ring.ReadMultipleOf(device.packetSize)
+			if err != nil {
+				return err
+			}
+			reader := bytes.NewReader(data)
+			for {
+				p, err := packets.ReadPacketPlusPad(reader, device.packetSize)
+				if err == io.EOF {
+					fmt.Println("EOF found")
+					break
+				} else if err != nil {
+					return err
+				} else {
+					fmt.Println(p.String())
+				}
+				// update what we care about (channels?)
+				packetsRead++
+			}
+			fmt.Printf("Read %3d packets cumulative.\n", packetsRead)
 		}
-		bytesToDiscard -= len(data)
 	}
 
-	// Now get the data we actually want
-	data, err := device.ring.ReadMinimum(32768)
-	if err != nil {
-		return err
-	}
-	log.Print("Abaco bytes read for FindFrameBits: ", len(data))
-
-	q, p, n, err3 := lancero.FindFrameBits(data, abacoFBOffset)
-	if err3 == nil {
-		device.ncols = n
-		device.nrows = (p - q) / n
-		device.nchan = device.ncols * device.nrows
-		device.frameSize = device.ncols * device.nrows * 4 // For now: 4 bytes/sample
-	} else {
-		fmt.Printf("Error in FindFrameBits: %v", err3)
-		return err3
-	}
+	// device.nchan = device.ncols * device.nrows
 	device.unwrap = make([]*PhaseUnwrapper, device.nchan)
 	for i := range device.unwrap {
 		device.unwrap[i] = &(PhaseUnwrapper{})
 	}
-	return device.DiscardPartialFrame(data)
-}
-
-// DiscardPartialFrame reads and discards between [0, device.frameSize-1]
-// bytes from the device's ring buffer, so that future reads will be aligned
-// to the start of a frame.
-func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
-	if len(lastdata) < device.frameSize {
-		return fmt.Errorf("DiscardPartialFrame failed: given %d bytes, need %d",
-			len(lastdata), device.frameSize)
-	}
-	// Can ignore all but the last 1 frame of data
-	lastdata = lastdata[len(lastdata)-device.frameSize:]
-	indexrow0 := -1
-	fmt.Printf("Raw lastdata: %v\n", lastdata)
-	for i := abacoFBOffset; i < device.frameSize; i += 4 {
-		if lastdata[i]&0x1 != 0 {
-			indexrow0 = i / 4
-			break
-		}
-	}
-	if indexrow0 < 0 {
-		return fmt.Errorf("DiscardPartialFrame found no frame bits")
-	}
-	indexrow1 := -1
-	for i := 4*indexrow0 + 4 + abacoFBOffset; i < device.frameSize; i += 4 {
-		if lastdata[i]&0x1 == 0 {
-			indexrow1 = i / 4
-			break
-		}
-	}
-	bytesToRead := 0
-	if indexrow0 > 0 { // started checking after row 0
-		bytesToRead = indexrow0 * 4
-	} else { // started checking during (or at start of) row 0
-		if indexrow1-indexrow0 == device.ncols {
-			bytesToRead = 0
-		} else {
-			nrow0missed := device.ncols - (indexrow1 - indexrow0)
-			bytesToRead = device.frameSize - 4*nrow0missed
-		}
-
-	}
-	_, err := device.ring.ReadMinimum(bytesToRead)
-	return err
+	return nil
 }
 
 // enumerateAbacoDevices returns a list of abaco device numbers that exist
@@ -155,19 +109,17 @@ func (device *AbacoDevice) DiscardPartialFrame(lastdata []byte) error {
 // Does not yet handle cards other than xdma0.
 func enumerateAbacoDevices() (devices []int, err error) {
 	for cnum := 0; cnum < maxAbacoCards; cnum++ {
-		for id := 0; id < maxAbacoChannels; id++ {
-			name := fmt.Sprintf("/dev/shm/xdma%d_c2h_%d_description", cnum, id)
-			info, err := os.Stat(name)
-			if err != nil {
-				if os.IsNotExist(err) {
-					continue
-				} else {
-					return devices, err
-				}
+		name := fmt.Sprintf("/dev/shm/xdma%d_c2h_0_description", cnum)
+		info, err := os.Stat(name)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			} else {
+				return devices, err
 			}
-			if (info.Mode()&os.ModeDevice) != 0 || true {
-				devices = append(devices, 10*cnum+id)
-			}
+		}
+		if (info.Mode()&os.ModeDevice) != 0 || true {
+			devices = append(devices, cnum)
 		}
 	}
 	return devices, nil
@@ -194,15 +146,13 @@ func NewAbacoSource() (*AbacoSource, error) {
 		return source, err
 	}
 
-	for _, code := range deviceCodes {
-		cnum := code / 10
-		dnum := code % 10
-		ad, err := NewAbacoDevice(cnum, dnum)
+	for _, cnum := range deviceCodes {
+		ad, err := NewAbacoDevice(cnum)
 		if err != nil {
-			log.Printf("warning: failed to create ring buffer for /dev/xdma%d_c2h_%d, though it should exist", cnum, dnum)
+			log.Printf("warning: failed to create ring buffer for /dev/xdma%d_c2h_0, though it should exist", cnum)
 			continue
 		}
-		source.devices[code] = ad
+		source.devices[cnum] = ad
 		source.Ndevices++
 	}
 	if source.Ndevices == 0 && len(deviceCodes) > 0 {
@@ -247,7 +197,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	for i, c := range config.ActiveCards {
 		dev := as.devices[c]
 		if dev == nil {
-			err = fmt.Errorf("i=%v, c=%v (card %d, dev %d), device == nil", i, c, c/10, c%10)
+			err = fmt.Errorf("i=%v, card=%v, device == nil", i, c)
 			break
 		}
 		if contains(as.active, dev) {
@@ -274,7 +224,7 @@ func (as *AbacoSource) Sample() error {
 		if err := device.sampleCard(); err != nil {
 			return err
 		}
-		as.nchan += device.ncols * device.nrows
+		as.nchan += device.nchan
 	}
 	as.sampleRate = 125000.0 // HACK! For now, assume a value.
 	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
@@ -306,7 +256,6 @@ type AbacoBuffersType struct {
 	totalBytes     int
 }
 
-//
 func (as *AbacoSource) readerMainLoop() {
 	timeoutPeriod := 5 * time.Second
 	as.readPeriod = 50 * time.Millisecond
@@ -345,7 +294,7 @@ func (as *AbacoSource) readerMainLoop() {
 					panic("AbacoDevice.ring.ReadAll failed")
 				}
 				nb := len(bytesData)
-				bframes := nb / dev.frameSize
+				bframes := nb / dev.packetSize
 				if bframes < framesUsed {
 					framesUsed = bframes
 				}
