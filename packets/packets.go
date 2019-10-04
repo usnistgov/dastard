@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"reflect"
 )
 
@@ -56,9 +57,15 @@ func (p *Packet) ClearData() error {
 	return nil
 }
 
+// String returns a string summarizing the packet's version, sequence number, and size.
 func (p *Packet) String() string {
 	return fmt.Sprintf("Packet v0x%2.2x 0x%8.8x  Size (%2d+%5d)", p.version,
 		p.sequenceNumber, p.headerLength, p.payloadLength)
+}
+
+// Length returns the length of the entire packet, in bytes
+func (p *Packet) Length() int {
+	return p.packetLength
 }
 
 // NewData adds data to the packet, and crates the format and shape TLV items to match.
@@ -150,7 +157,28 @@ func (p *Packet) Bytes() []byte {
 	return buf.Bytes()
 }
 
-// ReadPacket Header returns a Packet read from an io.reader
+// ReadPacketPlusPad reads a packet from data, then consumes the padding bytes
+// that follow (if any) so that a multiple of stride bytes is read.
+func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
+	p, err = ReadPacket(data)
+	if err != nil {
+		return p, err
+	}
+
+	// Seek past the padding bytes
+	overhang := p.Length() % stride
+	if overhang > 0 {
+		padsize := int64(stride - overhang)
+		// _, err = data.Seek(int64(padsize), io.SeekCurrent); err != nil {
+		if _, err = io.CopyN(ioutil.Discard, data, padsize); err != nil {
+			return nil, err
+		}
+	}
+
+	return p, nil
+}
+
+// ReadPacket returns a Packet read from an io.reader
 func ReadPacket(data io.Reader) (h *Packet, err error) {
 	h = new(Packet)
 	if err = binary.Read(data, binary.BigEndian, &h.version); err != nil {

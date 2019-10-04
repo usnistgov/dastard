@@ -34,6 +34,31 @@ func TestHeader(t *testing.T) {
 		t.Errorf("ReadPacket sequence number is 0x%x, want 0x%x", hdr2.sequenceNumber, hdr1.sequenceNumber)
 	}
 
+	// Check ReadPacketPlusPad
+	dataPadded := append(data, make([]byte, 10000)...)
+	// np := len(dataPadded)
+	const magicbyte = byte(0xfe)
+	dataPadded[5000] = magicbyte
+	rdr3 := bytes.NewReader(dataPadded)
+	_, err = ReadPacketPlusPad(rdr3, 5000)
+	if err != nil {
+		t.Errorf("ReadPacketPlusPad() returns error %v", err)
+	} else {
+		b, err := rdr3.ReadByte()
+		if err != nil {
+			t.Errorf("ReadPacketPlusPad() did not leave bytes remaining: %s", err)
+		} else if b != magicbyte {
+			t.Errorf("ReadPacketPlusPad() first remaining byte is 0x%x, want 0x%x", b, magicbyte)
+		}
+	}
+	if _, err = ReadPacketPlusPad(rdr3, 5000); err == nil {
+		t.Errorf("ReadPacketPlusPad twice succeeds, should fail")
+	}
+	rdr3 = bytes.NewReader(dataPadded)
+	if _, err = ReadPacketPlusPad(rdr3, 50000); err == nil {
+		t.Errorf("ReadPacketPlusPad with large stride succeeds, should fail")
+	}
+
 	// Make sure incomplete headers fail
 	if _, err2 := ReadPacket(bytes.NewReader([]byte{})); err2 == nil {
 		t.Errorf("ReadPacket should fail if version cannot be read")
