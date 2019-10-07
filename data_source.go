@@ -347,7 +347,7 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 	return ds.writingState.SetExperimentStateLabel(timestamp, stateLabel)
 }
 
-//HandlePotentialDroppedData writes to a file in the case that a data drop is detected
+// HandleDataDrop writes to a file in the case that a data drop is detected
 //data drop refers to a case where a read from a source, eg the LanceroSource misses some frames of data
 func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 
@@ -366,7 +366,7 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 		}
 	}
 	if droppedFrames > 0 {
-		ds.writingState.dataDropsObserved += 1
+		ds.writingState.dataDropsObserved++
 
 		line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
 		_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
@@ -836,8 +836,8 @@ func (ds *AnySource) ChannelsPerPixel() int {
 
 	// minMax return the minimum and maximum value of an int slice
 	minMax := func(array []int) (int, int) {
-		var max int = array[0]
-		var min int = array[0]
+		var max = array[0]
+		var min = array[0]
 		for _, value := range array {
 			if max < value {
 				max = value

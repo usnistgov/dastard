@@ -255,7 +255,7 @@ func (sps *SimPulseSource) StartRun() error {
 				sps.nextFrameNum += FrameIndex(sps.cycleLen)
 				sps.nextBlock <- block
 				sps.lastread = time.Now()
-				blocksSentSinceLastHeartbeat += 1
+				blocksSentSinceLastHeartbeat++
 			case <-heartbeatTicker.C:
 				if sps.heartbeats != nil {
 					dataBytes := blocksSentSinceLastHeartbeat * (sps.cycleLen * 2 * sps.nchan)

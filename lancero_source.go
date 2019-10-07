@@ -398,7 +398,7 @@ func (device *LanceroDevice) sampleCard() error {
 			fmt.Printf("WARNING: calculated lsync=%d, but have lsync=%d\n", calculatedLsync, device.lsync)
 		}
 		if calculatedNrows != device.nrows {
-			return fmt.Errorf("calculatedNrows=%d does not match nrows=%d\n", calculatedNrows, device.nrows)
+			return fmt.Errorf("calculatedNrows=%d does not match nrows=%d", calculatedNrows, device.nrows)
 		}
 		log.Printf("cols=%d  rows=%d  frame period %5d ns, lsync=%d\n", device.ncols,
 			device.nrows, periodNS, device.lsync)
@@ -578,7 +578,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 					if err != nil {
 						panic("Warning: AvailableBuffer failed")
 					}
-					q, p, ncols, err := lancero.FindFrameBits(b, lanceroFBOffset)
+					q, p, ncols, _ := lancero.FindFrameBits(b, lanceroFBOffset)
 					nrows := (p - q) / ncols
 					if ncols != dev.ncols || nrows != dev.nrows {
 						panic(fmt.Sprintf("ncols have %v, want %v. nrows have %v, want %v",

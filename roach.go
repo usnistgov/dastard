@@ -29,6 +29,7 @@ type RoachSource struct {
 	AnySource
 }
 
+// PhaseUnwrapper makes phase values continous by adding integers as needed
 type PhaseUnwrapper struct {
 	lastVal   int16
 	offset    int16
@@ -67,10 +68,10 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType, scale RawType) {
 		// long term keeping baseline at same phi0
 		// if the offset is nonzero for a long time, set it to zero
 		if u.offset >= twoPi {
-			u.highCount += 1
+			u.highCount++
 			u.lowCount = 0
 		} else if u.offset <= -twoPi {
-			u.lowCount += 1
+			u.lowCount++
 			u.highCount = 0
 		} else {
 			u.lowCount = 0
