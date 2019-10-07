@@ -157,6 +157,17 @@ func (p *Packet) Bytes() []byte {
 	return buf.Bytes()
 }
 
+// ChannelInfo returns the number of channels in this packet, and the first one
+func (p *Packet) ChannelInfo() (nchan, offset int) {
+	nchan = 1
+	for _, s := range p.shape.Sizes {
+		if s > 0 {
+			nchan *= int(s)
+		}
+	}
+	return nchan, int(p.offset)
+}
+
 // ReadPacketPlusPad reads a packet from data, then consumes the padding bytes
 // that follow (if any) so that a multiple of stride bytes is read.
 func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {

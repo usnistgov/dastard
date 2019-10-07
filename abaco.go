@@ -47,6 +47,28 @@ func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
 	return dev, nil
 }
 
+// ReadAllPackets returns an array of *packet.Packet, as read from the device's RingBuffer.
+func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
+	data, err := device.ring.ReadMultipleOf(device.packetSize)
+	if err != nil {
+		return nil, err
+	}
+	allPackets := make([]*packets.Packet, 0)
+	reader := bytes.NewReader(data)
+	for {
+		p, err := packets.ReadPacketPlusPad(reader, device.packetSize)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return allPackets, err
+		} else {
+			fmt.Println(p.ChannelInfo())
+		}
+		allPackets = append(allPackets, p)
+	}
+	return allPackets, err
+}
+
 // sampleCard samples the data from a single card to scan enough packets to
 // know the number of channels, data rate, etc.
 // Although it slows things down, it's best to discard all data in the ring
@@ -74,24 +96,11 @@ func (device *AbacoDevice) sampleCard() error {
 
 		default:
 			time.Sleep(5 * time.Millisecond)
-			data, err := device.ring.ReadMultipleOf(device.packetSize)
+			allPackets, err := device.ReadAllPackets()
 			if err != nil {
-				return err
+				return nil
 			}
-			reader := bytes.NewReader(data)
-			for {
-				p, err := packets.ReadPacketPlusPad(reader, device.packetSize)
-				if err == io.EOF {
-					fmt.Println("EOF found")
-					break
-				} else if err != nil {
-					return err
-				} else {
-					fmt.Println(p.String())
-				}
-				// update what we care about (channels?)
-				packetsRead++
-			}
+			packetsRead += len(allPackets)
 			fmt.Printf("Read %3d packets cumulative.\n", packetsRead)
 		}
 	}
@@ -156,7 +165,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 		source.Ndevices++
 	}
 	if source.Ndevices == 0 && len(deviceCodes) > 0 {
-		return source, fmt.Errorf("could not create ring buffer for any of /dev/xdma*_c2h_*, though deviceCodes %v exist", deviceCodes)
+		return source, fmt.Errorf("could not create ring buffer for any of /dev/xdma*_c2h_0, though deviceCodes %v exist", deviceCodes)
 	}
 	return source, nil
 }
@@ -197,11 +206,11 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	for i, c := range config.ActiveCards {
 		dev := as.devices[c]
 		if dev == nil {
-			err = fmt.Errorf("i=%v, card=%v, device == nil", i, c)
+			err = fmt.Errorf("ActiveCards[%d]: card=%v, device == nil", i, c)
 			break
 		}
 		if contains(as.active, dev) {
-			err = fmt.Errorf("attempt to use same Abaco device two times: i=%v, c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
+			err = fmt.Errorf("attempt to use same Abaco device two times: ActiveCards[%d], c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
 			break
 		}
 		as.active = append(as.active, dev)
