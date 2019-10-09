@@ -349,7 +349,7 @@ func TestFullPackets(t *testing.T) {
 			t.Errorf("Could not ReadPacket: returned nil")
 			continue
 		}
-		if pread.data == nil {
+		if pread.Data == nil {
 			t.Errorf("ReadPacket yielded no data, expect %v\n", reflect.TypeOf(d))
 		}
 	}

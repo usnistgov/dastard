@@ -28,7 +28,7 @@ type Packet struct {
 	otherTLV []interface{}
 
 	// The data payload
-	data interface{}
+	Data interface{}
 }
 
 // packetMAGIC is the packet header's magic number.
@@ -52,7 +52,7 @@ func (p *Packet) ClearData() error {
 	p.payloadLength = 0
 	p.packetLength = 24
 	p.format = nil
-	p.data = nil
+	p.Data = nil
 	p.shape = nil
 	return nil
 }
@@ -82,19 +82,19 @@ func (p *Packet) NewData(data interface{}, dims []int16) error {
 		pfmt.dtype[0] = reflect.Int16
 		pfmt.wordlen = 2
 		p.payloadLength = uint16(pfmt.wordlen * len(d))
-		p.data = d
+		p.Data = d
 	case []int32:
 		pfmt.rawfmt = "<i"
 		pfmt.dtype[0] = reflect.Int32
 		pfmt.wordlen = 4
 		p.payloadLength = uint16(pfmt.wordlen * len(d))
-		p.data = d
+		p.Data = d
 	case []int64:
 		pfmt.rawfmt = "<q"
 		pfmt.dtype[0] = reflect.Int64
 		pfmt.wordlen = 8
 		p.payloadLength = uint16(pfmt.wordlen * len(d))
-		p.data = d
+		p.Data = d
 	default:
 		return fmt.Errorf("Could not handle Packet.NewData of type %v", reflect.TypeOf(d))
 	}
@@ -130,7 +130,7 @@ func (p *Packet) Bytes() []byte {
 	binary.Write(buf, binary.BigEndian, uint16(0))
 	binary.Write(buf, binary.BigEndian, uint32(p.offset))
 
-	if p.data != nil && p.shape != nil && p.format != nil {
+	if p.Data != nil && p.shape != nil && p.format != nil {
 		binary.Write(buf, binary.BigEndian, byte(0x21))
 		binary.Write(buf, binary.BigEndian, byte(1))
 		fmt := []byte(p.format.rawfmt)
@@ -152,7 +152,7 @@ func (p *Packet) Bytes() []byte {
 			binary.Write(buf, binary.BigEndian, &zero)
 		}
 
-		binary.Write(buf, p.format.endian, p.data)
+		binary.Write(buf, p.format.endian, p.Data)
 	}
 	return buf.Bytes()
 }
@@ -190,25 +190,25 @@ func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
 }
 
 // ReadPacket returns a Packet read from an io.reader
-func ReadPacket(data io.Reader) (h *Packet, err error) {
-	h = new(Packet)
-	if err = binary.Read(data, binary.BigEndian, &h.version); err != nil {
+func ReadPacket(data io.Reader) (p *Packet, err error) {
+	p = new(Packet)
+	if err = binary.Read(data, binary.BigEndian, &p.version); err != nil {
 		return nil, err
 	}
-	if err = binary.Read(data, binary.BigEndian, &h.headerLength); err != nil {
+	if err = binary.Read(data, binary.BigEndian, &p.headerLength); err != nil {
 		return nil, err
 	}
 	const MINLENGTH uint8 = 16
-	if h.headerLength < MINLENGTH {
-		return nil, fmt.Errorf("Header length is %d, expect at least %d", h.headerLength, MINLENGTH)
+	if p.headerLength < MINLENGTH {
+		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
 	}
-	if err = binary.Read(data, binary.BigEndian, &h.payloadLength); err != nil {
+	if err = binary.Read(data, binary.BigEndian, &p.payloadLength); err != nil {
 		return nil, err
 	}
-	if h.payloadLength%8 != 0 {
-		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", h.payloadLength)
+	if p.payloadLength%8 != 0 {
+		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", p.payloadLength)
 	}
-	h.packetLength = int(h.headerLength) + int(h.payloadLength)
+	p.packetLength = int(p.headerLength) + int(p.payloadLength)
 	var magic uint32
 	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
 		return nil, err
@@ -216,13 +216,13 @@ func ReadPacket(data io.Reader) (h *Packet, err error) {
 	if magic != packetMAGIC {
 		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, packetMAGIC)
 	}
-	if err = binary.Read(data, binary.BigEndian, &h.sourceID); err != nil {
+	if err = binary.Read(data, binary.BigEndian, &p.sourceID); err != nil {
 		return nil, err
 	}
-	if err = binary.Read(data, binary.BigEndian, &h.sequenceNumber); err != nil {
+	if err = binary.Read(data, binary.BigEndian, &p.sequenceNumber); err != nil {
 		return nil, err
 	}
-	allTLV, err := readTLV(data, h.headerLength-MINLENGTH)
+	allTLV, err := readTLV(data, p.headerLength-MINLENGTH)
 	if err != nil {
 		return nil, err
 	}
@@ -230,54 +230,54 @@ func ReadPacket(data io.Reader) (h *Packet, err error) {
 	for _, tlv := range allTLV {
 		switch val := tlv.(type) {
 		case headChannelOffset:
-			h.offset = val
+			p.offset = val
 		case *headPayloadShape:
-			h.shape = val
+			p.shape = val
 		case *headPayloadFormat:
-			h.format = val
+			p.format = val
 		default:
-			h.otherTLV = append(h.otherTLV, val)
+			p.otherTLV = append(p.otherTLV, val)
 		}
 	}
 
-	if h.payloadLength > 0 && h.format != nil {
-		if len(h.format.dtype) == 1 {
+	if p.payloadLength > 0 && p.format != nil {
+		if len(p.format.dtype) == 1 {
 
-			switch h.format.dtype[0] {
+			switch p.format.dtype[0] {
 			case reflect.Int16:
-				result := make([]int16, h.payloadLength/2)
-				if err = binary.Read(data, h.format.endian, result); err != nil {
+				result := make([]int16, p.payloadLength/2)
+				if err = binary.Read(data, p.format.endian, result); err != nil {
 					return nil, err
 				}
-				h.data = result
+				p.Data = result
 
 			case reflect.Int32:
-				result := make([]int32, h.payloadLength/4)
-				if err = binary.Read(data, h.format.endian, result); err != nil {
+				result := make([]int32, p.payloadLength/4)
+				if err = binary.Read(data, p.format.endian, result); err != nil {
 					return nil, err
 				}
-				h.data = result
+				p.Data = result
 
 			case reflect.Int64:
-				result := make([]int64, h.payloadLength/8)
-				if err = binary.Read(data, h.format.endian, result); err != nil {
+				result := make([]int64, p.payloadLength/8)
+				if err = binary.Read(data, p.format.endian, result); err != nil {
 					return nil, err
 				}
-				h.data = result
+				p.Data = result
 
 			default:
-				return nil, fmt.Errorf("Did not know how to read type %v", h.format.dtype)
+				return nil, fmt.Errorf("Did not know how to read type %v", p.format.dtype)
 			}
 		} else {
-			result := make([]byte, h.payloadLength)
-			if err = binary.Read(data, h.format.endian, result); err != nil {
+			result := make([]byte, p.payloadLength)
+			if err = binary.Read(data, p.format.endian, result); err != nil {
 				return nil, err
 			}
-			h.data = result
+			p.Data = result
 		}
 	}
 
-	return h, nil
+	return p, nil
 }
 
 // headTimestamp represents a single timestamp in the header
