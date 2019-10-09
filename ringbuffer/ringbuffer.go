@@ -117,7 +117,7 @@ func (rb *RingBuffer) BytesWriteable() int {
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
 	cap := rb.desc.bufferSize
-	return int(cap - (w - r))
+	return int(cap - (w - r + 1))
 }
 
 // Unlink removes a writeable buffer's shared memory regions.
@@ -229,7 +229,7 @@ func (rb *RingBuffer) Read(size int) (data []byte, err error) {
 		rawend = cap
 	}
 	data = rb.raw[rawbegin:rawend]
-	if dataWraps {
+	if dataWraps && bytesRead > len(data) {
 		nextblocksize := bytesRead - len(data)
 		data = append(data, rb.raw[0:nextblocksize]...)
 	}
