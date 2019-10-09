@@ -83,6 +83,7 @@ func TestAbacoDevice(t *testing.T) {
 	if _, err := NewAbacoDevice(99999); err == nil {
 		t.Errorf("NewAbacoDevice(99999) succeeded, want failure")
 	}
+	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
 	dev, err := NewAbacoDevice(cardnum)
 	if err != nil {
@@ -123,7 +124,7 @@ func TestAbacoDevice(t *testing.T) {
 		}
 	}
 
-	const stride = 400 // We'll put this many samples into a packet
+	const stride = 500 // We'll put this many samples into a packet
 	if stride*Nchan*2 > 8000 {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
@@ -134,7 +135,9 @@ func TestAbacoDevice(t *testing.T) {
 			p.NewData(d[i:i+stride*Nchan], dims)
 			b := p.Bytes()
 			b = append(b, empty[:packetAlign-len(b)]...)
-			rb.Write(b)
+			if rb.BytesWriteable() >= len(b) {
+				rb.Write(b)
+			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -149,6 +152,7 @@ func TestAbacoSource(t *testing.T) {
 		t.Fatalf("NewAbacoSource() fails: %s", err)
 	}
 
+	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
 
 	dev, err := NewAbacoDevice(cardnum)
@@ -177,7 +181,7 @@ func TestAbacoSource(t *testing.T) {
 	}
 	defer rb.Unlink()
 	const packetAlign = 8192
-	if err = rb.Create(128 * packetAlign); err != nil {
+	if err = rb.Create(256 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
 
@@ -203,7 +207,7 @@ func TestAbacoSource(t *testing.T) {
 		}
 	}
 
-	const stride = 400 // We'll put this many samples into a packet
+	const stride = 500 // We'll put this many samples into a packet
 	if stride*Nchan*2 > 8000 {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}

@@ -64,7 +64,7 @@ func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
 		}
 		allPackets = append(allPackets, p)
 	}
-	return allPackets, err
+	return allPackets, nil
 }
 
 // sampleCard samples the data from a single card to scan enough packets to
@@ -314,8 +314,8 @@ func (as *AbacoSource) readerMainLoop() {
 				allPackets, err := dev.ReadAllPackets()
 				lastSampleTime = time.Now()
 				if err != nil {
-					fmt.Printf("AbacoDevice.ring.ReadAll failed with error: %v", err)
-					panic("AbacoDevice.ring.ReadAll failed")
+					fmt.Printf("AbacoDevice.ReadAllPackets failed with error: %v\n", err)
+					panic("AbacoDevice.ReadAllPackets failed")
 				}
 				log.Printf("Read Abaco device %v, total of %d packets", dev, len(allPackets))
 
@@ -362,7 +362,9 @@ func (as *AbacoSource) readerMainLoop() {
 			as.lastread = lastSampleTime
 
 			if len(as.buffersChan) == cap(as.buffersChan) {
-				panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan)))
+				msg := fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan))
+				fmt.Printf("Panic! %s\n", msg)
+				panic(msg)
 			}
 			// log.Printf("About to send on buffersChan")
 			as.buffersChan <- AbacoBuffersType{
@@ -391,7 +393,6 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 	panicTime := time.Duration(cap(as.buffersChan)) * as.readPeriod
 	go func() {
 		for {
-			// This select statement was formerly the ls.blockingRead method
 			select {
 			case <-time.After(panicTime):
 				panic(fmt.Sprintf("timeout, no data from Abaco after %v / readPeriod is %v", panicTime, as.readPeriod))

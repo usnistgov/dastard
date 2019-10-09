@@ -144,8 +144,8 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 
 	for {
 		// Use select to interleave 2 activities that should NOT be done concurrently:
-		// 1. Handle RPC requests to chage data processing parameters (e.g. trigger)
-		// 2. Handle new data and processes it
+		// 1. Handle RPC requests to change data processing parameters (e.g. trigger).
+		// 2. Handle new data and process it.
 		select {
 
 		// Handle RPC requests
