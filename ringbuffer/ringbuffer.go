@@ -111,9 +111,9 @@ func (rb *RingBuffer) Write(data []byte) (written int, err error) {
 
 }
 
-// bytesWriteable tells how many bytes can be written. Actual answer may be larger,
+// BytesWriteable tells how many bytes can be written. Actual answer may be larger,
 // if reading is underway.
-func (rb *RingBuffer) bytesWriteable() int {
+func (rb *RingBuffer) BytesWriteable() int {
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
 	cap := rb.desc.bufferSize
@@ -206,7 +206,7 @@ func (rb *RingBuffer) Close() (err error) {
 // It is not an error to request more bytes than the buffer could hold.
 func (rb *RingBuffer) Read(size int) (data []byte, err error) {
 	if rb.desc == nil {
-		return []byte{}, fmt.Errorf("Could not RingBuffer.Read with nil ring description pointer.")
+		return []byte{}, fmt.Errorf("could not RingBuffer.Read with nil ring description pointer")
 	}
 	w := rb.desc.writePointer
 	r := rb.desc.readPointer
@@ -251,7 +251,7 @@ func (rb *RingBuffer) ReadMultipleOf(chunksize int) (data []byte, err error) {
 // ReadAll reads all the bytes available in the buffer.
 func (rb *RingBuffer) ReadAll() (data []byte, err error) {
 	if uintptr(unsafe.Pointer(rb.desc)) < 0x1000 {
-		fmt.Printf("RingBuffer.ReadAll with rb.desc=%p\n", rb.desc)
+		fmt.Printf("RingBuffer.ReadAll with invalid pointer rb.desc=%p\n", rb.desc)
 	}
 	return rb.Read(int(rb.size))
 }

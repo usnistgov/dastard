@@ -229,6 +229,69 @@ func TestBufferWriteRead(t *testing.T) {
 			len(zeros), written, buffersize)
 	}
 
+	// Empty the buffer. Fill it halfway, read half, fill completely, and read exactly half,
+	// such that this read ends exactly where the buffer wraps. Is this okay? Does
+	// BytesReadable() come back as expected?
+	if err = b.DiscardAll(); err != nil {
+		t.Error("b.DiscardAll() fails: ", err)
+	}
+	nh := buffersize / 2
+	halfbuffer := make([]byte, nh)
+	writebuf.Write(halfbuffer)
+	if nr := writebuf.BytesReadable(); nr != nh {
+		t.Errorf("writebuf.BytesReadable()=%d, want %d", nr, nh)
+	}
+	hbtest, err := writebuf.Read(nh)
+	if err != nil {
+		t.Errorf("writebuf.Read(%d) test failed on halfbuffer 1", nh)
+	}
+	for i := 0; i < nh; i++ {
+		if halfbuffer[i] != hbtest[i] {
+			t.Errorf("writebuf.Read(%d)[%d] = %d, want %d", nh, i, hbtest[i], halfbuffer[i])
+			break
+		}
+	}
+	if nr := writebuf.BytesReadable(); nr != 0 {
+		t.Errorf("writebuf.BytesReadable()=%d, want %d", nr, 0)
+	}
+
+	// Now fill halfbuffer with nonzero values
+	for i := 0; i < nh; i++ {
+		halfbuffer[i] = byte(i)
+	}
+
+	expectedReadable := []int{nh, 2*nh - 1, 2*nh - 1}
+	for iter, er := range expectedReadable {
+		writebuf.Write(halfbuffer)
+		if nr := writebuf.BytesReadable(); nr != er {
+			t.Errorf("after iteration %d writebuf.BytesReadable()=%d, want %d", iter, nr, er)
+		}
+		ew := buffersize - 1 - er
+		if nw := writebuf.BytesWriteable(); nw != ew {
+			t.Errorf("after iteration %d writebuf.BytesWriteable()=%d, want %d", iter, nw, ew)
+		}
+	}
+	hbtest, err = writebuf.Read(nh)
+	if err != nil {
+		t.Errorf("writebuf.Read(%d) test failed on halfbuffer 1", nh)
+	}
+	for i := 0; i < nh; i++ {
+		if halfbuffer[i] != hbtest[i] {
+			t.Errorf("writebuf.Read(%d)[%d] = %d, want %d", nh, i, hbtest[i], halfbuffer[i])
+			break
+		}
+	}
+	hbtest, err = writebuf.Read(nh)
+	if err != nil {
+		t.Errorf("writebuf.Read(%d) test failed on halfbuffer 1", nh)
+	}
+	for i := 0; i < len(hbtest); i++ {
+		if halfbuffer[i] != hbtest[i] {
+			t.Errorf("writebuf.Read(%d)[%d] = %d, want %d", nh, i, hbtest[i], halfbuffer[i])
+			break
+		}
+	}
+
 	// Empty the buffer, write some, and test ReadAll.
 	if err = b.DiscardAll(); err != nil {
 		t.Error("b.DiscardAll() fails: ", err)
