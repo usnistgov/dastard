@@ -138,6 +138,9 @@ func TestAbacoDevice(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	if dev.nchan != Nchan {
+		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+	}
 }
 
 func TestAbacoSource(t *testing.T) {
@@ -179,12 +182,13 @@ func TestAbacoSource(t *testing.T) {
 	}
 
 	go func() {
-		err = source.Sample()
-		if err == nil {
-			fmt.Printf("Result of source.sampleCard: %v\n", dev)
-
-		} else {
-			fmt.Printf("Result of source.sampleCard: %s\n", err)
+		if err := source.Sample(); err != nil {
+			fmt.Printf("Result of source.Sample: %s\n", err)
+			return
+		}
+		if err := source.StartRun(); err != nil {
+			fmt.Printf("Result of source.StartRun: %s\n", err)
+			return
 		}
 	}()
 
@@ -213,5 +217,8 @@ func TestAbacoSource(t *testing.T) {
 			rb.Write(b)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if dev.nchan != Nchan {
+		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
 	}
 }

@@ -61,8 +61,6 @@ func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
 			break
 		} else if err != nil {
 			return allPackets, err
-		} else {
-			fmt.Println(p.ChannelInfo())
 		}
 		allPackets = append(allPackets, p)
 	}
@@ -101,6 +99,21 @@ func (device *AbacoDevice) sampleCard() error {
 				return nil
 			}
 			packetsRead += len(allPackets)
+
+			// Do something with Packet.ChannelInfo() here: set device.nchan and
+			// firstchan based on the values here, if they are larger/smaller than
+			// any previously seen.
+			device.nchan = 0
+			device.firstchan = 99999999
+			for _, p := range allPackets {
+				nchan, offset := p.ChannelInfo()
+				if offset < device.firstchan {
+					device.firstchan = offset
+				}
+				if nchan+offset > device.nchan {
+					device.nchan = nchan + offset
+				}
+			}
 			fmt.Printf("Read %3d packets cumulative.\n", packetsRead)
 		}
 	}
