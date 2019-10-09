@@ -129,7 +129,83 @@ func TestAbacoDevice(t *testing.T) {
 	}
 	empty := make([]byte, packetAlign)
 	dims := []int16{Nchan}
-	for repeats := 0; repeats < 3; repeats++ {
+	for repeats := 0; repeats < 6; repeats++ {
+		for i := 0; i < Nsamp; i += stride {
+			p.NewData(d[i:i+stride*Nchan], dims)
+			b := p.Bytes()
+			b = append(b, empty[:packetAlign-len(b)]...)
+			rb.Write(b)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestAbacoSource(t *testing.T) {
+	source, err := NewAbacoSource()
+	if err != nil {
+		t.Fatalf("NewAbacoSource() fails: %s", err)
+	}
+
+	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
+
+	dev, err := NewAbacoDevice(cardnum)
+	if err != nil {
+		t.Fatalf("NewAbacoDevice(%d) fails: %s", cardnum, err)
+	}
+	fmt.Printf("dev: %v\n", dev)
+	source.devices[cardnum] = dev
+	source.Ndevices++
+	fmt.Printf("source.devices: %v\n", source.devices)
+
+	deviceCodes := []int{cardnum}
+	var config AbacoSourceConfig
+	config.ActiveCards = deviceCodes
+	err = source.Configure(&config)
+	if err != nil {
+		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
+	}
+	fmt.Printf("AbacoSource.Configure() produces %v\n", config)
+
+	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
+	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
+	rb, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
+	if err != nil {
+		t.Fatalf("Could not open ringbuffer: %s", err)
+	}
+	defer rb.Unlink()
+	const packetAlign = 8192
+	if err = rb.Create(128 * packetAlign); err != nil {
+		t.Fatalf("Failed RingBuffer.Create: %s", err)
+	}
+
+	go func() {
+		err = source.Sample()
+		if err == nil {
+			fmt.Printf("Result of source.sampleCard: %v\n", dev)
+
+		} else {
+			fmt.Printf("Result of source.sampleCard: %s\n", err)
+		}
+	}()
+
+	p := packets.NewPacket(10, 20, 0x100, 0)
+	const Nchan = 8
+	const Nsamp = 20000
+	d := make([]int16, Nchan*Nsamp)
+	for i := 0; i < Nchan; i++ {
+		freq := (float64(i + 2)) / float64(Nsamp)
+		for j := 0; j < Nsamp; j++ {
+			d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
+		}
+	}
+
+	const stride = 400 // We'll put this many samples into a packet
+	if stride*Nchan*2 > 8000 {
+		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
+	}
+	empty := make([]byte, packetAlign)
+	dims := []int16{Nchan}
+	for repeats := 0; repeats < 6; repeats++ {
 		for i := 0; i < Nsamp; i += stride {
 			p.NewData(d[i:i+stride*Nchan], dims)
 			b := p.Bytes()

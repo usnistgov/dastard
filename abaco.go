@@ -187,6 +187,13 @@ type AbacoSourceConfig struct {
 func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	as.sourceStateLock.Lock()
 	defer as.sourceStateLock.Unlock()
+	// Update the slice AvailableCards.
+	config.AvailableCards = make([]int, 0)
+	for k := range as.devices {
+		config.AvailableCards = append(config.AvailableCards, k)
+	}
+	sort.Ints(config.AvailableCards)
+
 	if as.sourceState != Inactive {
 		return fmt.Errorf("cannot Configure an AbacoSource if it's not Inactive")
 	}
@@ -215,12 +222,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 		}
 		as.active = append(as.active, dev)
 	}
-	config.AvailableCards = make([]int, 0)
-	for k := range as.devices {
-		config.AvailableCards = append(config.AvailableCards, k)
-	}
-	sort.Ints(config.AvailableCards)
-	return nil
+	return
 }
 
 // Sample determines key data facts by sampling some initial data.
@@ -296,19 +298,22 @@ func (as *AbacoSource) readerMainLoop() {
 			nchanPrevDevices := 0
 			var lastSampleTime time.Time
 			for _, dev := range as.active {
-				bytesData, err := dev.ring.ReadAll()
+				allPackets, err := dev.ReadAllPackets()
 				lastSampleTime = time.Now()
 				if err != nil {
 					fmt.Printf("AbacoDevice.ring.ReadAll failed with error: %v", err)
 					panic("AbacoDevice.ring.ReadAll failed")
 				}
-				nb := len(bytesData)
-				bframes := nb / dev.packetSize
-				if bframes < framesUsed {
-					framesUsed = bframes
+				log.Printf("Read Abaco device %v, total of %d packets", dev, len(allPackets))
+
+				for _, p := range allPackets {
+					switch p.Data.(type) {
+					case nil:
+
+					case []int32:
+						fmt.Printf("Found []int32 payload:\n")
+					}
 				}
-				// log.Printf("Read Abaco device %v, total of %d bytes = %d frames + %d extra bytes",
-				// 	dev, nb, bframes, nb-bframes*dev.frameSize)
 
 				// This is the demultiplexing step. Loops over channels,
 				// then over frames.
@@ -322,29 +327,20 @@ func (as *AbacoSource) readerMainLoop() {
 				// r = frame bit (1)
 				// Our plan: omit the 12 lowest bits, giving us wwwfffff ffffffff.
 				// Reserving 3 upper whole-nuber bits lets us phase unwrap 8 full times.
-				int32Buffer := bytesToInt32(bytesData)
+				// int32Buffer := bytesToInt32(bytesData)
 				for i := 0; i < dev.nchan; i++ {
 					datacopies[i+nchanPrevDevices] = make([]RawType, framesUsed)
 				}
-				// for i := 0; i < dev.nchan; i++ {
-				// 	dc := datacopies[i+nchanPrevDevices]
-				// 	idx := i
-				// 	for j := 0; j < framesUsed; j++ {
+				// Try reversing loop order
+				// for j := 0; j < framesUsed; j++ {
+				// 	for i := 0; i < dev.nchan; i++ {
+				// 		dc := datacopies[i+nchanPrevDevices]
+				// 		idx := i + j*dev.nchan
 				// 		// dc[j] = RawType(int32Buffer[idx] >> 12)
 				// 		dc[j] = RawType(int32Buffer[idx] >> 16)
-				// 		idx += dev.nchan
 				// 	}
 				// }
-				// Try reversing loop order
-				for j := 0; j < framesUsed; j++ {
-					for i := 0; i < dev.nchan; i++ {
-						dc := datacopies[i+nchanPrevDevices]
-						idx := i + j*dev.nchan
-						// dc[j] = RawType(int32Buffer[idx] >> 12)
-						dc[j] = RawType(int32Buffer[idx] >> 16)
-					}
-				}
-				totalBytes += nb
+				// totalBytes += nb
 			}
 			timeDiff := lastSampleTime.Sub(as.lastread)
 			if timeDiff > 2*as.readPeriod {
