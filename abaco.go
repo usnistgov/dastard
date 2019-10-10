@@ -117,10 +117,9 @@ func (device *AbacoDevice) sampleCard() error {
 		}
 	}
 
-	// device.nchan = device.ncols * device.nrows
 	device.unwrap = make([]*PhaseUnwrapper, device.nchan)
 	for i := range device.unwrap {
-		device.unwrap[i] = &(PhaseUnwrapper{})
+		device.unwrap[i] = new(PhaseUnwrapper)
 	}
 	return nil
 }
@@ -266,6 +265,8 @@ func (as *AbacoSource) StartRun() error {
 			panic("AbacoDevice.ring.DiscardAll failed")
 		}
 	}
+	as.buffersChan = make(chan AbacoBuffersType, 100)
+	as.readPeriod = 50 * time.Millisecond
 	go as.readerMainLoop()
 	return nil
 }
@@ -280,11 +281,8 @@ type AbacoBuffersType struct {
 }
 
 func (as *AbacoSource) readerMainLoop() {
-	timeoutPeriod := 5 * time.Second
-	as.readPeriod = 50 * time.Millisecond
-
-	as.buffersChan = make(chan AbacoBuffersType, 100)
 	defer close(as.buffersChan)
+	const timeoutPeriod = 5 * time.Second
 	timeout := time.NewTimer(timeoutPeriod)
 	ticker := time.NewTicker(as.readPeriod)
 	defer ticker.Stop()
@@ -419,8 +417,8 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 			case buffersMsg, ok := <-as.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
-					block := new(dataBlock)
-					if err := as.stop(); err != nil {
+					if err := as.closeDevices(); err != nil {
+						block := new(dataBlock)
 						block.err = err
 						as.nextBlock <- block
 					}
@@ -458,8 +456,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	// In the Lancero data this is where we scan for external triggers.
 	// That doesn't exist yet in Abaco.
 
-	// we should loop over devices here
-	dev := as.devices[0]
+	// TODO: we should loop over devices here, matching devices to channels.
+	dev := as.active[0]
 
 	var wg sync.WaitGroup
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
@@ -467,9 +465,10 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 		go func(channelIndex int) {
 			defer wg.Done()
 			data := datacopies[channelIndex]
-			unwrap := dev.unwrap[channelIndex]
-			// _ = unwrap
-			unwrap.UnwrapInPlace(&data, abacoScale)
+			if dev != nil {
+				unwrap := dev.unwrap[channelIndex]
+				unwrap.UnwrapInPlace(&data, abacoScale)
+			}
 			seg := DataSegment{
 				rawData:         data,
 				framesPerSample: 1, // This will be changed later if decimating
@@ -497,8 +496,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	return block
 }
 
-// stop ends the data streaming on all active abaco devices.
-func (as *AbacoSource) stop() error {
+// closeDevices ends closes the ring buffers of all active AbacoDevice objects.
+func (as *AbacoSource) closeDevices() error {
 	// loop over as.active and do any needed stopping functions.
 	for _, dev := range as.active {
 		dev.ring.Close()

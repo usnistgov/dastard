@@ -184,62 +184,59 @@ func TestAbacoSource(t *testing.T) {
 	if err = rb.Create(256 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
-	stopSucceeds := make(chan interface{})
 
-	go func() {
-		queuedRequests := make(chan func())
-		Npresamp := 256
-		Nsamples := 1024
-		if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
-			fmt.Printf("Result of Start(source,...): %s\n", err)
-			t.Error(err)
-			return
-		}
-		// fmt.Printf("source.Running() = %v\n", source.Running())
-		// time.Sleep(150 * time.Millisecond)
-		// fmt.Printf("source.Running() = %v\n", source.Running())
-		// source.Stop()
-		// fmt.Printf("source.Running() = %v\n", source.Running())
-		close(stopSucceeds)
-	}()
-
-	p := packets.NewPacket(10, 20, 0x100, 0)
 	const Nchan = 8
 	const Nsamp = 20000
-	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
-		freq := (float64(i + 2)) / float64(Nsamp)
-		for j := 0; j < Nsamp; j++ {
-			d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
-		}
-	}
-
 	const stride = 500 // We'll put this many samples into a packet
 	if stride*Nchan*2 > 8000 {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
-	empty := make([]byte, packetAlign)
-	dims := []int16{Nchan}
-	for {
-		for i := 0; i < Nsamp; i += stride {
-			p.NewData(d[i:i+stride*Nchan], dims)
-			b := p.Bytes()
-			b = append(b, empty[:packetAlign-len(b)]...)
-			if rb.BytesWriteable() >= len(b) {
-				rb.Write(b)
-				fmt.Printf("write %d\n", len(b))
-			} else {
-				fmt.Printf("write %d FAILED\n", len(b))
+
+	abortSupply := make(chan interface{})
+	supplyDataForever := func() {
+		p := packets.NewPacket(10, 20, 0x100, 0)
+		d := make([]int16, Nchan*Nsamp)
+		for i := 0; i < Nchan; i++ {
+			freq := (float64(i + 2)) / float64(Nsamp)
+			for j := 0; j < Nsamp; j++ {
+				d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
 			}
 		}
-		select {
-		case <-stopSucceeds:
-			if dev.nchan != Nchan {
-				t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+
+		empty := make([]byte, packetAlign)
+		dims := []int16{Nchan}
+		timer := time.NewTicker(10 * time.Millisecond)
+		for {
+			select {
+			case <-abortSupply:
+				fmt.Println("Abort supply channel closed, so supplyDataForever is ending.")
+				return
+			case <-timer.C:
+				for i := 0; i < Nsamp; i += stride {
+					p.NewData(d[i:i+stride*Nchan], dims)
+					b := p.Bytes()
+					b = append(b, empty[:packetAlign-len(b)]...)
+					if rb.BytesWriteable() >= len(b) {
+						rb.Write(b)
+					}
+				}
 			}
-			return
-		default:
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
+	go supplyDataForever()
+
+	queuedRequests := make(chan func())
+	Npresamp := 256
+	Nsamples := 1024
+	if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
+		fmt.Printf("Result of Start(source,...): %s\n", err)
+		t.Fatal(err)
+	}
+	if dev.nchan != Nchan {
+		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+	}
+	time.Sleep(150 * time.Millisecond)
+	source.Stop()
+	close(abortSupply)
+	source.RunDoneWait()
 }

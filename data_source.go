@@ -73,7 +73,7 @@ func (ds *AnySource) RunDoneActivate() {
 	ds.runDone.Add(1)
 }
 
-// RunDoneDeactivate calls Done on ds.runDone, this should only be called in Start
+// RunDoneDeactivate calls Done on ds.runDone, this should only be called (by defer) in Start
 func (ds *AnySource) RunDoneDeactivate() {
 	ds.sourceStateLock.Lock()
 	ds.sourceState = Inactive
@@ -184,7 +184,7 @@ func (ds *AnySource) Stop() error {
 		return fmt.Errorf("AnySource not active, cannot stop")
 
 	case Starting:
-		fmt.Println("deleteme: called Stop on a Starting source; how to handle this??")
+		log.Println("deleteme: called Stop on a Starting source; how to handle this??")
 
 	case Active:
 		log.Println("AnySource.Stop() was called to stop an active source")
