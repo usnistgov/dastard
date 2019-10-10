@@ -184,16 +184,23 @@ func TestAbacoSource(t *testing.T) {
 	if err = rb.Create(256 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
+	stopSucceeds := make(chan interface{})
 
 	go func() {
-		if err := source.Sample(); err != nil {
-			fmt.Printf("Result of source.Sample: %s\n", err)
+		queuedRequests := make(chan func())
+		Npresamp := 256
+		Nsamples := 1024
+		if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
+			fmt.Printf("Result of Start(source,...): %s\n", err)
+			t.Error(err)
 			return
 		}
-		if err := source.StartRun(); err != nil {
-			fmt.Printf("Result of source.StartRun: %s\n", err)
-			return
-		}
+		// fmt.Printf("source.Running() = %v\n", source.Running())
+		// time.Sleep(150 * time.Millisecond)
+		// fmt.Printf("source.Running() = %v\n", source.Running())
+		// source.Stop()
+		// fmt.Printf("source.Running() = %v\n", source.Running())
+		close(stopSucceeds)
 	}()
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
@@ -213,16 +220,26 @@ func TestAbacoSource(t *testing.T) {
 	}
 	empty := make([]byte, packetAlign)
 	dims := []int16{Nchan}
-	for repeats := 0; repeats < 6; repeats++ {
+	for {
 		for i := 0; i < Nsamp; i += stride {
 			p.NewData(d[i:i+stride*Nchan], dims)
 			b := p.Bytes()
 			b = append(b, empty[:packetAlign-len(b)]...)
-			rb.Write(b)
+			if rb.BytesWriteable() >= len(b) {
+				rb.Write(b)
+				fmt.Printf("write %d\n", len(b))
+			} else {
+				fmt.Printf("write %d FAILED\n", len(b))
+			}
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if dev.nchan != Nchan {
-		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+		select {
+		case <-stopSucceeds:
+			if dev.nchan != Nchan {
+				t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+			}
+			return
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 }

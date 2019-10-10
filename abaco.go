@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"os"
 	"sort"
 	"sync"
@@ -290,6 +289,7 @@ func (as *AbacoSource) readerMainLoop() {
 	ticker := time.NewTicker(as.readPeriod)
 	defer ticker.Stop()
 	defer timeout.Stop()
+	as.lastread = time.Now()
 
 	for {
 		select {
@@ -305,7 +305,7 @@ func (as *AbacoSource) readerMainLoop() {
 		case <-ticker.C:
 			// read from the ring buffer
 			// send bytes actually read on a channel
-			framesUsed := math.MaxInt64
+			framesUsed := 0
 			totalBytes := 0
 			datacopies := make([][]RawType, as.nchan)
 			nchanPrevDevices := 0
@@ -320,11 +320,18 @@ func (as *AbacoSource) readerMainLoop() {
 				log.Printf("Read Abaco device %v, total of %d packets", dev, len(allPackets))
 
 				for _, p := range allPackets {
-					switch p.Data.(type) {
-					case nil:
-
+					switch d := p.Data.(type) {
 					case []int32:
-						fmt.Printf("Found []int32 payload:\n")
+						framesUsed += len(d) / dev.nchan
+
+					case []int16:
+						framesUsed += len(d) / dev.nchan
+						// TODO: this will break if multiple offsets are in the data.
+						// fmt.Printf("Found [%d]int16 payload = %d frames: %v\n",
+						// 	len(d), framesUsed, d[:5])
+
+					default:
+						panic("Cannot parse packets that aren't of type []int16 or []int32")
 					}
 				}
 
@@ -342,21 +349,33 @@ func (as *AbacoSource) readerMainLoop() {
 				// Reserving 3 upper whole-nuber bits lets us phase unwrap 8 full times.
 				// int32Buffer := bytesToInt32(bytesData)
 				for i := 0; i < dev.nchan; i++ {
-					datacopies[i+nchanPrevDevices] = make([]RawType, framesUsed)
+					datacopies[i+nchanPrevDevices] = make([]RawType, 0, framesUsed)
 				}
-				// Try reversing loop order
-				// for j := 0; j < framesUsed; j++ {
-				// 	for i := 0; i < dev.nchan; i++ {
-				// 		dc := datacopies[i+nchanPrevDevices]
-				// 		idx := i + j*dev.nchan
-				// 		// dc[j] = RawType(int32Buffer[idx] >> 12)
-				// 		dc[j] = RawType(int32Buffer[idx] >> 16)
-				// 	}
-				// }
-				// totalBytes += nb
+
+				for _, p := range allPackets {
+					nchan, offset := p.ChannelInfo()
+					if offset < 0 || offset+nchan > dev.nchan {
+						//panic?
+						continue
+					}
+
+					switch d := p.Data.(type) {
+					case []int16:
+						// This loop order was faster than the reverse, before packets:
+						for j, val := range d {
+							idx := j%nchan + offset + nchanPrevDevices
+							// dc[j] = RawType(int32Buffer[idx] >> 12)
+							datacopies[idx] = append(datacopies[idx], RawType(val))
+						}
+						totalBytes += 2 * len(d)
+
+					default:
+						panic("Cannot parse packets that aren't of type []int16")
+					}
+				}
 			}
 			timeDiff := lastSampleTime.Sub(as.lastread)
-			if timeDiff > 2*as.readPeriod {
+			if timeDiff > 0*as.readPeriod {
 				fmt.Println("timeDiff in abaco reader", timeDiff)
 			}
 			as.lastread = lastSampleTime
@@ -373,7 +392,7 @@ func (as *AbacoSource) readerMainLoop() {
 				timeDiff:       timeDiff,
 				totalBytes:     totalBytes,
 			}
-			// log.Printf("Sent something on buffersChan (%d bytes)", totalBytes)
+			fmt.Printf("Sent something on buffersChan (%d bytes)\n", totalBytes)
 			if totalBytes > 0 {
 				timeout.Reset(timeoutPeriod)
 			}
