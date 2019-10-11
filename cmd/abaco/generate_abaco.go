@@ -9,30 +9,25 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-func main() {
-	cardnum := 3
-
+func generateData(cardnum int, cancel chan struct{}) error {
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
 	if err != nil {
-		msg := fmt.Sprintf("Could not open ringbuffer: %s", err)
-		panic(msg)
+		return fmt.Errorf("Could not open ringbuffer: %s", err)
 	}
 	ring.Unlink()       // in case it exists from before
 	defer ring.Unlink() // so it won't exist after
 	const packetAlign = 8192
 	if err = ring.Create(256 * packetAlign); err != nil {
-		msg := fmt.Sprintf("Failed RingBuffer.Create: %s", err)
-		panic(msg)
+		return fmt.Errorf("Failed RingBuffer.Create: %s", err)
 	}
 
 	const Nchan = 8
 	const Nsamp = 20000
 	const stride = 500 // We'll put this many samples into a packet
 	if stride*Nchan*2 > 8000 {
-		msg := fmt.Sprintf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
-		panic(msg)
+		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
 
 	fmt.Printf("Generating data in shm:%s\n", ringname)
@@ -50,6 +45,8 @@ func main() {
 	timer := time.NewTicker(40 * time.Millisecond)
 	for {
 		select {
+		case <-cancel:
+			return nil
 		case <-timer.C:
 			for i := 0; i < Nsamp; i += stride {
 				p.NewData(d[i:i+stride*Nchan], dims)
@@ -61,4 +58,10 @@ func main() {
 			}
 		}
 	}
+}
+
+func main() {
+	const cardnum = 3
+	cancel := make(chan struct{})
+	generateData(cardnum, cancel)
 }
