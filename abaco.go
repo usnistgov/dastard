@@ -448,8 +448,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 			defer wg.Done()
 			data := datacopies[channelIndex]
 			if dev != nil {
-				// unwrap := dev.unwrap[channelIndex]
-				// unwrap.UnwrapInPlace(&data)
+				unwrap := dev.unwrap[channelIndex]
+				unwrap.UnwrapInPlace(&data)
 			}
 			seg := DataSegment{
 				rawData:         data,

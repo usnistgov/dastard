@@ -37,7 +37,12 @@ func generateData(cardnum int, cancel chan struct{}) error {
 	for i := 0; i < Nchan; i++ {
 		freq := (float64(i+1) * 2 * math.Pi) / float64(Nsamp)
 		for j := 0; j < Nsamp; j++ {
-			d[i+Nchan*j] = int16(2000.0*math.Sin(freq*float64(j)) + float64(i)*1000.0)
+			raw := int16(10000.0*math.Sin(freq*float64(j)) + float64(i)*1000.0)
+			d[i+Nchan*j] = raw % 16384
+			if raw < 0 {
+				d[i+Nchan*j] += 16384
+			}
+
 		}
 	}
 

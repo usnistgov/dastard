@@ -25,7 +25,7 @@ func NewPhaseUnwrapper(lowBitsToDrop uint) *PhaseUnwrapper {
 	u.lowBitsToDrop = lowBitsToDrop
 	u.onePi = int16(1) << (13 - lowBitsToDrop) // TODO: why this 13? Should be settable?
 	u.twoPi = u.onePi << 1
-	u.resetAfter = 2000 // TODO: this should be a settable parameter
+	u.resetAfter = 20000 // TODO: this should be a settable parameter
 	return u
 }
 
