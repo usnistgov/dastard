@@ -29,8 +29,7 @@ type RoachSource struct {
 	AnySource
 }
 
-const roachBitsToKeep = 14
-const roachScale RawType = 1 // How to scale the raw data in UnwrapInPlace
+const roachBitsToDrop = 2
 
 // NewRoachDevice creates a new RoachDevice.
 func NewRoachDevice(host string, rate float64) (dev *RoachDevice, err error) {
@@ -76,7 +75,10 @@ func parsePacket(packet []byte) (header packetHeader, data []RawType) {
 			panic(fmt.Sprintln("binary.Read failed:", err))
 		}
 	case 4:
-		// this just throws away two bytes from each 4 byte word
+		// Throw away the 2 least-significant bytes from each 4 byte word.
+		// Because binary.Read does the big->little endian swapping, but only
+		// within the 16-bit words of data4[:], we have data4[0] representing
+		// the most significant 16 bits of 32, and data4[1] the least.
 		data4 := make([]RawType, header.Nchan*header.Nsamp*2)
 		if err := binary.Read(buf, binary.BigEndian, &data4); err != nil {
 			panic(fmt.Sprintln("binary.Read failed:", err))
@@ -103,7 +105,7 @@ func (dev *RoachDevice) samplePacket() error {
 	dev.nchan = int(header.Nchan)
 	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
 	for i := range dev.unwrap {
-		dev.unwrap[i] = NewPhaseUnwrapper(roachBitsToKeep)
+		dev.unwrap[i] = NewPhaseUnwrapper(roachBitsToDrop)
 	}
 	return err
 }
@@ -219,7 +221,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				idx += nsamp[idxdata]
 			}
 			unwrap := dev.unwrap[i]
-			unwrap.UnwrapInPlace(&raw, roachScale)
+			unwrap.UnwrapInPlace(&raw)
 			block.segments[i] = DataSegment{
 				rawData:         raw,
 				signed:          true,

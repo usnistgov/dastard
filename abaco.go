@@ -27,8 +27,7 @@ type AbacoDevice struct {
 }
 
 const maxAbacoCards = 4 // Don't allow more than this many cards.
-const abacoScale RawType = 2
-const abacoBitsToKeep = 14
+const abacoBitsToDrop = 1
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
 func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
@@ -120,7 +119,7 @@ func (device *AbacoDevice) sampleCard() error {
 
 	device.unwrap = make([]*PhaseUnwrapper, device.nchan)
 	for i := range device.unwrap {
-		device.unwrap[i] = NewPhaseUnwrapper(abacoBitsToKeep)
+		device.unwrap[i] = NewPhaseUnwrapper(abacoBitsToDrop)
 	}
 	return nil
 }
@@ -460,7 +459,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 			data := datacopies[channelIndex]
 			if dev != nil {
 				unwrap := dev.unwrap[channelIndex]
-				unwrap.UnwrapInPlace(&data, abacoScale)
+				unwrap.UnwrapInPlace(&data)
 			}
 			seg := DataSegment{
 				rawData:         data,

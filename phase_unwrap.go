@@ -2,19 +2,18 @@ package dastard
 
 // PhaseUnwrapper makes phase values continous by adding integers as needed
 type PhaseUnwrapper struct {
-	lastVal     int16
-	offset      int16
-	bitsToKeep  uint
-	bitsToShift uint
-	onePi       int16
-	twoPi       int16
-	highCount   int
-	lowCount    int
-	resetAfter  int // jump back to near 0 after this many
+	lastVal       int16
+	offset        int16
+	lowBitsToDrop uint // Drop this many least significant bits in each value
+	onePi         int16
+	twoPi         int16
+	highCount     int
+	lowCount      int
+	resetAfter    int // jump back to near 0 after this many
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
-func NewPhaseUnwrapper(bitsToKeep uint) *PhaseUnwrapper {
+func NewPhaseUnwrapper(lowBitsToDrop uint) *PhaseUnwrapper {
 	u := new(PhaseUnwrapper)
 	// as read from the Roach
 	// data bytes representing a 2s complement integer
@@ -23,29 +22,29 @@ func NewPhaseUnwrapper(bitsToKeep uint) *PhaseUnwrapper {
 	// after this function we want 2^12 to be 1 phi0
 	// 2^12 = 4096
 	// 2^14 = 16384
-	u.bitsToKeep = bitsToKeep
-	u.bitsToShift = 16 - bitsToKeep
-	u.onePi = int16(1) << (bitsToKeep - 3)
+	u.lowBitsToDrop = lowBitsToDrop
+	u.onePi = int16(1) << (13 - lowBitsToDrop) // TODO: why this 13? Should be settable?
 	u.twoPi = u.onePi << 1
-	u.resetAfter = 2000 // 2000 should be a setable parameter
+	u.resetAfter = 2000 // TODO: this should be a settable parameter
 	return u
 }
 
 // UnwrapInPlace unwraps in place
-func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType, scale RawType) {
+func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	for i, rawVal := range *data {
-		v := int16(rawVal*scale) >> u.bitsToShift // scale=2 for ABACO HACK!! FIX TO GENERALIZE
+		v := int16(rawVal) >> u.lowBitsToDrop
 		delta := v - u.lastVal
 
-		// short term unwrapping
+		// Short-term unwrapping
 		if delta > u.onePi {
 			u.offset -= u.twoPi
 		} else if delta < -u.onePi {
 			u.offset += u.twoPi
 		}
 
-		// long term keeping baseline at same phi0
-		// if the offset is nonzero for a long time, set it to zero
+		// Long-term unwrapping = keeping baseline at same phi0.
+		// So if the offset is nonzero for a long time, set it to zero.
+		// This will cause a one-time jump by an integer number of wraps.
 		if u.offset >= u.twoPi {
 			u.highCount++
 			u.lowCount = 0
