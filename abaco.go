@@ -309,8 +309,10 @@ func (as *AbacoSource) readerMainLoop() {
 					fmt.Printf("AbacoDevice.ReadAllPackets failed with error: %v\n", err)
 					panic("AbacoDevice.ReadAllPackets failed")
 				}
-				log.Printf("Read Abaco device %v, total of %d packets", dev, len(allPackets))
 
+				// Go through packets and figure out the # of frames contained in all packets.
+				// We want this so we can make slices have the right capacity on creation.
+				// TODO: this will break if channel offsets other than 0 are in the data.
 				for _, p := range allPackets {
 					switch d := p.Data.(type) {
 					case []int32:
@@ -318,7 +320,6 @@ func (as *AbacoSource) readerMainLoop() {
 
 					case []int16:
 						framesUsed += len(d) / dev.nchan
-						// TODO: this will break if multiple offsets are in the data.
 						// fmt.Printf("Found [%d]int16 payload = %d frames: %v\n",
 						// 	len(d), framesUsed, d[:5])
 
@@ -327,36 +328,25 @@ func (as *AbacoSource) readerMainLoop() {
 					}
 				}
 
-				// This is the demultiplexing step. Loops over channels,
-				// then over frames.
-
-				// Encoding note May 7, 2019:
-				// Abaco raw data are 32 bit data in the form of binary number:
-				// (MSB) wwwwwwf ffffffff ffffffff fffffssr (LSB)
-				// w = whole number of phi0 (7)
-				// f = fractions of a phi0 (22)
-				// s = sync bits (2)
-				// r = frame bit (1)
-				// Our plan: omit the 12 lowest bits, giving us wwwfffff ffffffff.
-				// Reserving 3 upper whole-nuber bits lets us phase unwrap 8 full times.
-				// int32Buffer := bytesToInt32(bytesData)
+				// Demux data into this slice of slices of RawType (reserve capacity=framesUsed)
 				for i := 0; i < dev.nchan; i++ {
 					datacopies[i+nchanPrevDevices] = make([]RawType, 0, framesUsed)
 				}
 
+				// This is the demultiplexing step. Loops over packet, then values.
+				// Within a slice of values, its all channels for frame 0, then all for frame 1...
 				for _, p := range allPackets {
 					nchan, offset := p.ChannelInfo()
 					if offset < 0 || offset+nchan > dev.nchan {
-						//panic?
-						continue
+						panic("Cannot handle packets with offset out of range")
+						//continue
 					}
 
 					switch d := p.Data.(type) {
 					case []int16:
-						// This loop order was faster than the reverse, before packets:
+						// Reading vector d in order was faster than the reverse, before packets:
 						for j, val := range d {
-							idx := j%nchan + offset + nchanPrevDevices
-							// dc[j] = RawType(int32Buffer[idx] >> 12)
+							idx := (j % nchan) + offset + nchanPrevDevices
 							datacopies[idx] = append(datacopies[idx], RawType(val))
 						}
 						totalBytes += 2 * len(d)
@@ -458,8 +448,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 			defer wg.Done()
 			data := datacopies[channelIndex]
 			if dev != nil {
-				unwrap := dev.unwrap[channelIndex]
-				unwrap.UnwrapInPlace(&data)
+				// unwrap := dev.unwrap[channelIndex]
+				// unwrap.UnwrapInPlace(&data)
 			}
 			seg := DataSegment{
 				rawData:         data,
