@@ -52,7 +52,7 @@ func publishRoachPackets(port int, nchan uint16, value uint16) (closer chan stru
 	closer = make(chan struct{})
 	go func() {
 		defer conn.Close()
-		for i := uint64(0); ; i++ {
+		for i := uint64(0); ; i += uint64(nsamp) {
 			select {
 			case <-closer:
 				return
@@ -117,7 +117,7 @@ func TestRoachDevice(t *testing.T) {
 	}
 }
 
-// TestDevice checks that the raw RoachDevice can receive and parse a header
+// TestDevice checks that the full RoachSource can receive and parse a header
 func TestRoachSource(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60005

@@ -154,6 +154,7 @@ func (dev *RoachDevice) samplePacket() error {
 	}
 	_, _, err := dev.conn.ReadFromUDP(p)
 	header, _ := parsePacket(p)
+	dev.nextS = FrameIndex(header.Nsamp) + FrameIndex(header.Sampnum)
 	dev.nchan = int(header.Nchan)
 	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
 	for i := range dev.unwrap {
@@ -243,7 +244,6 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				fmt.Printf("header: %v, len(data)=%d\n", header, len(data))
 				nsamp[i] = ns
 			}
-			// fmt.Println("i, header.Sampnum", i, header.Sampnum)
 		}
 		firstlastDelay := time.Duration(totalNsamp-1) * dev.period
 		firstTime := readTime.Add(-firstlastDelay)
@@ -255,11 +255,11 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 			d := int(firstFramenum-dev.nextS) - totalNsamp
 			warning := ""
 			if d > 0 {
-				warning = fmt.Sprintf("  **** %6d samples this block or %6d too few", totalNsamp, d)
+				warning = fmt.Sprintf(" **** %6d samples this block or %6d too few", totalNsamp, d)
 			} else {
-				warning = fmt.Sprintf("  **** %6d samples this block or %6d too many", totalNsamp, -d)
+				warning = fmt.Sprintf(" **** %6d samples this block or %6d too many", totalNsamp, -d)
 			}
-			fmt.Printf("POTENTIAL DROPPED DATA: Sample %9d  Δs = %7d%s\n",
+			fmt.Printf("POTENTIAL DROPPED DATA: Sample %9d  Δs = %7d (want 0) %s\n",
 				firstFramenum, firstFramenum-dev.nextS, warning)
 		}
 
