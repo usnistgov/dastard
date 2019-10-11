@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fabiokung/shm"
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
 )
@@ -128,19 +129,13 @@ func (device *AbacoDevice) sampleCard() error {
 // Does not yet handle cards other than xdma0.
 func enumerateAbacoDevices() (devices []int, err error) {
 	for cnum := 0; cnum < maxAbacoCards; cnum++ {
-		name := fmt.Sprintf("/dev/shm/xdma%d_c2h_0_description", cnum)
-		info, err := os.Stat(name)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			} else {
-				return devices, err
-			}
-		}
-		if (info.Mode()&os.ModeDevice) != 0 || true {
+		name := fmt.Sprintf("xdma%d_c2h_0_description", cnum)
+		if region, err := shm.Open(name, os.O_RDONLY, 0600); err == nil {
+			region.Close()
 			devices = append(devices, cnum)
 		}
 	}
+	fmt.Printf("Abaco devices: %v\n", devices)
 	return devices, nil
 }
 
