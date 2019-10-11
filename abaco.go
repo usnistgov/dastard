@@ -113,7 +113,6 @@ func (device *AbacoDevice) sampleCard() error {
 					device.nchan = nchan + offset
 				}
 			}
-			fmt.Printf("Read %3d packets cumulative.\n", packetsRead)
 		}
 	}
 
@@ -373,7 +372,7 @@ func (as *AbacoSource) readerMainLoop() {
 				}
 			}
 			timeDiff := lastSampleTime.Sub(as.lastread)
-			if timeDiff > 0*as.readPeriod {
+			if timeDiff > 2*as.readPeriod {
 				fmt.Println("timeDiff in abaco reader", timeDiff)
 			}
 			as.lastread = lastSampleTime
@@ -383,14 +382,12 @@ func (as *AbacoSource) readerMainLoop() {
 				fmt.Printf("Panic! %s\n", msg)
 				panic(msg)
 			}
-			// log.Printf("About to send on buffersChan")
 			as.buffersChan <- AbacoBuffersType{
 				datacopies:     datacopies,
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
 				totalBytes:     totalBytes,
 			}
-			fmt.Printf("Sent something on buffersChan (%d bytes)\n", totalBytes)
 			if totalBytes > 0 {
 				timeout.Reset(timeoutPeriod)
 			}

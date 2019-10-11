@@ -74,7 +74,6 @@ func TestGeneratePackets(t *testing.T) {
 				t.Errorf("Error reading packets: %s", err)
 				break
 			}
-			// fmt.Printf("Packet read: %s\n", pkt.String())
 		}
 	}
 }
@@ -89,7 +88,6 @@ func TestAbacoDevice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAbacoDevice(%d) fails: %s", cardnum, err)
 	}
-	fmt.Printf("dev: %v\n", dev)
 
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
@@ -103,15 +101,7 @@ func TestAbacoDevice(t *testing.T) {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
 
-	go func() {
-		err = dev.sampleCard()
-		if err == nil {
-			fmt.Printf("Result of dev.sampleCard: %v\n", dev)
-
-		} else {
-			fmt.Printf("Result of dev.sampleCard: %s\n", err)
-		}
-	}()
+	go dev.sampleCard()
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
 	const Nchan = 8
@@ -159,10 +149,8 @@ func TestAbacoSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAbacoDevice(%d) fails: %s", cardnum, err)
 	}
-	fmt.Printf("dev: %v\n", dev)
 	source.devices[cardnum] = dev
 	source.Ndevices++
-	fmt.Printf("source.devices: %v\n", source.devices)
 
 	deviceCodes := []int{cardnum}
 	var config AbacoSourceConfig
@@ -171,7 +159,6 @@ func TestAbacoSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
 	}
-	fmt.Printf("AbacoSource.Configure() produces %v\n", config)
 
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
@@ -209,7 +196,6 @@ func TestAbacoSource(t *testing.T) {
 		for {
 			select {
 			case <-abortSupply:
-				fmt.Println("Abort supply channel closed, so supplyDataForever is ending.")
 				return
 			case <-timer.C:
 				for i := 0; i < Nsamp; i += stride {

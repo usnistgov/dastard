@@ -432,7 +432,7 @@ func cringeGlobalsCalculatePath() string {
 	}
 	dir := usr.HomeDir
 	path := filepath.Join(dir, ".cringe", "cringeGlobals.json")
-	log.Println("cringeGlobalsPath", path)
+	// log.Println("cringeGlobalsPath", path)
 	return path
 }
 
