@@ -29,63 +29,8 @@ type RoachSource struct {
 	AnySource
 }
 
-// PhaseUnwrapper makes phase values continous by adding integers as needed
-type PhaseUnwrapper struct {
-	lastVal   int16
-	offset    int16
-	highCount int
-	lowCount  int
-}
-
+const roachBitsToKeep = 14
 const roachScale RawType = 1 // How to scale the raw data in UnwrapInPlace
-
-// UnwrapInPlace unwraps in place
-func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType, scale RawType) {
-
-	// as read from the Roach
-	// data bytes representing a 2s complement integer
-	// where 2^14 is 1 phi0
-	// so int(data[i])/2^14 is a number from -0.5 to 0.5 phi0
-	// after this function we want 2^12 to be 1 phi0
-	// 2^12 = 4096
-	// 2^14 = 16384
-	bitsToKeep := uint(14)
-	bitsToShift := 16 - bitsToKeep
-	onePi := int16(1) << (bitsToKeep - 3)
-	twoPi := onePi << 1
-	//phi0_lim := (4 * (1 << (16 - bits_to_keep)) / 2) - 1
-	for i, rawVal := range *data {
-		v := int16(rawVal*scale) >> bitsToShift // scale=2 for ABACO HACK!! FIX TO GENERALIZE
-		delta := v - u.lastVal
-
-		// short term unwrapping
-		if delta > onePi {
-			u.offset -= twoPi
-		} else if delta < -onePi {
-			u.offset += twoPi
-		}
-
-		// long term keeping baseline at same phi0
-		// if the offset is nonzero for a long time, set it to zero
-		if u.offset >= twoPi {
-			u.highCount++
-			u.lowCount = 0
-		} else if u.offset <= -twoPi {
-			u.lowCount++
-			u.highCount = 0
-		} else {
-			u.lowCount = 0
-			u.highCount = 0
-		}
-		if (u.highCount > 2000) || (u.lowCount > 2000) { // 2000 should be a setable parameter
-			u.offset = 0
-			u.highCount = 0
-			u.lowCount = 0
-		}
-		(*data)[i] = RawType(v + u.offset)
-		u.lastVal = v
-	}
-}
 
 // NewRoachDevice creates a new RoachDevice.
 func NewRoachDevice(host string, rate float64) (dev *RoachDevice, err error) {
@@ -158,7 +103,7 @@ func (dev *RoachDevice) samplePacket() error {
 	dev.nchan = int(header.Nchan)
 	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
 	for i := range dev.unwrap {
-		dev.unwrap[i] = &(PhaseUnwrapper{})
+		dev.unwrap[i] = NewPhaseUnwrapper(roachBitsToKeep)
 	}
 	return err
 }

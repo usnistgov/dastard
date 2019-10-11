@@ -28,6 +28,7 @@ type AbacoDevice struct {
 
 const maxAbacoCards = 4 // Don't allow more than this many cards.
 const abacoScale RawType = 2
+const abacoBitsToKeep = 14
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
 func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
@@ -119,7 +120,7 @@ func (device *AbacoDevice) sampleCard() error {
 
 	device.unwrap = make([]*PhaseUnwrapper, device.nchan)
 	for i := range device.unwrap {
-		device.unwrap[i] = new(PhaseUnwrapper)
+		device.unwrap[i] = NewPhaseUnwrapper(abacoBitsToKeep)
 	}
 	return nil
 }
@@ -163,14 +164,14 @@ func NewAbacoSource() (*AbacoSource, error) {
 	for _, cnum := range deviceCodes {
 		ad, err := NewAbacoDevice(cnum)
 		if err != nil {
-			log.Printf("warning: failed to create ring buffer for /dev/xdma%d_c2h_0, though it should exist", cnum)
+			log.Printf("warning: failed to create ring buffer for shm:xdma%d_c2h_0, though it should exist", cnum)
 			continue
 		}
 		source.devices[cnum] = ad
 		source.Ndevices++
 	}
 	if source.Ndevices == 0 && len(deviceCodes) > 0 {
-		return source, fmt.Errorf("could not create ring buffer for any of /dev/xdma*_c2h_0, though deviceCodes %v exist", deviceCodes)
+		return source, fmt.Errorf("could not create ring buffer for any of shm:xdma*_c2h_0, though deviceCodes %v exist", deviceCodes)
 	}
 	return source, nil
 }
