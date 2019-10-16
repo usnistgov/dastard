@@ -84,7 +84,7 @@ func TestNoHardwareSource(t *testing.T) {
 	linePeriodSet = 1000 // don't make this too low, or test -race will fail
 	nLancero = 3
 	source := new(LanceroSource)
-	source.readPeriod = 1 * time.Millisecond
+	source.readPeriod = time.Millisecond
 	source.devices = make(map[int]*LanceroDevice, nLancero)
 	source.buffersChan = make(chan BuffersChanType, 25)
 	cardDelay := []int{0} // a single card delay value works for multiple cards

@@ -394,7 +394,7 @@ func (device *LanceroDevice) sampleCard() error {
 	if frameBitsHandled {
 		periodNS := timeFix.Sub(timeFix0).Nanoseconds() / (bytesReadSinceTimeFix0 / int64(device.frameSize))
 		calculatedLsync := roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
-		if calculatedLsync != device.lsync {
+		if math.Abs(float64(calculatedLsync)/float64(device.lsync)-1) > 0.02 {
 			fmt.Printf("WARNING: calculated lsync=%d, but have lsync=%d\n", calculatedLsync, device.lsync)
 		}
 		if calculatedNrows != device.nrows {
