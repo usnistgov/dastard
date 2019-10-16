@@ -135,7 +135,6 @@ func enumerateAbacoDevices() (devices []int, err error) {
 			devices = append(devices, cnum)
 		}
 	}
-	fmt.Printf("Abaco devices: %v\n", devices)
 	return devices, nil
 }
 
@@ -236,11 +235,20 @@ func (as *AbacoSource) Sample() error {
 	if len(as.active) <= 0 {
 		return fmt.Errorf("No Abaco devices are active")
 	}
-	// TODO: launch these device.sampleCard as goroutines, in parallel
+
+	// Run device.sampleCard as goroutines on each device, in parallel, to save time.
+	sampleErrors := make(chan error)
 	for _, device := range as.active {
-		if err := device.sampleCard(); err != nil {
+		go func(dev *AbacoDevice) {
+			sampleErrors <- dev.sampleCard()
+		}(device)
+	}
+	for _ = range as.active {
+		if err := <-sampleErrors; err != nil {
 			return err
 		}
+	}
+	for _, device := range as.active {
 		as.nchan += device.nchan
 	}
 
