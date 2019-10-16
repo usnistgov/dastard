@@ -236,12 +236,24 @@ func (as *AbacoSource) Sample() error {
 	if len(as.active) <= 0 {
 		return fmt.Errorf("No Abaco devices are active")
 	}
+	// TODO: launch these device.sampleCard as goroutines, in parallel
 	for _, device := range as.active {
 		if err := device.sampleCard(); err != nil {
 			return err
 		}
 		as.nchan += device.nchan
 	}
+
+	// Treat devices as 1 row x N columns.4
+	as.rowColCodes = make([]RowColCode, as.nchan)
+	i := 0
+	for _, device := range as.active {
+		for j := 0; j < device.nchan; j++ {
+			as.rowColCodes[i] = rcCode(0, i, 1, as.nchan)
+			i++
+		}
+	}
+
 	as.sampleRate = 125000.0 // HACK! For now, assume a value.
 	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
 
