@@ -91,7 +91,7 @@ func TestHeader(t *testing.T) {
 
 func counterToPacket(c *HeadCounter) []byte {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, byte(0x12))
+	binary.Write(buf, binary.BigEndian, byte(tlvCOUNTER))
 	binary.Write(buf, binary.BigEndian, byte(1))
 	binary.Write(buf, binary.BigEndian, c.ID)
 	binary.Write(buf, binary.BigEndian, c.Count)
@@ -110,7 +110,7 @@ func timestampToPacket(ts PacketTimestamp) []byte {
 func payloadshapeToPacket(ps *headPayloadShape) []byte {
 	buf := new(bytes.Buffer)
 	n8 := 1 + len(ps.Sizes)/4
-	binary.Write(buf, binary.BigEndian, byte(0x22))
+	binary.Write(buf, binary.BigEndian, byte(tlvSHAPE))
 	binary.Write(buf, binary.BigEndian, byte(n8))
 	for _, s := range ps.Sizes {
 		binary.Write(buf, binary.BigEndian, s)
@@ -123,7 +123,7 @@ func payloadshapeToPacket(ps *headPayloadShape) []byte {
 
 func chanOffsetToPacket(off headChannelOffset) []byte {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, byte(0x23))
+	binary.Write(buf, binary.BigEndian, byte(tlvCHANOFFSET))
 	binary.Write(buf, binary.BigEndian, byte(1))
 	binary.Write(buf, binary.BigEndian, uint16(0))
 	binary.Write(buf, binary.BigEndian, uint32(off))
@@ -184,7 +184,7 @@ func TestTLVs(t *testing.T) {
 	}
 
 	// Try a payload format TLV
-	x := []byte{0x21, 1, '>', 'i', 'i', 0, 0, 0}
+	x := []byte{tlvFORMAT, 1, '>', 'i', 'i', 0, 0, 0}
 	tlvs, err = readTLV(bytes.NewReader(x), 8)
 	if err != nil {
 		t.Errorf("readTLV() for headPayloadFormat returns %v", err)
@@ -281,40 +281,40 @@ func TestTLVs(t *testing.T) {
 	if _, err := readTLV(bytes.NewReader([]byte{}), 8); err == nil {
 		t.Errorf("readTLV on empty string should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x21}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvFORMAT}), 8); err == nil {
 		t.Errorf("readTLV on short string should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x21, 0x2}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvFORMAT, 0x2}), 8); err == nil {
 		t.Errorf("readTLV with L=2 but size-8 string should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x11, 0x1}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvTIMESTAMP, 0x1}), 8); err == nil {
 		t.Errorf("readTLV without timestamp upper bytes should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x11, 0x1, 0, 0}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvTIMESTAMP, 0x1, 0, 0}), 8); err == nil {
 		t.Errorf("readTLV without timestamp lower bytes should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x12, 0x2}), 16); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvCOUNTER, 0x2}), 16); err == nil {
 		t.Errorf("readTLV with L>1 counters should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x12, 0x1, 0}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvCOUNTER, 0x1, 0}), 8); err == nil {
 		t.Errorf("readTLV without counter ID should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x12, 0x1, 0, 0}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvCOUNTER, 0x1, 0, 0}), 8); err == nil {
 		t.Errorf("readTLV without counter value should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x21, 1}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvFORMAT, 1}), 8); err == nil {
 		t.Errorf("readTLV on payload format with short string should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x22, 1, 0}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvSHAPE, 1, 0}), 8); err == nil {
 		t.Errorf("readTLV on channel offset without any dimensions should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x23, 1, 0}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvCHANOFFSET, 1, 0}), 8); err == nil {
 		t.Errorf("readTLV on channel offset without padding should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x23, 1, 0, 9}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvCHANOFFSET, 1, 0, 9}), 8); err == nil {
 		t.Errorf("readTLV on channel offset with nonzero padding should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{0x23, 1, 0, 0, 0}), 8); err == nil {
+	if _, err := readTLV(bytes.NewReader([]byte{tlvCHANOFFSET, 1, 0, 0, 0}), 8); err == nil {
 		t.Errorf("readTLV on channel offset without offset should error")
 	}
 	if _, err := readTLV(bytes.NewReader([]byte{0xff, 1}), 8); err == nil {

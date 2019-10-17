@@ -35,6 +35,17 @@ type Packet struct {
 const packetMAGIC uint32 = 0x810b00ff
 const maxPACKETLENGTH int = 8192
 
+// TLV types
+const (
+	tlvNULL          = byte(0)
+	tlvTIMESTAMP     = byte(0x11)
+	tlvCOUNTER       = byte(0x12)
+	tlvTIMESTAMPUNIT = byte(0x13)
+	tlvFORMAT        = byte(0x21)
+	tlvSHAPE         = byte(0x22)
+	tlvCHANOFFSET    = byte(0x23)
+)
+
 // NewPacket generates a new packet with the given facts. No data are configured or stored.
 func NewPacket(version uint8, sourceID uint32, sequenceNumber uint32, chanOffset int) *Packet {
 	p := new(Packet)
@@ -125,13 +136,13 @@ func (p *Packet) Bytes() []byte {
 	binary.Write(buf, binary.BigEndian, p.sequenceNumber)
 
 	// Channel offset
-	binary.Write(buf, binary.BigEndian, byte(0x23))
+	binary.Write(buf, binary.BigEndian, byte(tlvCHANOFFSET))
 	binary.Write(buf, binary.BigEndian, byte(1))
 	binary.Write(buf, binary.BigEndian, uint16(0))
 	binary.Write(buf, binary.BigEndian, uint32(p.offset))
 
 	if p.Data != nil && p.shape != nil && p.format != nil {
-		binary.Write(buf, binary.BigEndian, byte(0x21))
+		binary.Write(buf, binary.BigEndian, byte(tlvFORMAT))
 		binary.Write(buf, binary.BigEndian, byte(1))
 		fmt := []byte(p.format.rawfmt)
 		if len(fmt) > 6 {
@@ -142,7 +153,7 @@ func (p *Packet) Bytes() []byte {
 		}
 		binary.Write(buf, binary.BigEndian, fmt)
 
-		binary.Write(buf, binary.BigEndian, byte(0x22))
+		binary.Write(buf, binary.BigEndian, byte(tlvSHAPE))
 		binary.Write(buf, binary.BigEndian, byte(1+len(p.shape.Sizes)/4))
 		for i := 0; i < len(p.shape.Sizes); i++ {
 			binary.Write(buf, binary.BigEndian, p.shape.Sizes[i])
@@ -342,10 +353,10 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 				t, tlvsize, size)
 		}
 		switch t {
-		case 0x0: //NULL
+		case tlvNULL:
 			// do nothing
 
-		case 0x11: // timestamps
+		case tlvTIMESTAMP: // timestamps without units
 			var x uint16
 			var y uint32
 			if err = binary.Read(data, binary.BigEndian, &x); err != nil {
@@ -356,7 +367,7 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			}
 			result = append(result, makeTimestamp(x, y))
 
-		case 0x12: // counter
+		case tlvCOUNTER:
 			ctr := new(HeadCounter)
 			if tlvsize != 1 {
 				return result, fmt.Errorf("TLV counter size %d, must be size 1 (32 bits) as currently implemented", tlvsize)
@@ -412,7 +423,7 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			}
 			result = append(result, pfmt)
 
-		case 0x22: // Payload shape
+		case tlvSHAPE:
 			shape := new(headPayloadShape)
 			var d int16
 			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
@@ -425,7 +436,7 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			}
 			result = append(result, shape)
 
-		case 0x23: // Channel offset
+		case tlvCHANOFFSET:
 			var pad uint16
 			var offset headChannelOffset
 			if err = binary.Read(data, binary.BigEndian, &pad); err != nil {
