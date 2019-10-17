@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math"
 	"os"
 	"reflect"
 	"testing"
@@ -98,12 +99,27 @@ func counterToPacket(c *HeadCounter) []byte {
 	return buf.Bytes()
 }
 
-func timestampToPacket(ts PacketTimestamp) []byte {
+func timestampToPacket(ts *PacketTimestamp) []byte {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, byte(0x11))
-	binary.Write(buf, binary.BigEndian, byte(1))
-	binary.Write(buf, binary.BigEndian, uint16(ts.t>>32))
-	binary.Write(buf, binary.BigEndian, uint32(ts.t))
+	if ts.rate == 0.0 {
+		binary.Write(buf, binary.BigEndian, byte(tlvTIMESTAMP))
+		binary.Write(buf, binary.BigEndian, byte(1))
+		binary.Write(buf, binary.BigEndian, uint16(ts.t>>32))
+		binary.Write(buf, binary.BigEndian, uint32(ts.t))
+	} else {
+		binary.Write(buf, binary.BigEndian, byte(tlvTIMESTAMPUNIT))
+		binary.Write(buf, binary.BigEndian, byte(2))
+		binary.Write(buf, binary.BigEndian, byte(64))
+		e := int8(math.Log10(ts.rate)) + 1
+		const num = uint16(10000)
+		r := ts.rate * float64(num) / math.Pow10(int(e))
+		denom := uint16(math.Round(r))
+		binary.Write(buf, binary.BigEndian, -e)
+		binary.Write(buf, binary.BigEndian, num)
+		binary.Write(buf, binary.BigEndian, denom)
+		binary.Write(buf, binary.BigEndian, ts.t)
+	}
+
 	return buf.Bytes()
 }
 
@@ -151,17 +167,33 @@ func TestTLVs(t *testing.T) {
 		t.Errorf("expected type HeadCounter, got %v", hc)
 	}
 
-	// Try a timestamp
-	ts := PacketTimestamp{1234567890123, 0}
-	tp := timestampToPacket(ts)
+	// Try a timestamp, with and without units
+	ts := PacketTimestamp{0x0000030405060708, 0}
+	tp := timestampToPacket(&ts)
 	tlvs, err = readTLV(bytes.NewReader(tp), 8)
 	if err != nil {
 		t.Errorf("readTLV() for PacketTimestamp returns %v", err)
 	}
 	switch hts := tlvs[0].(type) {
-	case PacketTimestamp:
-		if hts != ts {
-			t.Errorf("PacketTimestamp = %v, want %v", hts, ts)
+	case *PacketTimestamp:
+		if hts.t != ts.t {
+			t.Errorf("PacketTimestamp = %v, want %v", *hts, ts)
+		}
+	default:
+		t.Errorf("expected type PacketTimestamp, got %v", hts)
+	}
+	// Now add a rate
+	ts = PacketTimestamp{0x0102030405060708, 0}
+	ts.rate = 256e6
+	tp = timestampToPacket(&ts)
+	tlvs, err = readTLV(bytes.NewReader(tp), 16)
+	if err != nil {
+		t.Errorf("readTLV() for PacketTimestamp returns %v", err)
+	}
+	switch hts := tlvs[0].(type) {
+	case *PacketTimestamp:
+		if hts.t != ts.t || hts.rate != ts.rate {
+			t.Errorf("PacketTimestamp = %v, want %v", *hts, ts)
 		}
 	default:
 		t.Errorf("expected type PacketTimestamp, got %v", hts)

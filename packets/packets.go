@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"reflect"
 )
 
@@ -300,7 +301,8 @@ type PacketTimestamp struct {
 	rate float64 // Count rate, in counts per second
 }
 
-func makeTimestamp(x uint16, y uint32) (ts PacketTimestamp) {
+func makeTimestamp(x uint16, y uint32) *PacketTimestamp {
+	ts := new(PacketTimestamp)
 	ts.t = uint64(x)<<32 + uint64(y)
 	return ts
 }
@@ -383,7 +385,44 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			}
 			result = append(result, ctr)
 
-		case 0x21: // Payload format descriptor
+		case tlvTIMESTAMPUNIT:
+			var nbits uint8
+			var exp int8
+			var num, denom uint16
+			var t uint64
+			ts := new(PacketTimestamp)
+			if err = binary.Read(data, binary.BigEndian, &nbits); err != nil {
+				return result, err
+			}
+			if err = binary.Read(data, binary.BigEndian, &exp); err != nil {
+				return result, err
+			}
+			if err = binary.Read(data, binary.BigEndian, &num); err != nil {
+				return result, err
+			}
+			if err = binary.Read(data, binary.BigEndian, &denom); err != nil {
+				return result, err
+			}
+			if err = binary.Read(data, binary.BigEndian, &t); err != nil {
+				return result, err
+			}
+			switch nbits {
+			case 8:
+				t = t & 0xff
+			case 16:
+				t = t & 0xffff
+			case 32:
+				t = t & 0xffffffff
+			case 64:
+			default:
+				return result, fmt.Errorf("TLV timestamp with unit calls for %d bits", nbits)
+			}
+			ts.t = t
+			// (num/denom) * pow(10, exp) is the clock period. We want rate = 1/period, so...
+			ts.rate = float64(denom) / float64(num) * math.Pow10(-int(exp))
+			result = append(result, ts)
+
+		case tlvFORMAT:
 			b := make([]byte, 8*int(tlvsize)-2)
 			if n, err := data.Read(b); err != nil || n < len(b) {
 				return result, err
