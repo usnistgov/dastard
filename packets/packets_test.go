@@ -98,12 +98,12 @@ func counterToPacket(c *HeadCounter) []byte {
 	return buf.Bytes()
 }
 
-func timestampToPacket(t headTimestamp) []byte {
+func timestampToPacket(ts PacketTimestamp) []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, byte(0x11))
 	binary.Write(buf, binary.BigEndian, byte(1))
-	binary.Write(buf, binary.BigEndian, uint16(t>>32))
-	binary.Write(buf, binary.BigEndian, uint32(t))
+	binary.Write(buf, binary.BigEndian, uint16(ts.t>>32))
+	binary.Write(buf, binary.BigEndian, uint32(ts.t))
 	return buf.Bytes()
 }
 
@@ -152,19 +152,19 @@ func TestTLVs(t *testing.T) {
 	}
 
 	// Try a timestamp
-	ts := headTimestamp(1234567890123)
+	ts := PacketTimestamp{1234567890123, 0}
 	tp := timestampToPacket(ts)
 	tlvs, err = readTLV(bytes.NewReader(tp), 8)
 	if err != nil {
-		t.Errorf("readTLV() for headTimestamp returns %v", err)
+		t.Errorf("readTLV() for PacketTimestamp returns %v", err)
 	}
 	switch hts := tlvs[0].(type) {
-	case headTimestamp:
+	case PacketTimestamp:
 		if hts != ts {
-			t.Errorf("headTimestamp = %d, want %d", hts, ts)
+			t.Errorf("PacketTimestamp = %v, want %v", hts, ts)
 		}
 	default:
-		t.Errorf("expected type headTimestamp, got %v", hts)
+		t.Errorf("expected type PacketTimestamp, got %v", hts)
 	}
 
 	// Try a channel offset
