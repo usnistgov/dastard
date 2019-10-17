@@ -209,29 +209,32 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 	if err = binary.Read(data, binary.BigEndian, &p.headerLength); err != nil {
 		return nil, err
 	}
-	if err = binary.Read(data, binary.BigEndian, &p.payloadLength); err != nil {
-		return nil, err
-	}
-	var magic uint32
-	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
-		return nil, err
-	}
-	if err = binary.Read(data, binary.BigEndian, &p.sourceID); err != nil {
-		return nil, err
-	}
-	if err = binary.Read(data, binary.BigEndian, &p.sequenceNumber); err != nil {
-		return nil, err
-	}
 	const MINLENGTH uint8 = 16
 	if p.headerLength < MINLENGTH {
 		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
+	}
+
+	if err = binary.Read(data, binary.BigEndian, &p.payloadLength); err != nil {
+		return nil, err
 	}
 	if p.payloadLength%8 != 0 {
 		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", p.payloadLength)
 	}
 	p.packetLength = int(p.headerLength) + int(p.payloadLength)
+
+	var magic uint32
+	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
+		return nil, err
+	}
 	if magic != packetMAGIC {
 		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, packetMAGIC)
+	}
+
+	if err = binary.Read(data, binary.BigEndian, &p.sourceID); err != nil {
+		return nil, err
+	}
+	if err = binary.Read(data, binary.BigEndian, &p.sequenceNumber); err != nil {
+		return nil, err
 	}
 	allTLV, err := readTLV(data, p.headerLength-MINLENGTH)
 	if err != nil {
@@ -349,7 +352,7 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			return result, err
 		}
 		if 8*tlvsize > size {
-			return result, fmt.Errorf("TLV type %d has len 8*%d, but remaining hdr size is %d",
+			return result, fmt.Errorf("TLV type 0x%x has len 8*%d, but remaining hdr size is %d",
 				t, tlvsize, size)
 		}
 		switch t {
@@ -451,7 +454,7 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			result = append(result, offset)
 
 		default:
-			return result, fmt.Errorf("Unknown TLV type %d", t)
+			return result, fmt.Errorf("Unknown TLV type 0x%x", t)
 		}
 
 		size -= 8 * tlvsize
