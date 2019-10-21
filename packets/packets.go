@@ -90,8 +90,8 @@ func (p *Packet) Timestamp() *PacketTimestamp {
 	for _, tlv := range p.otherTLV {
 		if ts, ok := tlv.(*PacketTimestamp); ok {
 			tsCopy := new(PacketTimestamp)
-			tsCopy.rate = ts.rate
-			tsCopy.t = ts.t
+			tsCopy.Rate = ts.Rate
+			tsCopy.T = ts.T
 			return tsCopy
 		}
 	}
@@ -315,13 +315,13 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 
 // PacketTimestamp represents a single timestamp in the header
 type PacketTimestamp struct {
-	t    uint64  // Counter offset
-	rate float64 // Count rate, in counts per second
+	T    uint64  // Counter offset
+	Rate float64 // Count rate, in counts per second
 }
 
 func makeTimestamp(x uint16, y uint32) *PacketTimestamp {
 	ts := new(PacketTimestamp)
-	ts.t = uint64(x)<<32 + uint64(y)
+	ts.T = uint64(x)<<32 + uint64(y)
 	return ts
 }
 
@@ -432,9 +432,9 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			default:
 				return result, fmt.Errorf("TLV timestamp with unit calls for %d bits", nbits)
 			}
-			ts.t = t
+			ts.T = t
 			// (num/denom) * pow(10, exp) is the clock period. We want rate = 1/period, so...
-			ts.rate = float64(denom) / float64(num) * math.Pow10(-int(exp))
+			ts.Rate = float64(denom) / float64(num) * math.Pow10(-int(exp))
 			result = append(result, ts)
 
 		case tlvFORMAT:
