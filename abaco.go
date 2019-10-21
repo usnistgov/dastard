@@ -98,7 +98,7 @@ func (device *AbacoDevice) sampleCard() error {
 			time.Sleep(5 * time.Millisecond)
 			allPackets, err := device.ReadAllPackets()
 			if err != nil {
-				return nil
+				return err
 			}
 			packetsRead += len(allPackets)
 
