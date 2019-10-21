@@ -83,6 +83,8 @@ func (device *AbacoDevice) sampleCard() error {
 	// Now get the data we actually want. Run for at least a minimum time
 	// or a minimum number of packets.
 	device.packetSize = int(device.ring.PacketSize())
+	device.nchan = 0
+	device.firstchan = 99999999
 	const minPacketsToRead = 100 // Not sure this is a good minimum
 	maxDelay := time.Duration(200 * time.Millisecond)
 	timeOut := time.NewTimer(maxDelay)
@@ -103,11 +105,10 @@ func (device *AbacoDevice) sampleCard() error {
 			// Do something with Packet.ChannelInfo() here: set device.nchan and
 			// firstchan based on the values here, if they are larger/smaller than
 			// any previously seen.
-			device.nchan = 0
-			device.firstchan = 99999999
 			for _, p := range allPackets {
 				nchan, offset := p.ChannelInfo()
 				if offset < device.firstchan {
+					fmt.Printf("See channel %d-%d\n", offset, offset+nchan-1)
 					device.firstchan = offset
 				}
 				if nchan+offset > device.nchan {
