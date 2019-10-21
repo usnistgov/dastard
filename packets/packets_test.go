@@ -198,6 +198,23 @@ func TestTLVs(t *testing.T) {
 	default:
 		t.Errorf("expected type PacketTimestamp, got %v", hts)
 	}
+	tryTSNbits := []uint8{64, 48, 32, 16, 8}
+	for _, nbits := range tryTSNbits {
+		tp[2] = nbits
+		tlvs, err = readTLV(bytes.NewReader(tp), 16)
+		if err != nil {
+			t.Errorf("readTLV() for PacketTimestamp returns %v", err)
+		}
+		switch hts := tlvs[0].(type) {
+		case *PacketTimestamp:
+			mask := ^(uint64(math.MaxUint64) << nbits)
+			if hts.t != (ts.t & mask) {
+				t.Errorf("nbits %d: PacketTimestamp = 0x%x, want 0x%x", nbits, hts.t, ts.t&mask)
+			}
+		default:
+			t.Errorf("expected type PacketTimestamp, got %v", hts)
+		}
+	}
 
 	// Try a channel offset
 	offset := headChannelOffset(13579)
