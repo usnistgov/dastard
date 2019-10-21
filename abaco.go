@@ -94,7 +94,8 @@ func (device *AbacoDevice) sampleCard() error {
 	var tsInit, tsFinal packets.PacketTimestamp
 	var snInit, snFinal uint32
 
-	for packetsRead := 0; packetsRead < minPacketsToRead; {
+	packetsRead := 0
+	for packetsRead < minPacketsToRead {
 		select {
 		case <-timeOut.C:
 			fmt.Println("AbacoDevice.sampleCard() timer expired")
@@ -142,9 +143,9 @@ func (device *AbacoDevice) sampleCard() error {
 		// TODO: check for wrap of timestamp if < 48 bits
 		// TODO: what if ts.Rate changes between Init and Final?
 		if ds := snFinal - snInit; ds > 0 {
-			device.sampleRate = dt / float64(ds)
-			fmt.Printf("Sample rate %.3g /sec determined from dt=%f ds=%d\n", device.sampleRate,
-				dt, ds)
+			device.sampleRate = float64(ds) / dt
+			fmt.Printf("Sample rate %.3g /sec determined from %d packets: dt=%f ds=%d\n", device.sampleRate,
+				packetsRead, dt, ds)
 		}
 	}
 
