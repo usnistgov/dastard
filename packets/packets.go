@@ -406,14 +406,11 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			if err = binary.Read(data, binary.BigEndian, &t); err != nil {
 				return result, err
 			}
-			switch nbits {
-			case 8:
-				t = t & 0xff
-			case 16:
-				t = t & 0xffff
-			case 32:
-				t = t & 0xffffffff
-			case 64:
+			switch {
+			case nbits < 64:
+				mask := ^(uint64(math.MaxUint64) << nbits)
+				t = t & mask
+			case nbits == 64:
 			default:
 				return result, fmt.Errorf("TLV timestamp with unit calls for %d bits", nbits)
 			}

@@ -215,6 +215,10 @@ func TestTLVs(t *testing.T) {
 			t.Errorf("expected type PacketTimestamp, got %v", hts)
 		}
 	}
+	tp[2] = 66
+	if _, err = readTLV(bytes.NewReader(tp), 16); err == nil {
+		t.Errorf("readTLV() for PacketTimestamp succeeds with %d bits (>64), should fail", tp[2])
+	}
 
 	// Try a channel offset
 	offset := headChannelOffset(13579)
