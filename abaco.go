@@ -24,6 +24,7 @@ type AbacoDevice struct {
 	packetSize int // packet size, in bytes
 	ring       *ringbuffer.RingBuffer
 	unwrap     []*PhaseUnwrapper
+	sampleRate float64
 }
 
 const maxAbacoCards = 4 // Don't allow more than this many cards.
@@ -88,6 +89,11 @@ func (device *AbacoDevice) sampleCard() error {
 	const minPacketsToRead = 100 // Not sure this is a good minimum
 	maxDelay := time.Duration(200 * time.Millisecond)
 	timeOut := time.NewTimer(maxDelay)
+
+	// Capture timestamp and sample # for a range of packets. Use to find rate.
+	var tsInit, tsFinal *packets.PacketTimestamp
+	var snInit, snFinal uint32
+
 	for packetsRead := 0; packetsRead < minPacketsToRead; {
 		select {
 		case <-timeOut.C:
@@ -108,13 +114,35 @@ func (device *AbacoDevice) sampleCard() error {
 			for _, p := range allPackets {
 				nchan, offset := p.ChannelInfo()
 				if offset < device.firstchan {
-					fmt.Printf("See channel %d-%d\n", offset, offset+nchan-1)
 					device.firstchan = offset
 				}
 				if nchan+offset > device.nchan {
 					device.nchan = nchan + offset
 				}
+
+				if ts := p.Timestamp(); ts != nil && ts.Rate != 0 {
+					if tsInit.T == 0 {
+						tsInit.T = ts.T
+						tsInit.Rate = ts.Rate
+						snInit = p.SequenceNumber()
+					}
+					if tsFinal.T < ts.T {
+						tsFinal.T = ts.T
+						tsFinal.Rate = ts.Rate
+						snFinal = p.SequenceNumber()
+					}
+				}
 			}
+		}
+	}
+
+	// Use the first and last timestamp to compute sample rate.
+	if tsInit != nil && tsFinal != nil {
+		dt := float64(tsFinal.T-tsInit.T) / tsInit.Rate
+		// TODO: check for wrap of timestamp if < 48 bits
+		// TODO: what if ts.Rate changes between Init and Final?
+		if ds := snFinal - snInit; ds > 0 {
+			device.sampleRate = dt / float64(ds)
 		}
 	}
 
@@ -257,13 +285,14 @@ func (as *AbacoSource) Sample() error {
 	as.rowColCodes = make([]RowColCode, as.nchan)
 	i := 0
 	for _, device := range as.active {
+		as.sampleRate = device.sampleRate
+		// TODO: what if multiple devices have unequal rates??
 		for j := 0; j < device.nchan; j++ {
 			as.rowColCodes[i] = rcCode(0, i, 1, as.nchan)
 			i++
 		}
 	}
 
-	as.sampleRate = 125000.0 // HACK! For now, assume a value.
 	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
 
 	return nil
