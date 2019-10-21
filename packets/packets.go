@@ -80,6 +80,24 @@ func (p *Packet) Length() int {
 	return p.packetLength
 }
 
+// SequenceNumber returns the packet's internal sequenceNumber
+func (p *Packet) SequenceNumber() uint32 {
+	return p.sequenceNumber
+}
+
+// Timestamp returns a copy of the first PacketTimestamp found in the header, or nil if none.
+func (p *Packet) Timestamp() *PacketTimestamp {
+	for _, tlv := range p.otherTLV {
+		if ts, ok := tlv.(*PacketTimestamp); ok {
+			tsCopy := new(PacketTimestamp)
+			tsCopy.rate = ts.rate
+			tsCopy.t = ts.t
+			return tsCopy
+		}
+	}
+	return nil
+}
+
 // NewData adds data to the packet, and crates the format and shape TLV items to match.
 func (p *Packet) NewData(data interface{}, dims []int16) error {
 	ndim := len(dims)

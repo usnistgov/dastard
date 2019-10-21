@@ -377,7 +377,6 @@ func TestTLVs(t *testing.T) {
 
 func TestFullPackets(t *testing.T) {
 	p := NewPacket(12, 99, 100, 0)
-	p.Bytes()
 	nd := 100
 	dims := []int16{8}
 	d16 := make([]int16, nd)
@@ -405,10 +404,12 @@ func TestFullPackets(t *testing.T) {
 		if pread.Data == nil {
 			t.Errorf("ReadPacket yielded no data, expect %v\n", reflect.TypeOf(d))
 		}
+		if ts := pread.Timestamp(); ts != nil {
+			t.Errorf("ReadPacket.Timestamp() yielded %v, expected nil", ts)
+		}
 	}
 
 	p.ClearData()
-	p.Bytes()
 
 	nd = 1024
 	d64 = make([]int64, nd)
@@ -441,6 +442,19 @@ func TestFullPackets(t *testing.T) {
 		if pread.sequenceNumber != i {
 			t.Errorf("Packet has sequence number %d, want %d", pread.sequenceNumber, i)
 		}
+		if pread.SequenceNumber() != i {
+			t.Errorf("Packet returns SequenceNumber()=%d, want %d", pread.sequenceNumber, i)
+		}
+	}
+	ts := new(PacketTimestamp)
+	ts.rate = 250e8
+	ts.t = 0x123456
+	p.otherTLV = append(p.otherTLV, ts)
+	tsCopy := p.Timestamp()
+	if tsCopy == nil {
+		t.Errorf("Packet.Timestamp() returns nil, want %v", ts)
+	} else if tsCopy.rate != ts.rate || tsCopy.t != ts.t {
+		t.Errorf("Packet.Timestamp() returns %v, want %v", tsCopy, ts)
 	}
 
 }
