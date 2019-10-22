@@ -93,6 +93,7 @@ func (device *AbacoDevice) sampleCard() error {
 	// Capture timestamp and sample # for a range of packets. Use to find rate.
 	var tsInit, tsFinal packets.PacketTimestamp
 	var snInit, snFinal uint32
+	samplesInPackets := 0
 
 	packetsRead := 0
 	for packetsRead < minPacketsToRead {
@@ -121,6 +122,7 @@ func (device *AbacoDevice) sampleCard() error {
 					device.nchan = nchan + offset
 				}
 
+				samplesInPackets += p.Frames()
 				if ts := p.Timestamp(); ts != nil && ts.Rate != 0 {
 					if tsInit.T == 0 {
 						tsInit.T = ts.T
@@ -142,10 +144,14 @@ func (device *AbacoDevice) sampleCard() error {
 		dt := float64(tsFinal.T-tsInit.T) / tsInit.Rate
 		// TODO: check for wrap of timestamp if < 48 bits
 		// TODO: what if ts.Rate changes between Init and Final?
-		if ds := snFinal - snInit; ds > 0 {
-			device.sampleRate = float64(ds) / dt
-			fmt.Printf("Sample rate %.3g /sec determined from %d packets: dt=%f ds=%d\n", device.sampleRate,
-				packetsRead, dt, ds)
+
+		// Careful: assume that any missed packets had same number of samples as
+		// the packets that we did see. Thus find the average samples per packet.
+		if dserial := snFinal - snInit; dserial > 0 {
+			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
+			device.sampleRate = float64(dserial) * avgSampPerPacket / dt
+			fmt.Printf("Sample rate %.3g /sec determined from %d packets: dt=%f dserial=%d and %f samp/packet\n", device.sampleRate,
+				packetsRead, dt, dserial, avgSampPerPacket)
 		}
 	}
 

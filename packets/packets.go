@@ -80,6 +80,30 @@ func (p *Packet) Length() int {
 	return p.packetLength
 }
 
+// Frames returns the number of data frames in the packet
+func (p *Packet) Frames() int {
+	if p.shape == nil {
+		return 0
+	}
+	nchan := 1
+	for _, s := range p.shape.Sizes {
+		if s > 0 {
+			nchan *= int(s)
+		}
+	}
+
+	switch d := p.Data.(type) {
+	case []int16:
+		return len(d) / nchan
+	case []int32:
+		return len(d) / nchan
+	case []int64:
+		return len(d) / nchan
+	default:
+		return 0
+	}
+}
+
 // SequenceNumber returns the packet's internal sequenceNumber
 func (p *Packet) SequenceNumber() uint32 {
 	return p.sequenceNumber
