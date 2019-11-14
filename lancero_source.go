@@ -591,9 +591,6 @@ func (ls *LanceroSource) launchLanceroReader() {
 				}
 				q, p, ncols, err := lancero.FindFrameBits(b, lanceroFBOffset)
 				nrows := (p - q) / ncols
-				if dev.nrows != 24 {
-					panic(fmt.Sprintf("%v", dev.nrows))
-				}
 				if ncols != dev.ncols || nrows != dev.nrows || err != nil {
 					fmt.Printf("ncols have %v, want %v. nrows have %v, want %v, timeSinceLastSuccesfulRead %v\n",
 						ncols, dev.ncols, nrows, dev.nrows, timeSinceLastSuccesfulRead)
