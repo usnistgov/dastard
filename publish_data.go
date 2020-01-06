@@ -242,7 +242,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 				modelCoefs[i] = float32(v)
 			}
 			err := dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
-				float32(record.pretrigMean), float32(record.residualStdDev), modelCoefs)
+				float32(record.pretrigMean), float32(record.pretrigDelta), float32(record.residualStdDev), modelCoefs)
 			if err != nil {
 				return err
 			}
@@ -376,7 +376,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetOption(czmq.SockSetSndhwm(1)) // use no zmq buffer, rely only on pubchan as buffer	
+	pubSocket.SetOption(czmq.SockSetSndhwm(1)) // use no zmq buffer, rely only on pubchan as buffer
 	if err != nil {
 		return nil, err
 	}

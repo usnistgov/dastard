@@ -944,6 +944,7 @@ type DataRecord struct {
 
 	// Analyzed quantities
 	pretrigMean  float64
+	pretrigDelta float64
 	pulseAverage float64
 	pulseRMS     float64
 	peakValue    float64

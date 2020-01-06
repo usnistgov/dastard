@@ -60,7 +60,7 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	writer.ChannelName = ChannelName
 	writer.ChannelNumberMatchingName = ChannelNumberMatchingName
 	writer.FileFormat = "OFF"
-	writer.FileFormatVersion = "0.2.0"
+	writer.FileFormatVersion = "0.3.0"
 	writer.MaxPresamples = MaxPresamples
 	writer.FramePeriodSeconds = FramePeriodSeconds
 	writer.NumberOfBases, _ = Projectors.Dims()
@@ -158,7 +158,7 @@ func (w *Writer) WriteHeader() error {
 
 // WriteRecord writes a record to the file
 func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, framecount int64,
-	timestamp int64, pretriggerMean float32, residualStdDev float32, data []float32) error {
+	timestamp int64, pretriggerMean float32, pretriggerDelta float32, residualStdDev float32, data []float32) error {
 	if len(data) != w.NumberOfBases {
 		return fmt.Errorf("wrong number of bases, have %v, want %v", len(data), w.NumberOfBases)
 	}
@@ -175,6 +175,9 @@ func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, framec
 		return err
 	}
 	if _, err := w.writer.Write(getbytes.FromFloat32(pretriggerMean)); err != nil {
+		return err
+	}
+	if _, err := w.writer.Write(getbytes.FromFloat32(pretriggerDelta)); err != nil {
 		return err
 	}
 	if _, err := w.writer.Write(getbytes.FromFloat32(residualStdDev)); err != nil {

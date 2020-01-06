@@ -195,11 +195,18 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			}
 		}
 
-		var val float64
+		var val float64        // used to calculate pretrigger mean, then reused in the next loop
+		var valPTDelta float64 // used to calculate pretrigger delta
+		// slope = dot(x,y.-y[0])/z where z = dot(x,x) and x = [0, 1, 2, ..., N-1]/(N-1), where .-y[0] is elementwise subtraction of the first element
+		np := rec.presamples
+		a := float64(np*(np-1)*(2*np-1)) / float64(6) / float64((np - 1)) // a is the sum of np^2 from 0 to np-1 over (np-1)
+		// a converts valPTDelta to the change over the length of the pretrigger
 		for i := 0; i < rec.presamples; i++ {
 			val += dataVec.AtVec(i)
+			valPTDelta += (dataVec.AtVec(i) - dataVec.AtVec(0)) * float64(i)
 		}
 		ptm := val / float64(rec.presamples)
+		rec.pretrigDelta = valPTDelta / a
 		rec.pretrigMean = ptm
 
 		max := ptm
