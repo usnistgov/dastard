@@ -29,8 +29,8 @@ func TestStdDev(t *testing.T) {
 	}
 }
 
-// TestAnalyze tests the DataChannel.AnalyzeData computations on a very simple "pulse".
-func TestAnalyze(t *testing.T) {
+// TestAnalyzeA tests the DataChannel.AnalyzeData computations on a very simple "pulse".
+func TestAnalyzeA(t *testing.T) {
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4}
 	records := []*DataRecord{rec}
@@ -54,8 +54,8 @@ func TestAnalyze(t *testing.T) {
 	}
 }
 
-// TestAnalyze2 tests the DataChannel.AnalyzeData computations on a very simple "pulse". Nearly identical to TestAnalyze but with a sloped pretrig
-func TestAnalyze2(t *testing.T) {
+// TestAnalyzeB tests the DataChannel.AnalyzeData computations on a very simple "pulse". Nearly identical to TestAnalyze but with a sloped pretrig
+func TestAnalyzeB(t *testing.T) {
 	d := []RawType{13, 12, 11, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4}
 	records := []*DataRecord{rec}
@@ -67,7 +67,7 @@ func TestAnalyze2(t *testing.T) {
 		ResidualStdDev: 0,
 		ModelCoefs:     nil,
 		pretrigMean:    11.5, pretrigDelta: -3, Avg: 3.5, Max: 8.5, RMS: 4.6278144589716055}
-	testAnalyzeCheck(t, rec, expect, "Analyze A")
+	testAnalyzeCheck(t, rec, expect, "Analyze B")
 
 	tstate := TriggerState{EdgeTrigger: true, EdgeLevel: 123}
 	dsp.ConfigureTrigger(tstate) // for fuller test coverage
@@ -76,6 +76,46 @@ func TestAnalyze2(t *testing.T) {
 	}
 	if dsp.EdgeLevel != 123 {
 		t.Errorf("EdgeLevel = %d, want 123", dsp.EdgeLevel)
+	}
+}
+
+// TestAnalyzePre tests the DataChannel.AnalyzeData pretrigger computations
+func TestAnalyzePre(t *testing.T) {
+	data := make([]RawType, 20)
+	slopes := []float64{0, 1, 5, -2, -50, 0.333333, 1.5, 10.94}
+	firsts := []float64{40, 100, 1000}
+	npres := []int{4, 7, 13}
+	for _, npre := range(npres) {
+		for _, m := range(slopes) {
+			for _, b := range(firsts) {
+				sum := 0.0
+				sumx := 0.0
+				sumxy := 0.0
+				sumx2 := 0.0
+				for j := 0; j<npre; j++ {
+					data[j] = RawType(b + m*float64(j)+0.5)
+					sum += float64(data[j])
+					sumx += float64(j)
+					sumx2 += float64(j*j)
+					sumxy += float64(j)*float64(data[j])
+				}
+				mean := sum/float64(npre)
+				regressSlope := (sumxy-sumx*sum/float64(npre))/(sumx2 - (sumx*sumx)/float64(npre))
+				rec := &DataRecord{data: data, presamples: npre}
+				records := []*DataRecord{rec}
+
+				dsp := &DataStreamProcessor{NPresamples: npre, NSamples: len(data), projectors: &mat.Dense{}, basis: &mat.Dense{}}
+				dsp.AnalyzeData(records)
+
+				expect := RTExpect{
+					ResidualStdDev: 0,
+					ModelCoefs:     nil,
+					pretrigMean:    mean,
+					pretrigDelta:   regressSlope*float64(npre-1)}
+				testAnalyzePretrigCheck(t, rec, expect, "Analyze Pre")
+
+			}
+		}
 	}
 }
 
@@ -198,6 +238,17 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 	}
 	if rec.pulseRMS != expect.RMS && !(math.IsNaN(rec.pulseRMS) && math.IsNaN(expect.RMS)) {
 		t.Errorf("%v, Pulse RMS = %v, want %v", name, rec.pulseRMS, expect.RMS)
+		t.Logf("%v\n", rec)
+	}
+}
+
+func testAnalyzePretrigCheck(t *testing.T, rec *DataRecord, expect RTExpect, name string) {
+	if math.Abs(rec.pretrigMean - expect.pretrigMean) > 1e-7 && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.pretrigMean)) {
+		t.Errorf("Pretrigger mean = %v, want %v", rec.pretrigMean, expect.pretrigMean)
+		t.Logf("%v\n", rec)
+	}
+	if math.Abs(rec.pretrigDelta - expect.pretrigDelta) > 1e-7 && !(math.IsNaN(rec.pretrigDelta) && math.IsNaN(expect.pretrigDelta)) {
+		t.Errorf("Pretrigger delta = %v, want %v", rec.pretrigDelta, expect.pretrigDelta)
 		t.Logf("%v\n", rec)
 	}
 }
