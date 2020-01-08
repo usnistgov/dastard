@@ -206,12 +206,12 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			valPTDelta += (dataVec.AtVec(i) - d0) * (float64(i) - xmean)
 		}
 		ptm := val / float64(npre)
-		rec.pretrigDelta = valPTDelta * 12.0 / float64(npre*(npre+1))
+		rec.pretrigMean = ptm
 		if npre <= 1 {
 			rec.pretrigDelta = math.NaN()
+		} else {
+			rec.pretrigDelta = valPTDelta * 12.0 / float64(npre*(npre+1))
 		}
-
-		rec.pretrigMean = ptm
 
 		max := ptm
 		var sum, sum2 float64
