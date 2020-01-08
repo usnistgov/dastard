@@ -108,8 +108,6 @@ func TestAnalyzePre(t *testing.T) {
 				dsp.AnalyzeData(records)
 
 				expect := RTExpect{
-					ResidualStdDev: 0,
-					ModelCoefs:     nil,
 					pretrigMean:    mean,
 					pretrigDelta:   regressSlope*float64(npre-1)}
 				testAnalyzePretrigCheck(t, rec, expect, "Analyze Pre")
