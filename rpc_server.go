@@ -79,6 +79,7 @@ type ServerStatus struct {
 	Nchannels              int
 	Nsamples               int
 	Npresamp               int
+	SamplePeriod           time.Duration // time per sample
 	Ncol                   []int
 	Nrow                   []int
 	ChannelsWithProjectors []int // move this to something than reports mix also? and experimentStateLabel
@@ -319,6 +320,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		return err
 	}
 	s.isSourceActive = true
+	s.status.SamplePeriod = s.ActiveSource.SamplePeriod()
 	s.status.Nchannels = s.ActiveSource.Nchan()
 	if ls, ok := s.ActiveSource.(*LanceroSource); ok {
 		s.status.Ncol = make([]int, ls.ncards)
@@ -432,6 +434,11 @@ type StateLabelConfig struct {
 // The timestamp is fixed as soon as the RPC command is received
 func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply *bool) error {
 	timestamp := time.Now()
+	if config.Label == "" {
+		err := fmt.Errorf("the state label was an empty string, pass a non-empty string")
+		*reply = (err == nil)
+		return err
+	}
 	f := func() {
 		err := s.ActiveSource.SetExperimentStateLabel(timestamp, config.Label)
 		s.queuedResults <- err

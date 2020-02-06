@@ -45,6 +45,7 @@ type DataSource interface {
 	SetStateInactive() error
 	getNextBlock() chan *dataBlock
 	Nchan() int
+	SamplePeriod() time.Duration
 	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
 	ComputeWritingState() WritingState
@@ -274,6 +275,11 @@ type AnySource struct {
 	readCounter         int
 }
 
+// SamplePeriod returns the sample period of the underlying source.
+func (ds *AnySource) SamplePeriod() (time.Duration) {
+	return ds.samplePeriod
+}
+
 // getPulseLengths returns (NPresamples, NSamples, err)
 func (ds *AnySource) getPulseLengths() (int, int, error) {
 	if len(ds.processors) < 1 {
@@ -347,33 +353,35 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 	return ds.writingState.SetExperimentStateLabel(timestamp, stateLabel)
 }
 
-// HandleDataDrop writes to a file in the case that a data drop is detected
-//data drop refers to a case where a read from a source, eg the LanceroSource misses some frames of data
+// HandleDataDrop writes to a file in the case that a data drop is detected.
+// "Data drop" refers to a case where a read from a source (e.g., the LanceroSource)
+// misses some frames of data.
 func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
-
-	if ds.writingState.dataDropFileBufferedWriter == nil && droppedFrames > 0 {
-		// create file
-		var err error
-		ds.writingState.dataDropFile, err = os.Create(ds.writingState.DataDropFilename)
-		if err != nil {
-			return fmt.Errorf("cannot create DataDropFile, %v", err)
-		}
-		ds.writingState.dataDropFileBufferedWriter = bufio.NewWriter(ds.writingState.dataDropFile)
-		// write header
-		_, err = ds.writingState.dataDropFileBufferedWriter.WriteString("# firstFramenum after drop, number of dropped frames\n")
-		if err != nil {
-			return fmt.Errorf("cannot write header to dataDroFileBufferedWriter, err %v", err)
-		}
-	}
 	if droppedFrames > 0 {
 		ds.writingState.dataDropsObserved++
-
-		line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
-		_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
-		if err != nil {
-			return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
-		}
 		fmt.Printf("DATA DROP. firstFramenum %v, droppedFrames %v\n", firstFramenum, droppedFrames)
+		if ds.writingState.IsActive() {
+			if ds.writingState.dataDropFileBufferedWriter == nil {
+				// create file
+				var err error
+				ds.writingState.dataDropFile, err = os.Create(ds.writingState.DataDropFilename)
+				if err != nil {
+					return fmt.Errorf("cannot create DataDropFile filename `%v`: err: %v",
+						ds.writingState.DataDropFilename, err)
+				}
+				ds.writingState.dataDropFileBufferedWriter = bufio.NewWriter(ds.writingState.dataDropFile)
+				// write header
+				_, err = ds.writingState.dataDropFileBufferedWriter.WriteString("# firstFramenum after drop, number of dropped frames\n")
+				if err != nil {
+					return fmt.Errorf("cannot write header to dataDroFileBufferedWriter, err %v", err)
+				}
+			}
+			line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
+			_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
+			if err != nil {
+				return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
+			}
+		}
 	}
 	select { // occasionally flush file and send messae about number of observed data drops
 	case <-ds.writingState.dataDropTicker.C:
@@ -943,6 +951,7 @@ type DataRecord struct {
 
 	// Analyzed quantities
 	pretrigMean  float64
+	pretrigDelta float64
 	pulseAverage float64
 	pulseRMS     float64
 	peakValue    float64

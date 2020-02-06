@@ -561,6 +561,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 	ls.readPeriod = 50 * time.Millisecond
 	go func() {
 		ticker := time.NewTicker(ls.readPeriod)
+		lastSuccesfulRead := time.Now()
 		for {
 			select {
 			case <-ls.abortSelf:
@@ -568,6 +569,10 @@ func (ls *LanceroSource) launchLanceroReader() {
 				return
 
 			case <-ticker.C:
+				timeSinceLastSuccesfulRead := time.Now().Sub(lastSuccesfulRead)
+				if timeSinceLastSuccesfulRead > 5*time.Second {
+					panic("too long since last succesful read")
+				}
 				var buffers [][]RawType
 				framesUsed := math.MaxInt64
 				var lastSampleTime time.Time
@@ -578,6 +583,10 @@ func (ls *LanceroSource) launchLanceroReader() {
 					if err != nil {
 						panic("Warning: AvailableBuffer failed")
 					}
+					if len(b) < 3*dev.frameSize { // read is too small
+						fmt.Println("lancero read too small")
+						continue
+					}
 					q, p, ncols, _ := lancero.FindFrameBits(b, lanceroFBOffset)
 					nrows := (p - q) / ncols
 					if ncols != dev.ncols || nrows != dev.nrows {
@@ -585,69 +594,89 @@ func (ls *LanceroSource) launchLanceroReader() {
 							ncols, dev.ncols, nrows, dev.nrows))
 					}
 					firstWord := q
-					if firstWord > 0 {
+					// check for dataDrop
+					if firstWord != dev.ncols*dev.nrows {
+						// if data drop detected
+						// alter b and timeFix in place
 						dataDropDetected = true
 						// align to next frame start
-						buffers = append(buffers, bytesToRawType(b[firstWord*4:]))
-						log.Printf("DATA DROP, first word = %v\n", firstWord)
-						if len(ls.active) > 1 {
-							panic("dropped data, handling multiple devices not yet implemented")
+						dropFromStart := firstWord * 4
+						if firstWord == 0 {
+							panic("not sure what to do here, but it wont self fix")
 						}
-					} else {
-						buffers = append(buffers, bytesToRawType(b))
+						dev.card.ReleaseBytes(dropFromStart) // we could instead remember dropFromStart and add it
+						// to the later call to ReleaseBytes
+						dropFromEnd := dev.frameSize - dropFromStart
+						if dropFromEnd <= 0 {
+							fmt.Printf("firstWord %v, dropFromStart %v, dropFromEnd %v\n", firstWord, dropFromEnd, dropFromStart)
+							panic("expect dropFromEnd>0")
+						}
+						b = b[dropFromStart : len(b)-dropFromEnd]
+						fractionOfSampledPeriod := float64(dropFromEnd) / float64(dev.frameSize)
+						timeFix = timeFix.Add(-ls.samplePeriod * time.Duration(fractionOfSampledPeriod))
+						log.Printf("DATA DROP, first word = %v\n", firstWord)
 					}
+
+					buffers = append(buffers, bytesToRawType(b))
 					bframes := len(b) / dev.frameSize
-					if bframes < framesUsed {
+					if bframes < framesUsed { // for multiple cards, take data amount equal to minimum across all cards
 						framesUsed = bframes
 						lastSampleTime = timeFix
 					}
-				}
-				timeDiff := lastSampleTime.Sub(ls.lastread)
-				if timeDiff > 2*ls.readPeriod {
-					fmt.Println("timeDiff in lancero reader", timeDiff)
-				}
-				ls.lastread = lastSampleTime
 
-				// Consume framesUsed frames of data from each channel.
-				// Careful! This slice of slices will be in lancero READOUT order:
-				// r0c0, r0c1, r0c2, etc.
-				datacopies := make([][]RawType, ls.nchan)
-				for i := range ls.processors {
-					datacopies[i] = make([]RawType, framesUsed)
-				}
-
-				// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
-				// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
-				// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
-				// this loop handles 10938 frames in 20.5 ms on 687horton, aka aka 1.9 us/frame
-				// the previous loop handles 52000 frames in 253 ms, aka 4.8 us/frame
-				// when running more than 2 lancero cards, even this version may not keep up reliably
-				nchanPrevDevices := 0
-				for ibuf, dev := range ls.active {
-					buffer := buffers[ibuf]
-					nchan := dev.ncols * dev.nrows * 2
-					for i := 0; i < nchan; i++ {
-						dc := datacopies[i+nchanPrevDevices]
-						idx := i
-						for j := 0; j < framesUsed; j++ {
-							dc[j] = buffer[idx]
-							idx += nchan
-						}
+					timeDiff := lastSampleTime.Sub(ls.lastread)
+					if timeDiff > 2*ls.readPeriod {
+						fmt.Println("timeDiff in lancero reader", timeDiff)
 					}
-					nchanPrevDevices += nchan
+					ls.lastread = lastSampleTime
+
+					if framesUsed == math.MaxInt64 || framesUsed == 0 {
+						panic("should not get here")
+					}
+					// Consume framesUsed frames of data from each channel.
+					// Careful! This slice of slices will be in lancero READOUT order:
+					// r0c0, r0c1, r0c2, etc.
+					datacopies := make([][]RawType, ls.nchan)
+					for i := range ls.processors {
+						datacopies[i] = make([]RawType, framesUsed)
+					}
+
+					// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
+					// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
+					// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
+					// this loop handles 10938 frames in 20.5 ms on 687horton, aka aka 1.9 us/frame
+					// the previous loop handles 52000 frames in 253 ms, aka 4.8 us/frame
+					// when running more than 2 lancero cards, even this version may not keep up reliably
+					nchanPrevDevices := 0
+					for ibuf, dev := range ls.active {
+						buffer := buffers[ibuf]
+						nchan := dev.ncols * dev.nrows * 2
+						for i := 0; i < nchan; i++ {
+							dc := datacopies[i+nchanPrevDevices]
+							idx := i
+							for j := 0; j < framesUsed; j++ {
+								dc[j] = buffer[idx]
+								idx += nchan
+							}
+						}
+						nchanPrevDevices += nchan
+					}
+					// Inform the driver to release the data we just consumed
+					totalBytes := 0
+					for _, dev := range ls.active {
+						release := framesUsed * dev.frameSize
+						dev.card.ReleaseBytes(release)
+						totalBytes += release
+					}
+					if len(ls.buffersChan) == cap(ls.buffersChan) {
+						panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
+					}
+					ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
+						timeDiff: timeDiff, totalBytes: totalBytes, dataDropDetected: dataDropDetected}
+					if !dataDropDetected {
+						lastSuccesfulRead = time.Now()
+					}
 				}
-				// Inform the driver to release the data we just consumed
-				totalBytes := 0
-				for _, dev := range ls.active {
-					release := framesUsed * dev.frameSize
-					dev.card.ReleaseBytes(release)
-					totalBytes += release
-				}
-				if len(ls.buffersChan) == cap(ls.buffersChan) {
-					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
-				}
-				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
-					timeDiff: timeDiff, totalBytes: totalBytes, dataDropDetected: dataDropDetected}
 			}
 		}
 	}()

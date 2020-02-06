@@ -29,8 +29,8 @@ func TestStdDev(t *testing.T) {
 	}
 }
 
-// TestAnalyze tests the DataChannel.AnalyzeData computations on a very simple "pulse".
-func TestAnalyze(t *testing.T) {
+// TestAnalyzeA tests the DataChannel.AnalyzeData computations on a very simple "pulse".
+func TestAnalyzeA(t *testing.T) {
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4}
 	records := []*DataRecord{rec}
@@ -41,7 +41,7 @@ func TestAnalyze(t *testing.T) {
 	expect := RTExpect{
 		ResidualStdDev: 0,
 		ModelCoefs:     nil,
-		PTM:            10.0, Avg: 5.0, Max: 10.0, RMS: 5.84522597225006}
+		pretrigMean:    10.0, pretrigDelta: 0, Avg: 5.0, Max: 10.0, RMS: 5.84522597225006}
 	testAnalyzeCheck(t, rec, expect, "Analyze A")
 
 	tstate := TriggerState{EdgeTrigger: true, EdgeLevel: 123}
@@ -54,11 +54,75 @@ func TestAnalyze(t *testing.T) {
 	}
 }
 
+// TestAnalyzeB tests the DataChannel.AnalyzeData computations on a very simple "pulse". Nearly identical to TestAnalyze but with a sloped pretrig
+func TestAnalyzeB(t *testing.T) {
+	d := []RawType{13, 12, 11, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
+	rec := &DataRecord{data: d, presamples: 4}
+	records := []*DataRecord{rec}
+
+	dsp := &DataStreamProcessor{NPresamples: 4, NSamples: len(d), projectors: &mat.Dense{}, basis: &mat.Dense{}}
+	dsp.AnalyzeData(records)
+
+	expect := RTExpect{
+		ResidualStdDev: 0,
+		ModelCoefs:     nil,
+		pretrigMean:    11.5, pretrigDelta: -3, Avg: 3.5, Max: 8.5, RMS: 4.6278144589716055}
+	testAnalyzeCheck(t, rec, expect, "Analyze B")
+
+	tstate := TriggerState{EdgeTrigger: true, EdgeLevel: 123}
+	dsp.ConfigureTrigger(tstate) // for fuller test coverage
+	if !dsp.EdgeTrigger {
+		t.Error("EdgeTrigger is off, want on")
+	}
+	if dsp.EdgeLevel != 123 {
+		t.Errorf("EdgeLevel = %d, want 123", dsp.EdgeLevel)
+	}
+}
+
+// TestAnalyzePre tests the DataChannel.AnalyzeData pretrigger computations
+func TestAnalyzePre(t *testing.T) {
+	data := make([]RawType, 20)
+	slopes := []float64{0, 1, 5, -2, -50, 0.333333, 1.5, 10.94}
+	firsts := []float64{40, 100, 1000}
+	npres := []int{4, 7, 13}
+	for _, npre := range(npres) {
+		for _, m := range(slopes) {
+			for _, b := range(firsts) {
+				sum := 0.0
+				sumx := 0.0
+				sumxy := 0.0
+				sumx2 := 0.0
+				for j := 0; j<npre; j++ {
+					data[j] = RawType(b + m*float64(j)+0.5)
+					sum += float64(data[j])
+					sumx += float64(j)
+					sumx2 += float64(j*j)
+					sumxy += float64(j)*float64(data[j])
+				}
+				mean := sum/float64(npre)
+				regressSlope := (sumxy-sumx*sum/float64(npre))/(sumx2 - (sumx*sumx)/float64(npre))
+				rec := &DataRecord{data: data, presamples: npre}
+				records := []*DataRecord{rec}
+
+				dsp := &DataStreamProcessor{NPresamples: npre, NSamples: len(data), projectors: &mat.Dense{}, basis: &mat.Dense{}}
+				dsp.AnalyzeData(records)
+
+				expect := RTExpect{
+					pretrigMean:    mean,
+					pretrigDelta:   regressSlope*float64(npre-1)}
+				testAnalyzePretrigCheck(t, rec, expect, "Analyze Pre")
+
+			}
+		}
+	}
+}
+
 type RTExpect struct {
 	Max            float64
 	RMS            float64
 	Avg            float64
-	PTM            float64
+	pretrigMean    float64
+	pretrigDelta   float64
 	ModelCoefs     []float64
 	ResidualStdDev float64
 }
@@ -92,7 +156,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	expect := RTExpect{
 		ResidualStdDev: 1.7320508075688772,
 		ModelCoefs:     []float64{1, 2, 3},
-		PTM:            1.0, Avg: 2.0, Max: 3.0, RMS: 2.1602468994692865}
+		pretrigMean:    1.0, pretrigDelta: math.NaN(), Avg: 2.0, Max: 3.0, RMS: 2.1602468994692865}
 	testAnalyzeCheck(t, rec, expect, "Realtime A: 3 Bases, no Trunc")
 
 	// assign the projectors and basis
@@ -112,7 +176,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	expect = RTExpect{
 		ResidualStdDev: 1.479019945774904,
 		ModelCoefs:     []float64{1},
-		PTM:            1.0, Avg: 2.0, Max: 3.0, RMS: 2.1602468994692865}
+		pretrigMean:    1.0, pretrigDelta: math.NaN(), Avg: 2.0, Max: 3.0, RMS: 2.1602468994692865}
 	testAnalyzeCheck(t, rec, expect, "Realtime B: 1 Bases, no Trunc")
 
 	d = []RawType{1, 2, 3}
@@ -123,7 +187,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	expect = RTExpect{
 		ResidualStdDev: 0,
 		ModelCoefs:     nil,
-		PTM:            1.0, Avg: 1.5, Max: 2.0, RMS: 1.5811388300841898}
+		pretrigMean:    1.0, pretrigDelta: math.NaN(), Avg: 1.5, Max: 2.0, RMS: 1.5811388300841898}
 	testAnalyzeCheck(t, rec, expect, "Realtime C: 3 Bases, record truncated at end")
 
 	d = []RawType{1, 2, 3}
@@ -134,7 +198,7 @@ func TestAnalyzeRealtimeBases(t *testing.T) {
 	expect = RTExpect{
 		ResidualStdDev: 0,
 		ModelCoefs:     nil,
-		PTM:            math.NaN(), Avg: math.NaN(), Max: math.NaN(), RMS: math.NaN()}
+		pretrigMean:    math.NaN(), pretrigDelta: math.NaN(), Avg: math.NaN(), Max: math.NaN(), RMS: math.NaN()}
 	testAnalyzeCheck(t, rec, expect, "Realtime D: 3 Bases, record truncated at front")
 
 }
@@ -154,8 +218,12 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 		t.Log(name, "\nrec.modelCoefs", rec.modelCoefs)
 		t.Error("should equal expectModelCoefs", expect.ModelCoefs)
 	}
-	if rec.pretrigMean != expect.PTM && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.PTM)) {
-		t.Errorf("Pretrigger mean = %v, want %v", rec.pretrigMean, expect.PTM)
+	if rec.pretrigMean != expect.pretrigMean && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.pretrigMean)) {
+		t.Errorf("Pretrigger mean = %v, want %v", rec.pretrigMean, expect.pretrigMean)
+		t.Logf("%v\n", rec)
+	}
+	if rec.pretrigDelta != expect.pretrigDelta && !(math.IsNaN(rec.pretrigDelta) && math.IsNaN(expect.pretrigDelta)) {
+		t.Errorf("Pretrigger delta = %v, want %v", rec.pretrigDelta, expect.pretrigDelta)
 		t.Logf("%v\n", rec)
 	}
 	if rec.pulseAverage != expect.Avg && !(math.IsNaN(rec.pulseAverage) && math.IsNaN(expect.Avg)) {
@@ -168,6 +236,17 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 	}
 	if rec.pulseRMS != expect.RMS && !(math.IsNaN(rec.pulseRMS) && math.IsNaN(expect.RMS)) {
 		t.Errorf("%v, Pulse RMS = %v, want %v", name, rec.pulseRMS, expect.RMS)
+		t.Logf("%v\n", rec)
+	}
+}
+
+func testAnalyzePretrigCheck(t *testing.T, rec *DataRecord, expect RTExpect, name string) {
+	if math.Abs(rec.pretrigMean - expect.pretrigMean) > 1e-7 && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.pretrigMean)) {
+		t.Errorf("Pretrigger mean = %v, want %v", rec.pretrigMean, expect.pretrigMean)
+		t.Logf("%v\n", rec)
+	}
+	if math.Abs(rec.pretrigDelta - expect.pretrigDelta) > 1e-7 && !(math.IsNaN(rec.pretrigDelta) && math.IsNaN(expect.pretrigDelta)) {
+		t.Errorf("Pretrigger delta = %v, want %v", rec.pretrigDelta, expect.pretrigDelta)
 		t.Logf("%v\n", rec)
 	}
 }
