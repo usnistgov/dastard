@@ -3,6 +3,8 @@
 **0.2.6** January 2020
 * Change handling of data drops.
 * Generate OFF files v0.3.0, with pretrigger Deltas.
+* Usability features improved.
+* Abaco source with packets.
 
 **0.2.5** September 5, 2019
 * Abaco data source works for streaming data (not packets).
