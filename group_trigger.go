@@ -235,7 +235,9 @@ func (broker *TriggerBroker) Run() {
 			// It's a data race if we don't make a new slice for each message:
 			countsSeen := make([]int, broker.nchannels)
 			for j := 0; j < broker.nchannels; j++ {
-				// fmt.Println(i, j, nMessages, broker.nchannels)
+				if i+1 >= len(broker.triggerCounters[j].messages) {
+					continue
+				}
 				message := broker.triggerCounters[j].messages[i]
 				if j == 0 { // first channel
 					hiTime = message.hiTime
