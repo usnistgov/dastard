@@ -432,16 +432,17 @@ type StateLabelConfig struct {
 // The timestamp is fixed as soon as the RPC command is received
 func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply *bool) error {
 	timestamp := time.Now()
-	if config.WaitForError {
-		f := func() {
-			s.queuedResults <- s.ActiveSource.SetExperimentStateLabel(timestamp, config.Label)
+	f := func() {
+		err := s.ActiveSource.SetExperimentStateLabel(timestamp, config.Label)
+		s.queuedResults <- err
+		if err == nil {
+			s.clientUpdates <- ClientUpdate{"STATELABEL", config.Label}
 		}
+	}
+	if config.WaitForError {
 		err := s.runLaterIfActive(f)
 		*reply = (err == nil)
 		return err
-	}
-	f := func() {
-		s.queuedResults <- s.ActiveSource.SetExperimentStateLabel(timestamp, config.Label)
 	}
 	f2 := func() {
 		err := s.runLaterIfActive(f)
