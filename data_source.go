@@ -45,6 +45,7 @@ type DataSource interface {
 	SetStateInactive() error
 	getNextBlock() chan *dataBlock
 	Nchan() int
+	SamplePeriod() time.Duration
 	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
 	ComputeWritingState() WritingState
@@ -274,6 +275,11 @@ type AnySource struct {
 	readCounter         int
 }
 
+// SamplePeriod returns the sample period of the underlying source.
+func (ds *AnySource) SamplePeriod() (time.Duration) {
+	return ds.samplePeriod
+}
+
 // getPulseLengths returns (NPresamples, NSamples, err)
 func (ds *AnySource) getPulseLengths() (int, int, error) {
 	if len(ds.processors) < 1 {
@@ -347,8 +353,9 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 	return ds.writingState.SetExperimentStateLabel(timestamp, stateLabel)
 }
 
-//HandlePotentialDroppedData writes to a file in the case that a data drop is detected
-//data drop refers to a case where a read from a source, eg the LanceroSource misses some frames of data
+// HandleDataDrop writes to a file in the case that a data drop is detected.
+// "Data drop" refers to a case where a read from a source (e.g., the LanceroSource)
+// misses some frames of data.
 func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 	if droppedFrames > 0 {
 		ds.writingState.dataDropsObserved++
