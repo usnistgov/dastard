@@ -65,8 +65,11 @@ func (tc *TriggerCounter) initialize() {
 // messageAndReset appends a new triggerCounterMessage to our slice of them and
 // reset to count triggers in the subsequent interval.
 func (tc *TriggerCounter) messageAndReset() {
+	// Generate a message
 	message := triggerCounterMessage{hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
 	tc.messages = append(tc.messages, message)
+
+	// Reset counters and lo/hi times.
 	tc.countsSeen = 0
 	tc.hiTime = tc.hiTime.Add(tc.stepDuration)
 	tc.lo = tc.hi + 1
@@ -231,13 +234,16 @@ func (broker *TriggerBroker) Run() {
 		var hiTime time.Time
 		var duration time.Duration
 		nMessages := len(broker.triggerCounters[0].messages)
+		for j := 1; j < broker.nchannels; j++ {
+			if len(broker.triggerCounters[j].messages) != nMessages {
+				msg := fmt.Sprintf("triggerCounter[%d] has %d messages, want %d", j, len(broker.triggerCounters[j].messages), nMessages)
+				panic(msg)
+			}
+		}
 		for i := 0; i < nMessages; i++ {
 			// It's a data race if we don't make a new slice for each message:
 			countsSeen := make([]int, broker.nchannels)
 			for j := 0; j < broker.nchannels; j++ {
-				if i+1 >= len(broker.triggerCounters[j].messages) {
-					continue
-				}
 				message := broker.triggerCounters[j].messages[i]
 				if j == 0 { // first channel
 					hiTime = message.hiTime
