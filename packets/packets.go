@@ -38,13 +38,14 @@ const maxPACKETLENGTH int = 8192
 
 // TLV types
 const (
-	tlvNULL          = byte(0)
-	tlvTIMESTAMP     = byte(0x11)
-	tlvCOUNTER       = byte(0x12)
-	tlvTIMESTAMPUNIT = byte(0x13)
-	tlvFORMAT        = byte(0x21)
-	tlvSHAPE         = byte(0x22)
-	tlvCHANOFFSET    = byte(0x23)
+	tlvNULL           = byte(0)
+	tlvTIMESTAMP      = byte(0x11)
+	tlvCOUNTER        = byte(0x12)
+	tlvTIMESTAMPUNIT  = byte(0x13)
+	tlvFORMAT         = byte(0x21)
+	tlvSHAPE          = byte(0x22)
+	tlvCHANOFFSET     = byte(0x23)
+	tlvUNKNOWNMYSTERY = byte(0x29)
 )
 
 // NewPacket generates a new packet with the given facts. No data are configured or stored.
@@ -69,11 +70,11 @@ func (p *Packet) ClearData() error {
 	return nil
 }
 
-// String returns a string summarizing the packet's version, sequence number, and size.
-func (p *Packet) String() string {
-	return fmt.Sprintf("Packet v0x%2.2x 0x%8.8x  Size (%2d+%5d)", p.version,
-		p.sequenceNumber, p.headerLength, p.payloadLength)
-}
+// // String returns a string summarizing the packet's version, sequence number, and size.
+// func (p *Packet) String() string {
+// 	return fmt.Sprintf("Packet v0x%2.2x 0x%8.8x  Size (%2d+%5d)", p.version,
+// 		p.sequenceNumber, p.headerLength, p.payloadLength)
+// }
 
 // Length returns the length of the entire packet, in bytes
 func (p *Packet) Length() int {
@@ -400,8 +401,14 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 				t, tlvsize, size)
 		}
 		switch t {
-		case tlvNULL:
-			// do nothing
+		case tlvNULL, tlvUNKNOWNMYSTERY:
+			// Consume the remainder of the TLV
+			var d uint16
+			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
+				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
+					return result, err
+				}
+			}
 
 		case tlvTIMESTAMP: // timestamps without units
 			var x uint16

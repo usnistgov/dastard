@@ -411,8 +411,17 @@ func (as *AbacoSource) readerMainLoop() {
 						}
 						totalBytes += 2 * len(d)
 
+					case []int32:
+						// TODO: this is only temporary
+						for j, val := range d {
+							idx := (j % nchan) + offset + nchanPrevDevices
+							datacopies[idx] = append(datacopies[idx], RawType(val/0x1000))
+						}
+						totalBytes += 4 * len(d)
+
 					default:
-						panic("Cannot parse packets that aren't of type []int16")
+						msg := fmt.Sprintf("Packets are of type %T, can only handle []int16", p.Data)
+						panic(msg)
 					}
 				}
 			}
