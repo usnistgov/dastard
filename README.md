@@ -3,8 +3,7 @@
 
 A data acquisition framework for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
-## Installation
- * Requires Ubuntu 16.
+## Installation Ubuntu 16
  
  ```
  sudo add-apt-repository 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
@@ -16,8 +15,21 @@ sudo apt-get install -y libsodium-dev python-pyqt5 libczmq-dev roxterm git golan
 sudo ln -s /usr/lib/go-1.10/bin/go /usr/local/bin/go
 go get -u github.com/usnistgov/dastard
 ```
- * Install microscope https://github.com/usnistgov/microscope
- * Install dastard-commander https://github.com/usnistgov/dastard-commander
+## Installation Ubuntu 18
+
+```
+sudo add-apt-repository ppa:h-realh/roxterm
+sudo apt-get update
+sudo apt-get install -y libsodium-dev python-pyqt5 libczmq-dev roxterm git golang-1.10-go golang-1.10
+sudo ln -s /usr/lib/go-1.10/bin/go /usr/local/bin/go
+go get -v -u github.com/usnistgov/dastard
+```
+
+## Installation - Do this too
+
+* Install microscope https://github.com/usnistgov/microscope
+* Install dastard-commander https://github.com/usnistgov/dastard-commander
+
 
 ## Purpose
 
