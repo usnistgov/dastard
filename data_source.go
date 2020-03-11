@@ -200,7 +200,7 @@ func (ds *AnySource) Stop() error {
 	ds.sourceStateLock.Unlock()
 
 	ds.RunDoneWait()
-	if ds.writingState.Active { // if writing, stop writing
+	if ds.writingState.Active { // if writing, Stop writing
 		wcc := WriteControlConfig{Request: "STOP"}
 		ds.WriteControl(&wcc)
 	}
