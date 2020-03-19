@@ -28,7 +28,7 @@ go get -v -u github.com/usnistgov/dastard
 ## Installation - Do this too
 
 * Install microscope https://github.com/usnistgov/microscope
-* Install dastard-commander https://github.com/usnistgov/dastard-commander
+* Install dastard_commander https://github.com/usnistgov/dastard_commander
 
 
 ## Purpose
