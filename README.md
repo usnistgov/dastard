@@ -65,7 +65,7 @@ Some goals for DASTARD, in addition to these reasons:
 
 DASTARD is a back-end program written in Go. It handles the "server" aspects of `ndfb_server`, as well as the triggering and data-recording duties of `matter`. It is complemented by two GUI-based projects: a control GUI and a data plotter.
 
-* [dastard-commander](https://github.com/usnistgov/dastard-commander) is a Python-Qt5 GUI to control Dastard.
+* [dastardcommander](https://github.com/usnistgov/dastardcommander) is a Python-Qt5 GUI to control Dastard.
 * [microscope](https://github.com/usnistgov/microscope) is a Qt-based plotting GUI to plot microcalorimeter pulse records, discrete Fourier transforms, and related data. It is written in C++ and contains code from [matter](https://bitbucket.org/nist_microcal/nasa_daq/)
 
 We envision future control clients other than dastard-commander. They should enable commanding from, for example, the beamline control system of a synchrotron.
