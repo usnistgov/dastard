@@ -458,9 +458,9 @@ func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply 
 				panic(fmt.Sprintf("error with WaitForError==false in SetExperimentStateLabel. %s", spew.Sdump(err)))
 			}
 		}
+		go f2()
+		return nil
 	}
-	go f2()
-	return nil
 }
 
 // WriteComment writes the comment to comment.txt
