@@ -82,7 +82,7 @@ type ServerStatus struct {
 	SamplePeriod           time.Duration // time per sample
 	Ncol                   []int
 	Nrow                   []int
-	ChannelsWithProjectors []int // move this to something than reports mix also? and experimentStateLabel
+	ChannelsWithProjectors []int // move this to something that reports mix also? and experimentStateLabel
 	// TODO: maybe bytes/sec data rate...?
 }
 
@@ -93,12 +93,12 @@ type Heartbeat struct {
 	DataMB  float64
 }
 
-// FactorArgs holds the arguments to a Multiply operation
+// FactorArgs holds the arguments to a Multiply operation (for testing!).
 type FactorArgs struct {
 	A, B int
 }
 
-// Multiply is a silly RPC service that multiplies its two arguments.
+// Multiply is a silly RPC service that multiplies its two arguments (for testing!).
 func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 	*reply = args.A * args.B
 	return nil
@@ -654,13 +654,13 @@ func RunRPCServer(portrpc int, block bool) {
 	err = viper.UnmarshalKey("abaco", &asc)
 	if err == nil {
 		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)
-		// intentionally not chcecking for configure errors since it might fail on non abaco systems
+		// intentionally not checking for configure errors since it might fail on non abaco systems
 	}
 	var rsc RoachSourceConfig
 	err = viper.UnmarshalKey("roach", &rsc)
 	if err == nil {
 		_ = sourceControl.ConfigureRoachSource(&rsc, &okay)
-		// intentionally not chcecking for configure errors since it might fail on non roach systems
+		// intentionally not checking for configure errors since it might fail on non roach systems
 	}
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
@@ -682,7 +682,7 @@ func RunRPCServer(portrpc int, block bool) {
 	err = viper.UnmarshalKey("tesmapfile", &mapFileName)
 	if err == nil {
 		_ = mapServer.Load(&mapFileName, &okay)
-		// intentially not checking for error, it ok if we fail to load a map file
+		// intentionally not checking for error, it ok if we fail to load a map file
 	}
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
