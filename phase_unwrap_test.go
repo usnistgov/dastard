@@ -5,8 +5,9 @@ import (
 )
 
 func TestUnwrap(t *testing.T) {
+	const fractionbits = 14
 	const bits2drop = 2
-	pu := NewPhaseUnwrapper(bits2drop)
+	pu := NewPhaseUnwrapper(fractionbits, bits2drop)
 	const ndata = 16
 	data := make([]RawType, ndata)
 
@@ -18,8 +19,8 @@ func TestUnwrap(t *testing.T) {
 		}
 	}
 	// Test basic unwrap
-	data[8] = 16384 // this is a jump of 2π
-	data[9] = 16384
+	data[8] = RawType(1) << fractionbits // this is a jump of 2π
+	data[9] = data[8]
 	pu.UnwrapInPlace(&data)
 	for i := 0; i < ndata; i++ {
 		if data[i] != 0 {
@@ -28,11 +29,11 @@ func TestUnwrap(t *testing.T) {
 	}
 	// Test unwrap on sawtooth
 	for i := 0; i < ndata; i++ {
-		data[i] = RawType((i * 2048) % 16384)
+		data[i] = RawType((i * 4096) % 16384)
 	}
 	pu.UnwrapInPlace(&data)
 	for i := 0; i < ndata; i++ {
-		want := RawType(i * (2048 >> bits2drop))
+		want := RawType(i * (4096 >> bits2drop))
 		if data[i] != want {
 			t.Errorf("data[%d] = %d, want %d", i, data[i], want)
 		}

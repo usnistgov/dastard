@@ -28,7 +28,11 @@ type AbacoDevice struct {
 }
 
 const maxAbacoCards = 4 // Don't allow more than this many cards.
+
+const abacoFractionBits = 13
 const abacoBitsToDrop = 1
+// That is, Abaco data is of the form iii.bbbb bbbb bbbb b with 3 integer bits
+// and 13 fractional bits. In the unwrapping process, we drop 1, making it 4/12.
 
 // NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
 func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
@@ -157,7 +161,7 @@ func (device *AbacoDevice) sampleCard() error {
 
 	device.unwrap = make([]*PhaseUnwrapper, device.nchan)
 	for i := range device.unwrap {
-		device.unwrap[i] = NewPhaseUnwrapper(abacoBitsToDrop)
+		device.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop)
 	}
 	return nil
 }
@@ -412,7 +416,10 @@ func (as *AbacoSource) readerMainLoop() {
 						totalBytes += 2 * len(d)
 
 					case []int32:
-						// TODO: this is only temporary
+						// TODO: We are squeezing the 16 bits higher than the lowest
+						// 12 bits into the 16-bit datacopies[] slice. If we need a
+						// permanent solution to 32-bit raw data, then it might need to be flexible
+						// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
 						for j, val := range d {
 							idx := (j % nchan) + offset + nchanPrevDevices
 							datacopies[idx] = append(datacopies[idx], RawType(val/0x1000))
@@ -420,7 +427,7 @@ func (as *AbacoSource) readerMainLoop() {
 						totalBytes += 4 * len(d)
 
 					default:
-						msg := fmt.Sprintf("Packets are of type %T, can only handle []int16", p.Data)
+						msg := fmt.Sprintf("Packets are of type %T, can only handle []int16 or []int32", p.Data)
 						panic(msg)
 					}
 				}

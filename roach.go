@@ -29,7 +29,10 @@ type RoachSource struct {
 	AnySource
 }
 
+const roachFractionBits = 14
 const roachBitsToDrop = 2
+// That is, ROACH data is of the form ii.bbbb bbbb bbbb bb with 2 integer bits
+// and 14 fractional bits. In the unwrapping process, we drop 2, making it 4/12.
 
 // NewRoachDevice creates a new RoachDevice.
 func NewRoachDevice(host string, rate float64) (dev *RoachDevice, err error) {
@@ -105,7 +108,7 @@ func (dev *RoachDevice) samplePacket() error {
 	dev.nchan = int(header.Nchan)
 	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
 	for i := range dev.unwrap {
-		dev.unwrap[i] = NewPhaseUnwrapper(roachBitsToDrop)
+		dev.unwrap[i] = NewPhaseUnwrapper(roachFractionBits, roachBitsToDrop)
 	}
 	return err
 }
