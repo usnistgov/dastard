@@ -3,29 +3,45 @@
 
 A data acquisition framework for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
-## Installation Ubuntu 16
- 
+# Installation
+Requires golang version >1.13.
+
+## Ubuntu 18
+You need to paste at least the first line sepeartatley to have a chance to enter the sudo password, unless you already have sudo on.
+```
+# dependencies
+sudo apt-get update
+sudo apt-get install -y libsodium-dev libczmq-dev git
+# install go
+sudo add-apt-repository ppa:james-page/golang-backports
+sudo apt-get update
+sudo apt-get -y install golang-go
+# install Dastard
+go get -v -u github.com/usnistgov/dastard
+cd ~/go/src/github.com/usnistgov/dastard/
+make
+sudo ln -s ~/go/src/github.com/usnistgov/dastard/dastard /usr/local/bin
+```
+
+## Ubuntu 16 Dependencies
+Replace the dependencies step with this
+
  ```
- sudo add-apt-repository 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
+sudo add-apt-repository 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
 cd ~/Downloads
 wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key
 sudo apt-key add - < Release.key
 sudo apt-get update
-sudo apt-get install -y libsodium-dev python-pyqt5 libczmq-dev roxterm git golang-1.10-go golang-1.10
-sudo ln -s /usr/lib/go-1.10/bin/go /usr/local/bin/go
-go get -u github.com/usnistgov/dastard
-```
-## Installation Ubuntu 18
+sudo apt-get install -y libsodium-dev libczmq-dev git
 
 ```
-sudo add-apt-repository ppa:h-realh/roxterm
-sudo apt-get update
-sudo apt-get install -y libsodium-dev python-pyqt5 libczmq-dev roxterm git golang-1.10-go golang-1.10
-sudo ln -s /usr/lib/go-1.10/bin/go /usr/local/bin/go
-go get -v -u github.com/usnistgov/dastard
+
+## MacOS Dependencies
+```
+get libsodium-dev and libczmq-dev and golang version >1.13, like macports or brew. write down how you did it here
 ```
 
-## Installation - Do this too
+## Also Install These
 
 * Install microscope https://github.com/usnistgov/microscope
 * Install dastard_commander https://github.com/usnistgov/dastard_commander
