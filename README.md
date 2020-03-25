@@ -10,11 +10,11 @@ Requires golang version >1.13.
 You need to paste at least the first line sepeartatley to have a chance to enter the sudo password, unless you already have sudo on.
 ```
 # dependencies
-sudo apt-get update
+sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git
 # install go
-sudo add-apt-repository ppa:james-page/golang-backports
-sudo apt-get update
+sudo add-apt-repository -y ppa:longsleep/golang-backports
+sudo apt-get -y update
 sudo apt-get -y install golang-go
 # install Dastard
 go get -v -u github.com/usnistgov/dastard
@@ -27,11 +27,11 @@ sudo ln -s ~/go/src/github.com/usnistgov/dastard/dastard /usr/local/bin
 Replace the dependencies step with this
 
  ```
-sudo add-apt-repository 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
+sudo add-apt-repository -y 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
 cd ~/Downloads
 wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key
 sudo apt-key add - < Release.key
-sudo apt-get update
+sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git
 
 ```
