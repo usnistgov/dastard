@@ -91,13 +91,13 @@ func TestAbacoDevice(t *testing.T) {
 
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-	rb, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
+	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
 	if err != nil {
 		t.Fatalf("Could not open ringbuffer: %s", err)
 	}
-	defer rb.Unlink()
+	defer ring.Unlink()
 	const packetAlign = 8192
-	if err = rb.Create(128 * packetAlign); err != nil {
+	if err = ring.Create(128 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
 
@@ -120,19 +120,30 @@ func TestAbacoDevice(t *testing.T) {
 	}
 	empty := make([]byte, packetAlign)
 	dims := []int16{Nchan}
+	const counterRate = 1e9
+	counter := uint64(0)
 	for repeats := 0; repeats < 6; repeats++ {
+		// Repeat the data buffer `d` once per outer loop iteration
 		for i := 0; i < Nsamp; i += stride {
+			// Each inner loop iteration generates 1 packet. Nsamp/stride packets completes buffer `d`.
 			p.NewData(d[i:i+stride*Nchan], dims)
+			ts := packets.MakeTimestamp(uint16(counter>>32), uint32(counter), counterRate)
+			p.SetTimestamp(ts)
 			b := p.Bytes()
+
 			b = append(b, empty[:packetAlign-len(b)]...)
-			if rb.BytesWriteable() >= len(b) {
-				rb.Write(b)
+			if ring.BytesWriteable() >= len(b) {
+				ring.Write(b)
 			}
+			counter += stride*1000
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(Nsamp * time.Microsecond) // sample rate is 1/μs.
 	}
 	if dev.nchan != Nchan {
 		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+	}
+	if dev.sampleRate <= 0.0 {
+		t.Errorf("dev.sampleRate=%.4g, want >0", dev.sampleRate)
 	}
 }
 

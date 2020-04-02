@@ -100,16 +100,18 @@ func (device *AbacoDevice) sampleCard() error {
 	samplesInPackets := 0
 
 	packetsRead := 0
+	packetReadLoop:
 	for packetsRead < minPacketsToRead {
 		select {
 		case <-timeOut.C:
 			fmt.Printf("AbacoDevice.sampleCard() timer expired after %d packets read\n", packetsRead)
-			break
+			break packetReadLoop
 
 		default:
 			time.Sleep(5 * time.Millisecond)
 			allPackets, err := device.ReadAllPackets()
 			if err != nil {
+				fmt.Printf("Oh no! error in ReadAllPackets: %v\n", err)
 				return err
 			}
 			packetsRead += len(allPackets)
@@ -154,7 +156,7 @@ func (device *AbacoDevice) sampleCard() error {
 		if dserial := snFinal - snInit; dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			device.sampleRate = float64(dserial) * avgSampPerPacket / dt
-			fmt.Printf("Sample rate %.6g /sec determined from %d packets: Δt=%f sec, Δserial=%d, and %f samp/packet\n", device.sampleRate,
+			fmt.Printf("Sample rate %.6g /sec determined from %d packets:\n\tΔt=%f sec, Δserial=%d, and %f samp/packet\n", device.sampleRate,
 				packetsRead, dt, dserial, avgSampPerPacket)
 		}
 	}
