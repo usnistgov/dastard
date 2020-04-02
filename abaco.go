@@ -91,7 +91,7 @@ func (device *AbacoDevice) sampleCard() error {
 	device.nchan = 0
 	device.firstchan = 99999999
 	const minPacketsToRead = 100 // Not sure this is a good minimum
-	maxDelay := time.Duration(200 * time.Millisecond)
+	maxDelay := time.Duration(2000 * time.Millisecond)
 	timeOut := time.NewTimer(maxDelay)
 
 	// Capture timestamp and sample # for a range of packets. Use to find rate.
@@ -103,7 +103,7 @@ func (device *AbacoDevice) sampleCard() error {
 	for packetsRead < minPacketsToRead {
 		select {
 		case <-timeOut.C:
-			fmt.Println("AbacoDevice.sampleCard() timer expired")
+			fmt.Printf("AbacoDevice.sampleCard() timer expired after %d packets read\n", packetsRead)
 			break
 
 		default:
@@ -154,7 +154,7 @@ func (device *AbacoDevice) sampleCard() error {
 		if dserial := snFinal - snInit; dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			device.sampleRate = float64(dserial) * avgSampPerPacket / dt
-			fmt.Printf("Sample rate %.3g /sec determined from %d packets: dt=%f dserial=%d and %f samp/packet\n", device.sampleRate,
+			fmt.Printf("Sample rate %.6g /sec determined from %d packets: Δt=%f sec, Δserial=%d, and %f samp/packet\n", device.sampleRate,
 				packetsRead, dt, dserial, avgSampPerPacket)
 		}
 	}

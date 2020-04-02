@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.2.6** January 2020
+**0.2.6** April 2, 2020
 * Change handling of data drops.
 * Generate OFF files v0.3.0, with pretrigger Deltas.
 * Usability features improved.
@@ -53,6 +53,7 @@
 **0.0.1** July 2018
 * Fix irregular data rates for simulated sources due to latencies.
 
-
 **0.0.0** Development through July 2018.  
 * Trying to build a working system.
+
+Version number is set in source file `global_config.go`.
