@@ -24,6 +24,7 @@ type Packet struct {
 	format *headPayloadFormat
 	shape  *headPayloadShape
 	offset headChannelOffset
+	timestamp *PacketTimestamp
 
 	// Any other TLV objects.
 	otherTLV []interface{}
@@ -62,8 +63,11 @@ func NewPacket(version uint8, sourceID uint32, sequenceNumber uint32, chanOffset
 // ClearData removes the data payload from a packet.
 func (p *Packet) ClearData() error {
 	p.headerLength = 24
+	if p.timestamp != nil {
+		p.headerLength += 16
+	}
 	p.payloadLength = 0
-	p.packetLength = 24
+	p.packetLength = int(p.headerLength)
 	p.format = nil
 	p.Data = nil
 	p.shape = nil
@@ -112,21 +116,42 @@ func (p *Packet) SequenceNumber() uint32 {
 
 // Timestamp returns a copy of the first PacketTimestamp found in the header, or nil if none.
 func (p *Packet) Timestamp() *PacketTimestamp {
-	for _, tlv := range p.otherTLV {
-		if ts, ok := tlv.(*PacketTimestamp); ok {
-			tsCopy := new(PacketTimestamp)
-			tsCopy.Rate = ts.Rate
-			tsCopy.T = ts.T
-			return tsCopy
-		}
+	if p.timestamp != nil {
+		tsCopy := new(PacketTimestamp)
+		tsCopy.Rate = p.timestamp.Rate
+		tsCopy.T = p.timestamp.T
+		return tsCopy
 	}
 	return nil
 }
 
-// NewData adds data to the packet, and crates the format and shape TLV items to match.
+// SetTimestamp puts timestamp `ts` into the header.
+func (p *Packet) SetTimestamp(ts *PacketTimestamp) error {
+	if p.timestamp == nil {
+		p.headerLength += 16
+		p.packetLength += 16
+	}
+	p.timestamp = ts
+	return nil
+}
+
+// ResetTimestamp removes any timestamp from the header.
+func (p *Packet) ResetTimestamp() error {
+	if p.timestamp != nil {
+		p.headerLength -= 16
+		p.packetLength -= 16
+	}
+	p.timestamp = nil
+	return nil
+}
+
+// NewData adds data to the packet, and creates the format and shape TLV items to match.
 func (p *Packet) NewData(data interface{}, dims []int16) error {
 	ndim := len(dims)
 	p.headerLength = 24
+	if p.timestamp != nil {
+		p.headerLength += 16
+	}
 	pfmt := new(headPayloadFormat)
 	pfmt.dtype = make([]reflect.Kind, 1)
 	pfmt.endian = binary.LittleEndian
@@ -184,6 +209,28 @@ func (p *Packet) Bytes() []byte {
 	binary.Write(buf, binary.BigEndian, byte(1))
 	binary.Write(buf, binary.BigEndian, uint16(0))
 	binary.Write(buf, binary.BigEndian, uint32(p.offset))
+
+	// Write any timestamps
+	if ts := p.Timestamp(); ts != nil {
+		var nbits uint8
+		var exp int8
+		var num, denom uint16
+		nbits = 64
+		exp = -11 // precise to 10 ps
+		period := math.Pow10(-int(exp)) / ts.Rate
+		denom = 1
+		for ;period > 65535; period *=0.5 {
+			denom *= 2
+		}
+		num = uint16(math.Round(period))
+		binary.Write(buf, binary.BigEndian, byte(tlvTIMESTAMPUNIT))
+		binary.Write(buf, binary.BigEndian, byte(2))
+		binary.Write(buf, binary.BigEndian, byte(nbits))
+		binary.Write(buf, binary.BigEndian, byte(exp))
+		binary.Write(buf, binary.BigEndian, num)
+		binary.Write(buf, binary.BigEndian, denom)
+		binary.Write(buf, binary.BigEndian, ts.T)
+	}
 
 	if p.Data != nil && p.shape != nil && p.format != nil {
 		binary.Write(buf, binary.BigEndian, byte(tlvFORMAT))
@@ -293,6 +340,8 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 			p.shape = val
 		case *headPayloadFormat:
 			p.format = val
+		case *PacketTimestamp:
+			p.timestamp = val
 		default:
 			p.otherTLV = append(p.otherTLV, val)
 		}
@@ -344,9 +393,11 @@ type PacketTimestamp struct {
 	Rate float64 // Count rate, in counts per second
 }
 
-func makeTimestamp(x uint16, y uint32) *PacketTimestamp {
+// MakeTimestamp creates a `PacketTimestamp` from data
+func MakeTimestamp(x uint16, y uint32, rate float64) *PacketTimestamp {
 	ts := new(PacketTimestamp)
 	ts.T = uint64(x)<<32 + uint64(y)
+	ts.Rate = rate
 	return ts
 }
 
@@ -419,7 +470,7 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			if err = binary.Read(data, binary.BigEndian, &y); err != nil {
 				return result, err
 			}
-			result = append(result, makeTimestamp(x, y))
+			result = append(result, MakeTimestamp(x, y, 0.0))
 
 		case tlvCOUNTER:
 			ctr := new(HeadCounter)
