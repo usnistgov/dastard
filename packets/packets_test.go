@@ -449,7 +449,7 @@ func TestFullPackets(t *testing.T) {
 	ts := new(PacketTimestamp)
 	ts.Rate = 250e8
 	ts.T = 0x123456
-	p.otherTLV = append(p.otherTLV, ts)
+	p.SetTimestamp(ts)
 	tsCopy := p.Timestamp()
 	if tsCopy == nil {
 		t.Errorf("Packet.Timestamp() returns nil, want %v", ts)
