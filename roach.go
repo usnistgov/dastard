@@ -29,62 +29,10 @@ type RoachSource struct {
 	AnySource
 }
 
-type PhaseUnwrapper struct {
-	lastVal   int16
-	offset    int16
-	highCount int
-	lowCount  int
-}
-
-const roachScale RawType = 1 // How to scale the raw data in UnwrapInPlace
-
-// UnwrapInPlace unwraps in place
-func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType, scale RawType) {
-
-	// as read from the Roach
-	// data bytes representing a 2s complement integer
-	// where 2^14 is 1 phi0
-	// so int(data[i])/2^14 is a number from -0.5 to 0.5 phi0
-	// after this function we want 2^12 to be 1 phi0
-	// 2^12 = 4096
-	// 2^14 = 16384
-	bitsToKeep := uint(14)
-	bitsToShift := 16 - bitsToKeep
-	onePi := int16(1) << (bitsToKeep - 3)
-	twoPi := onePi << 1
-	//phi0_lim := (4 * (1 << (16 - bits_to_keep)) / 2) - 1
-	for i, rawVal := range *data {
-		v := int16(rawVal*scale) >> bitsToShift // scale=2 for ABACO HACK!! FIX TO GENERALIZE
-		delta := v - u.lastVal
-
-		// short term unwrapping
-		if delta > onePi {
-			u.offset -= twoPi
-		} else if delta < -onePi {
-			u.offset += twoPi
-		}
-
-		// long term keeping baseline at same phi0
-		// if the offset is nonzero for a long time, set it to zero
-		if u.offset >= twoPi {
-			u.highCount += 1
-			u.lowCount = 0
-		} else if u.offset <= -twoPi {
-			u.lowCount += 1
-			u.highCount = 0
-		} else {
-			u.lowCount = 0
-			u.highCount = 0
-		}
-		if (u.highCount > 2000) || (u.lowCount > 2000) { // 2000 should be a setable parameter
-			u.offset = 0
-			u.highCount = 0
-			u.lowCount = 0
-		}
-		(*data)[i] = RawType(v + u.offset)
-		u.lastVal = v
-	}
-}
+const roachFractionBits = 14
+const roachBitsToDrop = 2
+// That is, ROACH data is of the form ii.bbbb bbbb bbbb bb with 2 integer bits
+// and 14 fractional bits. In the unwrapping process, we drop 2, making it 4/12.
 
 // NewRoachDevice creates a new RoachDevice.
 func NewRoachDevice(host string, rate float64) (dev *RoachDevice, err error) {
@@ -130,7 +78,10 @@ func parsePacket(packet []byte) (header packetHeader, data []RawType) {
 			panic(fmt.Sprintln("binary.Read failed:", err))
 		}
 	case 4:
-		// this just throws away two bytes from each 4 byte word
+		// Throw away the 2 least-significant bytes from each 4 byte word.
+		// Because binary.Read does the big->little endian swapping, but only
+		// within the 16-bit words of data4[:], we have data4[0] representing
+		// the most significant 16 bits of 32, and data4[1] the least.
 		data4 := make([]RawType, header.Nchan*header.Nsamp*2)
 		if err := binary.Read(buf, binary.BigEndian, &data4); err != nil {
 			panic(fmt.Sprintln("binary.Read failed:", err))
@@ -153,10 +104,11 @@ func (dev *RoachDevice) samplePacket() error {
 	}
 	_, _, err := dev.conn.ReadFromUDP(p)
 	header, _ := parsePacket(p)
+	dev.nextS = FrameIndex(header.Nsamp) + FrameIndex(header.Sampnum)
 	dev.nchan = int(header.Nchan)
 	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
 	for i := range dev.unwrap {
-		dev.unwrap[i] = &(PhaseUnwrapper{})
+		dev.unwrap[i] = NewPhaseUnwrapper(roachFractionBits, roachBitsToDrop)
 	}
 	return err
 }
@@ -242,7 +194,6 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				fmt.Printf("header: %v, len(data)=%d\n", header, len(data))
 				nsamp[i] = ns
 			}
-			// fmt.Println("i, header.Sampnum", i, header.Sampnum)
 		}
 		firstlastDelay := time.Duration(totalNsamp-1) * dev.period
 		firstTime := readTime.Add(-firstlastDelay)
@@ -254,11 +205,11 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 			d := int(firstFramenum-dev.nextS) - totalNsamp
 			warning := ""
 			if d > 0 {
-				warning = fmt.Sprintf("  **** %6d samples this block or %6d too few", totalNsamp, d)
+				warning = fmt.Sprintf(" **** %6d samples this block or %6d too few", totalNsamp, d)
 			} else {
-				warning = fmt.Sprintf("  **** %6d samples this block or %6d too many", totalNsamp, -d)
+				warning = fmt.Sprintf(" **** %6d samples this block or %6d too many", totalNsamp, -d)
 			}
-			fmt.Printf("POTENTIAL DROPPED DATA: Sample %9d  Δs = %7d%s\n",
+			fmt.Printf("POTENTIAL DROPPED DATA: Sample %9d  Δs = %7d (want 0) %s\n",
 				firstFramenum, firstFramenum-dev.nextS, warning)
 		}
 
@@ -273,7 +224,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				idx += nsamp[idxdata]
 			}
 			unwrap := dev.unwrap[i]
-			unwrap.UnwrapInPlace(&raw, roachScale)
+			unwrap.UnwrapInPlace(&raw)
 			block.segments[i] = DataSegment{
 				rawData:         raw,
 				signed:          true,

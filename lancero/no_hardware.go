@@ -3,10 +3,7 @@ package lancero
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"time"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 // NoHardware is a drop in replacement for Lancero (implements Lanceroer)
@@ -158,8 +155,7 @@ func (lan *NoHardware) ReleaseBytes(nBytes int) error {
 	return nil
 }
 
-// InspectAdapter prints some info and returns 0
+// InspectAdapter does nothing and returns 0
 func (lan *NoHardware) InspectAdapter() uint32 {
-	log.Println(spew.Sprint("NoHardware.InspectAdapter:", lan))
 	return uint32(0)
 }

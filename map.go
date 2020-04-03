@@ -50,7 +50,7 @@ func readMap(filename string) (*Map, error) {
 		if len(m.Pixels) == 2 {
 			if chnum == 3 {
 				matterChannums = true
-				fmt.Println("reading map with matter style channel numbers in legacy mode")
+				// fmt.Println("reading map with matter style channel numbers in legacy mode")
 			}
 		}
 		if len(m.Pixels) > 2 {

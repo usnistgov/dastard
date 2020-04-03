@@ -24,8 +24,8 @@ func TestBufferOpenClose(t *testing.T) {
 	if err != nil {
 		t.Error("Failed NewRingBuffer")
 	}
-	defer writebuf.unlink()
-	if err = writebuf.create(8192); err != nil {
+	defer writebuf.Unlink()
+	if err = writebuf.Create(8192); err != nil {
 		t.Error("Failed RingBuffer.create", err)
 	}
 
@@ -54,8 +54,14 @@ func TestBufferOpenClose(t *testing.T) {
 		if err = r.Open(); err != nil {
 			t.Error("Failed RingBuffer.Open", err)
 		}
+		if ps, _ := r.PacketSize(); ps != 8192 || err != nil {
+			t.Errorf("PacketSize() returns (%d, err=%v), want (8192,nil)", ps, err)
+		}
 		if err = r.Close(); err != nil {
 			t.Error("Failed RingBuffer.Close", err)
+		}
+		if ps, err := r.PacketSize(); ps != 0 || err == nil {
+			t.Errorf("Closed RingBuffer PacketSize() returns (%d, err=nil), want (0, err)", ps)
 		}
 	}
 
@@ -78,7 +84,7 @@ func TestBufferWriteRead(t *testing.T) {
 		t.Error("Failed NewRingBuffer", err)
 	}
 	buffersize := 8192
-	if err = writebuf.create(buffersize); err != nil {
+	if err = writebuf.Create(buffersize); err != nil {
 		t.Error("Failed RingBuffer.create", err)
 	}
 	nbeef := 2000
@@ -88,7 +94,7 @@ func TestBufferWriteRead(t *testing.T) {
 		deadbeef = append(deadbeef, []byte{0xde, 0xad, 0xbe, 0xef}...)
 		bead5678 = append(bead5678, []byte{0xbe, 0xad, 0x56, 0x78}...)
 	}
-	writebuf.write(deadbeef)
+	writebuf.Write(deadbeef)
 
 	b, err := NewRingBuffer(name1, name2)
 	if err != nil {
@@ -138,7 +144,7 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// Now put bytes in the buffer, clear it, and verify that there are 0.
-	writebuf.write(deadbeef)
+	writebuf.Write(deadbeef)
 	b.DiscardAll()
 	data, err = b.Read(expect)
 	if err != nil {
@@ -149,7 +155,7 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// Now put different bytes in the buffer, verify that they are the right values.
-	writebuf.write(bead5678)
+	writebuf.Write(bead5678)
 	readable = b.BytesReadable()
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
@@ -179,7 +185,7 @@ func TestBufferWriteRead(t *testing.T) {
 	for i := 0; i < nwrite; i++ {
 		consec[i] = byte(i)
 	}
-	writebuf.write(consec)
+	writebuf.Write(consec)
 	expect = nwrite
 	readable = b.BytesReadable()
 	if readable != expect {
@@ -199,7 +205,7 @@ func TestBufferWriteRead(t *testing.T) {
 	}
 
 	// Now write a certain amount and try to read more than that.
-	writebuf.write(consec)
+	writebuf.Write(consec)
 	readable = b.BytesReadable()
 	if readable != expect {
 		t.Errorf("b.BytesReadable() returns %d, want %d", readable, expect)
@@ -214,20 +220,83 @@ func TestBufferWriteRead(t *testing.T) {
 
 	// Now try to write more than the buffer can hold
 	zeros := make([]byte, buffersize+20)
-	written, err := writebuf.write(zeros)
+	written, err := writebuf.Write(zeros)
 	if err != nil {
-		t.Errorf("writebuf.write() of buffer of size %d errors", len(zeros))
+		t.Errorf("writebuf.Write() of buffer of size %d errors", len(zeros))
 	}
 	if written >= buffersize {
-		t.Errorf("writebuf.write() of buffer of size %d writes %d bytes, want < %d",
+		t.Errorf("writebuf.Write() of buffer of size %d writes %d bytes, want < %d",
 			len(zeros), written, buffersize)
+	}
+
+	// Empty the buffer. Fill it halfway, read half, fill completely, and read exactly half,
+	// such that this read ends exactly where the buffer wraps. Is this okay? Does
+	// BytesReadable() come back as expected?
+	if err = b.DiscardAll(); err != nil {
+		t.Error("b.DiscardAll() fails: ", err)
+	}
+	nh := buffersize / 2
+	halfbuffer := make([]byte, nh)
+	writebuf.Write(halfbuffer)
+	if nr := writebuf.BytesReadable(); nr != nh {
+		t.Errorf("writebuf.BytesReadable()=%d, want %d", nr, nh)
+	}
+	hbtest, err := writebuf.Read(nh)
+	if err != nil {
+		t.Errorf("writebuf.Read(%d) test failed on halfbuffer 1", nh)
+	}
+	for i := 0; i < nh; i++ {
+		if halfbuffer[i] != hbtest[i] {
+			t.Errorf("writebuf.Read(%d)[%d] = %d, want %d", nh, i, hbtest[i], halfbuffer[i])
+			break
+		}
+	}
+	if nr := writebuf.BytesReadable(); nr != 0 {
+		t.Errorf("writebuf.BytesReadable()=%d, want %d", nr, 0)
+	}
+
+	// Now fill halfbuffer with nonzero values
+	for i := 0; i < nh; i++ {
+		halfbuffer[i] = byte(i)
+	}
+
+	expectedReadable := []int{nh, 2*nh - 1, 2*nh - 1}
+	for iter, er := range expectedReadable {
+		writebuf.Write(halfbuffer)
+		if nr := writebuf.BytesReadable(); nr != er {
+			t.Errorf("after iteration %d writebuf.BytesReadable()=%d, want %d", iter, nr, er)
+		}
+		ew := buffersize - 1 - er
+		if nw := writebuf.BytesWriteable(); nw != ew {
+			t.Errorf("after iteration %d writebuf.BytesWriteable()=%d, want %d", iter, nw, ew)
+		}
+	}
+	hbtest, err = writebuf.Read(nh)
+	if err != nil {
+		t.Errorf("writebuf.Read(%d) test failed on halfbuffer 1", nh)
+	}
+	for i := 0; i < nh; i++ {
+		if halfbuffer[i] != hbtest[i] {
+			t.Errorf("writebuf.Read(%d)[%d] = %d, want %d", nh, i, hbtest[i], halfbuffer[i])
+			break
+		}
+	}
+	hbtest, err = writebuf.Read(nh)
+	if err != nil {
+		t.Errorf("writebuf.Read(%d) test failed on halfbuffer 1", nh)
+	}
+	for i := 0; i < len(hbtest); i++ {
+		if halfbuffer[i] != hbtest[i] {
+			t.Errorf("writebuf.Read(%d)[%d] = %d, want %d", nh, i, hbtest[i], halfbuffer[i])
+			break
+		}
 	}
 
 	// Empty the buffer, write some, and test ReadAll.
 	if err = b.DiscardAll(); err != nil {
 		t.Error("b.DiscardAll() fails: ", err)
 	}
-	writebuf.write(deadbeef)
+	writebuf.Write(deadbeef)
 	data, err = b.ReadAll()
 	if err != nil {
 		t.Error("b.ReadAll() fails: ", err)
@@ -244,13 +313,13 @@ func TestBufferWriteRead(t *testing.T) {
 	for i := 0; i < msize; i++ {
 		shortmessage[i] = byte(i)
 	}
-	writebuf.write(shortmessage)
+	writebuf.Write(shortmessage)
 
 	// Need this goroutine to close a channel: prevents an apparent race condition
 	doneSleepTest := make(chan interface{})
 	go func() {
 		time.Sleep(5 * time.Millisecond)
-		writebuf.write(shortmessage)
+		writebuf.Write(shortmessage)
 		close(doneSleepTest)
 	}()
 	read, err := b.ReadMinimum(2 * msize)
@@ -270,7 +339,7 @@ func TestBufferWriteRead(t *testing.T) {
 	if err = b.DiscardAll(); err != nil {
 		t.Error("b.DiscardAll() fails: ", err)
 	}
-	writebuf.write(shortmessage)
+	writebuf.Write(shortmessage)
 	data, err = b.ReadMultipleOf(msize * 2)
 	if err != nil {
 		t.Errorf("b.ReadMultipleOf(%d) fails", msize*2)
@@ -287,7 +356,7 @@ func TestBufferWriteRead(t *testing.T) {
 		t.Errorf("b.ReadMultipleOf(%d) returns %d bytes, expect %d",
 			msize/2, len(data), msize)
 	}
-	writebuf.write(shortmessage)
+	writebuf.Write(shortmessage)
 	data, err = b.ReadMultipleOf(msize - 1)
 	if err != nil {
 		t.Errorf("b.ReadMultipleOf(%d) fails", msize-1)
@@ -309,7 +378,7 @@ func TestBufferWriteRead(t *testing.T) {
 	if err = writebuf.Close(); err != nil {
 		t.Error("Failed RingBuffer.Close", err)
 	}
-	if err = writebuf.unlink(); err != nil {
+	if err = writebuf.Unlink(); err != nil {
 		t.Error("Failed RingBuffer.unlink", err)
 	}
 }

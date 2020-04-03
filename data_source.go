@@ -74,7 +74,7 @@ func (ds *AnySource) RunDoneActivate() {
 	ds.runDone.Add(1)
 }
 
-// RunDoneDeactivate calls Done on ds.runDone, this should only be called in Start
+// RunDoneDeactivate calls Done on ds.runDone, this should only be called (by defer) in Start
 func (ds *AnySource) RunDoneDeactivate() {
 	ds.sourceStateLock.Lock()
 	ds.sourceState = Inactive
@@ -145,8 +145,8 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 
 	for {
 		// Use select to interleave 2 activities that should NOT be done concurrently:
-		// 1. Handle RPC requests to chage data processing parameters (e.g. trigger)
-		// 2. Handle new data and processes it
+		// 1. Handle RPC requests to change data processing parameters (e.g. trigger).
+		// 2. Handle new data and process it.
 		select {
 
 		// Handle RPC requests
@@ -185,7 +185,7 @@ func (ds *AnySource) Stop() error {
 		return fmt.Errorf("AnySource not active, cannot stop")
 
 	case Starting:
-		fmt.Println("deleteme: called Stop on a Starting source; how to handle this??")
+		log.Println("deleteme: called Stop on a Starting source; how to handle this??")
 
 	case Active:
 		log.Println("AnySource.Stop() was called to stop an active source")
@@ -848,8 +848,8 @@ func (ds *AnySource) ChannelsPerPixel() int {
 
 	// minMax return the minimum and maximum value of an int slice
 	minMax := func(array []int) (int, int) {
-		var max int = array[0]
-		var min int = array[0]
+		var max = array[0]
+		var min = array[0]
 		for _, value := range array {
 			if max < value {
 				max = value
