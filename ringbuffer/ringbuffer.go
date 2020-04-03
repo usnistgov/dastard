@@ -288,9 +288,9 @@ func (rb *RingBuffer) DiscardAll() (err error) {
 }
 
 // PacketSize returns the packetSize held in the buffer description
-func (rb *RingBuffer) PacketSize() int64 {
+func (rb *RingBuffer) PacketSize() (int64, error) {
 	if rb.desc == nil {
-		return -1
+		return 0, fmt.Errorf("RingBuffer does not have a valid descriptor")
 	}
-	return rb.desc.packetSize
+	return rb.desc.packetSize, nil
 }

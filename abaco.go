@@ -87,10 +87,11 @@ func (device *AbacoDevice) sampleCard() error {
 
 	// Now get the data we actually want. Run for at least a minimum time
 	// or a minimum number of packets.
-	device.packetSize = int(device.ring.PacketSize())
-	if device.packetSize < 0 {
-		return fmt.Errorf("AbacoDevice ringbuffer does not have a valid descriptor")
+	psize, err := device.ring.PacketSize()
+	if err != nil {
+		return err
 	}
+	device.packetSize = int(psize)
 	device.nchan = 0
 	device.firstchan = 99999999
 	const minPacketsToRead = 100 // Not sure this is a good minimum
