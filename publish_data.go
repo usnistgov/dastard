@@ -2,17 +2,17 @@ package dastard
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"time"
 	"unsafe"
 
+	"github.com/go-zeromq/zmq4"
 	"github.com/usnistgov/dastard/getbytes"
 	"github.com/usnistgov/dastard/ljh"
 	"github.com/usnistgov/dastard/off"
 	"gonum.org/v1/gonum/mat"
-
-	czmq "github.com/zeromq/goczmq"
 )
 
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
@@ -155,7 +155,7 @@ func (dp *DataPublisher) HasPubRecords() bool {
 	return dp.PubRecordsChan != nil
 }
 
-// SetPubRecords starts publishing records with czmq over tcp at port=PortTrigs
+// SetPubRecords starts publishing records with zmq over tcp at port=PortTrigs
 func (dp *DataPublisher) SetPubRecords() {
 	if PubRecordsChan == nil {
 		configurePubRecordsSocket()
@@ -175,7 +175,7 @@ func (dp *DataPublisher) HasPubSummaries() bool {
 	return dp.PubSummariesChan != nil
 }
 
-// SetPubSummaries starts publishing records with czmq over tcp at port=PortSummaries
+// SetPubSummaries starts publishing records with zmq over tcp at port=PortSummaries
 func (dp *DataPublisher) SetPubSummaries() {
 	if PubSummariesChan == nil {
 		configurePubSummariesSocket()
@@ -375,21 +375,25 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	// at least as large as number of channels
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
-	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetOption(czmq.SockSetSndhwm(1)) // use no zmq buffer, rely only on pubchan as buffer
+	pubSocket := zmq4.NewPub(context.Background())
+	err := pubSocket.SetOption(zmq4.OptionHWM, 1) // use no zmq buffer, rely only on pubchan as buffer
+	if err != nil {
+		return nil, err
+	}
+	err = pubSocket.Listen(hostname)
 	if err != nil {
 		return nil, err
 	}
 	go func() {
 		for {
 			records, ok := <-pubchan
-			if !ok { // Destroy socket when pubchan is closed and drained
-				pubSocket.Destroy()
+			if !ok { // close socket when pubchan is closed and drained
+				_ = pubSocket.Close()
 				return
 			}
 			for _, record := range records {
 				message := converter(record)
-				err := pubSocket.SendMessage(message)
+				err := pubSocket.SendMulti(zmq4.NewMsgFrom(message...))
 				if err != nil {
 					panic("zmq send error")
 				}

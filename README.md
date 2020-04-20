@@ -11,7 +11,7 @@ You need to paste at least the first line sepeartatley to have a chance to enter
 ```
 # dependencies
 sudo apt-get -y update
-sudo apt-get install -y libsodium-dev libczmq-dev git
+sudo apt-get install -y git
 # install go
 sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
@@ -32,13 +32,13 @@ cd ~/Downloads
 wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key
 sudo apt-key add - < Release.key
 sudo apt-get -y update
-sudo apt-get install -y libsodium-dev libczmq-dev git
+sudo apt-get install -y git
 
 ```
 
 ## MacOS Dependencies
 ```
-get libsodium-dev and libczmq-dev and golang version >1.13, like macports or brew. write down how you did it here
+get golang version >1.13, like macports or brew. write down how you did it here
 ```
 
 ## Also Install These
