@@ -24,15 +24,17 @@ go get -v -u github.com/usnistgov/dastard
 cd ~/go/src/github.com/usnistgov/dastard/
 make
 
-# Now add the go bin directory (typically, ~/go/bin) to your PATH. You should do the following
-# in your .bashrc, as well as at the shell prompt (to get immediate effect).
-export PATH=$PATH:`go env GOPATH`/bin
+# Check whether the GOPATH is in your bash path. If not, update ~/.bashrc to make it so.
+# This will fix the current terminal and all that run ~/.bashrc in the future, but not
+# any other existing terminals (until you do "source ~/.bashrc" in them).
+source update-path.sh
 ```
 
 
 ### MacOS Dependencies
-Get golang version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming that MacPorts
-is already installed, it's simple:
+
+Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming
+that MacPorts is already installed, it's simple:
 ```
 sudo port install go
 ```
