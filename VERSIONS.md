@@ -1,5 +1,9 @@
 ## DASTARD Versions
 
+**0.2.7** in progress in April 2020
+* Use package `zmq4`, a pure Go implementation of ZMQ.
+* Simplified testing on Travis because of that.
+
 **0.2.6** April 2, 2020
 * Change handling of data drops.
 * Generate OFF files v0.3.0, with pretrigger Deltas.
