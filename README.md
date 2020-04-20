@@ -3,45 +3,46 @@
 
 A data acquisition framework for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
-# Installation
-Requires golang version >1.13.
+## Installation
+Requires Go version 1.13 or higher. It is tested automatically on 1.13 and 1.14.
 
-## Ubuntu 18
-You need to paste at least the first line sepeartatley to have a chance to enter the sudo password, unless you already have sudo on.
+### Ubuntu 18.04 and 16.04
+One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
+simple command as sudo first; otherwise, the password entering step will screw up your multi-line paste.
 ```
-# dependencies
+# Dependencies (can skip if git is already installed)
 sudo apt-get -y update
 sudo apt-get install -y git
-# install go
+
+# Install golang (can skip if go version 1.13+ is already installed)
 sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
 sudo apt-get -y install golang-go
-# install Dastard
+
+# Install Dastard
 go get -v -u github.com/usnistgov/dastard
 cd ~/go/src/github.com/usnistgov/dastard/
 make
-sudo ln -s ~/go/src/github.com/usnistgov/dastard/dastard /usr/local/bin
+
+# Check whether the GOPATH is in your bash path. If not, update ~/.bashrc to make it so.
+# This will fix the current terminal and all that run ~/.bashrc in the future, but not
+# any other existing terminals (until you do "source ~/.bashrc" in them).
+source update-path.sh
 ```
 
-## Ubuntu 16 Dependencies
-Replace the dependencies step with this
 
- ```
-sudo add-apt-repository -y 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
-cd ~/Downloads
-wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key
-sudo apt-key add - < Release.key
-sudo apt-get -y update
-sudo apt-get install -y git
+### MacOS Dependencies
 
+Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming
+that MacPorts is already installed, it's simple:
 ```
-
-## MacOS Dependencies
+sudo port install go
 ```
-get golang version >1.13, like macports or brew. write down how you did it here
-```
+As of April 20, 2020, this gets you go 1.14.2. If you use another method, please add notes here to help other users.
 
-## Also Install These
+
+
+### Also Install These
 
 * Install microscope https://github.com/usnistgov/microscope
 * Install dastard_commander https://github.com/usnistgov/dastard_commander

@@ -1,12 +1,12 @@
 GOCMD=go
+GOGET=$(GOCMD) get
 GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
 BINARY_NAME=dastard
 
 LDFLAGS=-ldflags "-X main.buildDate=$(shell date -u '+%Y-%m-%d.%I:%M:%S.%p.%Z') -X main.githash=$(shell git rev-parse HEAD)"
-all: test build
+all: test build install
 build: $(BINARY_NAME)
 
 $(BINARY_NAME): *.go cmd/dastard/dastard.go getbytes/*.go lancero/*.go ljh/*.go off/*.go packets/*.go ringbuffer/*.go
@@ -26,4 +26,5 @@ run: build
 deps:
 	$(GOGET) -v -t ./...
 
-install: deps
+install: build
+	cp -p $(BINARY_NAME) `go env GOPATH`/bin/
