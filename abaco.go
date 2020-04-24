@@ -81,12 +81,6 @@ func (device *AbacoDevice) sampleCard() error {
 	if err := device.ring.Open(); err != nil {
 		return err
 	}
-	if err := device.ring.DiscardAll(); err != nil {
-		return err
-	}
-
-	// Now get the data we actually want. Run for at least a minimum time
-	// or a minimum number of packets.
 	psize, err := device.ring.PacketSize()
 	if err != nil {
 		return err
@@ -94,6 +88,12 @@ func (device *AbacoDevice) sampleCard() error {
 	device.packetSize = int(psize)
 	device.nchan = 0
 	device.firstchan = 99999999
+	if err := device.ring.DiscardStride(uint64(device.packetSize)); err != nil {
+		return err
+	}
+
+	// Now get the data we actually want. Run for at least a minimum time
+	// or a minimum number of packets.
 	const minPacketsToRead = 100 // Not sure this is a good minimum
 	maxDelay := time.Duration(2000 * time.Millisecond)
 	timeOut := time.NewTimer(maxDelay)
@@ -324,8 +324,8 @@ func (as *AbacoSource) StartRun() error {
 	// There's no data streaming mode on Abaco, so no need to start it?
 	// Start by emptying all data from each device's ring buffer.
 	for _, dev := range as.active {
-		if err := dev.ring.DiscardAll(); err != nil {
-			panic("AbacoDevice.ring.DiscardAll failed")
+		if err := dev.ring.DiscardStride(uint64(dev.packetSize)); err != nil {
+			panic("AbacoDevice.ring.DiscardStride failed")
 		}
 	}
 	as.buffersChan = make(chan AbacoBuffersType, 100)

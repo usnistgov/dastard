@@ -281,10 +281,20 @@ func (rb *RingBuffer) BytesReadable() int {
 	return int(w - r)
 }
 
-// DiscardAll removes all readable bytes and empties the buffer.
-func (rb *RingBuffer) DiscardAll() (err error) {
-	rb.desc.readPointer = rb.desc.writePointer
+// DiscardStride removes readable bytes up to a multiple of stride. This empties the buffer except
+// for a runt section with size less than stride bytes long
+func (rb *RingBuffer) DiscardStride(stride uint64) (err error) {
+	newRp := rb.desc.writePointer
+	if newRp % stride > 0 {
+		newRp -= newRp % stride
+	}
+	rb.desc.readPointer = newRp
 	return nil
+}
+
+// DiscardAll removes all readable bytes, which empties the buffer.
+func (rb *RingBuffer) DiscardAll() (err error) {
+	return rb.DiscardStride(1)
 }
 
 // PacketSize returns the packetSize held in the buffer description
