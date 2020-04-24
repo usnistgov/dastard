@@ -154,6 +154,19 @@ func TestBufferWriteRead(t *testing.T) {
 			expect, len(data), 0)
 	}
 
+	// Now put bytes in the buffer, use DiscardStride, and verify that the remaining size is what we expect.
+	writebuf.Write(deadbeef)
+	writes := 3  //  because we've written deadbeef 3 times now.
+	wantRump := 1000
+	b.DiscardStride(uint64(writes*expect-wantRump))
+	data, err = b.Read(expect)
+	if err != nil {
+		t.Errorf("Failed to b.Read(%d) when nearly empty", expect)
+	} else if len(data) != wantRump {
+		t.Errorf("b.Read(%d) after DiscardStride(%d) returned len(data)=%d, want %d",
+			expect, writes*expect-wantRump, len(data), wantRump)
+	}
+
 	// Now put different bytes in the buffer, verify that they are the right values.
 	writebuf.Write(bead5678)
 	readable = b.BytesReadable()
