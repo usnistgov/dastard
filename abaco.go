@@ -121,9 +121,8 @@ func (device *AbacoDevice) sampleCard() error {
 				fmt.Printf("Oh no! error in ReadAllPackets: %v\n", err)
 				return err
 			}
-			packetsRead += len(allPackets)
 
-			for _, p := range allPackets {
+			for ip, p := range allPackets {
 				// Use Packet.ChannelInfo() to set device.firstchan to the lowest offset we see,
 				// and device.nchan to the largest channel number we see. Assumption: sampling
 				// enough packets to see all possible channel ranges.
@@ -138,13 +137,20 @@ func (device *AbacoDevice) sampleCard() error {
 					nf := p.Frames()
 					sn := p.SequenceNumber()
 					ts := p.Timestamp()
-					fmt.Printf("%3d chan (%3d-%3d): nsamp %5d, seqnum %9d, %v\n",
-						nchan, offset, offset+nchan-1, nf, sn, ts)
+					fmt.Printf("Packet %3d has %3d chan (%3d-%3d): nsamp %5d, seqnum %9d, %v\n",
+						ip, nchan, offset, offset+nchan-1, nf, sn, ts)
 				}
+
+				// Count samples in order to find the mean number of samples per packet.
+				packetsRead += 1
+				samplesInPackets += p.Frames()
 
 				// Save the first and last packet timestamps seen, as well as the corresponding
 				// sequence numbers. We'll compute ΔT/ΔSN, which estimates the sample period.
-				samplesInPackets += p.Frames()
+				// To do this properly, we need to consider only packets that contain the 0-channel.
+				if offset > 0 {
+					continue
+				}
 				if ts := p.Timestamp(); ts != nil && ts.Rate != 0 {
 					if tsInit.T == 0 {
 						tsInit.T = ts.T
@@ -170,6 +176,8 @@ func (device *AbacoDevice) sampleCard() error {
 		// Sequence numbers number the packets, not the samples.
 		// If packets per sample varies, "sampleRate" is not as clearly defined.
 		// The mean number of samples per packet observed is used, whether or not the number varies.
+		// We're also assuming that packets containing channel 0 are representative of all packets (in
+		// terms of having the same mean number of samples per packet).
 		if dserial := snFinal - snInit; dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			device.sampleRate = float64(dserial) * avgSampPerPacket / dt
