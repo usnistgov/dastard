@@ -79,6 +79,7 @@ func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
 // at the time we open it, because we have no idea how old the data are.
 // Once the ring fills up, new data do not replace the old.
 func (device *AbacoDevice) sampleCard() error {
+	dumpSampling := true
 	// Open the device and discard whatever is in the buffer
 	if err := device.ring.Open(); err != nil {
 		return err
@@ -132,6 +133,13 @@ func (device *AbacoDevice) sampleCard() error {
 				}
 				if nchan+offset > device.nchan {
 					device.nchan = nchan + offset
+				}
+				if dumpSampling {
+					nf := p.Frames()
+					sn := p.SequenceNumber()
+					ts := p.Timestamp()
+					fmt.Printf("%3d chan (%3d-%3d): nsamp %5d, seqnum %9d, %v\n",
+						nchan, offset, offset+nchan-1, nf, sn, ts)
 				}
 
 				// Save the first and last packet timestamps seen, as well as the corresponding
