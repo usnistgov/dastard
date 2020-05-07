@@ -35,6 +35,14 @@ func TestHeader(t *testing.T) {
 		t.Errorf("ReadPacket sequence number is 0x%x, want 0x%x", hdr2.sequenceNumber, hdr1.sequenceNumber)
 	}
 
+	// Check sequence number
+	n := uint32(54329)
+	hdr1.SetSequenceNumber(n)
+	scheck := hdr1.SequenceNumber()
+	if scheck != n {
+		t.Errorf("SetSequenceNumber(%d) but SequenceNumber returns %d", n, scheck)
+	}
+
 	// Check ReadPacketPlusPad
 	dataPadded := append(data, make([]byte, 10000)...)
 	// np := len(dataPadded)

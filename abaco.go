@@ -74,8 +74,10 @@ func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
 
 // sampleCard samples the data from a single card to scan enough packets to
 // know the number of channels, data rate, etc.
+//
 // Although it slows things down, it's best to discard all data in the ring
 // at the time we open it, because we have no idea how old the data are.
+// Once the ring fills up, new data do not replace the old.
 func (device *AbacoDevice) sampleCard() error {
 	// Open the device and discard whatever is in the buffer
 	if err := device.ring.Open(); err != nil {
@@ -120,10 +122,10 @@ func (device *AbacoDevice) sampleCard() error {
 			}
 			packetsRead += len(allPackets)
 
-			// Do something with Packet.ChannelInfo() here: set device.nchan and
-			// firstchan based on the values here, if they are larger/smaller than
-			// any previously seen.
 			for _, p := range allPackets {
+				// Use Packet.ChannelInfo() to set device.firstchan to the lowest offset we see,
+				// and device.nchan to the largest channel number we see. Assumption: sampling
+				// enough packets to see all possible channel ranges.
 				nchan, offset := p.ChannelInfo()
 				if offset < device.firstchan {
 					device.firstchan = offset
@@ -132,6 +134,8 @@ func (device *AbacoDevice) sampleCard() error {
 					device.nchan = nchan + offset
 				}
 
+				// Save the first and last packet timestamps seen, as well as the corresponding
+				// sequence numbers. We'll compute ΔT/ΔSN, which estimates the sample period.
 				samplesInPackets += p.Frames()
 				if ts := p.Timestamp(); ts != nil && ts.Rate != 0 {
 					if tsInit.T == 0 {
@@ -155,8 +159,9 @@ func (device *AbacoDevice) sampleCard() error {
 		// TODO: check for wrap of timestamp if < 48 bits
 		// TODO: what if ts.Rate changes between Init and Final?
 
-		// Careful: assume that any missed packets had same number of samples as
-		// the packets that we did see. Thus find the average samples per packet.
+		// Sequence numbers number the packets, not the samples.
+		// If packets per sample varies, "sampleRate" is not as clearly defined.
+		// The mean number of samples per packet observed is used, whether or not the number varies.
 		if dserial := snFinal - snInit; dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			device.sampleRate = float64(dserial) * avgSampPerPacket / dt

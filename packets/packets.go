@@ -114,6 +114,11 @@ func (p *Packet) SequenceNumber() uint32 {
 	return p.sequenceNumber
 }
 
+// SetSequenceNumber sets the packet's internal sequenceNumber. Intended for testing only.
+func (p *Packet) SetSequenceNumber(n uint32) {
+	p.sequenceNumber = n
+}
+
 // Timestamp returns a copy of the first PacketTimestamp found in the header, or nil if none.
 func (p *Packet) Timestamp() *PacketTimestamp {
 	if p.timestamp != nil {
@@ -125,7 +130,7 @@ func (p *Packet) Timestamp() *PacketTimestamp {
 	return nil
 }
 
-// SetTimestamp puts timestamp `ts` into the header.
+// SetTimestamp puts timestamp `ts` into the header. Intended for testing only.
 func (p *Packet) SetTimestamp(ts *PacketTimestamp) error {
 	if p.timestamp == nil {
 		p.headerLength += 16
@@ -135,7 +140,7 @@ func (p *Packet) SetTimestamp(ts *PacketTimestamp) error {
 	return nil
 }
 
-// ResetTimestamp removes any timestamp from the header.
+// ResetTimestamp removes any timestamp from the header. Intended for testing only.
 func (p *Packet) ResetTimestamp() error {
 	if p.timestamp != nil {
 		p.headerLength -= 16
@@ -146,6 +151,7 @@ func (p *Packet) ResetTimestamp() error {
 }
 
 // NewData adds data to the packet, and creates the format and shape TLV items to match.
+// Intended for testing only.
 func (p *Packet) NewData(data interface{}, dims []int16) error {
 	ndim := len(dims)
 	p.headerLength = 24

@@ -104,6 +104,8 @@ func TestAbacoDevice(t *testing.T) {
 	go dev.sampleCard()
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
+
+	// Make a fake data array.
 	const Nchan = 8
 	const Nsamp = 20000
 	d := make([]int16, Nchan*Nsamp)
@@ -114,7 +116,7 @@ func TestAbacoDevice(t *testing.T) {
 		}
 	}
 
-	const stride = 500 // We'll put this many samples into a packet
+	const stride = 500 // We'll put this many samples into each packet
 	if stride*Nchan*2 > 8000 {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
