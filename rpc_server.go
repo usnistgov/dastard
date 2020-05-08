@@ -729,7 +729,6 @@ func RunRPCServer(portrpc int, block bool) {
 						err := server.ServeRequest(codec)
 						if err != nil {
 							//spew.Dump(codec)
-							panic(err)
 							break
 						}
 					}
