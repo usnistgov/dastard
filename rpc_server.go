@@ -601,7 +601,7 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 
 // Log logs msg, mostly for debugging
 func (s *SourceControl) Log(msg *string, reply *bool) error {
-	log.Printf("SourceControl.Log: %v\n", msg)
+	log.Printf("SourceControl.Log: %v\n", &msg)
 	return nil
 }
 
