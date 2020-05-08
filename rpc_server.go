@@ -599,6 +599,12 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	return nil
 }
 
+// Log logs msg, mostly for debugging
+func (s *SourceControl) Log(msg *string, reply *bool) error {
+	log.Println(msg)
+	return nil
+}
+
 // RunRPCServer sets up and run a permanent JSON-RPC server.
 // If block, it will block until Ctrl-C and gracefully shut down.
 // (The intention is that block=true in normal operation, but false for tests.)
