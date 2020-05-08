@@ -719,7 +719,7 @@ func RunRPCServer(portrpc int, block bool) {
 			if conn, err := listener.Accept(); err != nil {
 				panic("accept error: " + err.Error())
 			} else {
-				log.Printf("new connection established\n")
+				log.Printf("new connection established. local addr %v, remote addr %v\n", conn.LocalAddr(), conn.RemoteAddr())
 				go func() { // this is equivalent to ServeCodec, except all requests from a single connection
 					// are handled SYNCHRONOUSLY, so sourceControl doesn't need a lock
 					// requests from multiple connections are still asynchronous, but we could add slice of
@@ -729,6 +729,7 @@ func RunRPCServer(portrpc int, block bool) {
 						err := server.ServeRequest(codec)
 						if err != nil {
 							//spew.Dump(codec)
+							panic(err)
 							break
 						}
 					}
