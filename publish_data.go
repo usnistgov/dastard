@@ -395,6 +395,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 				message := converter(record)
 				err := pubSocket.SendMulti(zmq4.NewMsgFrom(message...))
 				if err != nil {
+					fmt.Println(err)
 					panic("zmq send error")
 				}
 			}
