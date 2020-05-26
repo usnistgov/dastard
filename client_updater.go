@@ -5,7 +5,6 @@ package dastard
 // disk with viper.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-zeromq/zmq4"
 	"github.com/spf13/viper"
+	czmq "github.com/zeromq/goczmq"
 )
 
 // ClientUpdate carries the messages to be published on the status port.
@@ -24,16 +23,14 @@ type ClientUpdate struct {
 	state interface{}
 }
 
-func publish(pubSocket zmq4.Socket, update ClientUpdate, message []byte) {
+func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	updateType := reflect.TypeOf(update.state).String()
 	tag := update.tag
 	if tag != "TRIGGERRATE" && tag != "CHANNELNAMES" && tag != "ALIVE" && tag != "NUMBERWRITTEN" && tag != "EXTERNALTRIGGER" {
 		log.Printf("SEND %v %v\n%v\n", tag, updateType, string(message))
 	}
-	err := pubSocket.SendMulti(zmq4.NewMsgFrom([]byte(update.tag), message))
-	if err != nil {
-		log.Printf("SEND %v FAILED: %+v", tag, err)
-	}
+	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
+	pubSocket.SendFrame(message, czmq.FlagNone)
 }
 
 var clientMessageChan chan ClientUpdate
@@ -46,13 +43,11 @@ func init() {
 // to publish any information that clients need to know.
 func RunClientUpdater(statusport int, abort <-chan struct{}) {
 	hostname := fmt.Sprintf("tcp://*:%d", statusport)
-	pubSocket := zmq4.NewPub(context.Background())
-	err := pubSocket.Listen(hostname)
+	pubSocket, err := czmq.NewPub(hostname)
 	if err != nil {
-		log.Printf("could not listen on %q: %+v", hostname, err)
 		return
 	}
-	defer pubSocket.Close()
+	defer pubSocket.Destroy()
 
 	// The ZMQ middleware will need some time for existing SUBscribers (and their
 	// subscription topics) to be hooked up to this new PUBlisher.
