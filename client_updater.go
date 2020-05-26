@@ -23,10 +23,33 @@ type ClientUpdate struct {
 	state interface{}
 }
 
+// nopublishMessages is a set of message names that you don't send to clients, because they
+// contain no configuration that makes sense for clients to hear.
+var nopublishMessages = map[string]struct{}{
+	"CURRENTTIME":    {},
+}
+
+// nologMessages is a set of message names that you don't log to the terminal, because they
+// are too long or too frequent to bother with.
+var nologMessages = map[string]struct{}{
+	"TRIGGERRATE":    {},
+	"CHANNELNAMES":    {},
+	"ALIVE":    {},
+	"NUMBERWRITTEN":    {},
+	"EXTERNALTRIGGER":    {},
+}
+
+
+// publish sends to all clients of the status update socket a 2-part message, with
+// the `update.tag` as the first part and `message` as the second. The latter should be
+// decodable as JSON.
 func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	updateType := reflect.TypeOf(update.state).String()
 	tag := update.tag
-	if tag != "TRIGGERRATE" && tag != "CHANNELNAMES" && tag != "ALIVE" && tag != "NUMBERWRITTEN" && tag != "EXTERNALTRIGGER" {
+	if _, ok := nopublishMessages[tag]; ok {
+		return
+	}
+	if _, ok := nologMessages[tag]; !ok {
 		log.Printf("SEND %v %v\n%v\n", tag, updateType, string(message))
 	}
 	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
@@ -133,9 +156,9 @@ var nosaveMessages = map[string]struct{}{
 // saveState stores server configuration to the standard config file.
 func saveState(lastMessages map[string]interface{}) {
 
-	now := time.Now().Format("\"Mon Jan _2 15:04:05 MST 2006\"")
+	now := time.Now().Format(time.UnixDate)
 	lastMessages["CURRENTTIME"] = now
-	// Note that the nosaveMessages don't get into the lastMessages map.
+	// Note that the nosaveMessages shouldn't get into the lastMessages map.
 	for k, v := range lastMessages {
 		if _, ok := nosaveMessages[strings.ToLower(k)]; !ok {
 			viper.Set(k, v)
