@@ -8,3 +8,12 @@ go:
   - 1.14.x
 
 go_import_path: github.com/usnistgov/dastard
+
+addons:
+  apt:
+    sources:
+    - sourceline: 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/ ./'
+      key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/Release.key'
+    packages:
+    - libczmq-dev libzmq3-dev libsodium-dev
+    

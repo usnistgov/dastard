@@ -645,7 +645,6 @@ func (ls *LanceroSource) launchLanceroReader() {
 					datacopies[i] = make([]RawType, framesUsed)
 				}
 
-
 				// NOTE: Galen reversed the inner loop order here, it was previously frames, then datastreams.
 				// This loop is the demultiplexing step. Loop over devices, data streams, then frames.
 				// For a single lancero 8x30 with linePeriod=20=160 ns this version handles:
@@ -675,11 +674,6 @@ func (ls *LanceroSource) launchLanceroReader() {
 				}
 				if len(ls.buffersChan) == cap(ls.buffersChan) {
 					panic(fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(ls.buffersChan), cap(ls.buffersChan)))
-				}
-				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
-					timeDiff: timeDiff, totalBytes: totalBytes, dataDropDetected: dataDropDetected}
-				if !dataDropDetected {
-					lastSuccesfulRead = time.Now()
 				}
 				ls.buffersChan <- BuffersChanType{datacopies: datacopies, lastSampleTime: lastSampleTime,
 					timeDiff: timeDiff, totalBytes: totalBytes, dataDropDetected: dataDropDetected}
