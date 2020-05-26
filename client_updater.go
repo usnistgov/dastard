@@ -133,7 +133,8 @@ var nosaveMessages = map[string]struct{}{
 // saveState stores server configuration to the standard config file.
 func saveState(lastMessages map[string]interface{}) {
 
-	lastMessages["CURRENTTIME"] = time.Now().Format(time.UnixDate)
+	now := time.Now().Format("\"Mon Jan _2 15:04:05 MST 2006\"")
+	lastMessages["CURRENTTIME"] = now
 	// Note that the nosaveMessages don't get into the lastMessages map.
 	for k, v := range lastMessages {
 		if _, ok := nosaveMessages[strings.ToLower(k)]; !ok {

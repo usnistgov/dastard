@@ -68,6 +68,7 @@ func setupViper() error {
 	if err != nil {             // Handle errors reading the config file
 		return fmt.Errorf("error reading config file: %s", err)
 	}
+	fmt.Printf("Viper gets currenttime=%v\n", viper.Get("currenttime"))
 	return nil
 }
 

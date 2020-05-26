@@ -16,16 +16,17 @@ func main() {
 
 	viper.SetConfigName("testconfig")
 	viper.AddConfigPath("/etc/dastard")
-	viper.AddConfigPath("$HOME/.config/dastard")
+	viper.AddConfigPath("$HOME/.dastard")
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig() // Find and read the config file
 	if err != nil {             // Handle errors reading the config file
 		fmt.Printf("Error reading config file: %s \n", err)
 	}
 
-	fmt.Printf("Verbose: %t\n", viper.Get("Verbose"))
+	fmt.Printf("Verbose:  %t\n", viper.Get("Verbose"))
 	fmt.Printf("Figgie:   %v\n", viper.Get("Figgie"))
-	fmt.Printf("sfffd:   %v\n", viper.Get("sdffd"))
+	fmt.Printf("sfffd:    %v\n", viper.Get("sdffd"))
+	fmt.Printf("cur time: %v\n", viper.Get("currenttime"))
 
 	d := newdata{"black cat", 3}
 	viper.Set("newdata", d)
