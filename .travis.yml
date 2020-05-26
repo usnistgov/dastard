@@ -16,3 +16,4 @@ addons:
       key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/Release.key'
     packages:
     - libczmq-dev libzmq3-dev libsodium-dev
+    
