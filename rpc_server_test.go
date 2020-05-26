@@ -65,6 +65,9 @@ func TestServer(t *testing.T) {
 	if hp := viper.GetInt("harrypotter"); hp != harrypotter {
 		t.Errorf("viper.GetInt(%q) returns %d, want %d", "harrypotter", hp, harrypotter)
 	}
+	if now := viper.Get("currenttime"); now == nil {
+		t.Errorf("viper.Get(\"currenttime\") returns nil")
+	}
 
 	var okay bool
 

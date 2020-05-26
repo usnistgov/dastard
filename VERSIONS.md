@@ -3,8 +3,9 @@
 **0.2.7** in progress in April 2020
 * Use package `zmq4`, a pure Go implementation of ZMQ.
 * Simplified testing on Travis because of that.
-* Then revert to `gozmq` because `zmq4` was dropping packets.
+* Then revert to `gozmq` because `zmq4` was dropping packets. (Fixes 192)
 * Read Abaco packets correctly when fractional packets are in ring buffer (issue 188).
+* Fix CurrentTime client message to be valid JSON (issue 194).
 
 **0.2.6** April 2, 2020
 * Change handling of data drops.
