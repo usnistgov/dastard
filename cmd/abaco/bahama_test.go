@@ -11,7 +11,7 @@ import (
 
 func TestGenerate(t *testing.T) {
 	const cardnum = -3
-	cancel := make(chan struct{})
+	cancel := make(chan os.Signal)
 	go func() {
 		time.Sleep(40 * time.Millisecond)
 		close(cancel)

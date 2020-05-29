@@ -2,14 +2,19 @@ package main
 
 import (
 	"fmt"
+	"flag"
 	"math"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-func generateData(cardnum int, cancel chan struct{}) error {
+
+func generateData(cardnum int, cancel chan os.Signal) error {
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
@@ -67,7 +72,42 @@ func generateData(cardnum int, cancel chan struct{}) error {
 }
 
 func main() {
-	const cardnum = 3
-	cancel := make(chan struct{})
-	generateData(cardnum, cancel)
+	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
+	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
+	samplerate := flag.Float64("rate", 10000., "Samples per channel per second, 100-400000")
+	usenoise := flag.Bool("noise", false, "Whether to add noise")
+	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
+	usepulses := flag.Bool("pulse", false, "Whether to add pulse-like data")
+	flag.Usage = func() {
+		fmt.Println("BAHAMA, the Basic Abaco Hardware Artificial Message Assembler")
+		fmt.Println("Usage:")
+		flag.PrintDefaults()
+		fmt.Println("If none of noise, saw, or pulse are given, saw will be used.")
+	}
+ 	flag.Parse()
+
+	fmt.Println("nchan: ", *nchan)
+	fmt.Println("nring: ", *nring)
+	fmt.Println("rate:  ", *samplerate)
+	if !(*usenoise || *usesawtooth || *usepulses) {
+		*usesawtooth = true
+	}
+	fmt.Printf("Data will contain")
+	if *usenoise {
+		fmt.Printf(" noise")
+	}
+	if *usesawtooth {
+		fmt.Printf(" sawtooth")
+	}
+	if *usepulses {
+		fmt.Printf(" pulses")
+	}
+	fmt.Println(".")
+
+	cancel := make(chan os.Signal)
+	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
+	for cardnum := 0; cardnum < *nring; cardnum++ {
+		go generateData(cardnum, cancel)
+	}
+	<-cancel
 }
