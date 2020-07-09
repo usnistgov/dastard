@@ -12,7 +12,7 @@ simple command as sudo first; otherwise, the password entering step will screw u
 ```
 # Dependencies (can skip if git is already installed)
 sudo apt-get -y update
-sudo apt-get install -y libsodium-dev libczmq-dev git
+sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
 # install go
 sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
