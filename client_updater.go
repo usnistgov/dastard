@@ -54,13 +54,18 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	if _, ok := nologMessages[tag]; !ok {
 		log.Printf("SEND %v %v\n%v\n", tag, updateType, string(message))
 	}
+	// Commented out bits: a 3-part message with 2nd part = message serial #
 	// serial := fmt.Sprintf("s#%9.9d", messageSerial)
 	// messageSerial++
 	// fullmessage := [][]byte{[]byte(tag), []byte(serial), message}
 	// fmt.Printf("Full message: {%s...%s...%s}\n", fullmessage[0], fullmessage[1], fullmessage[2])
+
+	// Send the 2-part message to all subscribers (clients).
+	// If there are errors, retry up to `maxSendAttempts` times with a sleep between.
 	fullmessage := [][]byte{[]byte(tag), message}
+	const maxSendAttempts = 5
 	var err error
-	for iter := 0; iter < 5; iter++ {
+	for iter := 0; iter < maxSendAttempts; iter++ {
 		if err = pubSocket.SendMessage(fullmessage); err == nil {
 			break
 		}
@@ -68,7 +73,7 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 		time.Sleep(time.Millisecond)
 	}
 	if err != nil {
-		fmt.Printf("Could not send a %s message 5 times in client_updater.publish", tag)
+		fmt.Printf("Could not send a %s message even with %d attempts in client_updater.publish", tag, maxSendAttempts)
 		panic(err)
 	}
 }
