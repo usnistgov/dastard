@@ -17,7 +17,10 @@ func TestGenerate(t *testing.T) {
 		close(cancel)
 	}()
 	const Nchan = 4
-	err := generateData(cardnum, cancel, Nchan)
+	const sine = true
+	const saw = false
+	const noise = 5.0
+	err := generateData(cardnum, cancel, Nchan, sine, saw, noise)
 	if err != nil {
 		t.Errorf("generateData() returned %s", err.Error())
 	}
