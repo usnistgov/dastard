@@ -16,7 +16,8 @@ func TestGenerate(t *testing.T) {
 		time.Sleep(40 * time.Millisecond)
 		close(cancel)
 	}()
-	err := generateData(cardnum, cancel)
+	const Nchan = 4
+	err := generateData(cardnum, cancel, Nchan)
 	if err != nil {
 		t.Errorf("generateData() returned %s", err.Error())
 	}

@@ -14,7 +14,7 @@ import (
 )
 
 
-func generateData(cardnum int, cancel chan os.Signal) error {
+func generateData(cardnum int, cancel chan os.Signal, Nchan int) error {
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
@@ -28,10 +28,9 @@ func generateData(cardnum int, cancel chan os.Signal) error {
 		return fmt.Errorf("Failed RingBuffer.Create: %s", err)
 	}
 
-	const Nchan = 8
 	const Nsamp = 20000
 	const stride = 500 // We'll put this many samples into a packet
-	const valuesPerPacket = stride * Nchan
+	valuesPerPacket := stride * Nchan
 	if 2*valuesPerPacket > 8000 {
 		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
 	}
@@ -52,7 +51,7 @@ func generateData(cardnum int, cancel chan os.Signal) error {
 	}
 
 	empty := make([]byte, packetAlign)
-	dims := []int16{Nchan}
+	dims := []int16{int16(Nchan)}
 	timer := time.NewTicker(40 * time.Millisecond)
 	for {
 		select {
@@ -107,7 +106,7 @@ func main() {
 	cancel := make(chan os.Signal)
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	for cardnum := 0; cardnum < *nring; cardnum++ {
-		go generateData(cardnum, cancel)
+		go generateData(cardnum, cancel, *nchan)
 	}
 	<-cancel
 }
