@@ -39,6 +39,8 @@ var nologMessages = map[string]struct{}{
 	"EXTERNALTRIGGER":    {},
 }
 
+// var messageSerial int
+
 
 // publish sends to all clients of the status update socket a 2-part message, with
 // the `update.tag` as the first part and `message` as the second. The latter should be
@@ -52,8 +54,23 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	if _, ok := nologMessages[tag]; !ok {
 		log.Printf("SEND %v %v\n%v\n", tag, updateType, string(message))
 	}
-	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
-	pubSocket.SendFrame(message, czmq.FlagNone)
+	// serial := fmt.Sprintf("s#%9.9d", messageSerial)
+	// messageSerial++
+	// fullmessage := [][]byte{[]byte(tag), []byte(serial), message}
+	// fmt.Printf("Full message: {%s...%s...%s}\n", fullmessage[0], fullmessage[1], fullmessage[2])
+	fullmessage := [][]byte{[]byte(tag), message}
+	var err error
+	for iter := 0; iter < 5; iter++ {
+		if err = pubSocket.SendMessage(fullmessage); err == nil {
+			break
+		}
+		// fmt.Printf("Error sending iteration %d\n", iter)
+		time.Sleep(time.Millisecond)
+	}
+	if err != nil {
+		fmt.Printf("Could not send a %s message 5 times in client_updater.publish", tag)
+		panic(err)
+	}
 }
 
 var clientMessageChan chan ClientUpdate
