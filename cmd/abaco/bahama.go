@@ -30,8 +30,9 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 	}
 
 	const Nsamp = 20000
-	const stride = 500 // We'll put this many samples into a packet
-	valuesPerPacket := stride * Nchan
+	valuesPerPacket := 4000 // tentative number
+	stride := valuesPerPacket / Nchan // We'll put this many samples into a packet
+	valuesPerPacket = stride * Nchan
 	if 2*valuesPerPacket > 8000 {
 		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
 	}
@@ -132,7 +133,12 @@ func main() {
 	cancel := make(chan os.Signal)
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	for cardnum := 0; cardnum < *nring; cardnum++ {
-		go generateData(cardnum, cancel, *nchan, *usesine, *usesawtooth, *noiselevel)
+		go func(cn int) {
+			if err := generateData(cn, cancel, *nchan, *usesine, *usesawtooth, *noiselevel); err != nil {
+				fmt.Printf("generateData(%d,...) failed: %v\n", cn, err)
+			}
+
+		}(cardnum)
 	}
 	<-cancel
 }
