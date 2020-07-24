@@ -39,6 +39,8 @@ var nologMessages = map[string]struct{}{
 	"EXTERNALTRIGGER":    {},
 }
 
+// var messageSerial int
+
 
 // publish sends to all clients of the status update socket a 2-part message, with
 // the `update.tag` as the first part and `message` as the second. The latter should be
@@ -52,8 +54,28 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	if _, ok := nologMessages[tag]; !ok {
 		log.Printf("SEND %v %v\n%v\n", tag, updateType, string(message))
 	}
-	pubSocket.SendFrame([]byte(update.tag), czmq.FlagMore)
-	pubSocket.SendFrame(message, czmq.FlagNone)
+	// Commented out bits: a 3-part message with 2nd part = message serial #
+	// serial := fmt.Sprintf("s#%9.9d", messageSerial)
+	// messageSerial++
+	// fullmessage := [][]byte{[]byte(tag), []byte(serial), message}
+	// fmt.Printf("Full message: {%s...%s...%s}\n", fullmessage[0], fullmessage[1], fullmessage[2])
+
+	// Send the 2-part message to all subscribers (clients).
+	// If there are errors, retry up to `maxSendAttempts` times with a sleep between.
+	fullmessage := [][]byte{[]byte(tag), message}
+	const maxSendAttempts = 5
+	var err error
+	for iter := 0; iter < maxSendAttempts; iter++ {
+		if err = pubSocket.SendMessage(fullmessage); err == nil {
+			break
+		}
+		// fmt.Printf("Error sending iteration %d\n", iter)
+		time.Sleep(time.Millisecond)
+	}
+	if err != nil {
+		fmt.Printf("Could not send a %s message even with %d attempts in client_updater.publish", tag, maxSendAttempts)
+		panic(err)
+	}
 }
 
 var clientMessageChan chan ClientUpdate
