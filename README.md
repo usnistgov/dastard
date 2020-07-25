@@ -53,7 +53,7 @@ As of April 20, 2020, this gets you go 1.14.2. If you use another method, please
 ### Also Install These
 
 * Install microscope https://github.com/usnistgov/microscope
-* Install dastard_commander https://github.com/usnistgov/dastard_commander
+* Install dastard_commander https://github.com/usnistgov/dastardcommander
 
 
 ## Purpose
