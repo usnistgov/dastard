@@ -14,6 +14,19 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
+func clearRings(nclear int) error {
+	for cardnum := 0; cardnum < nclear; cardnum++ {
+		ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
+		ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
+		ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
+		if err != nil {
+			return fmt.Errorf("Could not open ringbuffer: %s", err)
+		}
+		ring.Unlink()       // in case it exists from before
+	}
+	return nil
+}
+
 
 func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, sawtooth bool, noiselevel float64) error {
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
@@ -94,6 +107,7 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 }
 
 func main() {
+	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
 	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
 	samplerate := flag.Float64("rate", 10000., "Samples per channel per second, 100-400000")
@@ -108,6 +122,10 @@ func main() {
 		fmt.Println("If none of noise, saw, or pulse are given, saw will be used.")
 	}
  	flag.Parse()
+	clearRings(maxRings)
+	if *nring >= maxRings {
+		*nring = maxRings-1
+	}
 
 	fmt.Println("nchan: ", *nchan)
 	fmt.Println("nring: ", *nring)
