@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -127,26 +128,27 @@ func main() {
 		*nring = maxRings-1
 	}
 
-	fmt.Println("nchan: ", *nchan)
-	fmt.Println("nring: ", *nring)
-	fmt.Println("rate:  ", *samplerate)
+	fmt.Println("Number of ring buffers: ", *nring)
+	fmt.Println("Channels per ring:      ", *nchan)
+	fmt.Println("Samples per second:     ", *samplerate)
 	if !(*noiselevel > 0.0 || *usesawtooth || *usepulses || *usesine) {
 		*usesawtooth = true
 	}
-	fmt.Printf("Data will contain:")
+	var sources []string
 	if *noiselevel > 0.0 {
-		fmt.Printf(" noise")
+		sources = append(sources, "noise")
 	}
 	if *usesawtooth {
-		fmt.Printf(" sawtooth")
+		sources = append(sources, "sawtooth")
 	}
 	if *usepulses {
-		fmt.Printf(" pulses")
+		sources = append(sources, "pulses")
 	}
 	if *usesine {
-		fmt.Printf(" sinusoids")
+		sources = append(sources, "sinusoids")
 	}
-	fmt.Println(".")
+	fmt.Printf("Data will be the sum of these source types: %s.\n", strings.Join(sources, "+"))
+	fmt.Println("Type Ctrl-C to stop generating Abaco-style data.")
 
 	cancel := make(chan os.Signal)
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
