@@ -16,11 +16,8 @@ func TestGenerate(t *testing.T) {
 		time.Sleep(40 * time.Millisecond)
 		close(cancel)
 	}()
-	const Nchan = 4
-	const sine = true
-	const saw = false
-	const noise = 5.0
-	err := generateData(cardnum, cancel, Nchan, sine, saw, noise)
+	control := BahamaControl{Nchan:4, sinusoid:true, sawtooth:false, noiselevel:5.0}
+	err := generateData(cardnum, cancel, control)
 	if err != nil {
 		t.Errorf("generateData() returned %s", err.Error())
 	}

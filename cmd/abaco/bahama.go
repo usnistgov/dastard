@@ -28,9 +28,17 @@ func clearRings(nclear int) error {
 	return nil
 }
 
+// BahamaControl carries all the free parameters of the data generator
+type BahamaControl struct {
+	Nchan int
+	sinusoid bool
+	sawtooth bool
+	pulses bool
+	noiselevel float64
+}
 
-func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool,
-		sawtooth bool, pulses bool, noiselevel float64) error {
+
+func generateData(cardnum int, cancel chan os.Signal, control BahamaControl) error {
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
@@ -45,9 +53,10 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool,
 	}
 
 	// Data will play on infinite repeat with this many samples and this repeat period:
-	const Nsamp = 20000  // This many samples before data repeats itself
-	const repeatTime = 100*time.Millisecond // Repeat data with this period
+	const Nsamp = 40000  // This many samples before data repeats itself
+	const repeatTime = 200*time.Millisecond // Repeat data with this period
 
+	Nchan := control.Nchan
 	stride := 4000 / Nchan // We'll put this many samples into each packet
 	valuesPerPacket := stride * Nchan
 	if 2*valuesPerPacket > 8000 {
@@ -62,33 +71,37 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool,
 	fmt.Printf("Generating data in shm:%s\n", ringname)
 	p := packets.NewPacket(10, 20, 0x100, 0)
 	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
+	for i := 0; i < control.Nchan; i++ {
 		offset := int16(i*1000)
 		for j := 0; j < Nsamp; j++ {
 			d[i+Nchan*j] = offset
 		}
-		if sinusoid {
+		if control.sinusoid {
 			freq := (float64(i+1) * 2 * math.Pi) / float64(Nsamp)
 			amplitude := 1000.0
 			for j := 0; j < Nsamp; j++ {
 				d[i+Nchan*j] += int16(amplitude*math.Sin(freq*float64(j)))
 			}
 		}
-		if sawtooth {
+		if control.sawtooth {
 			for j := 0; j < Nsamp; j++ {
 				d[i+Nchan*j] += int16(j%5000)
 			}
 		}
-		if pulses {
+		if control.pulses {
 			amplitude := 5000.0+200.0*float64(Nchan)
 			scale := amplitude*2.116
-			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(scale*(math.Exp(-float64(j)/2000.0)-math.Exp(-float64(j)/500.0)))
+			for j := 0; j < Nsamp / 4; j++ {
+				pulsevalue := int16(scale*(math.Exp(-float64(j)/1200.0)-math.Exp(-float64(j)/300.0)))
+				// Same pulse repeats 4x
+				for k := 0; k < 4; k++ {
+					d[i+Nchan*(j+k*(Nsamp/4))] += pulsevalue
+				}
 			}
 		}
-		if noiselevel > 0.0 {
+		if control.noiselevel > 0.0 {
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(randsource.NormFloat64()*noiselevel)
+				d[i+Nchan*j] += int16(randsource.NormFloat64()*control.noiselevel)
 			}
 		}
 
@@ -154,23 +167,26 @@ func main() {
 		*nring = maxRings-1
 	}
 
+	control := BahamaControl{Nchan:*nchan, sawtooth:*usesawtooth, pulses:*usepulses,
+		sinusoid:*usesine, noiselevel:*noiselevel}
+
 	fmt.Println("Number of ring buffers: ", *nring)
-	fmt.Println("Channels per ring:      ", *nchan)
+	fmt.Println("Channels per ring:      ", control.Nchan)
 	// fmt.Println("Samples per second:     ", *samplerate)
-	if !(*noiselevel > 0.0 || *usesawtooth || *usepulses || *usesine) {
-		*usesawtooth = true
+	if !(control.noiselevel > 0.0 || control.sawtooth || control.pulses || control.sinusoid) {
+		control.sawtooth = true
 	}
 	var sources []string
-	if *noiselevel > 0.0 {
+	if control.noiselevel > 0.0 {
 		sources = append(sources, "noise")
 	}
-	if *usesawtooth {
+	if control.sawtooth {
 		sources = append(sources, "sawtooth")
 	}
-	if *usepulses {
+	if control.pulses {
 		sources = append(sources, "pulses")
 	}
-	if *usesine {
+	if control.sinusoid {
 		sources = append(sources, "sinusoids")
 	}
 	fmt.Printf("Data will be the sum of these source types: %s.\n", strings.Join(sources, "+"))
@@ -180,10 +196,9 @@ func main() {
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	for cardnum := 0; cardnum < *nring; cardnum++ {
 		go func(cn int) {
-			if err := generateData(cn, cancel, *nchan, *usesine, *usesawtooth, *usepulses, *noiselevel); err != nil {
+			if err := generateData(cn, cancel, control); err != nil {
 				fmt.Printf("generateData(%d,...) failed: %v\n", cn, err)
 			}
-
 		}(cardnum)
 	}
 	<-cancel
