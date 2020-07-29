@@ -29,7 +29,8 @@ func clearRings(nclear int) error {
 }
 
 
-func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, sawtooth bool, noiselevel float64) error {
+func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool,
+		sawtooth bool, pulses bool, noiselevel float64) error {
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
@@ -43,9 +44,11 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 		return fmt.Errorf("Failed RingBuffer.Create: %s", err)
 	}
 
-	const Nsamp = 10000  // This many samples before data repeats itself
-	const repeatTime = 40*time.Millisecond // Repeat data with this period
-	stride := 4000 / Nchan // We'll put this many samples into a packet
+	// Data will play on infinite repeat with this many samples and this repeat period:
+	const Nsamp = 20000  // This many samples before data repeats itself
+	const repeatTime = 100*time.Millisecond // Repeat data with this period
+
+	stride := 4000 / Nchan // We'll put this many samples into each packet
 	valuesPerPacket := stride * Nchan
 	if 2*valuesPerPacket > 8000 {
 		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
@@ -74,6 +77,13 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 		if sawtooth {
 			for j := 0; j < Nsamp; j++ {
 				d[i+Nchan*j] += int16(j%5000)
+			}
+		}
+		if pulses {
+			amplitude := 5000.0+200.0*float64(Nchan)
+			scale := amplitude*2.116
+			for j := 0; j < Nsamp; j++ {
+				d[i+Nchan*j] += int16(scale*(math.Exp(-float64(j)/2000.0)-math.Exp(-float64(j)/500.0)))
 			}
 		}
 		if noiselevel > 0.0 {
@@ -170,7 +180,7 @@ func main() {
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	for cardnum := 0; cardnum < *nring; cardnum++ {
 		go func(cn int) {
-			if err := generateData(cn, cancel, *nchan, *usesine, *usesawtooth, *noiselevel); err != nil {
+			if err := generateData(cn, cancel, *nchan, *usesine, *usesawtooth, *usepulses, *noiselevel); err != nil {
 				fmt.Printf("generateData(%d,...) failed: %v\n", cn, err)
 			}
 
