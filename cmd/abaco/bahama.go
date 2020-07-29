@@ -60,17 +60,20 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 	p := packets.NewPacket(10, 20, 0x100, 0)
 	d := make([]int16, Nchan*Nsamp)
 	for i := 0; i < Nchan; i++ {
+		offset := int16(i*1000)
+		for j := 0; j < Nsamp; j++ {
+			d[i+Nchan*j] = offset
+		}
 		if sinusoid {
 			freq := (float64(i+1) * 2 * math.Pi) / float64(Nsamp)
-			offset := float64(i)*1000.0
 			amplitude := 1000.0
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] = int16(amplitude*math.Sin(freq*float64(j)) + offset)
+				d[i+Nchan*j] += int16(amplitude*math.Sin(freq*float64(j)))
 			}
 		}
 		if sawtooth {
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(j)
+				d[i+Nchan*j] += int16(j%5000)
 			}
 		}
 		if noiselevel > 0.0 {
@@ -79,13 +82,14 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 			}
 		}
 
-		// Wrap properly into [0, 16383]
-		for j := 0; j < Nsamp; j++ {
-			raw := d[i+Nchan*j]
-			d[i+Nchan*j] = raw % 16384
-			// if raw < 0 {
-			// 	d[i+Nchan*j] += 16384
-			// }
+		// Abaco data only records the lowest N bits.
+		// Wrap the 16-bit data properly into [0, (2^N)-1]
+		FractionBits := 13
+		if FractionBits < 16 {
+			for j := 0; j < Nsamp; j++ {
+				raw := d[i+Nchan*j]
+				d[i+Nchan*j] = raw % (1<<FractionBits)
+			}
 		}
 
 	}

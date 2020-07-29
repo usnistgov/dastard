@@ -403,7 +403,7 @@ func (as *AbacoSource) readerMainLoop() {
 					datacopies[i+nchanPrevDevices] = make([]RawType, 0, framesUsed)
 				}
 
-				// This is the demultiplexing step. Loops over packet, then values.
+				// This is the demultiplexing step. Loops over packets, then values.
 				// Within a slice of values, its all channels for frame 0, then all for frame 1...
 				for _, p := range allPackets {
 					nchan, offset := p.ChannelInfo()
