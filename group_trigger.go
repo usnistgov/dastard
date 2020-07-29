@@ -22,9 +22,9 @@ type TriggerCounter struct {
 	lo           FrameIndex // count trigs starting at this FrameIndex (earlier are errors)
 	hiTime       time.Time  // expected real-world time corresponding to hi
 	countsSeen   int
-	stepDuration time.Duration
+	stepDuration time.Duration // how long each trigger counting step should last
 	sampleRate   float64
-	keyTime      time.Time  // the time of a recent correspondence between time and FrameIndex
+	keyTime      time.Time  // the time of one recent correspondence between time and FrameIndex
 	keyFrame     FrameIndex // keyFrame occured at keyTime to the best of our knowledge
 	initialized  bool
 	messages     []triggerCounterMessage

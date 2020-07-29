@@ -588,8 +588,10 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	}
 
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
+
 	// Step 1a: compute all edge triggers on a first pass. Separated by at least 1 record length
 	records = dsp.edgeTriggerComputeAppend(records)
+
 	// Step 1b: compute all level triggers on a second pass. Only insert them
 	// in the list of triggers if they are properly separated from the edge triggers.
 	records = dsp.levelTriggerComputeAppend(records)
@@ -597,13 +599,13 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	// Step 1c: compute all auto triggers, wherever they fit in between edge+level.
 	records = dsp.autoTriggerComputeAppend(records)
 
-	// Step 1.5: note the last trigger for the next invocation of TriggerData
+	// TODO Step 1d: compute all noise triggers, wherever they fit in between edge+level.
+	//
+
+	// Step 1e: note the last trigger for the next invocation of TriggerData
 	if len(records) > 0 {
 		dsp.LastTrigger = records[len(records)-1].trigFrame
 	}
-
-	// TODO Step 1d: compute all noise triggers, wherever they fit in between edge+level.
-	//
 
 	// Step 2: send the primary trigger list to the group trigger broker and await its
 	// answer about when the secondary triggers are.

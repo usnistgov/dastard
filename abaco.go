@@ -157,7 +157,8 @@ func (device *AbacoDevice) sampleCard() error {
 
 		// Careful: assume that any missed packets had same number of samples as
 		// the packets that we did see. Thus find the average samples per packet.
-		if dserial := snFinal - snInit; dserial > 0 {
+		dserial := snFinal - snInit
+		if dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			device.sampleRate = float64(dserial) * avgSampPerPacket / dt
 			fmt.Printf("Sample rate %.6g /sec determined from %d packets:\n\tΔt=%f sec, Δserial=%d, and %f samp/packet\n", device.sampleRate,
@@ -300,7 +301,7 @@ func (as *AbacoSource) Sample() error {
 		as.nchan += device.nchan
 	}
 
-	// Treat devices as 1 row x N columns.4
+	// Treat devices as 1 row x N columns.
 	as.rowColCodes = make([]RowColCode, as.nchan)
 	i := 0
 	for _, device := range as.active {
