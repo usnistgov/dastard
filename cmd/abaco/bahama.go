@@ -43,13 +43,16 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 		return fmt.Errorf("Failed RingBuffer.Create: %s", err)
 	}
 
-	const Nsamp = 20000
-	valuesPerPacket := 4000 // tentative number
-	stride := valuesPerPacket / Nchan // We'll put this many samples into a packet
-	valuesPerPacket = stride * Nchan
+	const Nsamp = 10000  // This many samples before data repeats itself
+	const repeatTime = 40*time.Millisecond // Repeat data with this period
+	stride := 4000 / Nchan // We'll put this many samples into a packet
+	valuesPerPacket := stride * Nchan
 	if 2*valuesPerPacket > 8000 {
 		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
 	}
+	sampleRate := float64(Nsamp)/(float64(repeatTime)/1e9)
+	const counterRate = 1e8 // counts per second
+	countsPerSample := uint64(counterRate/sampleRate+0.5)
 
  	randsource := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -60,7 +63,7 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 		if sinusoid {
 			freq := (float64(i+1) * 2 * math.Pi) / float64(Nsamp)
 			offset := float64(i)*1000.0
-			amplitude := 10000.0
+			amplitude := 1000.0
 			for j := 0; j < Nsamp; j++ {
 				d[i+Nchan*j] = int16(amplitude*math.Sin(freq*float64(j)) + offset)
 			}
@@ -89,19 +92,28 @@ func generateData(cardnum int, cancel chan os.Signal, Nchan int, sinusoid bool, 
 
 	empty := make([]byte, packetAlign)
 	dims := []int16{int16(Nchan)}
-	timer := time.NewTicker(40 * time.Millisecond)
+	timer := time.NewTicker(repeatTime)
+	timeCounter := uint64(0)
 	for {
 		select {
 		case <-cancel:
 			return nil
 		case <-timer.C:
 			for i := 0; i < Nchan*Nsamp; i += valuesPerPacket {
-				p.NewData(d[i:i+valuesPerPacket], dims)
+				// Must be careful: the last iteration might have fewer samples than the others.
+				lastsamp := i+valuesPerPacket
+				if lastsamp > Nchan*Nsamp {
+					lastsamp = Nchan*Nsamp
+				}
+				p.NewData(d[i:lastsamp], dims)
+				ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
+				p.SetTimestamp(ts)
 				b := p.Bytes()
 				b = append(b, empty[:packetAlign-len(b)]...)
 				if ring.BytesWriteable() >= len(b) {
 					ring.Write(b)
 				}
+				timeCounter += countsPerSample*uint64((lastsamp-i)/Nchan)
 			}
 		}
 	}
@@ -111,7 +123,7 @@ func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
 	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
-	samplerate := flag.Float64("rate", 10000., "Samples per channel per second, 100-400000")
+	// samplerate := flag.Float64("rate", 10000., "Samples per channel per second, 100-400000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
 	usesine := flag.Bool("sine", false, "Whether to add a sinusoidal pattern")
@@ -130,7 +142,7 @@ func main() {
 
 	fmt.Println("Number of ring buffers: ", *nring)
 	fmt.Println("Channels per ring:      ", *nchan)
-	fmt.Println("Samples per second:     ", *samplerate)
+	// fmt.Println("Samples per second:     ", *samplerate)
 	if !(*noiselevel > 0.0 || *usesawtooth || *usepulses || *usesine) {
 		*usesawtooth = true
 	}
