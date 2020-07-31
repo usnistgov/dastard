@@ -122,13 +122,13 @@ func (rb *RingBuffer) BytesWriteable() int {
 
 // Unlink removes a writeable buffer's shared memory regions.
 func (rb *RingBuffer) Unlink() (err error) {
-	if err = shm.Unlink(rb.rawName); err != nil {
-		return err
-	}
+	// Make sure to try unlinking both regions. Unlink returns error if region doesn't exist, and want
+	// to unlink the shared memory regions if either exists.
+	err1 := shm.Unlink(rb.rawName)
 	if err = shm.Unlink(rb.descName); err != nil {
 		return err
 	}
-	return nil
+	return err1
 }
 
 // Open opens the ring buffer shared memory regions and memory maps them.
