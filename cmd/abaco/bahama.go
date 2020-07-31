@@ -23,7 +23,7 @@ func clearRings(nclear int) error {
 		if err != nil {
 			return fmt.Errorf("Could not open ringbuffer: %s", err)
 		}
-		ring.Unlink()       // in case it exists from before
+		ring.Unlink()  // in case it exists from before
 	}
 	return nil
 }
@@ -40,17 +40,15 @@ type BahamaControl struct {
 }
 
 
-func generateData(packetchan chan []byte, cancel chan os.Signal, control BahamaControl) error {
+func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel chan os.Signal, control BahamaControl) error {
 	// Data will play on infinite repeat with this many samples and this repeat period:
 	const Nsamp = 40000  // This many samples before data repeats itself
 	sampleRate := control.samplerate
 	periodns := float64(Nsamp)/sampleRate*1e9
 	repeatTime := time.Duration(periodns+0.5)*time.Nanosecond // Repeat data with this period
 
-	Nchan := control.Nchan
-	chanPerGroup := (1+(control.Nchan-1) / control.Ngroups)
-	stride := 4000 / chanPerGroup // We'll put this many samples into each packet
-	valuesPerPacket := stride * chanPerGroup
+	stride := 4000 / Nchan // We'll put this many samples into each packet
+	valuesPerPacket := stride * Nchan
 	if 2*valuesPerPacket > 8000 {
 		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
 	}
@@ -59,26 +57,22 @@ func generateData(packetchan chan []byte, cancel chan os.Signal, control BahamaC
 
  	randsource := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-
 	// Raw packets
-	allpackets := make([]*packets.Packet, control.Ngroups)
 	const version = 10
 	const sourceID = 20
 	const initSeqNum = 0
-	for i:=0; i<control.Ngroups; i++ {
-		chanOffset := i*chanPerGroup
-		allpackets[i] = packets.NewPacket(version, sourceID, initSeqNum, chanOffset)
-	}
+	packet := packets.NewPacket(version, sourceID, initSeqNum, firstchanOffset)
 
 	// Raw data that will go into packets
 	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < control.Nchan; i++ {
-		offset := int16(i*1000)
+	for i := 0; i < Nchan; i++ {
+		cnum := i+firstchanOffset
+		offset := int16(cnum*1000)
 		for j := 0; j < Nsamp; j++ {
 			d[i+Nchan*j] = offset
 		}
 		if control.sinusoid {
-			freq := (float64(i+1) * 2 * math.Pi) / float64(Nsamp)
+			freq := (float64(cnum+1) * 2 * math.Pi) / float64(Nsamp)
 			amplitude := 1000.0
 			for j := 0; j < Nsamp; j++ {
 				d[i+Nchan*j] += int16(amplitude*math.Sin(freq*float64(j)))
@@ -90,7 +84,7 @@ func generateData(packetchan chan []byte, cancel chan os.Signal, control BahamaC
 			}
 		}
 		if control.pulses {
-			amplitude := 5000.0+200.0*float64(Nchan)
+			amplitude := 5000.0+200.0*float64(cnum)
 			scale := amplitude*2.116
 			for j := 0; j < Nsamp / 4; j++ {
 				pulsevalue := int16(scale*(math.Exp(-float64(j)/1200.0)-math.Exp(-float64(j)/300.0)))
@@ -115,7 +109,6 @@ func generateData(packetchan chan []byte, cancel chan os.Signal, control BahamaC
 				d[i+Nchan*j] = raw % (1<<FractionBits)
 			}
 		}
-
 	}
 
 	dims := []int16{int16(Nchan)}
@@ -132,11 +125,10 @@ func generateData(packetchan chan []byte, cancel chan os.Signal, control BahamaC
 				if lastsamp > Nchan*Nsamp {
 					lastsamp = Nchan*Nsamp
 				}
-				p := allpackets[0]
-				p.NewData(d[i:lastsamp], dims)
+				packet.NewData(d[i:lastsamp], dims)
 				ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
-				p.SetTimestamp(ts)
-				packetchan <- p.Bytes()
+				packet.SetTimestamp(ts)
+				packetchan <- packet.Bytes()
 				timeCounter += countsPerSample*uint64((lastsamp-i)/Nchan)
 			}
 		}
@@ -153,28 +145,31 @@ func ringwriter(cardnum int, cancel chan os.Signal, packetchan chan []byte) erro
 		return fmt.Errorf("Could not open ringbuffer %d: %s", cardnum, err)
 	}
 	ring.Unlink()       // in case it exists from before
-	defer ring.Unlink() // so it won't exist after
 	if err = ring.Create(256 * packetAlign); err != nil {
 		return fmt.Errorf("Failed RingBuffer.Create: %s", err)
 	}
 	fmt.Printf("Generating data in shm:%s\n", ringname)
 
-	empty := make([]byte, packetAlign)
-	for {
-		select {
-		case <- cancel:
-			return nil
-		case b:= <- packetchan:
-			if len(b) > packetAlign {
-				b = b[:packetAlign]
-			} else if len(b) < packetAlign {
-				b = append(b, empty[:packetAlign-len(b)]...)
-			}
-			if ring.BytesWriteable() >= len(b) {
-				ring.Write(b)
+	go func() {
+		defer ring.Unlink() // so it won't exist after
+		empty := make([]byte, packetAlign)
+		for {
+			select {
+			case <- cancel:
+				return
+			case b:= <- packetchan:
+				if len(b) > packetAlign {
+					b = b[:packetAlign]
+				} else if len(b) < packetAlign {
+					b = append(b, empty[:packetAlign-len(b)]...)
+				}
+				if ring.BytesWriteable() >= len(b) {
+					ring.Write(b)
+				}
 			}
 		}
-	}
+	}()
+	return nil
 }
 
 func coerceInt(f *int, minval, maxval int) {
@@ -199,7 +194,7 @@ func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
 	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
-	ngroups := flag.Int("ngroups", 1, "Number of channel groups per ring, 1-nchan/4 allowed")
+	ngroups := flag.Int("ngroups", 1, "Number of channel groups per ring, 1-Nchan/4 allowed")
 	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 1000-500000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
@@ -250,16 +245,24 @@ func main() {
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	for cardnum := 0; cardnum < *nring; cardnum++ {
 		packetchan := make(chan []byte)
-		go func(cn int, pchan chan []byte) {
-			if err := ringwriter(cn, cancel, pchan); err != nil {
-				fmt.Printf("ringwriter(%d,...) failed: %v\n", cn, err)
+		if err := ringwriter(cardnum, cancel, packetchan); err != nil {
+			fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
+			continue
+		}
+
+
+		chanPerGroup := (1+(control.Nchan-1) / control.Ngroups)
+		for i:= 0; i<control.Nchan; i+= chanPerGroup {
+			nch := chanPerGroup
+			if i*chanPerGroup+nch > control.Nchan {
+				nch = control.Nchan-i
 			}
-		}(cardnum, packetchan)
-		go func(pchan chan []byte) {
-			if err := generateData(pchan, cancel, control); err != nil {
-				fmt.Printf("generateData() failed: %v\n", err)
-			}
-		}(packetchan)
+			go func(nchan, chan0 int, pchan chan []byte) {
+				if err := generateData(nchan, chan0, pchan, cancel, control); err != nil {
+					fmt.Printf("generateData() failed: %v\n", err)
+				}
+			}(nch, i, packetchan)
+		}
 	}
 	<-cancel
 }
