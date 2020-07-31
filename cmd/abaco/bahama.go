@@ -35,6 +35,7 @@ type BahamaControl struct {
 	sawtooth bool
 	pulses bool
 	noiselevel float64
+	samplerate float64
 }
 
 
@@ -54,7 +55,9 @@ func generateData(cardnum int, cancel chan os.Signal, control BahamaControl) err
 
 	// Data will play on infinite repeat with this many samples and this repeat period:
 	const Nsamp = 40000  // This many samples before data repeats itself
-	const repeatTime = 200*time.Millisecond // Repeat data with this period
+	sampleRate := control.samplerate
+	periodns := float64(Nsamp)/sampleRate*1e9
+	repeatTime := time.Duration(periodns+0.5)*time.Nanosecond // Repeat data with this period
 
 	Nchan := control.Nchan
 	stride := 4000 / Nchan // We'll put this many samples into each packet
@@ -62,7 +65,6 @@ func generateData(cardnum int, cancel chan os.Signal, control BahamaControl) err
 	if 2*valuesPerPacket > 8000 {
 		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
 	}
-	sampleRate := float64(Nsamp)/(float64(repeatTime)/1e9)
 	const counterRate = 1e8 // counts per second
 	countsPerSample := uint64(counterRate/sampleRate+0.5)
 
@@ -150,7 +152,7 @@ func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
 	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
-	// samplerate := flag.Float64("rate", 10000., "Samples per channel per second, 100-400000")
+	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 100-500000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
 	usesine := flag.Bool("sine", false, "Whether to add a sinusoidal pattern")
@@ -166,13 +168,19 @@ func main() {
 	if *nring >= maxRings {
 		*nring = maxRings-1
 	}
+	if *samplerate > 500000 {
+		*samplerate = 500000
+	}
+	if *samplerate < 100 {
+		*samplerate = 100
+	}
 
 	control := BahamaControl{Nchan:*nchan, sawtooth:*usesawtooth, pulses:*usepulses,
-		sinusoid:*usesine, noiselevel:*noiselevel}
+		sinusoid:*usesine, noiselevel:*noiselevel, samplerate:*samplerate}
 
 	fmt.Println("Number of ring buffers: ", *nring)
 	fmt.Println("Channels per ring:      ", control.Nchan)
-	// fmt.Println("Samples per second:     ", *samplerate)
+	fmt.Println("Samples per second:     ", *samplerate)
 	if !(control.noiselevel > 0.0 || control.sawtooth || control.pulses || control.sinusoid) {
 		control.sawtooth = true
 	}
