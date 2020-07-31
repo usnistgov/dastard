@@ -148,11 +148,29 @@ func generateData(cardnum int, cancel chan os.Signal, control BahamaControl) err
 	}
 }
 
+func coerceInt(f *int, minval, maxval int) {
+	if *f < minval {
+		*f = minval
+	}
+	if *f > maxval {
+		*f = maxval
+	}
+}
+
+func coerceFloat(f *float64, minval, maxval float64) {
+	if *f < minval {
+		*f = minval
+	}
+	if *f > maxval {
+		*f = maxval
+	}
+}
+
 func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
 	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
-	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 100-500000")
+	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 1000-500000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
 	usesine := flag.Bool("sine", false, "Whether to add a sinusoidal pattern")
@@ -164,16 +182,11 @@ func main() {
 		fmt.Println("If none of noise, saw, or pulse are given, saw will be used.")
 	}
  	flag.Parse()
+
 	clearRings(maxRings)
-	if *nring >= maxRings {
-		*nring = maxRings-1
-	}
-	if *samplerate > 500000 {
-		*samplerate = 500000
-	}
-	if *samplerate < 100 {
-		*samplerate = 100
-	}
+	coerceInt(nchan, 4, 512)
+	coerceInt(nring, 1, 4)
+	coerceFloat(samplerate, 1000, 500000)
 
 	control := BahamaControl{Nchan:*nchan, sawtooth:*usesawtooth, pulses:*usepulses,
 		sinusoid:*usesine, noiselevel:*noiselevel, samplerate:*samplerate}
