@@ -117,6 +117,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	for {
 		select {
 		case <-cancel:
+			close(packetchan)
 			return nil
 		case <-timer.C:
 			for i := 0; i < Nchan*Nsamp; i += valuesPerPacket {
@@ -135,7 +136,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	}
 }
 
-func ringwriter(cardnum int, cancel chan os.Signal, packetchan chan []byte) error {
+func ringwriter(cardnum int, packetchan chan []byte) error {
 	const packetAlign = 8192 // Packets go into the ring buffer at this stride (bytes)
 
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
@@ -154,18 +155,17 @@ func ringwriter(cardnum int, cancel chan os.Signal, packetchan chan []byte) erro
 		defer ring.Unlink() // so it won't exist after
 		empty := make([]byte, packetAlign)
 		for {
-			select {
-			case <- cancel:
+			b, ok:= <- packetchan
+			if !ok {
 				return
-			case b:= <- packetchan:
-				if len(b) > packetAlign {
-					b = b[:packetAlign]
-				} else if len(b) < packetAlign {
-					b = append(b, empty[:packetAlign-len(b)]...)
-				}
-				if ring.BytesWriteable() >= len(b) {
-					ring.Write(b)
-				}
+			}
+			if len(b) > packetAlign {
+				b = b[:packetAlign]
+			} else if len(b) < packetAlign {
+				b = append(b, empty[:packetAlign-len(b)]...)
+			}
+			if ring.BytesWriteable() >= len(b) {
+				ring.Write(b)
 			}
 		}
 	}()
@@ -245,7 +245,7 @@ func main() {
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	for cardnum := 0; cardnum < *nring; cardnum++ {
 		packetchan := make(chan []byte)
-		if err := ringwriter(cardnum, cancel, packetchan); err != nil {
+		if err := ringwriter(cardnum, packetchan); err != nil {
 			fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
 			continue
 		}
