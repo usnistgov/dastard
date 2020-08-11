@@ -35,10 +35,46 @@ type BahamaControl struct {
 	sinusoid bool
 	sawtooth bool
 	pulses bool
+	interleave bool
+	stagger bool
 	noiselevel float64
 	samplerate float64
 }
 
+
+// interleavePackets takes packets from the N channels `inchans` and puts them onto `outchan` in a
+// specific order to test Dastard's handling of various packet orderings
+func interleavePackets(outchan chan []byte, inchans []chan []byte, stagger bool) {
+	// If stagger is false, then packets will go onto `outchan` in the order ABCABCABC... if there are 3 groups.
+	// If stagger is true, then they will start out staggered: ABBCCCAAABBBCCCAAABBBCCC if there are 3 groups.
+	// The latter ensures that each group is "ahead" of all others at some point in the sequence.
+	// In the above A, B, C represent not a single packet from the channel groups, but `bucketsize` packets.
+	const bucketsize = 4
+	latersize := len(inchans)*bucketsize
+	sendsize := make([]int, len(inchans))
+	for i := range(inchans) {
+		if stagger {
+			sendsize[i] = (i+1)*bucketsize
+		} else {
+			sendsize[i] = latersize
+		}
+	}
+
+	for someopen := false; !someopen; {
+		someopen = false
+		for i, ic := range(inchans) {
+			for j := 0; j < sendsize[i]; j++ {
+				p, ok := <-ic
+				if ok {
+					someopen = true
+					outchan <- p
+				}
+			}
+			sendsize[i] = latersize
+		}
+	}
+	close(outchan)
+}
 
 func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel chan os.Signal, control BahamaControl) error {
 	// Data will play on infinite repeat with this many samples and this repeat period:
@@ -200,6 +236,8 @@ func main() {
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
 	usesine := flag.Bool("sine", false, "Whether to add a sinusoidal pattern")
 	usepulses := flag.Bool("pulse", false, "Whether to add pulse-like data")
+	interleave := flag.Bool("interleave", false, "Whether to interleave channel groups' packets regularly")
+	stagger := flag.Bool("stagger", false, "Whether to stagger channel groups' packets so each gets 'ahead' of the others")
 	flag.Usage = func() {
 		fmt.Println("BAHAMA, the Basic Abaco Hardware Artificial Message Assembler")
 		fmt.Println("Usage:")
@@ -215,13 +253,31 @@ func main() {
 	coerceFloat(samplerate, 1000, 500000)
 
 	control := BahamaControl{Nchan:*nchan, Ngroups:*ngroups,
+		stagger:*stagger, interleave:*interleave,
 		sawtooth:*usesawtooth, pulses:*usepulses,
 		sinusoid:*usesine, noiselevel:*noiselevel, samplerate:*samplerate}
 
+	fmt.Println("Samples per second:      ", *samplerate)
 	fmt.Println("Number of ring buffers:  ", *nring)
 	fmt.Println("Channels per ring:       ", control.Nchan)
 	fmt.Println("Channel groups per ring: ", control.Ngroups)
-	fmt.Println("Samples per second:      ", *samplerate)
+	if control.Ngroups > 1 {
+		if control.stagger {
+			control.interleave = true
+		}
+	} else {
+		if control.stagger || control.interleave {
+			fmt.Println("Warning: -stagger and -interleave arguments are ignored with only 1 channel group")
+		}
+		control.stagger = false
+		control.interleave = false
+	}
+	if control.stagger {
+		fmt.Println("  Packets from channel groups are staggered so each group is sometimes ahead of the others")
+	} else if control.interleave {
+		fmt.Println("  Packets from channel groups are interleaved regularly")
+	}
+
 	if !(control.noiselevel > 0.0 || control.sawtooth || control.pulses || control.sinusoid) {
 		control.sawtooth = true
 	}
@@ -250,18 +306,26 @@ func main() {
 			continue
 		}
 
-
+		firstpchan := make([]chan []byte, control.Ngroups)
 		chanPerGroup := (1+(control.Nchan-1) / control.Ngroups)
 		for i:= 0; i<control.Nchan; i+= chanPerGroup {
 			nch := chanPerGroup
 			if i*chanPerGroup+nch > control.Nchan {
 				nch = control.Nchan-i
 			}
+			pchan := packetchan
+			if control.interleave {
+				pchan := make(chan []byte)
+				firstpchan = append(firstpchan, pchan)
+			}
 			go func(nchan, chan0 int, pchan chan []byte) {
 				if err := generateData(nchan, chan0, pchan, cancel, control); err != nil {
 					fmt.Printf("generateData() failed: %v\n", err)
 				}
-			}(nch, i, packetchan)
+			}(nch, i, pchan)
+		}
+		if control.interleave {
+			go interleavePackets(packetchan, firstpchan, control.stagger)
 		}
 	}
 	<-cancel
