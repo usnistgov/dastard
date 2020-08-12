@@ -50,17 +50,21 @@ func interleavePackets(outchan chan []byte, inchans []chan []byte, stagger bool)
 	// The latter ensures that each group is "ahead" of all others at some point in the sequence.
 	// In the above A, B, C represent not a single packet from the channel groups, but `bucketsize` packets.
 	const bucketsize = 4
-	latersize := len(inchans)*bucketsize
+	latersize := bucketsize
+	if stagger {
+		latersize *= len(inchans)
+	}
 	sendsize := make([]int, len(inchans))
 	for i := range(inchans) {
 		if stagger {
 			sendsize[i] = (i+1)*bucketsize
 		} else {
-			sendsize[i] = latersize
+			sendsize[i] = bucketsize
 		}
 	}
 
-	for someopen := false; !someopen; {
+	someopen := true
+	for someopen {
 		someopen = false
 		for i, ic := range(inchans) {
 			for j := 0; j < sendsize[i]; j++ {
@@ -306,7 +310,7 @@ func main() {
 			continue
 		}
 
-		firstpchan := make([]chan []byte, control.Ngroups)
+		stage1pchans := make([]chan []byte, control.Ngroups)
 		chanPerGroup := (1+(control.Nchan-1) / control.Ngroups)
 		for i:= 0; i<control.Nchan; i+= chanPerGroup {
 			nch := chanPerGroup
@@ -316,7 +320,7 @@ func main() {
 			pchan := packetchan
 			if control.interleave {
 				pchan := make(chan []byte)
-				firstpchan = append(firstpchan, pchan)
+				stage1pchans = append(stage1pchans, pchan)
 			}
 			go func(nchan, chan0 int, pchan chan []byte) {
 				if err := generateData(nchan, chan0, pchan, cancel, control); err != nil {
@@ -325,7 +329,7 @@ func main() {
 			}(nch, i, pchan)
 		}
 		if control.interleave {
-			go interleavePackets(packetchan, firstpchan, control.stagger)
+			go interleavePackets(packetchan, stage1pchans, control.stagger)
 		}
 	}
 	<-cancel
