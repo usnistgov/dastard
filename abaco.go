@@ -100,8 +100,6 @@ func (device *AbacoDevice) sampleCard() error {
 		return err
 	}
 	device.packetSize = int(psize)
-	device.nchan = 0
-	device.firstchan = 99999999
 	if err := device.ring.DiscardStride(uint64(device.packetSize)); err != nil {
 		return err
 	}
@@ -167,6 +165,15 @@ func (device *AbacoDevice) sampleCard() error {
 	}
 	sort.Sort(ByGroup(device.cgroups))
 	device.firstchan = device.cgroups[0].firstchan
+
+	// Verify that no channel #s appear in 2 groups.
+	highest := -1
+	for i, g := range device.cgroups {
+		if g.firstchan <= highest {
+			return fmt.Errorf("Channel group %d=%v but previous range ended at %d", i, g, highest)
+		}
+		highest = g.firstchan + g.nchan - 1
+	}
 
 	// Use the first and last timestamp to compute sample rate.
 	if tsInit.T != 0 && tsFinal.T != 0 {
