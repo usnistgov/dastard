@@ -15,11 +15,25 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
+// ChannelGroup represents a range of consecutive channel numbers
+type ChannelGroup struct {
+	firstchan int  // first channel number in this group
+	nchan int // how many channels in this group
+}
+
+// ByGroup implements sort.Interface for ChannelGroup slices
+type ByGroup []ChannelGroup
+func (g ByGroup) Len() int { return len(g) }
+func (g ByGroup) Swap(i, j int) { g[i], g[j] = g[j], g[i] }
+func (g ByGroup) Less(i, j int) bool { return g[i].firstchan < g[j].firstchan }
+
 // AbacoDevice represents a single shared-memory ring buffer
 // that stores an Abaco card's data.
 type AbacoDevice struct {
 	cardnum    int
 	nchan      int
+	cgroups    []ChannelGroup // channel groups found on this device
+	queues     map[ChannelGroup] []*packets.Packet
 	firstchan  int
 	packetSize int // packet size, in bytes
 	ring       *ringbuffer.RingBuffer
@@ -86,8 +100,6 @@ func (device *AbacoDevice) sampleCard() error {
 		return err
 	}
 	device.packetSize = int(psize)
-	device.nchan = 0
-	device.firstchan = 99999999
 	if err := device.ring.DiscardStride(uint64(device.packetSize)); err != nil {
 		return err
 	}
@@ -103,6 +115,7 @@ func (device *AbacoDevice) sampleCard() error {
 	var snInit, snFinal uint32
 	samplesInPackets := 0
 
+	allGroups := make(map[ChannelGroup]bool)  // used as a set of ChannelGroup objects
 	packetsRead := 0
 	packetReadLoop:
 	for packetsRead < minPacketsToRead {
@@ -120,17 +133,12 @@ func (device *AbacoDevice) sampleCard() error {
 			}
 			packetsRead += len(allPackets)
 
-			// Do something with Packet.ChannelInfo() here: set device.nchan and
-			// firstchan based on the values here, if they are larger/smaller than
-			// any previously seen.
+			// Do something with Packet.ChannelInfo() here: track the ChannelGroups seen
+			// and set device.nchan, device.firstchan based on the values here.
 			for _, p := range allPackets {
 				nchan, offset := p.ChannelInfo()
-				if offset < device.firstchan {
-					device.firstchan = offset
-				}
-				if nchan+offset > device.nchan {
-					device.nchan = nchan + offset
-				}
+				g := ChannelGroup{firstchan:offset, nchan:nchan}
+				allGroups[g] = true
 
 				samplesInPackets += p.Frames()
 				if ts := p.Timestamp(); ts != nil && ts.Rate != 0 {
@@ -149,6 +157,24 @@ func (device *AbacoDevice) sampleCard() error {
 		}
 	}
 
+	// Summarize all channelgroups and sort into device.cgroups
+	device.nchan = 0
+	for g := range allGroups {
+		device.cgroups = append(device.cgroups, g)
+		device.nchan += g.nchan
+	}
+	sort.Sort(ByGroup(device.cgroups))
+	device.firstchan = device.cgroups[0].firstchan
+
+	// Verify that no channel #s appear in 2 groups.
+	highest := -1
+	for i, g := range device.cgroups {
+		if g.firstchan <= highest {
+			return fmt.Errorf("Channel group %d=%v but previous range ended at %d", i, g, highest)
+		}
+		highest = g.firstchan + g.nchan - 1
+	}
+
 	// Use the first and last timestamp to compute sample rate.
 	if tsInit.T != 0 && tsFinal.T != 0 {
 		dt := float64(tsFinal.T-tsInit.T) / tsInit.Rate
@@ -157,7 +183,8 @@ func (device *AbacoDevice) sampleCard() error {
 
 		// Careful: assume that any missed packets had same number of samples as
 		// the packets that we did see. Thus find the average samples per packet.
-		if dserial := snFinal - snInit; dserial > 0 {
+		dserial := snFinal - snInit
+		if dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			device.sampleRate = float64(dserial) * avgSampPerPacket / dt
 			fmt.Printf("Sample rate %.6g /sec determined from %d packets:\n\tΔt=%f sec, Δserial=%d, and %f samp/packet\n", device.sampleRate,
@@ -173,8 +200,8 @@ func (device *AbacoDevice) sampleCard() error {
 }
 
 // enumerateAbacoDevices returns a list of abaco device numbers that exist
-// in the devfs. If /dev/xdma0_c2h_X exists, then X is added to the list.
-// Does not yet handle cards other than xdma0.
+// in the devfs. If /dev/xdmaX_c2h_0 exists, then X is added to the list.
+// Does not handle cards with suffix other than c2h_0.
 func enumerateAbacoDevices() (devices []int, err error) {
 	for cnum := 0; cnum < maxAbacoCards; cnum++ {
 		name := fmt.Sprintf("xdma%d_c2h_0_description", cnum)
@@ -300,7 +327,7 @@ func (as *AbacoSource) Sample() error {
 		as.nchan += device.nchan
 	}
 
-	// Treat devices as 1 row x N columns.4
+	// Treat devices as 1 row x N columns.
 	as.rowColCodes = make([]RowColCode, as.nchan)
 	i := 0
 	for _, device := range as.active {
@@ -402,7 +429,7 @@ func (as *AbacoSource) readerMainLoop() {
 					datacopies[i+nchanPrevDevices] = make([]RawType, 0, framesUsed)
 				}
 
-				// This is the demultiplexing step. Loops over packet, then values.
+				// This is the demultiplexing step. Loops over packets, then values.
 				// Within a slice of values, its all channels for frame 0, then all for frame 1...
 				for _, p := range allPackets {
 					nchan, offset := p.ChannelInfo()
