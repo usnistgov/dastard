@@ -15,25 +15,31 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-// ChannelGroup represents a range of consecutive channel numbers
-type ChannelGroup struct {
+// GroupIndex represents the specifics of a channel group.
+// It should be globally unique across all Abaco data.
+type GroupIndex struct {
 	firstchan int  // first channel number in this group
 	nchan int // how many channels in this group
 }
 
-// ByGroup implements sort.Interface for ChannelGroup slices
-type ByGroup []ChannelGroup
+// ByGroup implements sort.Interface for GroupIndex slices
+type ByGroup []GroupIndex
 func (g ByGroup) Len() int { return len(g) }
 func (g ByGroup) Swap(i, j int) { g[i], g[j] = g[j], g[i] }
 func (g ByGroup) Less(i, j int) bool { return g[i].firstchan < g[j].firstchan }
 
-// AbacoDevice represents a single shared-memory ring buffer
-// that stores an Abaco card's data.
-type AbacoDevice struct {
-	cardnum    int
+type AbacoGroup struct {
+	index GroupIndex
+}
+
+// AbacoRing represents a single shared-memory ring buffer
+// that stores an Abaco card's data. (Possible in the future that multiple cards could
+// pack data into the same ring, however.)
+type AbacoRing struct {
+	ringnum    int
 	nchan      int
-	cgroups    []ChannelGroup // channel groups found on this device
-	queues     map[ChannelGroup] []*packets.Packet
+	cgroups    []GroupIndex // channel groups found on this device
+	// queues     map[GroupIndex] []*packets.Packet
 	firstchan  int
 	packetSize int // packet size, in bytes
 	ring       *ringbuffer.RingBuffer
@@ -41,25 +47,25 @@ type AbacoDevice struct {
 	sampleRate float64
 }
 
-const maxAbacoCards = 4 // Don't allow more than this many cards.
+const maxAbacoRings = 4 // Don't allow more than this many ring buffers.
 
 const abacoFractionBits = 13
 const abacoBitsToDrop = 1
 // That is, Abaco data is of the form iii.bbbb bbbb bbbb b with 3 integer bits
 // and 13 fractional bits. In the unwrapping process, we drop 1, making it 4/12.
 
-// NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
-func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
-	// Allow negative cardnum values, but for testing only!
-	if cardnum >= maxAbacoCards {
-		return nil, fmt.Errorf("NewAbacoDevice() got cardnum=%d, want [0,%d]",
-			cardnum, maxAbacoCards-1)
+// NewAbacoRing creates a new AbacoRing and opens the underlying shared memory for reading.
+func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {
+	// Allow negative ringnum values, but for testing only!
+	if ringnum >= maxAbacoRings {
+		return nil, fmt.Errorf("NewAbacoRing() got ringnum=%d, want [0,%d]",
+			ringnum, maxAbacoRings-1)
 	}
-	dev = new(AbacoDevice)
-	dev.cardnum = cardnum
+	dev = new(AbacoRing)
+	dev.ringnum = ringnum
 
-	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_0_buffer", dev.cardnum)
-	shmNameDesc := fmt.Sprintf("xdma%d_c2h_0_description", dev.cardnum)
+	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_0_buffer", dev.ringnum)
+	shmNameDesc := fmt.Sprintf("xdma%d_c2h_0_description", dev.ringnum)
 	if dev.ring, err = ringbuffer.NewRingBuffer(shmNameBuffer, shmNameDesc); err != nil {
 		return nil, err
 	}
@@ -67,7 +73,7 @@ func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
 }
 
 // ReadAllPackets returns an array of *packet.Packet, as read from the device's RingBuffer.
-func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
+func (device *AbacoRing) ReadAllPackets() ([]*packets.Packet, error) {
 	data, err := device.ring.ReadMultipleOf(device.packetSize)
 	if err != nil {
 		return nil, err
@@ -86,12 +92,14 @@ func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
 	return allPackets, nil
 }
 
-// sampleCard samples the data from a single card to scan enough packets to
-// know the number of channels, data rate, etc.
-// Although it slows things down, it's best to discard all data in the ring
-// at the time we open it, because we have no idea how old the data are.
-func (device *AbacoDevice) sampleCard() error {
-	// Open the device and discard whatever is in the buffer
+// samplePackets samples the data from a single AbacoRing. It scans enough packets to
+// learn the number of channels, data rate, etc.
+// Although it slows things down, it's best to discard all data in the ring when
+// we open it, because we have no idea how old the data are (in particular, once full, a
+// ring cannot take in new data to replace the old, so a full ring's data are arbitrarily old).
+// TODO: consider whether the newest data a *non-full* ring can be used here?
+func (device *AbacoRing) samplePackets() error {
+	// Open the ring buffer and discard whatever is in it.
 	if err := device.ring.Open(); err != nil {
 		return err
 	}
@@ -104,9 +112,9 @@ func (device *AbacoDevice) sampleCard() error {
 		return err
 	}
 
-	// Now get the data we actually want. Run for at least a minimum time
-	// or a minimum number of packets.
-	const minPacketsToRead = 100 // Not sure this is a good minimum
+	// Now get the data we actually want: fresh data. Run for at least
+	// a minimum time or a minimum number of packets.
+	const minPacketsToRead = 100 // Not sure this is a good minimum?
 	maxDelay := time.Duration(2000 * time.Millisecond)
 	timeOut := time.NewTimer(maxDelay)
 
@@ -115,13 +123,13 @@ func (device *AbacoDevice) sampleCard() error {
 	var snInit, snFinal uint32
 	samplesInPackets := 0
 
-	allGroups := make(map[ChannelGroup]bool)  // used as a set of ChannelGroup objects
+	allGroups := make(map[GroupIndex]bool)  // used as a set of GroupIndex objects
 	packetsRead := 0
 	packetReadLoop:
 	for packetsRead < minPacketsToRead {
 		select {
 		case <-timeOut.C:
-			fmt.Printf("AbacoDevice.sampleCard() timer expired after %d packets read\n", packetsRead)
+			fmt.Printf("AbacoRing.samplePackets() timer expired after %d packets read\n", packetsRead)
 			break packetReadLoop
 
 		default:
@@ -133,11 +141,11 @@ func (device *AbacoDevice) sampleCard() error {
 			}
 			packetsRead += len(allPackets)
 
-			// Do something with Packet.ChannelInfo() here: track the ChannelGroups seen
+			// Do something with Packet.ChannelInfo() here: track the GroupIndexs seen
 			// and set device.nchan, device.firstchan based on the values here.
 			for _, p := range allPackets {
 				nchan, offset := p.ChannelInfo()
-				g := ChannelGroup{firstchan:offset, nchan:nchan}
+				g := GroupIndex{firstchan:offset, nchan:nchan}
 				allGroups[g] = true
 
 				samplesInPackets += p.Frames()
@@ -199,11 +207,11 @@ func (device *AbacoDevice) sampleCard() error {
 	return nil
 }
 
-// enumerateAbacoDevices returns a list of abaco device numbers that exist
-// in the devfs. If /dev/xdmaX_c2h_0 exists, then X is added to the list.
-// Does not handle cards with suffix other than c2h_0.
-func enumerateAbacoDevices() (devices []int, err error) {
-	for cnum := 0; cnum < maxAbacoCards; cnum++ {
+// enumerateAbacoRings returns a list of abaco ring buffer numbers that exist
+// in the devfs. If /dev/xdmaX_c2h_0_description exists, then X is added to the list.
+// Does not handle cards with suffix other than *_c2h_0.
+func enumerateAbacoRings() (devices []int, err error) {
+	for cnum := 0; cnum < maxAbacoRings; cnum++ {
 		name := fmt.Sprintf("xdma%d_c2h_0_description", cnum)
 		if region, err := shm.Open(name, os.O_RDONLY, 0600); err == nil {
 			region.Close()
@@ -213,11 +221,11 @@ func enumerateAbacoDevices() (devices []int, err error) {
 	return devices, nil
 }
 
-// AbacoSource represents all Abaco devices that can potentially supply data.
+// AbacoSource represents all AbacoRing ring buffers that can potentially supply data.
 type AbacoSource struct {
-	devices     map[int]*AbacoDevice
-	Ndevices    int
-	active      []*AbacoDevice
+	arings     map[int]*AbacoRing
+	Nrings    int
+	active      []*AbacoRing
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
 	AnySource
@@ -227,31 +235,31 @@ type AbacoSource struct {
 func NewAbacoSource() (*AbacoSource, error) {
 	source := new(AbacoSource)
 	source.name = "Abaco"
-	source.devices = make(map[int]*AbacoDevice)
+	source.arings = make(map[int]*AbacoRing)
 
-	deviceCodes, err := enumerateAbacoDevices()
+	deviceCodes, err := enumerateAbacoRings()
 	if err != nil {
 		return source, err
 	}
 
 	for _, cnum := range deviceCodes {
-		ad, err := NewAbacoDevice(cnum)
+		ar, err := NewAbacoRing(cnum)
 		if err != nil {
 			log.Printf("warning: failed to create ring buffer for shm:xdma%d_c2h_0, though it should exist", cnum)
 			continue
 		}
-		source.devices[cnum] = ad
-		source.Ndevices++
+		source.arings[cnum] = ar
+		source.Nrings++
 	}
-	if source.Ndevices == 0 && len(deviceCodes) > 0 {
+	if source.Nrings == 0 && len(deviceCodes) > 0 {
 		return source, fmt.Errorf("could not create ring buffer for any of shm:xdma*_c2h_0, though deviceCodes %v exist", deviceCodes)
 	}
 	return source, nil
 }
 
-// Delete closes the ring buffers for all Abaco devices
+// Delete closes the ring buffers for all AbacoRings.
 func (as *AbacoSource) Delete() {
-	for _, dev := range as.devices {
+	for _, dev := range as.arings {
 		dev.ring.Close()
 	}
 }
@@ -268,7 +276,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	defer as.sourceStateLock.Unlock()
 	// Update the slice AvailableCards.
 	config.AvailableCards = make([]int, 0)
-	for k := range as.devices {
+	for k := range as.arings {
 		config.AvailableCards = append(config.AvailableCards, k)
 	}
 	sort.Ints(config.AvailableCards)
@@ -278,7 +286,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	}
 
 	// used to be sure the same device isn't listed twice in config.ActiveCards
-	contains := func(s []*AbacoDevice, e *AbacoDevice) bool {
+	contains := func(s []*AbacoRing, e *AbacoRing) bool {
 		for _, a := range s {
 			if a == e {
 				return true
@@ -288,9 +296,9 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	}
 
 	// Activate the cards listed in the config request.
-	as.active = make([]*AbacoDevice, 0)
+	as.active = make([]*AbacoRing, 0)
 	for i, c := range config.ActiveCards {
-		dev := as.devices[c]
+		dev := as.arings[c]
 		if dev == nil {
 			err = fmt.Errorf("ActiveCards[%d]: card=%v, device == nil", i, c)
 			break
@@ -308,14 +316,14 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 func (as *AbacoSource) Sample() error {
 	as.nchan = 0
 	if len(as.active) <= 0 {
-		return fmt.Errorf("No Abaco devices are active")
+		return fmt.Errorf("No Abaco ring buffers are active")
 	}
 
-	// Run device.sampleCard as goroutines on each device, in parallel, to save time.
+	// Run device.samplePackets as goroutines on each device, in parallel, to save time.
 	sampleErrors := make(chan error)
 	for _, device := range as.active {
-		go func(dev *AbacoDevice) {
-			sampleErrors <- dev.sampleCard()
+		go func(dev *AbacoRing) {
+			sampleErrors <- dev.samplePackets()
 		}(device)
 	}
 	for _ = range as.active {
@@ -352,7 +360,7 @@ func (as *AbacoSource) StartRun() error {
 	// Start by emptying all data from each device's ring buffer.
 	for _, dev := range as.active {
 		if err := dev.ring.DiscardStride(uint64(dev.packetSize)); err != nil {
-			panic("AbacoDevice.ring.DiscardStride failed")
+			panic("AbacoRing.ring.DiscardStride failed")
 		}
 	}
 	as.buffersChan = make(chan AbacoBuffersType, 100)
@@ -402,8 +410,8 @@ func (as *AbacoSource) readerMainLoop() {
 				allPackets, err := dev.ReadAllPackets()
 				lastSampleTime = time.Now()
 				if err != nil {
-					fmt.Printf("AbacoDevice.ReadAllPackets failed with error: %v\n", err)
-					panic("AbacoDevice.ReadAllPackets failed")
+					fmt.Printf("AbacoRing.ReadAllPackets failed with error: %v\n", err)
+					panic("AbacoRing.ReadAllPackets failed")
 				}
 
 				// Go through packets and figure out the # of frames contained in all packets.
@@ -586,7 +594,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	return block
 }
 
-// closeDevices ends closes the ring buffers of all active AbacoDevice objects.
+// closeDevices ends closes the ring buffers of all active AbacoRing objects.
 func (as *AbacoSource) closeDevices() error {
 	// loop over as.active and do any needed stopping functions.
 	for _, dev := range as.active {

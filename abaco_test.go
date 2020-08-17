@@ -78,15 +78,15 @@ func TestGeneratePackets(t *testing.T) {
 	}
 }
 
-func TestAbacoDevice(t *testing.T) {
-	if _, err := NewAbacoDevice(99999); err == nil {
-		t.Errorf("NewAbacoDevice(99999) succeeded, want failure")
+func TestAbacoRing(t *testing.T) {
+	if _, err := NewAbacoRing(99999); err == nil {
+		t.Errorf("NewAbacoRing(99999) succeeded, want failure")
 	}
 	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
-	dev, err := NewAbacoDevice(cardnum)
+	dev, err := NewAbacoRing(cardnum)
 	if err != nil {
-		t.Fatalf("NewAbacoDevice(%d) fails: %s", cardnum, err)
+		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
 	}
 
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
@@ -101,7 +101,7 @@ func TestAbacoDevice(t *testing.T) {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
 
-	go dev.sampleCard()
+	go dev.samplePackets()
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
 	const Nchan = 8
@@ -156,12 +156,12 @@ func TestAbacoSource(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
 
-	dev, err := NewAbacoDevice(cardnum)
+	dev, err := NewAbacoRing(cardnum)
 	if err != nil {
-		t.Fatalf("NewAbacoDevice(%d) fails: %s", cardnum, err)
+		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
 	}
-	source.devices[cardnum] = dev
-	source.Ndevices++
+	source.arings[cardnum] = dev
+	source.Nrings++
 
 	deviceCodes := []int{cardnum}
 	var config AbacoSourceConfig
