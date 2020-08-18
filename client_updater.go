@@ -26,21 +26,20 @@ type ClientUpdate struct {
 // nopublishMessages is a set of message names that you don't send to clients, because they
 // contain no configuration that makes sense for clients to hear.
 var nopublishMessages = map[string]struct{}{
-	"CURRENTTIME":    {},
+	"CURRENTTIME": {},
 }
 
 // nologMessages is a set of message names that you don't log to the terminal, because they
 // are too long or too frequent to bother with.
 var nologMessages = map[string]struct{}{
-	"TRIGGERRATE":    {},
+	"TRIGGERRATE":     {},
 	"CHANNELNAMES":    {},
-	"ALIVE":    {},
-	"NUMBERWRITTEN":    {},
-	"EXTERNALTRIGGER":    {},
+	"ALIVE":           {},
+	"NUMBERWRITTEN":   {},
+	"EXTERNALTRIGGER": {},
 }
 
 // var messageSerial int
-
 
 // publish sends to all clients of the status update socket a 2-part message, with
 // the `update.tag` as the first part and `message` as the second. The latter should be

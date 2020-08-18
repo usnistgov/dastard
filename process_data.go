@@ -200,7 +200,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		// slope = dot(x,y.-y[0])/z where z = dot(x,x) and x = [0, 1, 2, ..., N-1]/(N-1), where .-y[0] is elementwise subtraction of the first element
 		npre := rec.presamples
 		d0 := dataVec.AtVec(0)
-		xmean := float64(npre-1)*0.5
+		xmean := float64(npre-1) * 0.5
 		for i := 0; i < npre; i++ {
 			val += dataVec.AtVec(i)
 			valPTDelta += (dataVec.AtVec(i) - d0) * (float64(i) - xmean)

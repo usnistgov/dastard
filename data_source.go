@@ -280,7 +280,7 @@ type AnySource struct {
 }
 
 // SamplePeriod returns the sample period of the underlying source.
-func (ds *AnySource) SamplePeriod() (time.Duration) {
+func (ds *AnySource) SamplePeriod() time.Duration {
 	return ds.samplePeriod
 }
 

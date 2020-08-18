@@ -30,7 +30,7 @@ func TestUnwrap(t *testing.T) {
 		}
 		// Test unwrap on sawtooth of 4 steps
 		// Result should be a line.
-		step := 1 << (fractionbits-2)
+		step := 1 << (fractionbits - 2)
 		mod := step * 4
 		for i := 0; i < ndata; i++ {
 			data[i] = RawType((i * step) % mod)
