@@ -100,8 +100,7 @@ func TestAbacoRing(t *testing.T) {
 	if err = ring.Create(128 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
-
-	go dev.samplePackets()
+	dev.samplePackets()
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
 	const Nchan = 8
@@ -135,15 +134,29 @@ func TestAbacoRing(t *testing.T) {
 			if ring.BytesWriteable() >= len(b) {
 				ring.Write(b)
 			}
-			counter += stride*1000
+			counter += stride * 1000
 		}
 		time.Sleep(Nsamp * time.Microsecond) // sample rate is 1/μs.
 	}
-	if dev.nchan != Nchan {
-		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+	ps, err := dev.ReadAllPackets()
+	if err != nil {
+		t.Errorf("Error on AbacoRing.ReadAllPackets: %v", err)
 	}
-	if dev.sampleRate <= 0.0 {
-		t.Errorf("dev.sampleRate=%.4g, want >0", dev.sampleRate)
+	if len(ps) <= 0 {
+		t.Errorf("AbacoRing.samplePackets returned only %d packets", len(ps))
+	}
+	group := NewAbacoGroup(gIndex(ps[0]))
+	group.queue = append(group.queue, ps...)
+	err = group.samplePackets()
+	if err != nil {
+		t.Errorf("Error on AbacoGroup.samplePackets: %v", err)
+	}
+
+	if group.nchan != Nchan {
+		t.Errorf("group.nchan=%d, want %d", group.nchan, Nchan)
+	}
+	if group.sampleRate <= 0.0 {
+		t.Errorf("group.sampleRate=%.4g, want >0", group.sampleRate)
 	}
 }
 
@@ -229,9 +242,9 @@ func TestAbacoSource(t *testing.T) {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
 		t.Fatal(err)
 	}
-	if dev.nchan != Nchan {
-		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
-	}
+	// if dev.nchan != Nchan {
+	// 	t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+	// }
 	time.Sleep(150 * time.Millisecond)
 	source.Stop()
 	close(abortSupply)
