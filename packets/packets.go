@@ -168,6 +168,23 @@ func (p *Packet) MakePretendPacket(seqnum uint32, value int) (*Packet) {
 	return &pretend
 }
 
+// ReadValue returns a single sample from the packet's data payload.
+// Not efficient for reading the whole data slice.
+func (p *Packet) ReadValue(sample int) int {
+	if sample < 0 || sample >= p.Frames() {
+		return 0
+	}
+	switch d := p.Data.(type) {
+	case []int16:
+		return int(d[sample])
+	case []int32:
+		return int(d[sample])
+	case []int64:
+		return int(d[sample])
+	}
+	return 0
+}
+
 // NewData adds data to the packet, and creates the format and shape TLV items to match.
 func (p *Packet) NewData(data interface{}, dims []int16) error {
 	ndim := len(dims)

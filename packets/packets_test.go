@@ -413,34 +413,22 @@ func TestFullPackets(t *testing.T) {
 		arbVal := 48
 		pfake := p.MakePretendPacket(arbSeqNum, arbVal)
 		if pfake == p {
-			t.Errorf("PretendPacket() result points to original packet")
+			t.Errorf("MakePretendPacket() result points to original packet")
 		}
 		if arbSeqNum != pfake.SequenceNumber() {
-			t.Errorf("PretendPacket(%d) result has seq num %d, want %d", arbSeqNum,
+			t.Errorf("MakePretendPacket(%d) result has seq num %d, want %d", arbSeqNum,
 				pfake.SequenceNumber(), arbSeqNum)
 		}
-		switch d := pfake.Data.(type) {
-		case []int16:
-			want := int16(arbVal)
-			for i, v := range d {
-				if v != want {
-					t.Errorf("PretendPacket.Data[%d]=%d, want %d", i, v, want)
-				}
+		nsamp := pfake.Frames()
+		for i := 0; i<nsamp; i++ {
+			v := pfake.ReadValue(i)
+			if v != arbVal {
+				t.Errorf("Packet.ReadValue(%d)=%d, want %d", i, v, arbVal)
 			}
-		case []int32:
-			want := int32(arbVal)
-			for i, v := range d {
-				if v != want {
-					t.Errorf("PretendPacket.Data[%d]=%d, want %d", i, v, want)
-				}
-			}
-		case []int64:
-			want := int64(arbVal)
-			for i, v := range d {
-				if v != want {
-					t.Errorf("PretendPacket.Data[%d]=%d, want %d", i, v, want)
-				}
-			}
+		}
+		v := pfake.ReadValue(-1)
+		if v != 0 {
+			t.Errorf("Packet.ReadValue(-1)=%d, want 0", v)
 		}
 	}
 
