@@ -37,16 +37,13 @@ wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-s
 sudo apt-key add - < Release.key
 sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git
+```
 
 Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming
 that MacPorts is already installed, it's simple:
-```
 
 ## MacOS Dependencies
-```
 get libsodium-dev and libczmq-dev and golang version >1.13, like macports or brew. write down how you did it here
-```
-As of April 20, 2020, this gets you go 1.14.2. If you use another method, please add notes here to help other users.
 
 
 
