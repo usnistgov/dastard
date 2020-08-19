@@ -50,6 +50,7 @@ type AbacoGroup struct {
 	queue      []*packets.Packet
 	lasttime   time.Time
 	seqnumsync uint32 // Global sequence number is referenced to this group's seq number at seqnumsync
+	lastSN     uint32
 }
 
 // NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
@@ -99,6 +100,7 @@ func (group *AbacoGroup) samplePackets() error {
 			}
 		}
 	}
+	group.lastSN = group.queue[len(group.queue)-1].SequenceNumber()
 
 	// Use the first and last timestamp to compute sample rate.
 	if tsInit.T != 0 && tsFinal.T != 0 {
@@ -135,15 +137,15 @@ func (group *AbacoGroup) firstSeqNum() (uint32, error) {
 // fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
 // pretend packets.
 func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
-	if len(group.queue) <= 1 {
+	if len(group.queue) == 0 {
 		return
 	}
-	sn0 := group.queue[0].SequenceNumber()
-	snexpect := sn0 + 1
-	newq := group.queue[:1]
-	for _, p := range group.queue[1:] {
+	cap := group.queue[len(group.queue)-1].SequenceNumber() - group.lastSN
+	newq := make([]*packets.Packet, 0, cap)
+	snexpect := group.lastSN + 1
+	for _, p := range group.queue {
 		sn := p.SequenceNumber()
-		for ; sn > snexpect; {
+		for ; snexpect < sn; {
 			val := p.ReadValue(0) // Fill data with first sample from next non-missing packet
 			pfake := p.MakePretendPacket(snexpect, val)
 			newq = append(newq, pfake)
@@ -156,8 +158,8 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 	if numberAdded > 0 {
 		group.queue = newq
 	}
+	group.lastSN = group.queue[len(group.queue)-1].SequenceNumber()
 	// fmt.Printf("fillMissingPackets added %d packets to make queue size %d\n", numberAdded, len(group.queue))
-	// TODO: find and fill holes even if they are between past history and the first packet
 	return
 }
 

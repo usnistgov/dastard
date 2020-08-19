@@ -205,7 +205,7 @@ func TestAbacoSource(t *testing.T) {
 
 	abortSupply := make(chan interface{})
 	supplyDataForever := func() {
-		p := packets.NewPacket(10, 20, 0x100, 0)
+		p := packets.NewPacket(10, 20, 100, 0)
 		d := make([]int16, Nchan*Nsamp)
 		for i := 0; i < Nchan; i++ {
 			freq := (float64(i + 2)) / float64(Nsamp)
@@ -225,9 +225,9 @@ func TestAbacoSource(t *testing.T) {
 			case <-timer.C:
 				for i := 0; i < Nsamp; i += stride {
 					p.NewData(d[i:i+stride*Nchan], dims)
-					// Skip 2 packets of every 46
+					// Skip 2 packets of every 80, the 1st and 80th.
 					packetcount++
-					if packetcount % 46 < 2 {
+					if packetcount % 80 < 2 {
 						continue
 					}
 					b := p.Bytes()
