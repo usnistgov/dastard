@@ -196,11 +196,13 @@ func (group *AbacoGroup) countSamplesInQueue() int {
 	return valuesFound / group.nchan
 }
 
-// demuxData deMUXes the data in the packet queue into the datacopies slices (1 slice per channel)
-func (group *AbacoGroup) demuxData(datacopies [][]RawType) int {
+// demuxData demultiplexes the data in the packet queue into the datacopies slices (1 slice per channel)
+// but only up to the requested number of frames.
+func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 	// This is the demultiplexing step. Loops over packets, then values.
 	// Within a slice of values, handle all channels for frame 0, then all for frame 1...
 	totalBytes := 0
+	packetsConsumed := 0
 	for _, p := range group.queue {
 		gidx := gIndex(p)
 		if gidx != group.index {
@@ -208,6 +210,14 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType) int {
 			panic(msg)
 		}
 
+		// Don't demux a packet that would over-fill the requested # of frames.
+		frameAvail := p.Frames()
+		if frameAvail > frames {
+			break
+		}
+
+		frames -= frameAvail
+		packetsConsumed++
 		switch d := p.Data.(type) {
 		case []int16:
 			// Reading vector d in order was faster than the reverse.
@@ -233,7 +243,15 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType) int {
 			panic(msg)
 		}
 	}
-	group.queue = group.queue[:0]
+	// fmt.Printf("Consumed %d of %d packets\n", packetsConsumed, len(group.queue))
+	group.queue = group.queue[packetsConsumed:]
+
+	// TODO: What if the # of frames points to the middle of a packet? For now, panic.
+	if frames > 0 {
+		msg := fmt.Sprintf("Consumed %d of %d packets, but there are still %d frames to fill\n",
+			packetsConsumed, len(group.queue), frames)
+		panic(msg)
+	}
 
 	for i, unwrap := range group.unwrap {
 		unwrap.UnwrapInPlace(&datacopies[i])
@@ -630,26 +648,26 @@ func (as *AbacoSource) readerMainLoop() {
 			}
 
 			// For any queue that starts before maxsn0, trim the leading packets. Learn the # of samples.
-			framesUsed := math.MaxInt64
+			framesToDeMUX := math.MaxInt64
 			for _, group := range as.groups {
 				group.trimPacketsBefore(firstSn)
 				nsamp := group.countSamplesInQueue()
-				if nsamp < framesUsed {
-					framesUsed = nsamp
+				if nsamp < framesToDeMUX {
+					framesToDeMUX = nsamp
 				}
 			}
 
-			// Demux data into this slice of slices of RawType (reserve capacity=framesUsed)
+			// Demux data into this slice of slices of RawType (reserve capacity=framesToDeMUX)
 			datacopies := make([][]RawType, as.nchan)
 			for i := 0; i < as.nchan; i++ {
-				datacopies[i] = make([]RawType, 0, framesUsed)
+				datacopies[i] = make([]RawType, 0, framesToDeMUX)
 			}
 			chanProcessed := 0
 			bytesProcessed := 0
 			for _, k := range as.groupKeysSorted {
 				group := as.groups[k]
 				dc := datacopies[chanProcessed:chanProcessed+group.nchan]
-				bytesProcessed += group.demuxData(dc)
+				bytesProcessed += group.demuxData(dc, framesToDeMUX)
 				chanProcessed += group.nchan
 			}
 
