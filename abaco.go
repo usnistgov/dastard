@@ -346,7 +346,6 @@ type AbacoSource struct {
 	arings map[int]*AbacoRing
 	active []*AbacoRing
 
-	nchan  int
 	groups map[GroupIndex]*AbacoGroup
 	groupKeysSorted []GroupIndex
 
@@ -447,7 +446,6 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 
 // Sample determines key data facts by sampling some initial data.
 func (as *AbacoSource) Sample() error {
-	as.nchan = 0
 	if len(as.active) <= 0 {
 		return fmt.Errorf("No Abaco ring buffers are active")
 	}
