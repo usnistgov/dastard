@@ -49,7 +49,7 @@ type AbacoGroup struct {
 	unwrap     []*PhaseUnwrapper
 	queue      []*packets.Packet
 	lasttime   time.Time
-	seqnumsync uint32 // Ideally, all AbacoGroups are in sync at this packet sequence number.
+	seqnumsync uint32 // Global sequence number is referenced to this group's seq number at seqnumsync
 }
 
 // NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
@@ -88,6 +88,9 @@ func (group *AbacoGroup) samplePackets() error {
 				tsInit.T = ts.T
 				tsInit.Rate = ts.Rate
 				snInit = p.SequenceNumber()
+				// For now: sync by assuming first packet seen by each group is simultaneous
+				// TODO: eventually want to sync to the _sample_ level, not the packet level.
+				group.seqnumsync = snInit
 			}
 			if tsFinal.T < ts.T {
 				tsFinal.T = ts.T
@@ -120,11 +123,20 @@ func (group *AbacoGroup) samplePackets() error {
 	return nil
 }
 
+// firstSeqNum returns the global sequence number for the first packet in the group's packet queue,
+// meaning the sequence number referenced to the group.seqnumsync offset.
+func (group *AbacoGroup) firstSeqNum() (uint32, error) {
+	if len(group.queue) == 0 {
+		return 0, fmt.Errorf("No packets in queue")
+	}
+	return group.queue[0].SequenceNumber() - group.seqnumsync, nil
+}
+
 // fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
 // pretend packets.
-func (group *AbacoGroup) fillMissingPackets() uint32 {
+func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 	if len(group.queue) <= 1 {
-		return 0
+		return
 	}
 	sn0 := group.queue[0].SequenceNumber()
 	for i := 1; i < len(group.queue); i++ {
@@ -133,14 +145,16 @@ func (group *AbacoGroup) fillMissingPackets() uint32 {
 		if sn-sn0 != uint32(i) {
 			fmt.Printf("Warning! Need new packet here")
 			panic("fillMissingPackets not implemented yet")
+			numberAdded++
 			// TODO: put in an extra packet here.
 		}
 	}
 	// TODO: find and fill holes even if they are between past history and the first packet
-	return sn0 - group.seqnumsync
+	return
 }
 
 // trimPacketsBefore removes leading packets from the queue that "predate" firstSn
+// firstSn is a "global sequence number", thus relative to the group.seqnumsync
 func (group *AbacoGroup) trimPacketsBefore(firstSn uint32) {
 	firstSn += group.seqnumsync
 	for ;; {
@@ -495,7 +509,7 @@ func (as *AbacoSource) Sample() error {
 		}
 	}
 
-	// Compute a fixed ordering for the map as.groups
+	// Compute a fixed ordering for iteration over the map as.groups
 	var keys []GroupIndex
 	for k := range as.groups {
 		keys = append(keys, k)
@@ -591,19 +605,26 @@ func (as *AbacoSource) readerMainLoop() {
 				as.distributePackets(allPackets, lastSampleTime)
 			}
 
-			// Fill in missing packets for all groups. Learn the highest first sequence number.
-			maxsn0 := uint32(0)
+			// Align the first sample in each group. Do this by checking the first global sequenceNumber
+			// in each group and trimming leading packets if any precede the others.
+			// Fill in for any missing packets first, so a missing first packet isn't a problem.
+			firstSn := uint32(0)
 			for _, group := range as.groups {
-				sn0 := group.fillMissingPackets()
-				if sn0 > maxsn0 {
-					maxsn0 = sn0
+				group.fillMissingPackets()
+				sn0, err := group.firstSeqNum()
+				if err != nil {
+					msg := fmt.Sprintf("AbacoSource.Sample finds no packets for group %v: %v", group, err)
+					panic(msg)
+				}
+				if sn0 > firstSn {
+					firstSn = sn0
 				}
 			}
 
 			// For any queue that starts before maxsn0, trim the leading packets. Learn the # of samples.
 			framesUsed := math.MaxInt64
 			for _, group := range as.groups {
-				group.trimPacketsBefore(maxsn0)
+				group.trimPacketsBefore(firstSn)
 				nsamp := group.countSamplesInQueue()
 				if nsamp < framesUsed {
 					framesUsed = nsamp
