@@ -407,6 +407,41 @@ func TestFullPackets(t *testing.T) {
 		if ts := pread.Timestamp(); ts != nil {
 			t.Errorf("ReadPacket.Timestamp() yielded %v, expected nil", ts)
 		}
+
+		// Test PretendPacket
+		arbSeqNum := uint32(34567)
+		arbVal := 48
+		pfake := p.MakePretendPacket(arbSeqNum, arbVal)
+		if pfake == p {
+			t.Errorf("PretendPacket() result points to original packet")
+		}
+		if arbSeqNum != pfake.SequenceNumber() {
+			t.Errorf("PretendPacket(%d) result has seq num %d, want %d", arbSeqNum,
+				pfake.SequenceNumber(), arbSeqNum)
+		}
+		switch d := pfake.Data.(type) {
+		case []int16:
+			want := int16(arbVal)
+			for i, v := range d {
+				if v != want {
+					t.Errorf("PretendPacket.Data[%d]=%d, want %d", i, v, want)
+				}
+			}
+		case []int32:
+			want := int32(arbVal)
+			for i, v := range d {
+				if v != want {
+					t.Errorf("PretendPacket.Data[%d]=%d, want %d", i, v, want)
+				}
+			}
+		case []int64:
+			want := int64(arbVal)
+			for i, v := range d {
+				if v != want {
+					t.Errorf("PretendPacket.Data[%d]=%d, want %d", i, v, want)
+				}
+			}
+		}
 	}
 
 	p.ClearData()
