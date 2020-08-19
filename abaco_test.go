@@ -225,9 +225,9 @@ func TestAbacoSource(t *testing.T) {
 			case <-timer.C:
 				for i := 0; i < Nsamp; i += stride {
 					p.NewData(d[i:i+stride*Nchan], dims)
-					// Skip every 50th packet
+					// Skip 2 packets of every 46
 					packetcount++
-					if packetcount % 50 == 0 {
+					if packetcount % 46 < 2 {
 						continue
 					}
 					b := p.Bytes()
@@ -248,10 +248,10 @@ func TestAbacoSource(t *testing.T) {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
 		t.Fatal(err)
 	}
-	// if dev.nchan != Nchan {
-	// 	t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
-	// }
-	time.Sleep(150 * time.Millisecond)
+	if source.nchan != Nchan {
+		t.Errorf("source.nchan=%d, want %d", source.nchan, Nchan)
+	}
+	time.Sleep(250 * time.Millisecond)
 	source.Stop()
 	close(abortSupply)
 	source.RunDoneWait()

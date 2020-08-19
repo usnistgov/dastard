@@ -139,16 +139,24 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 		return
 	}
 	sn0 := group.queue[0].SequenceNumber()
-	for i := 1; i < len(group.queue); i++ {
-		p := group.queue[i]
+	snexpect := sn0 + 1
+	newq := group.queue[:1]
+	for _, p := range group.queue[1:] {
 		sn := p.SequenceNumber()
-		if sn-sn0 != uint32(i) {
-			fmt.Printf("Warning! Need new packet here")
-			panic("fillMissingPackets not implemented yet")
+		for ; sn > snexpect; {
+			val := p.ReadValue(0) // Fill data with first sample from next non-missing packet
+			pfake := p.MakePretendPacket(snexpect, val)
+			newq = append(newq, pfake)
 			numberAdded++
-			// TODO: put in an extra packet here.
+			snexpect++
 		}
+		newq = append(newq, p)
+		snexpect++
 	}
+	if numberAdded > 0 {
+		group.queue = newq
+	}
+	// fmt.Printf("fillMissingPackets added %d packets to make queue size %d\n", numberAdded, len(group.queue))
 	// TODO: find and fill holes even if they are between past history and the first packet
 	return
 }
