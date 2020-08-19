@@ -4,8 +4,9 @@ dist: xenial
 sudo: required
 
 go:
-  - 1.10.x  # This should stay at 1.10, as Go 1.10 is the default in Ubuntu 18.04.
-  - 1.15.x  # This should be the newest Go release
+  # Test Go versions 1.13 and the most recent. Assume that in-between also works!
+  - 1.13.x  # This should stay at 1.13, as gonum supports only 1.13+
+  - 1.15.x  # This should track the lastest Go release (1.15 came out 10 Aug 2020)
 
 go_import_path: github.com/usnistgov/dastard
 
