@@ -217,13 +217,19 @@ func TestAbacoSource(t *testing.T) {
 		empty := make([]byte, packetAlign)
 		dims := []int16{Nchan}
 		timer := time.NewTicker(10 * time.Millisecond)
-		for {
+		packetcount := 0
+		for ;; {
 			select {
 			case <-abortSupply:
 				return
 			case <-timer.C:
 				for i := 0; i < Nsamp; i += stride {
 					p.NewData(d[i:i+stride*Nchan], dims)
+					// Skip every 50th packet
+					packetcount++
+					if packetcount % 50 == 0 {
+						continue
+					}
 					b := p.Bytes()
 					b = append(b, empty[:packetAlign-len(b)]...)
 					if rb.BytesWriteable() >= len(b) {
