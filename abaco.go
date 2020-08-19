@@ -340,7 +340,10 @@ func (device *AbacoRing) samplePackets() (allPackets []*packets.Packet, err erro
 
 	// Now get the data we actually want: fresh data. Run for at least
 	// a minimum time or a minimum number of packets.
-	const minPacketsToRead = 100 // Not sure this is a good minimum?
+	// The hard requirement is for at least 2 packets per channel group, so we can count samples taken
+	// between 2 timestamps and thus the sample rate. More packets is better, because we can estimate
+	// sample rate over a longer baseline, we are less likely to overlook a channel group.
+	const minPacketsToRead = 100 // Is this a good minimum? If we start missing channel groups, increase this.
 	maxSampleTime := time.Duration(2000 * time.Millisecond)
 	timeOut := time.NewTimer(maxSampleTime)
 

@@ -391,8 +391,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 				message := converter(record)
 				err := pubSocket.SendMessage(message)
 				if err != nil {
-					fmt.Println("zmq send error:", err)
-					// panic("zmq send error")
+					fmt.Println("zmq send error publishing a triggered record:", err)
 				}
 			}
 		}
