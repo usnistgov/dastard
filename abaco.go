@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"sort"
 	"sync"
@@ -15,51 +16,282 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-// ChannelGroup represents a range of consecutive channel numbers
-type ChannelGroup struct {
-	firstchan int  // first channel number in this group
-	nchan int // how many channels in this group
+//------------------------------------------------------------------------------------------------
+
+// GroupIndex represents the specifics of a channel group.
+// It should be globally unique across all Abaco data.
+type GroupIndex struct {
+	firstchan int // first channel number in this group
+	nchan     int // how many channels in this group
 }
 
-// ByGroup implements sort.Interface for ChannelGroup slices
-type ByGroup []ChannelGroup
-func (g ByGroup) Len() int { return len(g) }
-func (g ByGroup) Swap(i, j int) { g[i], g[j] = g[j], g[i] }
+// gindex converts a packet to the GroupIndex whose data it contains
+func gIndex(p *packets.Packet) GroupIndex {
+	nchan, offset := p.ChannelInfo()
+	return GroupIndex{nchan: nchan, firstchan: offset}
+}
+
+// ByGroup implements sort.Interface for []GroupIndex so we can sort such slices.
+type ByGroup []GroupIndex
+
+func (g ByGroup) Len() int           { return len(g) }
+func (g ByGroup) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
 func (g ByGroup) Less(i, j int) bool { return g[i].firstchan < g[j].firstchan }
 
-// AbacoDevice represents a single shared-memory ring buffer
-// that stores an Abaco card's data.
-type AbacoDevice struct {
-	cardnum    int
+//------------------------------------------------------------------------------------------------
+
+// AbacoGroup represents a channel group, a set of consecutively numbered
+// channels.
+type AbacoGroup struct {
+	index      GroupIndex
 	nchan      int
-	cgroups    []ChannelGroup // channel groups found on this device
-	queues     map[ChannelGroup] []*packets.Packet
-	firstchan  int
-	packetSize int // packet size, in bytes
-	ring       *ringbuffer.RingBuffer
-	unwrap     []*PhaseUnwrapper
 	sampleRate float64
+	unwrap     []*PhaseUnwrapper
+	queue      []*packets.Packet
+	lasttime   time.Time
+	seqnumsync uint32 // Global sequence number is referenced to this group's seq number at seqnumsync
+	lastSN     uint32
 }
 
-const maxAbacoCards = 4 // Don't allow more than this many cards.
+// NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
+func NewAbacoGroup(index GroupIndex) *AbacoGroup {
+	g := new(AbacoGroup)
+	g.index = index
+	g.nchan = index.nchan
+	g.queue = make([]*packets.Packet, 0)
+	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
+	for i := range g.unwrap {
+		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop)
+	}
+	return g
+}
+
+func (group *AbacoGroup) enqueuePacket(p *packets.Packet, now time.Time) {
+	group.queue = append(group.queue, p)
+	group.lasttime = now
+}
+
+func (group *AbacoGroup) samplePackets() error {
+	// Capture timestamp and sample # for a range of packets. Use to find rate.
+	var tsInit, tsFinal packets.PacketTimestamp
+	var snInit, snFinal uint32
+	samplesInPackets := 0
+
+	for _, p := range group.queue {
+		cidx := gIndex(p)
+		if cidx != group.index {
+			return fmt.Errorf("Packet with index %v got to group with index %v", cidx, group.index)
+		}
+
+		samplesInPackets += p.Frames()
+		if ts := p.Timestamp(); ts != nil && ts.Rate != 0 {
+			if tsInit.T == 0 {
+				tsInit.T = ts.T
+				tsInit.Rate = ts.Rate
+				snInit = p.SequenceNumber()
+				// For now: sync by assuming first packet seen by each group is simultaneous
+				// TODO: eventually want to sync to the _sample_ level, not the packet level.
+				group.seqnumsync = snInit
+			}
+			if tsFinal.T < ts.T {
+				tsFinal.T = ts.T
+				tsFinal.Rate = ts.Rate
+				snFinal = p.SequenceNumber()
+			}
+		}
+	}
+	group.lastSN = group.queue[len(group.queue)-1].SequenceNumber()
+
+	// Use the first and last timestamp to compute sample rate.
+	if tsInit.T != 0 && tsFinal.T != 0 {
+		dt := float64(tsFinal.T-tsInit.T) / tsInit.Rate
+		// TODO: check for wrap of timestamp if < 48 bits
+		// TODO: what if ts.Rate changes between Init and Final?
+
+		// Careful: assume that any missed packets had same number of samples as
+		// the packets that we did see. Thus find the average samples per packet.
+		dserial := snFinal - snInit
+		packetsRead := len(group.queue)
+		if dserial > 0 {
+			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
+			group.sampleRate = float64(dserial) * avgSampPerPacket / dt
+			fmt.Printf("Sample rate %.6g /sec determined from %d packets:\n\tΔt=%f sec, Δserial=%d, and %f samp/packet\n", group.sampleRate,
+				packetsRead, dt, dserial, avgSampPerPacket)
+		}
+	}
+
+	// Clear out the queue of packets
+	group.queue = group.queue[:0]
+	return nil
+}
+
+// firstSeqNum returns the global sequence number for the first packet in the group's packet queue,
+// meaning the sequence number referenced to the group.seqnumsync offset.
+func (group *AbacoGroup) firstSeqNum() (uint32, error) {
+	if len(group.queue) == 0 {
+		return 0, fmt.Errorf("No packets in queue")
+	}
+	return group.queue[0].SequenceNumber() - group.seqnumsync, nil
+}
+
+// fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
+// pretend packets.
+func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
+	if len(group.queue) == 0 {
+		return
+	}
+	cap := group.queue[len(group.queue)-1].SequenceNumber() - group.lastSN
+	newq := make([]*packets.Packet, 0, cap)
+	snexpect := group.lastSN + 1
+	for _, p := range group.queue {
+		sn := p.SequenceNumber()
+		for ; snexpect < sn; {
+			val := p.ReadValue(0) // Fill data with first sample from next non-missing packet
+			pfake := p.MakePretendPacket(snexpect, val)
+			newq = append(newq, pfake)
+			numberAdded++
+			snexpect++
+		}
+		newq = append(newq, p)
+		snexpect++
+	}
+	if numberAdded > 0 {
+		group.queue = newq
+	}
+	group.lastSN = group.queue[len(group.queue)-1].SequenceNumber()
+	// fmt.Printf("fillMissingPackets added %d packets to make queue size %d\n", numberAdded, len(group.queue))
+	return
+}
+
+// trimPacketsBefore removes leading packets from the queue that "predate" firstSn
+// firstSn is a "global sequence number", thus relative to the group.seqnumsync
+func (group *AbacoGroup) trimPacketsBefore(firstSn uint32) {
+	firstSn += group.seqnumsync
+	for ;; {
+		sn0 := group.queue[0].SequenceNumber()
+		if sn0 >= firstSn {
+			return
+		}
+		group.queue = group.queue[1:]
+		if len(group.queue) == 0 {
+			return
+		}
+	}
+}
+
+// countSamplesInQueue counts the samples per channel in all packets in the group.queue.
+func (group *AbacoGroup) countSamplesInQueue() int {
+	// Go through packets and figure out the # of samples contained in all packets.
+	valuesFound := 0
+	for _, p := range group.queue {
+		switch d := p.Data.(type) {
+		case []int32:
+			valuesFound += len(d)
+
+		case []int16:
+			valuesFound += len(d)
+
+		default:
+			panic("Cannot parse packets that aren't of type []int16 or []int32")
+		}
+	}
+	return valuesFound / group.nchan
+}
+
+// demuxData demultiplexes the data in the packet queue into the datacopies slices (1 slice per channel)
+// but only up to the requested number of frames.
+func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
+	// This is the demultiplexing step. Loops over packets, then values.
+	// Within a slice of values, handle all channels for frame 0, then all for frame 1...
+	totalBytes := 0
+	packetsConsumed := 0
+	for _, p := range group.queue {
+		gidx := gIndex(p)
+		if gidx != group.index {
+			msg := fmt.Sprintf("Group %v received packet for index %v", group.index, gidx)
+			panic(msg)
+		}
+
+		// Don't demux a packet that would over-fill the requested # of frames.
+		frameAvail := p.Frames()
+		if frameAvail > frames {
+			break
+		}
+
+		frames -= frameAvail
+		packetsConsumed++
+		switch d := p.Data.(type) {
+		case []int16:
+			// Reading vector d in order was faster than the reverse.
+			for j, val := range d {
+				idx := j % group.nchan
+				datacopies[idx] = append(datacopies[idx], RawType(val))
+			}
+			totalBytes += 2 * len(d)
+
+		case []int32:
+			// TODO: We are squeezing the 16 bits higher than the lowest
+			// 12 bits into the 16-bit datacopies[] slice. If we need a
+			// permanent solution to 32-bit raw data, then it might need to be flexible
+			// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
+			for j, val := range d {
+				idx := j % group.nchan
+				datacopies[idx] = append(datacopies[idx], RawType(val/0x1000))
+			}
+			totalBytes += 4 * len(d)
+
+		default:
+			msg := fmt.Sprintf("Packets are of type %T, can only handle []int16 or []int32", p.Data)
+			panic(msg)
+		}
+	}
+	// fmt.Printf("Consumed %d of %d packets\n", packetsConsumed, len(group.queue))
+	group.queue = group.queue[packetsConsumed:]
+
+	// TODO: What if the # of frames points to the middle of a packet? For now, panic.
+	if frames > 0 {
+		msg := fmt.Sprintf("Consumed %d of %d packets, but there are still %d frames to fill\n",
+			packetsConsumed, len(group.queue), frames)
+		panic(msg)
+	}
+
+	for i, unwrap := range group.unwrap {
+		unwrap.UnwrapInPlace(&datacopies[i])
+	}
+
+	return totalBytes
+}
+
+//------------------------------------------------------------------------------------------------
+
+// AbacoRing represents a single shared-memory ring buffer that stores an Abaco card's data.
+// Beware of a possible future: multiple cards could pack data into the same ring.
+type AbacoRing struct {
+	ringnum    int
+	packetSize int // packet size, in bytes
+	ring       *ringbuffer.RingBuffer
+}
+
+const maxAbacoRings = 4 // Don't allow more than this many ring buffers.
 
 const abacoFractionBits = 13
 const abacoBitsToDrop = 1
 // That is, Abaco data is of the form iii.bbbb bbbb bbbb b with 3 integer bits
 // and 13 fractional bits. In the unwrapping process, we drop 1, making it 4/12.
 
-// NewAbacoDevice creates a new AbacoDevice and opens the underlying file for reading.
-func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
-	// Allow negative cardnum values, but for testing only!
-	if cardnum >= maxAbacoCards {
-		return nil, fmt.Errorf("NewAbacoDevice() got cardnum=%d, want [0,%d]",
-			cardnum, maxAbacoCards-1)
-	}
-	dev = new(AbacoDevice)
-	dev.cardnum = cardnum
 
-	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_0_buffer", dev.cardnum)
-	shmNameDesc := fmt.Sprintf("xdma%d_c2h_0_description", dev.cardnum)
+// NewAbacoRing creates a new AbacoRing and opens the underlying shared memory for reading.
+func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {
+	// Allow negative ringnum values, but for testing only!
+	if ringnum >= maxAbacoRings {
+		return nil, fmt.Errorf("NewAbacoRing() got ringnum=%d, want [0,%d]",
+			ringnum, maxAbacoRings-1)
+	}
+	dev = new(AbacoRing)
+	dev.ringnum = ringnum
+
+	shmNameBuffer := fmt.Sprintf("xdma%d_c2h_0_buffer", dev.ringnum)
+	shmNameDesc := fmt.Sprintf("xdma%d_c2h_0_description", dev.ringnum)
 	if dev.ring, err = ringbuffer.NewRingBuffer(shmNameBuffer, shmNameDesc); err != nil {
 		return nil, err
 	}
@@ -67,7 +299,7 @@ func NewAbacoDevice(cardnum int) (dev *AbacoDevice, err error) {
 }
 
 // ReadAllPackets returns an array of *packet.Packet, as read from the device's RingBuffer.
-func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
+func (device *AbacoRing) ReadAllPackets() ([]*packets.Packet, error) {
 	data, err := device.ring.ReadMultipleOf(device.packetSize)
 	if err != nil {
 		return nil, err
@@ -86,138 +318,82 @@ func (device *AbacoDevice) ReadAllPackets() ([]*packets.Packet, error) {
 	return allPackets, nil
 }
 
-// sampleCard samples the data from a single card to scan enough packets to
-// know the number of channels, data rate, etc.
-// Although it slows things down, it's best to discard all data in the ring
-// at the time we open it, because we have no idea how old the data are.
-func (device *AbacoDevice) sampleCard() error {
-	// Open the device and discard whatever is in the buffer
-	if err := device.ring.Open(); err != nil {
-		return err
+// samplePackets samples the data from a single AbacoRing. It scans enough packets to
+// learn the number of channels, data rate, etc.
+// Although it slows things down, it's best to discard all data in the ring when
+// we open it, because we have no idea how old the data are (in particular, once full, a
+// ring cannot take in new data to replace the old, so a full ring's data are arbitrarily old).
+// TODO: consider whether the newest data a *non-full* ring can be used here?
+func (device *AbacoRing) samplePackets() (allPackets []*packets.Packet, err error) {
+	// Open the ring buffer and discard whatever is in it.
+	if err = device.ring.Open(); err != nil {
+		return
 	}
 	psize, err := device.ring.PacketSize()
 	if err != nil {
-		return err
+		return
 	}
 	device.packetSize = int(psize)
-	if err := device.ring.DiscardStride(uint64(device.packetSize)); err != nil {
-		return err
+	if err = device.ring.DiscardStride(uint64(device.packetSize)); err != nil {
+		return
 	}
 
-	// Now get the data we actually want. Run for at least a minimum time
-	// or a minimum number of packets.
-	const minPacketsToRead = 100 // Not sure this is a good minimum
-	maxDelay := time.Duration(2000 * time.Millisecond)
-	timeOut := time.NewTimer(maxDelay)
+	// Now get the data we actually want: fresh data. Run for at least
+	// a minimum time or a minimum number of packets.
+	// The hard requirement is for at least 2 packets per channel group, so we can count samples taken
+	// between 2 timestamps and thus the sample rate. More packets is better, because we can estimate
+	// sample rate over a longer baseline, we are less likely to overlook a channel group.
+	const minPacketsToRead = 100 // Is this a good minimum? If we start missing channel groups, increase this.
+	maxSampleTime := time.Duration(2000 * time.Millisecond)
+	timeOut := time.NewTimer(maxSampleTime)
 
-	// Capture timestamp and sample # for a range of packets. Use to find rate.
-	var tsInit, tsFinal packets.PacketTimestamp
-	var snInit, snFinal uint32
-	samplesInPackets := 0
-
-	allGroups := make(map[ChannelGroup]bool)  // used as a set of ChannelGroup objects
 	packetsRead := 0
-	packetReadLoop:
 	for packetsRead < minPacketsToRead {
 		select {
 		case <-timeOut.C:
-			fmt.Printf("AbacoDevice.sampleCard() timer expired after %d packets read\n", packetsRead)
-			break packetReadLoop
+			fmt.Printf("AbacoRing.samplePackets() timer expired after only %d packets read\n", packetsRead)
+			return
 
 		default:
 			time.Sleep(5 * time.Millisecond)
-			allPackets, err := device.ReadAllPackets()
+			p, err := device.ReadAllPackets()
 			if err != nil {
 				fmt.Printf("Oh no! error in ReadAllPackets: %v\n", err)
-				return err
+				return allPackets, err
 			}
-			packetsRead += len(allPackets)
-
-			// Do something with Packet.ChannelInfo() here: track the ChannelGroups seen
-			// and set device.nchan, device.firstchan based on the values here.
-			for _, p := range allPackets {
-				nchan, offset := p.ChannelInfo()
-				g := ChannelGroup{firstchan:offset, nchan:nchan}
-				allGroups[g] = true
-
-				samplesInPackets += p.Frames()
-				if ts := p.Timestamp(); ts != nil && ts.Rate != 0 {
-					if tsInit.T == 0 {
-						tsInit.T = ts.T
-						tsInit.Rate = ts.Rate
-						snInit = p.SequenceNumber()
-					}
-					if tsFinal.T < ts.T {
-						tsFinal.T = ts.T
-						tsFinal.Rate = ts.Rate
-						snFinal = p.SequenceNumber()
-					}
-				}
-			}
+			allPackets = append(allPackets, p...)
+			packetsRead = len(allPackets)
 		}
 	}
-
-	// Summarize all channelgroups and sort into device.cgroups
-	device.nchan = 0
-	for g := range allGroups {
-		device.cgroups = append(device.cgroups, g)
-		device.nchan += g.nchan
-	}
-	sort.Sort(ByGroup(device.cgroups))
-	device.firstchan = device.cgroups[0].firstchan
-
-	// Verify that no channel #s appear in 2 groups.
-	highest := -1
-	for i, g := range device.cgroups {
-		if g.firstchan <= highest {
-			return fmt.Errorf("Channel group %d=%v but previous range ended at %d", i, g, highest)
-		}
-		highest = g.firstchan + g.nchan - 1
-	}
-
-	// Use the first and last timestamp to compute sample rate.
-	if tsInit.T != 0 && tsFinal.T != 0 {
-		dt := float64(tsFinal.T-tsInit.T) / tsInit.Rate
-		// TODO: check for wrap of timestamp if < 48 bits
-		// TODO: what if ts.Rate changes between Init and Final?
-
-		// Careful: assume that any missed packets had same number of samples as
-		// the packets that we did see. Thus find the average samples per packet.
-		dserial := snFinal - snInit
-		if dserial > 0 {
-			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
-			device.sampleRate = float64(dserial) * avgSampPerPacket / dt
-			fmt.Printf("Sample rate %.6g /sec determined from %d packets:\n\tΔt=%f sec, Δserial=%d, and %f samp/packet\n", device.sampleRate,
-				packetsRead, dt, dserial, avgSampPerPacket)
-		}
-	}
-
-	device.unwrap = make([]*PhaseUnwrapper, device.nchan)
-	for i := range device.unwrap {
-		device.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop)
-	}
-	return nil
+	return allPackets, nil
 }
 
-// enumerateAbacoDevices returns a list of abaco device numbers that exist
-// in the devfs. If /dev/xdmaX_c2h_0 exists, then X is added to the list.
-// Does not handle cards with suffix other than c2h_0.
-func enumerateAbacoDevices() (devices []int, err error) {
-	for cnum := 0; cnum < maxAbacoCards; cnum++ {
+// enumerateAbacoRings returns a list of abaco ring buffer numbers that exist
+// in the devfs. If /dev/xdmaX_c2h_0_description exists, then X is added to the list.
+// Does not handle cards with suffix other than *_c2h_0.
+func enumerateAbacoRings() (rings []int, err error) {
+	for cnum := 0; cnum < maxAbacoRings; cnum++ {
 		name := fmt.Sprintf("xdma%d_c2h_0_description", cnum)
 		if region, err := shm.Open(name, os.O_RDONLY, 0600); err == nil {
 			region.Close()
-			devices = append(devices, cnum)
+			rings = append(rings, cnum)
 		}
 	}
-	return devices, nil
+	return rings, nil
 }
 
-// AbacoSource represents all Abaco devices that can potentially supply data.
+//------------------------------------------------------------------------------------------------
+
+// AbacoSource represents all AbacoRing ring buffers that can potentially supply data, as well
+// as all AbacoGroups that are discovered in the SampleData phase.
 type AbacoSource struct {
-	devices     map[int]*AbacoDevice
-	Ndevices    int
-	active      []*AbacoDevice
+	Nrings int // number of available ring buffers
+	arings map[int]*AbacoRing
+	active []*AbacoRing
+
+	groups map[GroupIndex]*AbacoGroup
+	groupKeysSorted []GroupIndex
+
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
 	AnySource
@@ -227,31 +403,32 @@ type AbacoSource struct {
 func NewAbacoSource() (*AbacoSource, error) {
 	source := new(AbacoSource)
 	source.name = "Abaco"
-	source.devices = make(map[int]*AbacoDevice)
+	source.arings = make(map[int]*AbacoRing)
+	source.groups = make(map[GroupIndex]*AbacoGroup)
 
-	deviceCodes, err := enumerateAbacoDevices()
+	deviceCodes, err := enumerateAbacoRings()
 	if err != nil {
 		return source, err
 	}
 
 	for _, cnum := range deviceCodes {
-		ad, err := NewAbacoDevice(cnum)
+		ar, err := NewAbacoRing(cnum)
 		if err != nil {
 			log.Printf("warning: failed to create ring buffer for shm:xdma%d_c2h_0, though it should exist", cnum)
 			continue
 		}
-		source.devices[cnum] = ad
-		source.Ndevices++
+		source.arings[cnum] = ar
+		source.Nrings++
 	}
-	if source.Ndevices == 0 && len(deviceCodes) > 0 {
+	if source.Nrings == 0 && len(deviceCodes) > 0 {
 		return source, fmt.Errorf("could not create ring buffer for any of shm:xdma*_c2h_0, though deviceCodes %v exist", deviceCodes)
 	}
 	return source, nil
 }
 
-// Delete closes the ring buffers for all Abaco devices
+// Delete closes the ring buffers for all AbacoRings.
 func (as *AbacoSource) Delete() {
-	for _, dev := range as.devices {
+	for _, dev := range as.arings {
 		dev.ring.Close()
 	}
 }
@@ -268,7 +445,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	defer as.sourceStateLock.Unlock()
 	// Update the slice AvailableCards.
 	config.AvailableCards = make([]int, 0)
-	for k := range as.devices {
+	for k := range as.arings {
 		config.AvailableCards = append(config.AvailableCards, k)
 	}
 	sort.Ints(config.AvailableCards)
@@ -278,7 +455,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	}
 
 	// used to be sure the same device isn't listed twice in config.ActiveCards
-	contains := func(s []*AbacoDevice, e *AbacoDevice) bool {
+	contains := func(s []*AbacoRing, e *AbacoRing) bool {
 		for _, a := range s {
 			if a == e {
 				return true
@@ -288,9 +465,9 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	}
 
 	// Activate the cards listed in the config request.
-	as.active = make([]*AbacoDevice, 0)
+	as.active = make([]*AbacoRing, 0)
 	for i, c := range config.ActiveCards {
-		dev := as.devices[c]
+		dev := as.arings[c]
 		if dev == nil {
 			err = fmt.Errorf("ActiveCards[%d]: card=%v, device == nil", i, c)
 			break
@@ -304,37 +481,92 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	return
 }
 
+// distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
+func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
+	for _, p := range allpackets {
+		cidx := gIndex(p)
+		as.groups[cidx].enqueuePacket(p, now)
+	}
+}
+
 // Sample determines key data facts by sampling some initial data.
 func (as *AbacoSource) Sample() error {
-	as.nchan = 0
 	if len(as.active) <= 0 {
-		return fmt.Errorf("No Abaco devices are active")
+		return fmt.Errorf("No Abaco ring buffers are active")
 	}
 
-	// Run device.sampleCard as goroutines on each device, in parallel, to save time.
-	sampleErrors := make(chan error)
-	for _, device := range as.active {
-		go func(dev *AbacoDevice) {
-			sampleErrors <- dev.sampleCard()
-		}(device)
+	// Launch device.samplePackets as goroutines on each device, in parallel, to save time.
+	type SampleResult struct {
+		allpackets []*packets.Packet
+		err        error
 	}
+	sampleResults := make(chan SampleResult)
+	for _, ring := range as.active {
+		go func(r *AbacoRing) {
+			p, err := r.samplePackets()
+			sampleResults <- SampleResult{allpackets: p, err: err}
+		}(ring)
+	}
+
+	// Now sort the packets received into the right AbacoGroups
+	as.nchan = 0
 	for _ = range as.active {
-		if err := <-sampleErrors; err != nil {
-			return err
+		results := <-sampleResults
+		now := time.Now()
+		if results.err != nil {
+			return results.err
+		}
+		// Create new AbacoGroup for each GroupIndex seen
+		for _, p := range results.allpackets {
+			cidx := gIndex(p)
+			if _, ok := as.groups[cidx]; !ok {
+				as.groups[cidx] = NewAbacoGroup(cidx)
+				as.nchan += cidx.nchan
+			}
+		}
+		as.distributePackets(results.allpackets, now)
+	}
+
+	// Verify that no channel # appears in 2 groups.
+	known := make(map[int]bool)
+	for _, g := range as.groups {
+		cinit := g.index.firstchan
+		cend := cinit + g.index.nchan
+		for cnum := cinit; cnum < cend; cnum++ {
+			if known[cnum] {
+				return fmt.Errorf("Channel group %v sees channel %d, which was in another group", g.index, cnum)
+			}
+			known[cnum] = true
 		}
 	}
-	for _, device := range as.active {
-		as.nchan += device.nchan
+
+	// Compute a fixed ordering for iteration over the map as.groups
+	var keys []GroupIndex
+	for k := range as.groups {
+		keys = append(keys, k)
+	}
+	sort.Sort(ByGroup(keys))
+	as.groupKeysSorted = keys
+
+	// Each AbacoGroup should process its sampled packets.
+	for _, group := range as.groups {
+		group.samplePackets()
 	}
 
-	// Treat devices as 1 row x N columns.
+	// Treat groups as 1 row x N columns.
 	as.rowColCodes = make([]RowColCode, as.nchan)
 	i := 0
-	for _, device := range as.active {
-		as.sampleRate = device.sampleRate
-		// TODO: what if multiple devices have unequal rates??
-		for j := 0; j < device.nchan; j++ {
-			as.rowColCodes[i] = rcCode(0, i, 1, as.nchan)
+	for _, group := range as.groups {
+		if as.sampleRate == 0 {
+			as.sampleRate = group.sampleRate
+		}
+		if as.sampleRate != group.sampleRate {
+			fmt.Printf("Oh crap! Two groups have different sample rates: %f, %f", as.sampleRate, group.sampleRate)
+			panic("Oh crap! Two groups have different sample rates.")
+			// TODO: what if multiple groups have unequal rates??
+		}
+		for j := 0; j < group.nchan; j++ {
+			as.rowColCodes[i] = rcCode(0, i, 1, group.nchan)
 			i++
 		}
 	}
@@ -352,7 +584,7 @@ func (as *AbacoSource) StartRun() error {
 	// Start by emptying all data from each device's ring buffer.
 	for _, dev := range as.active {
 		if err := dev.ring.DiscardStride(uint64(dev.packetSize)); err != nil {
-			panic("AbacoDevice.ring.DiscardStride failed")
+			panic("AbacoRing.ring.DiscardStride failed")
 		}
 	}
 	as.buffersChan = make(chan AbacoBuffersType, 100)
@@ -387,83 +619,63 @@ func (as *AbacoSource) readerMainLoop() {
 
 		case <-timeout.C:
 			// Handle failure to return
-			log.Printf("Abaco read timed out")
+			log.Printf("Abaco read timed out after %v", timeoutPeriod)
 			return
 
 		case <-ticker.C:
 			// read from the ring buffer
-			// send bytes actually read on a channel
-			framesUsed := 0
-			totalBytes := 0
-			datacopies := make([][]RawType, as.nchan)
-			nchanPrevDevices := 0
+			// totalBytes := 0
 			var lastSampleTime time.Time
-			for _, dev := range as.active {
-				allPackets, err := dev.ReadAllPackets()
+			for _, ring := range as.active {
+				allPackets, err := ring.ReadAllPackets()
 				lastSampleTime = time.Now()
 				if err != nil {
-					fmt.Printf("AbacoDevice.ReadAllPackets failed with error: %v\n", err)
-					panic("AbacoDevice.ReadAllPackets failed")
+					fmt.Printf("AbacoRing.ReadAllPackets failed with error: %v\n", err)
+					panic("AbacoRing.ReadAllPackets failed")
 				}
+				as.distributePackets(allPackets, lastSampleTime)
+			}
 
-				// Go through packets and figure out the # of frames contained in all packets.
-				// We want this so we can make slices have the right capacity on creation.
-				// TODO: this will break if channel offsets other than 0 are in the data.
-				for _, p := range allPackets {
-					switch d := p.Data.(type) {
-					case []int32:
-						framesUsed += len(d) / dev.nchan
-
-					case []int16:
-						framesUsed += len(d) / dev.nchan
-						// fmt.Printf("Found [%d]int16 payload = %d frames: %v\n",
-						// 	len(d), framesUsed, d[:5])
-
-					default:
-						panic("Cannot parse packets that aren't of type []int16 or []int32")
-					}
+			// Align the first sample in each group. Do this by checking the first global sequenceNumber
+			// in each group and trimming leading packets if any precede the others.
+			// Fill in for any missing packets first, so a missing first packet isn't a problem.
+			firstSn := uint32(0)
+			for _, group := range as.groups {
+				group.fillMissingPackets()
+				sn0, err := group.firstSeqNum()
+				if err != nil {
+					msg := fmt.Sprintf("AbacoSource.Sample finds no packets for group %v: %v", group, err)
+					panic(msg)
 				}
-
-				// Demux data into this slice of slices of RawType (reserve capacity=framesUsed)
-				for i := 0; i < dev.nchan; i++ {
-					datacopies[i+nchanPrevDevices] = make([]RawType, 0, framesUsed)
-				}
-
-				// This is the demultiplexing step. Loops over packets, then values.
-				// Within a slice of values, its all channels for frame 0, then all for frame 1...
-				for _, p := range allPackets {
-					nchan, offset := p.ChannelInfo()
-					if offset < 0 || offset+nchan > dev.nchan {
-						panic("Cannot handle packets with offset out of range")
-						//continue
-					}
-
-					switch d := p.Data.(type) {
-					case []int16:
-						// Reading vector d in order was faster than the reverse, before packets:
-						for j, val := range d {
-							idx := (j % nchan) + offset + nchanPrevDevices
-							datacopies[idx] = append(datacopies[idx], RawType(val))
-						}
-						totalBytes += 2 * len(d)
-
-					case []int32:
-						// TODO: We are squeezing the 16 bits higher than the lowest
-						// 12 bits into the 16-bit datacopies[] slice. If we need a
-						// permanent solution to 32-bit raw data, then it might need to be flexible
-						// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
-						for j, val := range d {
-							idx := (j % nchan) + offset + nchanPrevDevices
-							datacopies[idx] = append(datacopies[idx], RawType(val/0x1000))
-						}
-						totalBytes += 4 * len(d)
-
-					default:
-						msg := fmt.Sprintf("Packets are of type %T, can only handle []int16 or []int32", p.Data)
-						panic(msg)
-					}
+				if sn0 > firstSn {
+					firstSn = sn0
 				}
 			}
+
+			// For any queue that starts before maxsn0, trim the leading packets. Learn the # of samples.
+			framesToDeMUX := math.MaxInt64
+			for _, group := range as.groups {
+				group.trimPacketsBefore(firstSn)
+				nsamp := group.countSamplesInQueue()
+				if nsamp < framesToDeMUX {
+					framesToDeMUX = nsamp
+				}
+			}
+
+			// Demux data into this slice of slices of RawType (reserve capacity=framesToDeMUX)
+			datacopies := make([][]RawType, as.nchan)
+			for i := 0; i < as.nchan; i++ {
+				datacopies[i] = make([]RawType, 0, framesToDeMUX)
+			}
+			chanProcessed := 0
+			bytesProcessed := 0
+			for _, k := range as.groupKeysSorted {
+				group := as.groups[k]
+				dc := datacopies[chanProcessed:chanProcessed+group.nchan]
+				bytesProcessed += group.demuxData(dc, framesToDeMUX)
+				chanProcessed += group.nchan
+			}
+
 			timeDiff := lastSampleTime.Sub(as.lastread)
 			if timeDiff > 2*as.readPeriod {
 				fmt.Println("timeDiff in abaco reader", timeDiff)
@@ -479,9 +691,9 @@ func (as *AbacoSource) readerMainLoop() {
 				datacopies:     datacopies,
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
-				totalBytes:     totalBytes,
+				totalBytes:     bytesProcessed,
 			}
-			if totalBytes > 0 {
+			if bytesProcessed > 0 {
 				timeout.Reset(timeoutPeriod)
 			}
 		}
@@ -507,7 +719,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 			case buffersMsg, ok := <-as.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
-					if err := as.closeDevices(); err != nil {
+					if err := as.closeRings(); err != nil {
 						block := new(dataBlock)
 						block.err = err
 						as.nextBlock <- block
@@ -547,7 +759,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	// That doesn't exist yet in Abaco.
 
 	// TODO: we should loop over devices here, matching devices to channels.
-	dev := as.active[0]
+	// dev := as.active[0]
 
 	var wg sync.WaitGroup
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
@@ -555,10 +767,6 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 		go func(channelIndex int) {
 			defer wg.Done()
 			data := datacopies[channelIndex]
-			if dev != nil {
-				unwrap := dev.unwrap[channelIndex]
-				unwrap.UnwrapInPlace(&data)
-			}
 			seg := DataSegment{
 				rawData:         data,
 				framesPerSample: 1, // This will be changed later if decimating
@@ -586,8 +794,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	return block
 }
 
-// closeDevices ends closes the ring buffers of all active AbacoDevice objects.
-func (as *AbacoSource) closeDevices() error {
+// closeRings ends closes the ring buffers of all active AbacoRing objects.
+func (as *AbacoSource) closeRings() error {
 	// loop over as.active and do any needed stopping functions.
 	for _, dev := range as.active {
 		dev.ring.Close()

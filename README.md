@@ -4,7 +4,7 @@
 A data acquisition framework for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
-Requires Go version 1.13 or higher. It is tested automatically on 1.13 and 1.14.
+Requires Go version 1.13 or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.13 and 1.15 (as of August 2020, Go version 1.15 is the most recent).
 
 ### Ubuntu 18.04 and 16.04
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
@@ -37,16 +37,13 @@ wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-s
 sudo apt-key add - < Release.key
 sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git
+```
 
 Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming
 that MacPorts is already installed, it's simple:
-```
 
 ## MacOS Dependencies
-```
 get libsodium-dev and libczmq-dev and golang version >1.13, like macports or brew. write down how you did it here
-```
-As of April 20, 2020, this gets you go 1.14.2. If you use another method, please add notes here to help other users.
 
 
 

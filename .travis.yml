@@ -4,8 +4,9 @@ dist: xenial
 sudo: required
 
 go:
-  - 1.13.x
-  - 1.14.x
+  # Test Go versions 1.13 and the most recent. Assume that in-between also works!
+  - 1.13.x  # This should stay at 1.13, as gonum supports only 1.13+
+  - 1.15.x  # This should track the lastest Go release (1.15 came out 10 Aug 2020)
 
 go_import_path: github.com/usnistgov/dastard
 
@@ -16,4 +17,3 @@ addons:
       key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/Release.key'
     packages:
     - libczmq-dev libzmq3-dev libsodium-dev
-    

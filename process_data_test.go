@@ -85,22 +85,22 @@ func TestAnalyzePre(t *testing.T) {
 	slopes := []float64{0, 1, 5, -2, -50, 0.333333, 1.5, 10.94}
 	firsts := []float64{40, 100, 1000}
 	npres := []int{4, 7, 13}
-	for _, npre := range(npres) {
-		for _, m := range(slopes) {
-			for _, b := range(firsts) {
+	for _, npre := range npres {
+		for _, m := range slopes {
+			for _, b := range firsts {
 				sum := 0.0
 				sumx := 0.0
 				sumxy := 0.0
 				sumx2 := 0.0
-				for j := 0; j<npre; j++ {
-					data[j] = RawType(b + m*float64(j)+0.5)
+				for j := 0; j < npre; j++ {
+					data[j] = RawType(b + m*float64(j) + 0.5)
 					sum += float64(data[j])
 					sumx += float64(j)
-					sumx2 += float64(j*j)
-					sumxy += float64(j)*float64(data[j])
+					sumx2 += float64(j * j)
+					sumxy += float64(j) * float64(data[j])
 				}
-				mean := sum/float64(npre)
-				regressSlope := (sumxy-sumx*sum/float64(npre))/(sumx2 - (sumx*sumx)/float64(npre))
+				mean := sum / float64(npre)
+				regressSlope := (sumxy - sumx*sum/float64(npre)) / (sumx2 - (sumx*sumx)/float64(npre))
 				rec := &DataRecord{data: data, presamples: npre}
 				records := []*DataRecord{rec}
 
@@ -108,8 +108,8 @@ func TestAnalyzePre(t *testing.T) {
 				dsp.AnalyzeData(records)
 
 				expect := RTExpect{
-					pretrigMean:    mean,
-					pretrigDelta:   regressSlope*float64(npre-1)}
+					pretrigMean:  mean,
+					pretrigDelta: regressSlope * float64(npre-1)}
 				testAnalyzePretrigCheck(t, rec, expect, "Analyze Pre")
 
 			}
@@ -241,11 +241,11 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 }
 
 func testAnalyzePretrigCheck(t *testing.T, rec *DataRecord, expect RTExpect, name string) {
-	if math.Abs(rec.pretrigMean - expect.pretrigMean) > 1e-7 && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.pretrigMean)) {
+	if math.Abs(rec.pretrigMean-expect.pretrigMean) > 1e-7 && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.pretrigMean)) {
 		t.Errorf("Pretrigger mean = %v, want %v", rec.pretrigMean, expect.pretrigMean)
 		t.Logf("%v\n", rec)
 	}
-	if math.Abs(rec.pretrigDelta - expect.pretrigDelta) > 1e-7 && !(math.IsNaN(rec.pretrigDelta) && math.IsNaN(expect.pretrigDelta)) {
+	if math.Abs(rec.pretrigDelta-expect.pretrigDelta) > 1e-7 && !(math.IsNaN(rec.pretrigDelta) && math.IsNaN(expect.pretrigDelta)) {
 		t.Errorf("Pretrigger delta = %v, want %v", rec.pretrigDelta, expect.pretrigDelta)
 		t.Logf("%v\n", rec)
 	}

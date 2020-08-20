@@ -3,9 +3,13 @@
 **0.2.7** in progress in April 2020
 * Use package `zmq4`, a pure Go implementation of ZMQ.
 * Simplified testing on Travis because of that.
-* Then revert to `gozmq` because `zmq4` was dropping packets. (Fixes 192)
+* Then revert to `gozmq` because `zmq4` was dropping packets (issue 192).
 * Read Abaco packets correctly when fractional packets are in ring buffer (issue 188).
 * Fix CurrentTime client message to be valid JSON (issue 194).
+* Added program Bahama to generate fake Abaco packet-style data (issues 196, 200).
+* Fix problem where ZMQ 2-part messages were sent w/o checking for errors (issue 198).
+* Handle Abaco packets from separate channel groups as independent (issue 190).
+* Fill in fake data when any Abaco packets are missing (issue 202).
 
 **0.2.6** April 2, 2020
 * Change handling of data drops.

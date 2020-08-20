@@ -31,6 +31,7 @@ type RoachSource struct {
 
 const roachFractionBits = 14
 const roachBitsToDrop = 2
+
 // That is, ROACH data is of the form ii.bbbb bbbb bbbb bb with 2 integer bits
 // and 14 fractional bits. In the unwrapping process, we drop 2, making it 4/12.
 

@@ -78,15 +78,15 @@ func TestGeneratePackets(t *testing.T) {
 	}
 }
 
-func TestAbacoDevice(t *testing.T) {
-	if _, err := NewAbacoDevice(99999); err == nil {
-		t.Errorf("NewAbacoDevice(99999) succeeded, want failure")
+func TestAbacoRing(t *testing.T) {
+	if _, err := NewAbacoRing(99999); err == nil {
+		t.Errorf("NewAbacoRing(99999) succeeded, want failure")
 	}
 	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
-	dev, err := NewAbacoDevice(cardnum)
+	dev, err := NewAbacoRing(cardnum)
 	if err != nil {
-		t.Fatalf("NewAbacoDevice(%d) fails: %s", cardnum, err)
+		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
 	}
 
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
@@ -100,8 +100,7 @@ func TestAbacoDevice(t *testing.T) {
 	if err = ring.Create(128 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
-
-	go dev.sampleCard()
+	dev.samplePackets()
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
 	const Nchan = 8
@@ -135,15 +134,29 @@ func TestAbacoDevice(t *testing.T) {
 			if ring.BytesWriteable() >= len(b) {
 				ring.Write(b)
 			}
-			counter += stride*1000
+			counter += stride * 1000
 		}
 		time.Sleep(Nsamp * time.Microsecond) // sample rate is 1/μs.
 	}
-	if dev.nchan != Nchan {
-		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+	ps, err := dev.ReadAllPackets()
+	if err != nil {
+		t.Errorf("Error on AbacoRing.ReadAllPackets: %v", err)
 	}
-	if dev.sampleRate <= 0.0 {
-		t.Errorf("dev.sampleRate=%.4g, want >0", dev.sampleRate)
+	if len(ps) <= 0 {
+		t.Errorf("AbacoRing.samplePackets returned only %d packets", len(ps))
+	}
+	group := NewAbacoGroup(gIndex(ps[0]))
+	group.queue = append(group.queue, ps...)
+	err = group.samplePackets()
+	if err != nil {
+		t.Errorf("Error on AbacoGroup.samplePackets: %v", err)
+	}
+
+	if group.nchan != Nchan {
+		t.Errorf("group.nchan=%d, want %d", group.nchan, Nchan)
+	}
+	if group.sampleRate <= 0.0 {
+		t.Errorf("group.sampleRate=%.4g, want >0", group.sampleRate)
 	}
 }
 
@@ -156,12 +169,12 @@ func TestAbacoSource(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
 
-	dev, err := NewAbacoDevice(cardnum)
+	dev, err := NewAbacoRing(cardnum)
 	if err != nil {
-		t.Fatalf("NewAbacoDevice(%d) fails: %s", cardnum, err)
+		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
 	}
-	source.devices[cardnum] = dev
-	source.Ndevices++
+	source.arings[cardnum] = dev
+	source.Nrings++
 
 	deviceCodes := []int{cardnum}
 	var config AbacoSourceConfig
@@ -192,7 +205,7 @@ func TestAbacoSource(t *testing.T) {
 
 	abortSupply := make(chan interface{})
 	supplyDataForever := func() {
-		p := packets.NewPacket(10, 20, 0x100, 0)
+		p := packets.NewPacket(10, 20, 100, 0)
 		d := make([]int16, Nchan*Nsamp)
 		for i := 0; i < Nchan; i++ {
 			freq := (float64(i + 2)) / float64(Nsamp)
@@ -204,13 +217,19 @@ func TestAbacoSource(t *testing.T) {
 		empty := make([]byte, packetAlign)
 		dims := []int16{Nchan}
 		timer := time.NewTicker(10 * time.Millisecond)
-		for {
+		packetcount := 0
+		for ;; {
 			select {
 			case <-abortSupply:
 				return
 			case <-timer.C:
 				for i := 0; i < Nsamp; i += stride {
 					p.NewData(d[i:i+stride*Nchan], dims)
+					// Skip 2 packets of every 80, the 1st and 80th.
+					packetcount++
+					if packetcount % 80 < 2 {
+						continue
+					}
 					b := p.Bytes()
 					b = append(b, empty[:packetAlign-len(b)]...)
 					if rb.BytesWriteable() >= len(b) {
@@ -229,10 +248,10 @@ func TestAbacoSource(t *testing.T) {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
 		t.Fatal(err)
 	}
-	if dev.nchan != Nchan {
-		t.Errorf("dev.nchan=%d, want %d", dev.nchan, Nchan)
+	if source.nchan != Nchan {
+		t.Errorf("source.nchan=%d, want %d", source.nchan, Nchan)
 	}
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 	source.Stop()
 	close(abortSupply)
 	source.RunDoneWait()

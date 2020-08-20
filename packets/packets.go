@@ -145,6 +145,46 @@ func (p *Packet) ResetTimestamp() error {
 	return nil
 }
 
+// MakePretendPacket generates a copy of p with the given sequence number
+// and with the given value for the whole data payload.
+// Use it for making fake data to fill in where packets were dropped.
+func (p *Packet) MakePretendPacket(seqnum uint32, value int) (*Packet) {
+	pretend := *p
+	pretend.sequenceNumber = seqnum
+	switch d := pretend.Data.(type) {
+	case []int16:
+		for i := range(d) {
+			d[i] = int16(value)
+		}
+	case []int32:
+		for i := range(d) {
+			d[i] = int32(value)
+		}
+	case []int64:
+		for i := range(d) {
+			d[i] = int64(value)
+		}
+	}
+	return &pretend
+}
+
+// ReadValue returns a single sample from the packet's data payload.
+// Not efficient for reading the whole data slice.
+func (p *Packet) ReadValue(sample int) int {
+	if sample < 0 || sample >= p.Frames() {
+		return 0
+	}
+	switch d := p.Data.(type) {
+	case []int16:
+		return int(d[sample])
+	case []int32:
+		return int(d[sample])
+	case []int64:
+		return int(d[sample])
+	}
+	return 0
+}
+
 // NewData adds data to the packet, and creates the format and shape TLV items to match.
 func (p *Packet) NewData(data interface{}, dims []int16) error {
 	ndim := len(dims)
