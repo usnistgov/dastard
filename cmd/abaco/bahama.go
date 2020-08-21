@@ -39,6 +39,7 @@ type BahamaControl struct {
 	stagger bool
 	noiselevel float64
 	samplerate float64
+	dropfrac   float64
 }
 
 
@@ -169,7 +170,9 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 				packet.NewData(d[i:lastsamp], dims)
 				ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
 				packet.SetTimestamp(ts)
-				packetchan <- packet.Bytes()
+				if control.dropfrac == 0.0 || control.dropfrac < randsource.Float64() {
+					packetchan <- packet.Bytes()
+				}
 				timeCounter += countsPerSample*uint64((lastsamp-i)/Nchan)
 			}
 		}
@@ -242,6 +245,7 @@ func main() {
 	usepulses := flag.Bool("pulse", false, "Whether to add pulse-like data")
 	interleave := flag.Bool("interleave", false, "Whether to interleave channel groups' packets regularly")
 	stagger := flag.Bool("stagger", false, "Whether to stagger channel groups' packets so each gets 'ahead' of the others")
+	droppct := flag.Float64("droppct", 0.0, "Drop this percentage of packets")
 	flag.Usage = func() {
 		fmt.Println("BAHAMA, the Basic Abaco Hardware Artificial Message Assembler")
 		fmt.Println("Usage:")
@@ -255,13 +259,16 @@ func main() {
 	coerceInt(nring, 1, 4)
 	coerceInt(ngroups, 1, *nchan/4)
 	coerceFloat(samplerate, 1000, 500000)
+	coerceFloat(droppct, 0, 100)
 
 	control := BahamaControl{Nchan:*nchan, Ngroups:*ngroups,
 		stagger:*stagger, interleave:*interleave,
 		sawtooth:*usesawtooth, pulses:*usepulses,
-		sinusoid:*usesine, noiselevel:*noiselevel, samplerate:*samplerate}
+		sinusoid:*usesine, noiselevel:*noiselevel,
+		samplerate:*samplerate, dropfrac:(*droppct)/100.0}
 
 	fmt.Println("Samples per second:      ", *samplerate)
+	fmt.Printf("Drop packets randomly:    %.2f%%\n", *droppct)
 	fmt.Println("Number of ring buffers:  ", *nring)
 	fmt.Println("Channels per ring:       ", control.Nchan)
 	fmt.Println("Channel groups per ring: ", control.Ngroups)
