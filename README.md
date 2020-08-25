@@ -42,12 +42,17 @@ sudo apt-get install -y libsodium-dev libczmq-dev git
 Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming
 that MacPorts is already installed, it's simple:
 
-## MacOS Dependencies
-get libsodium-dev and libczmq-dev and golang version >1.13, like macports or brew. write down how you did it here
+### MacOS Dependencies
+ 
+#### Homebrew
+`brew install go pkg-config czmq libsodium`
+
+#### Macports
+`port install go libczmq-dev libsodium-dev pkg-config`
 
 
 
-### Also Install These
+## Also Install These
 
 * Install microscope https://github.com/usnistgov/microscope
 * Install dastard_commander https://github.com/usnistgov/dastardcommander

@@ -45,6 +45,8 @@ type TriggerState struct {
 	EdgeMultiNoise                   bool
 	EdgeMultiMakeShortRecords        bool
 	EdgeMultiMakeContaminatedRecords bool
+	EdgeMultiDisableZeroThreshold    bool
+	EdgeMultiLevel                   int32
 	EdgeMultiVerifyNMonotone         int
 	edgeMultiInternalSearchState     edgeMultiInternalSearchStateType
 	edgeMultiIPotential              FrameIndex
@@ -179,17 +181,17 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 
 // edgeMultiTriggerComputeAppend computes the EdgeMulti Trigger
 // There are two modes
-// 1. EdgeMulti: requires: EdgeMulti, EdgeLevel, EdgeMultiVerifyNMonotone
-// This mode looks for successive samples that differ by EdgeLevel or more. These become potential triggers
+// 1. EdgeMulti: requires: EdgeMulti, EdgeMultiLevel, EdgeMultiVerifyNMonotone
+// This mode looks for successive samples that differ by EdgeMultiLevel or more. These become potential triggers
 // there are EdgeMultiVerifyNMonotone succesive samples with a positive difference
 // A new trigger can be found  Immediatley after a local maximum has been found
 // records are generated according to
 // EdgeMultiMakeShortRecords  -> variable length records
 // EdgeMultiMakeContaminatedRecords -> records that may have another pulse in them
 // Neither -> Fixed length records without any other pulses in them (as if you already did postpeak deriv cut)
-// 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeLevel, EdgeMultiVerifyNMonotone, AutoDelay
+// 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeMultiLevel, EdgeMultiVerifyNMonotone, AutoDelay
 // will not produce pulse containing records, just the autotrigger that fit in around them
-// negative values for EdgeLevel look for negative going edges
+// negative values for EdgeMultiLevel look for negative going edges
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	segment := &dsp.stream.DataSegment
 	raw := segment.rawData
@@ -235,7 +237,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		panic(fmt.Sprintf("channel %v, iFirst %v<6!! segment.firstFramenum %v, dsp.edgeMultiILastInspected %v, dsp.edgeMultiInernalSearchState %v, dsp.NPresamples %v, dsp.NSamples %v, iLast %v, len(raw) %v, iPotential %v",
 			dsp.channelIndex, iFirst, segment.firstFramenum, dsp.edgeMultiILastInspected, dsp.edgeMultiInternalSearchState, dsp.NPresamples, dsp.NSamples, iLast, len(raw), iPotential))
 	}
-	rising := dsp.EdgeLevel >= 0
+	rising := dsp.EdgeMultiLevel >= 0
 	falling := !rising
 	for i := iFirst; i <= iLast; i++ {
 		// fmt.Printf("i=%v, i_frame=%v\n", i, i+int(segment.firstFramenum))
@@ -245,8 +247,8 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			dsp.edgeMultiInternalSearchState = searching
 		case searching:
 			diff := int32(raw[i]) - int32(raw[i-1])
-			if (rising && diff >= dsp.EdgeLevel) ||
-				(falling && diff <= dsp.EdgeLevel) {
+			if (rising && diff >= dsp.EdgeMultiLevel) ||
+				(falling && diff <= dsp.EdgeMultiLevel) {
 				iPotential = i
 				dsp.edgeMultiInternalSearchState = verifying
 			}
@@ -256,19 +258,23 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			if (rising && raw[i] <= raw[i-1]) || (falling && raw[i] >= raw[i-1]) { // here we see non-monotone sample, eg a fall on a rising edge
 				nMonotone := i - iPotential
 				if nMonotone >= dsp.EdgeMultiVerifyNMonotone {
-					// now attempt to refine the trigger using the kink model
-					xdataf := make([]float64, 10)
-					ydataf := make([]float64, 10)
-					for j := 0; j < 10; j++ {
-						// fmt.Printf("j %v, iPotential %v, j+iPotential-6 %v, i %v\n", j, iPotential, j+iPotential-6, i)
-						xdataf[j] = float64(j + iPotential - 6) // look at samples from i-6 to i+3
-						ydataf[j] = float64(raw[j+iPotential-6])
-					}
-					ifit := float64(iPotential)
-					kbest, _, err := kinkModelFit(xdataf, ydataf, []float64{ifit - 1, ifit - 0.5, ifit, ifit + 0.5, ifit + 1})
 					var iTrigger int
-					if err == nil {
-						iTrigger = int(math.Ceil(kbest))
+					if !dsp.EdgeMultiDisableZeroThreshold {
+						// refine the trigger using the kink model
+						xdataf := make([]float64, 10)
+						ydataf := make([]float64, 10)
+						for j := 0; j < 10; j++ {
+							// fmt.Printf("j %v, iPotential %v, j+iPotential-6 %v, i %v\n", j, iPotential, j+iPotential-6, i)
+							xdataf[j] = float64(j + iPotential - 6) // look at samples from i-6 to i+3
+							ydataf[j] = float64(raw[j+iPotential-6])
+						}
+						ifit := float64(iPotential)
+						kbest, _, err := kinkModelFit(xdataf, ydataf, []float64{ifit - 1, ifit - 0.5, ifit, ifit + 0.5, ifit + 1})
+						if err == nil {
+							iTrigger = int(math.Ceil(kbest))
+						} else {
+							iTrigger = iPotential
+						}
 					} else {
 						iTrigger = iPotential
 					}

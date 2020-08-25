@@ -502,12 +502,13 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.NPresamples = 50
 	dsp.NSamples = 100
 
+	dsp.EdgeMultiDisableZeroThreshold = false
 	dsp.EdgeMulti = true
-	dsp.EdgeLevel = 10000
+	dsp.EdgeMultiLevel = 10000
 	dsp.EdgeMultiVerifyNMonotone = 5
 	nRepeat := 1
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high", []FrameIndex{})
-	dsp.EdgeLevel = 1
+	dsp.EdgeMultiLevel = 1
 	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, but triggers that are too short are not recordized
 	// the kinks that occur at fractional samples will end up the rounded value
@@ -571,7 +572,7 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.NSamples = 30
 	dsp.NPresamples = 25
 	dsp.EdgeMultiMakeContaminatedRecords = true
-	dsp.EdgeLevel = 0
+	dsp.EdgeMultiLevel = 0
 	dsp.EdgeMultiVerifyNMonotone = 0
 
 	rawG := make([]RawType, 10)
@@ -587,7 +588,7 @@ func TestEdgeMulti(t *testing.T) {
 
 	dsp.EdgeMulti = true
 	dsp.EdgeMultiNoise = true
-	dsp.EdgeLevel = math.MaxInt32 // don't ever add to TriggerInds
+	dsp.EdgeMultiLevel = math.MaxInt32 // don't ever add to TriggerInds
 	dsp.NSamples = 100
 	dsp.NPresamples = 50
 	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
@@ -605,7 +606,7 @@ func TestEdgeMulti(t *testing.T) {
 
 	dsp.NSamples = 10
 	dsp.NPresamples = 5
-	dsp.EdgeLevel = 1
+	dsp.EdgeMultiLevel = 1
 	nRepeatJ := 2
 	rawJ := make([]RawType, 100)
 	rawJ[50] = 1
@@ -638,14 +639,14 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.NSamples = 100
 	dsp.EdgeMulti = true
 	dsp.EdgeMultiNoise = false
-	dsp.EdgeLevel = -10000
+	dsp.EdgeMultiLevel = -10000
 	dsp.EdgeMultiMakeContaminatedRecords = true
 	dsp.EdgeMultiMakeShortRecords = false
 	dsp.EdgeMultiVerifyNMonotone = 5
 	nRepeatK := 1
 	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
 	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti K: level too large (negative)", []FrameIndex{})
-	dsp.EdgeLevel = -1
+	dsp.EdgeMultiLevel = -1
 	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
 	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti L: negative trigger level", []FrameIndex{100, 200, 301, 401, 460, 500})
 }
