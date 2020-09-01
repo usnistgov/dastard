@@ -145,7 +145,7 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 	snexpect := group.lastSN + 1
 	for _, p := range group.queue {
 		sn := p.SequenceNumber()
-		for ; snexpect < sn; {
+		for snexpect < sn {
 			val := p.ReadValue(0) // Fill data with first sample from next non-missing packet
 			pfake := p.MakePretendPacket(snexpect, val)
 			newq = append(newq, pfake)
@@ -167,7 +167,7 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 // firstSn is a "global sequence number", thus relative to the group.seqnumsync
 func (group *AbacoGroup) trimPacketsBefore(firstSn uint32) {
 	firstSn += group.seqnumsync
-	for ;; {
+	for {
 		sn0 := group.queue[0].SequenceNumber()
 		if sn0 >= firstSn {
 			return
@@ -276,9 +276,9 @@ const maxAbacoRings = 4 // Don't allow more than this many ring buffers.
 
 const abacoFractionBits = 13
 const abacoBitsToDrop = 1
+
 // That is, Abaco data is of the form iii.bbbb bbbb bbbb b with 3 integer bits
 // and 13 fractional bits. In the unwrapping process, we drop 1, making it 4/12.
-
 
 // NewAbacoRing creates a new AbacoRing and opens the underlying shared memory for reading.
 func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {
@@ -391,7 +391,7 @@ type AbacoSource struct {
 	arings map[int]*AbacoRing
 	active []*AbacoRing
 
-	groups map[GroupIndex]*AbacoGroup
+	groups          map[GroupIndex]*AbacoGroup
 	groupKeysSorted []GroupIndex
 
 	readPeriod  time.Duration
@@ -611,6 +611,7 @@ func (as *AbacoSource) readerMainLoop() {
 	defer timeout.Stop()
 	as.lastread = time.Now()
 
+awaitmoredata:
 	for {
 		select {
 		case <-as.abortSelf:
@@ -624,7 +625,6 @@ func (as *AbacoSource) readerMainLoop() {
 
 		case <-ticker.C:
 			// read from the ring buffer
-			// totalBytes := 0
 			var lastSampleTime time.Time
 			for _, ring := range as.active {
 				allPackets, err := ring.ReadAllPackets()
@@ -671,7 +671,7 @@ func (as *AbacoSource) readerMainLoop() {
 			bytesProcessed := 0
 			for _, k := range as.groupKeysSorted {
 				group := as.groups[k]
-				dc := datacopies[chanProcessed:chanProcessed+group.nchan]
+				dc := datacopies[chanProcessed : chanProcessed+group.nchan]
 				bytesProcessed += group.demuxData(dc, framesToDeMUX)
 				chanProcessed += group.nchan
 			}

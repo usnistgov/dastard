@@ -285,7 +285,7 @@ func (rb *RingBuffer) BytesReadable() int {
 // for a runt section with size less than stride bytes long
 func (rb *RingBuffer) DiscardStride(stride uint64) (err error) {
 	newRp := rb.desc.writePointer
-	if newRp % stride > 0 {
+	if newRp%stride > 0 {
 		newRp -= newRp % stride
 	}
 	rb.desc.readPointer = newRp

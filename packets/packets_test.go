@@ -420,7 +420,7 @@ func TestFullPackets(t *testing.T) {
 				pfake.SequenceNumber(), arbSeqNum)
 		}
 		nsamp := pfake.Frames()
-		for i := 0; i<nsamp; i++ {
+		for i := 0; i < nsamp; i++ {
 			v := pfake.ReadValue(i)
 			if v != arbVal {
 				t.Errorf("Packet.ReadValue(%d)=%d, want %d", i, v, arbVal)
