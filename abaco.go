@@ -146,8 +146,7 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 	for _, p := range group.queue {
 		sn := p.SequenceNumber()
 		for snexpect < sn {
-			val := p.ReadValue(0) // Fill data with first sample from next non-missing packet
-			pfake := p.MakePretendPacket(snexpect, val)
+			pfake := p.MakePretendPacket(snexpect, group.nchan)
 			newq = append(newq, pfake)
 			numberAdded++
 			snexpect++

@@ -145,25 +145,31 @@ func (p *Packet) ResetTimestamp() error {
 	return nil
 }
 
-// MakePretendPacket generates a copy of p with the given sequence number
-// and with the given value for the whole data payload.
+// MakePretendPacket generates a copy of p with the given sequence number.
+// Each channel will repeat the first value in p.
 // Use it for making fake data to fill in where packets were dropped.
-func (p *Packet) MakePretendPacket(seqnum uint32, value int) *Packet {
+func (p *Packet) MakePretendPacket(seqnum uint32, nchan int) *Packet {
 	pretend := *p
 	pretend.sequenceNumber = seqnum
-	switch d := pretend.Data.(type) {
+	switch d := p.Data.(type) {
 	case []int16:
+		x := make([]int16, len(d))
 		for i := range d {
-			d[i] = int16(value)
+			x[i] = d[i % nchan]
 		}
+		pretend.Data = x
 	case []int32:
+		x := make([]int32, len(d))
 		for i := range d {
-			d[i] = int32(value)
+			x[i] = d[i % nchan]
 		}
+		pretend.Data = x
 	case []int64:
+		x := make([]int64, len(d))
 		for i := range d {
-			d[i] = int64(value)
+			x[i] = d[i % nchan]
 		}
+		pretend.Data = x
 	}
 	return &pretend
 }
