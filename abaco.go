@@ -639,8 +639,14 @@ awaitmoredata:
 			// in each group and trimming leading packets if any precede the others.
 			// Fill in for any missing packets first, so a missing first packet isn't a problem.
 			firstSn := uint32(0)
-			for _, group := range as.groups {
-				group.fillMissingPackets()
+			for idx, group := range as.groups {
+				numberAdded := group.fillMissingPackets()
+				if numberAdded > 0 && as.problemLogger != nil {
+					cfirst := idx.firstchan
+					clast := cfirst + idx.nchan - 1
+					as.problemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets", idx,
+						cfirst, clast, numberAdded)
+				}
 				sn0, err := group.firstSeqNum()
 				if err != nil { // That is, no data available from this group
 					continue awaitmoredata

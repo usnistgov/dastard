@@ -277,6 +277,7 @@ type AnySource struct {
 	sourceStateLock     sync.Mutex // guards sourceState
 	runDone             sync.WaitGroup
 	readCounter         int
+	problemLogger       *log.Logger
 }
 
 // SamplePeriod returns the sample period of the underlying source.

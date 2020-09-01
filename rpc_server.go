@@ -46,7 +46,7 @@ type SourceControl struct {
 
 // NewSourceControl creates a new SourceControl object with correctly initialized
 // contents.
-func NewSourceControl() *SourceControl {
+func NewSourceControl(logger *log.Logger) *SourceControl {
 	sc := new(SourceControl)
 	sc.heartbeats = make(chan Heartbeat)
 	sc.queuedRequests = make(chan func())
@@ -66,6 +66,13 @@ func NewSourceControl() *SourceControl {
 	sc.lancero.heartbeats = sc.heartbeats
 	sc.roach.heartbeats = sc.heartbeats
 	sc.abaco.heartbeats = sc.heartbeats
+
+	sc.simPulses.problemLogger = logger
+	sc.triangle.problemLogger = logger
+	sc.erroring.problemLogger = logger
+	sc.lancero.problemLogger = logger
+	sc.roach.problemLogger = logger
+	sc.abaco.problemLogger = logger
 
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
@@ -603,18 +610,6 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 // If `block`, it will block until Ctrl-C and gracefully shut down.
 // (The intention is that block=true in normal operation, but false for certain tests.)
 func RunRPCServer(portrpc int, block bool) {
-
-	// Set up objects to handle remote calls
-	sourceControl := NewSourceControl()
-	defer sourceControl.lancero.Delete()
-	sourceControl.clientUpdates = clientMessageChan
-
-	mapServer := newMapServer()
-	mapServer.clientUpdates = clientMessageChan
-
-	// Signal to clients that there's a new Dastard running
-	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
-
 	pfname := "/tmp/dastard_problems.log"
 	probFile, err := os.Create(pfname) // TODO: don't clobber old file
 	if err != nil {
@@ -624,6 +619,17 @@ func RunRPCServer(portrpc int, block bool) {
 	defer probFile.Close()
 	probLogger := log.New(probFile, "", log.LstdFlags)
 	probLogger.Print("Test line")
+
+	// Set up objects to handle remote calls
+	sourceControl := NewSourceControl(probLogger)
+	defer sourceControl.lancero.Delete()
+	sourceControl.clientUpdates = clientMessageChan
+
+	mapServer := newMapServer()
+	mapServer.clientUpdates = clientMessageChan
+
+	// Signal to clients that there's a new Dastard running
+	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
 
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects. Note that these items are saved
@@ -672,6 +678,7 @@ func RunRPCServer(portrpc int, block bool) {
 		_ = sourceControl.ConfigureRoachSource(&rsc, &okay)
 		// intentionally not checking for configure errors since it might fail on non roach systems
 	}
+
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle
