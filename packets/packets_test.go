@@ -383,7 +383,7 @@ func TestFullPackets(t *testing.T) {
 	d32 := make([]int32, nd)
 	d64 := make([]int64, nd)
 	for i := 0; i < nd; i++ {
-		d16[i] = 2 * int16(i)
+		d16[i] = 20 * int16(i)
 		d32[i] = 20 * int32(i)
 		d64[i] = 20 * int64(i)
 	}
@@ -410,8 +410,7 @@ func TestFullPackets(t *testing.T) {
 
 		// Test PretendPacket
 		arbSeqNum := uint32(34567)
-		arbVal := 48
-		pfake := p.MakePretendPacket(arbSeqNum, arbVal)
+		pfake := p.MakePretendPacket(arbSeqNum, int(dims[0]))
 		if pfake == p {
 			t.Errorf("MakePretendPacket() result points to original packet")
 		}
@@ -422,13 +421,23 @@ func TestFullPackets(t *testing.T) {
 		nsamp := pfake.Frames()
 		for i := 0; i < nsamp; i++ {
 			v := pfake.ReadValue(i)
-			if v != arbVal {
-				t.Errorf("Packet.ReadValue(%d)=%d, want %d", i, v, arbVal)
+			want := 20*(i%8)
+			if v != want {
+				t.Errorf("Packet.ReadValue(%d)=%d, want %d", i, v, want)
 			}
 		}
 		v := pfake.ReadValue(-1)
 		if v != 0 {
 			t.Errorf("Packet.ReadValue(-1)=%d, want 0", v)
+		}
+		// Make sure we didn't clobber the original packet data
+		nsamp = p.Frames()
+		for i := 0; i < nsamp; i++ {
+			v := p.ReadValue(i)
+			want := 20*i
+			if v != want {
+				t.Errorf("Packet.ReadValue(%d)=%d, want %d", i, v, want)
+			}
 		}
 	}
 
