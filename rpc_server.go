@@ -599,9 +599,9 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	return nil
 }
 
-// RunRPCServer sets up and run a permanent JSON-RPC server.
-// If block, it will block until Ctrl-C and gracefully shut down.
-// (The intention is that block=true in normal operation, but false for tests.)
+// RunRPCServer sets up and runs a permanent JSON-RPC server.
+// If `block`, it will block until Ctrl-C and gracefully shut down.
+// (The intention is that block=true in normal operation, but false for certain tests.)
 func RunRPCServer(portrpc int, block bool) {
 
 	// Set up objects to handle remote calls
@@ -612,8 +612,18 @@ func RunRPCServer(portrpc int, block bool) {
 	mapServer := newMapServer()
 	mapServer.clientUpdates = clientMessageChan
 
-	// Signal clients that there's a new Dastard running
+	// Signal to clients that there's a new Dastard running
 	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
+
+	pfname := "/tmp/dastard_problems.log"
+	probFile, err := os.Create(pfname) // TODO: don't clobber old file
+	if err != nil {
+		msg := fmt.Sprintf("Could not open log file '%s'", pfname)
+		panic(msg)
+	}
+	defer probFile.Close()
+	probLogger := log.New(probFile, "", log.LstdFlags)
+	probLogger.Print("Test line")
 
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects. Note that these items are saved
@@ -621,7 +631,7 @@ func RunRPCServer(portrpc int, block bool) {
 	var okay bool
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
-	err := viper.UnmarshalKey("simpulse", &spc)
+	err = viper.UnmarshalKey("simpulse", &spc)
 	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
 		spc.Nchan = 1
 	}
