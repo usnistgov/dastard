@@ -643,9 +643,8 @@ awaitmoredata:
 			for _, group := range as.groups {
 				group.fillMissingPackets()
 				sn0, err := group.firstSeqNum()
-				if err != nil {
-					msg := fmt.Sprintf("AbacoSource.Sample finds no packets for group %v: %v", group, err)
-					panic(msg)
+				if err != nil { // That is, no data available from this group
+					continue awaitmoredata
 				}
 				if sn0 > firstSn {
 					firstSn = sn0
@@ -660,6 +659,9 @@ awaitmoredata:
 				if nsamp < framesToDeMUX {
 					framesToDeMUX = nsamp
 				}
+			}
+			if framesToDeMUX <= 0 {
+				continue awaitmoredata
 			}
 
 			// Demux data into this slice of slices of RawType (reserve capacity=framesToDeMUX)
