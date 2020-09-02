@@ -578,7 +578,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 				var lastSampleTime time.Time
 				var dataDropDetected bool
 				if len(ls.active) > 1 {
-					panic("dropped data, handling multiple devices not yet implemented")
+					panic("Handling multiple devices not yet implemented")
 				}
 				dev := ls.active[0]
 				b, timeFix, err := dev.card.AvailableBuffer()

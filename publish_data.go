@@ -368,7 +368,7 @@ func configurePubSummariesSocket() error {
 // messages based on any records that appear on a new channel. Returns the
 // channel for other routines to fill. Close that channel to destroy the socket.
 //
-// *** This looks like it could be replaced by PubChanneler, but tests show terrible
+// *** This looks like it could be replaced by PubChanneler, but tests showed terrible
 // performance with Channeler ***
 func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
 	const publishChannelDepth = 500 // not totally sure how to choose this, but it should probably be
@@ -400,7 +400,7 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 }
 
 // rawTypeToBytes convert a []RawType to []byte using unsafe
-// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types
 func rawTypeToBytes(d []RawType) []byte {
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
 	header.Cap *= 2 // byte takes up half the space of RawType
@@ -410,7 +410,6 @@ func rawTypeToBytes(d []RawType) []byte {
 }
 
 // rawTypeToUint16convert a []RawType to []uint16 using unsafe
-// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
 func rawTypeToUint16(d []RawType) []uint16 {
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
 	data := *(*[]uint16)(unsafe.Pointer(&header))

@@ -18,7 +18,6 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // SourceControl is the sub-server that handles configuration and operation of
@@ -47,7 +46,7 @@ type SourceControl struct {
 
 // NewSourceControl creates a new SourceControl object with correctly initialized
 // contents.
-func NewSourceControl(logger *log.Logger) *SourceControl {
+func NewSourceControl() *SourceControl {
 	sc := new(SourceControl)
 	sc.heartbeats = make(chan Heartbeat)
 	sc.queuedRequests = make(chan func())
@@ -67,13 +66,6 @@ func NewSourceControl(logger *log.Logger) *SourceControl {
 	sc.lancero.heartbeats = sc.heartbeats
 	sc.roach.heartbeats = sc.heartbeats
 	sc.abaco.heartbeats = sc.heartbeats
-
-	sc.simPulses.problemLogger = logger
-	sc.triangle.problemLogger = logger
-	sc.erroring.problemLogger = logger
-	sc.lancero.problemLogger = logger
-	sc.roach.problemLogger = logger
-	sc.abaco.problemLogger = logger
 
 	sc.status.Ncol = make([]int, 0)
 	sc.status.Nrow = make([]int, 0)
@@ -607,37 +599,12 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	return nil
 }
 
-func startProblemLogger() *log.Logger {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic("Could not find user home directory")
-	}
-	pfname := path.Join(home, ".dastard", "logs", "problems.log")
-	probFile, err := os.OpenFile(pfname, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		msg := fmt.Sprintf("Could not open log file '%s'", pfname)
-		panic(msg)
-	}
-	probLogger := log.New(probFile, "", log.LstdFlags)
-	probLogger.SetOutput(&lumberjack.Logger{
-	    Filename:   pfname,
-	    MaxSize:    10,  // megabytes after which new file is created
-	    MaxBackups: 5,    // number of backups
-	    MaxAge:     365,  // days
-		Compress:   true, // whether to gzip the backups
-	})
-	probLogger.Print("Test line")
-	return probLogger
-}
-
 // RunRPCServer sets up and runs a permanent JSON-RPC server.
 // If `block`, it will block until Ctrl-C and gracefully shut down.
 // (The intention is that block=true in normal operation, but false for certain tests.)
 func RunRPCServer(portrpc int, block bool) {
-	probLogger := startProblemLogger()
-
 	// Set up objects to handle remote calls
-	sourceControl := NewSourceControl(probLogger)
+	sourceControl := NewSourceControl()
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = clientMessageChan
 

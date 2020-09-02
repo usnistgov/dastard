@@ -641,10 +641,10 @@ awaitmoredata:
 			firstSn := uint32(0)
 			for idx, group := range as.groups {
 				numberAdded := group.fillMissingPackets()
-				if numberAdded > 0 && as.problemLogger != nil {
+				if numberAdded > 0 && ProblemLogger != nil {
 					cfirst := idx.firstchan
 					clast := cfirst + idx.nchan - 1
-					as.problemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets", idx,
+					ProblemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets", idx,
 						cfirst, clast, numberAdded)
 				}
 				sn0, err := group.firstSeqNum()
