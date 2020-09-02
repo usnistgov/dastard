@@ -782,6 +782,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	if dataDropDetected {
 		droppedDuration := lastSampleTime.Sub(ls.previousLastSampleTime)
 		droppedFrames = roundint(droppedDuration.Seconds() * ls.sampleRate)
+		ProblemLogger.Printf("Dropped %d lancero frames over Δt=%v", droppedFrames, droppedDuration)
 	}
 
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
