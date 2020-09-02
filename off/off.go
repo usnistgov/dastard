@@ -59,10 +59,11 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	writer.ChannelIndex = ChannelIndex
 	writer.ChannelName = ChannelName
 	writer.ChannelNumberMatchingName = ChannelNumberMatchingName
+	writer.MaxPresamples = MaxPresamples
+	writer.MaxSamples = MaxSamples
+	writer.FramePeriodSeconds = FramePeriodSeconds
 	writer.FileFormat = "OFF"
 	writer.FileFormatVersion = "0.3.0"
-	writer.MaxPresamples = MaxPresamples
-	writer.FramePeriodSeconds = FramePeriodSeconds
 	writer.NumberOfBases, _ = Projectors.Dims()
 	writer.ModelInfo = ModelInfo{Projectors: *NewArrayJsoner(Projectors), Basis: *NewArrayJsoner(Basis),
 		Description: ModelDescription, projectors: Projectors, basis: Basis}
