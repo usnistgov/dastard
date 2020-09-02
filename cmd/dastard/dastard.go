@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/user"
+	"path"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -14,30 +14,32 @@ import (
 var githash = "githash not computed"
 var buildDate = "build date not computed"
 
-// verifyConfigFile checks that path/filename exists, and creates the directory
+// makeFileExist checks that dir/filename exists, and creates the directory
 // and file if it doesn't.
-func verifyConfigFile(path, filename string) error {
-	u, err := user.Current()
-	if err != nil {
-		return err
+func makeFileExist(dir, filename string) error {
+	// Replace 1 instance of "$HOME" in the path with the actual home directory.
+	if strings.Contains(dir, "$HOME") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		dir = strings.Replace(dir, "$HOME", home, 1)
 	}
-	path = strings.Replace(path, "$HOME", u.HomeDir, 1)
 
 	// Create directory <path>, if needed
-	_, err = os.Stat(path)
-	if err != nil {
+	if _, err := os.Stat(dir); err != nil {
 		if !os.IsNotExist(err) {
 			return err
 		}
-		err = os.MkdirAll(path, 0775)
-		if err != nil {
-			return err
+		err2 := os.MkdirAll(dir, 0775)
+		if err2 != nil {
+			return err2
 		}
 	}
 
 	// Create an empty file path/filename, if it doesn't exist.
-	fullname := fmt.Sprintf("%s/%s", path, filename)
-	_, err = os.Stat(fullname)
+	fullname := path.Join(dir, filename)
+	_, err := os.Stat(fullname)
 	if os.IsNotExist(err) {
 		f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
 		if err != nil {
@@ -56,7 +58,7 @@ func setupViper() error {
 	const path string = "$HOME/.dastard"
 	const filename string = "config"
 	const suffix string = ".yaml"
-	if err := verifyConfigFile(path, filename+suffix); err != nil {
+	if err := makeFileExist(path, filename+suffix); err != nil {
 		return err
 	}
 
