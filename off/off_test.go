@@ -1,6 +1,7 @@
 package off
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -29,7 +30,9 @@ func TestOff(t *testing.T) {
 			0, 0, 1,
 			0, 0, 0})
 
-	w := NewWriter("off_test.off", 0, "chan1", 1, 100, 200, 9.6e-6, projectors, basis, "dummy model for testing",
+	const maxpre = 100
+	const maxsamp = 200
+	w := NewWriter("off_test.off", 0, "chan1", 1, maxpre, maxsamp, 9.6e-6, projectors, basis, "dummy model for testing",
 		"DastardVersion Placeholder", "GitHash Placeholder", "SourceName Placeholder", TimeDivisionMultiplexingInfo{},
 		PixelInfo{})
 	if err := w.CreateFile(); err != nil {
@@ -71,5 +74,32 @@ func TestOff(t *testing.T) {
 	}
 	if w.HeaderWritten() != w.headerWritten {
 		t.Error()
+	}
+
+	// Check the OFF file contents, at least certain header info
+	fp, err := os.Open("off_test.off")
+	if err != nil {
+		t.Error("Could not open off test file")
+	}
+	defer fp.Close()
+	offtext := make([]byte, 8192)
+	_, err = fp.Read(offtext)
+	if err != nil {
+		t.Error("Could not read off test file")
+	}
+	// Scan through the text read, and stop before first non-printing ASCII byte.
+	for i, b := range offtext {
+		if b > 127 {
+			offtext = offtext[:i]
+			break
+		}
+	}
+	var x Writer
+	json.Unmarshal(offtext, &x)
+	if x.MaxPresamples != maxpre {
+		t.Errorf("OFF file says MaxPresamples=%d, want %d", x.MaxPresamples, maxpre)
+	}
+	if x.MaxSamples != maxsamp {
+		t.Errorf("OFF file says MaxPresamples=%d, want %d", x.MaxSamples, maxsamp)
 	}
 }
