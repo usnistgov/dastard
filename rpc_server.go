@@ -18,6 +18,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // SourceControl is the sub-server that handles configuration and operation of
@@ -606,19 +607,34 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	return nil
 }
 
-// RunRPCServer sets up and runs a permanent JSON-RPC server.
-// If `block`, it will block until Ctrl-C and gracefully shut down.
-// (The intention is that block=true in normal operation, but false for certain tests.)
-func RunRPCServer(portrpc int, block bool) {
-	pfname := "/tmp/dastard_problems.log"
-	probFile, err := os.Create(pfname) // TODO: don't clobber old file
+func startProblemLogger() *log.Logger {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic("Could not find user home directory")
+	}
+	pfname := path.Join(home, ".dastard", "logs", "problems.log")
+	probFile, err := os.OpenFile(pfname, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		msg := fmt.Sprintf("Could not open log file '%s'", pfname)
 		panic(msg)
 	}
-	defer probFile.Close()
 	probLogger := log.New(probFile, "", log.LstdFlags)
+	probLogger.SetOutput(&lumberjack.Logger{
+	    Filename:   pfname,
+	    MaxSize:    10,  // megabytes after which new file is created
+	    MaxBackups: 5,    // number of backups
+	    MaxAge:     365,  // days
+		Compress:   true, // whether to gzip the backups
+	})
 	probLogger.Print("Test line")
+	return probLogger
+}
+
+// RunRPCServer sets up and runs a permanent JSON-RPC server.
+// If `block`, it will block until Ctrl-C and gracefully shut down.
+// (The intention is that block=true in normal operation, but false for certain tests.)
+func RunRPCServer(portrpc int, block bool) {
+	probLogger := startProblemLogger()
 
 	// Set up objects to handle remote calls
 	sourceControl := NewSourceControl(probLogger)
@@ -634,6 +650,7 @@ func RunRPCServer(portrpc int, block bool) {
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects. Note that these items are saved
 	// in client_updater.go
+	var err error
 	var okay bool
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())

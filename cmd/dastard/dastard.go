@@ -94,6 +94,8 @@ func main() {
 		panic(err)
 	}
 
+	makeFileExist("$HOME/.dastard/logs", "problems.log")
+
 	abort := make(chan struct{})
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
