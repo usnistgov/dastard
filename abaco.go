@@ -136,7 +136,7 @@ func (group *AbacoGroup) firstSeqNum() (uint32, error) {
 
 // fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
 // pretend packets.
-func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
+func (group *AbacoGroup) fillMissingPackets() (packetsAdded, framesAdded int) {
 	if len(group.queue) == 0 {
 		return
 	}
@@ -148,17 +148,17 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 		for snexpect < sn {
 			pfake := p.MakePretendPacket(snexpect, group.nchan)
 			newq = append(newq, pfake)
-			numberAdded++
+			packetsAdded++
+			framesAdded += p.Frames()
 			snexpect++
 		}
 		newq = append(newq, p)
 		snexpect++
 	}
-	if numberAdded > 0 {
+	if packetsAdded > 0 {
 		group.queue = newq
 	}
 	group.lastSN = group.queue[len(group.queue)-1].SequenceNumber()
-	// fmt.Printf("fillMissingPackets added %d packets to make queue size %d\n", numberAdded, len(group.queue))
 	return
 }
 
@@ -599,6 +599,7 @@ type AbacoBuffersType struct {
 	lastSampleTime time.Time
 	timeDiff       time.Duration
 	totalBytes     int
+	droppedFrames  int
 }
 
 func (as *AbacoSource) readerMainLoop() {
@@ -625,6 +626,7 @@ awaitmoredata:
 		case <-ticker.C:
 			// read from the ring buffer
 			var lastSampleTime time.Time
+			var droppedFrames int
 			for _, ring := range as.active {
 				allPackets, err := ring.ReadAllPackets()
 				lastSampleTime = time.Now()
@@ -640,12 +642,13 @@ awaitmoredata:
 			// Fill in for any missing packets first, so a missing first packet isn't a problem.
 			firstSn := uint32(0)
 			for idx, group := range as.groups {
-				numberAdded := group.fillMissingPackets()
-				if numberAdded > 0 && ProblemLogger != nil {
+				packetsAdded, framesAdded := group.fillMissingPackets()
+				droppedFrames += framesAdded
+				if packetsAdded > 0 && ProblemLogger != nil {
 					cfirst := idx.firstchan
 					clast := cfirst + idx.nchan - 1
-					ProblemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets", idx,
-						cfirst, clast, numberAdded)
+					ProblemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets (%d frames)", idx,
+						cfirst, clast, packetsAdded, framesAdded)
 				}
 				sn0, err := group.firstSeqNum()
 				if err != nil { // That is, no data available from this group
@@ -699,6 +702,7 @@ awaitmoredata:
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
 				totalBytes:     bytesProcessed,
+				droppedFrames:  droppedFrames,
 			}
 			if bytesProcessed > 0 {
 				timeout.Reset(timeoutPeriod)
@@ -781,6 +785,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 				firstFramenum:   as.nextFrameNum,
 				firstTime:       firstTime,
 				signed:          true,
+				droppedFrames:   buffersMsg.droppedFrames,
 			}
 			block.segments[channelIndex] = seg
 			block.nSamp = len(data)
