@@ -44,8 +44,8 @@ Format is a text message-key (as a ZMQ frame) then a status block in JSON format
 
 ### Primary and secondary pulse records (BASE+2 and BASE+3)
 
-Each message on these ports consists of a single pulse record. The first 4 bytes are an int32 channel number, so that programs can subscribe to specific channels. The message format is found in file BINARY_FORMATS.md
+Each message on these ports consists of a single pulse record. The first 2 bytes are an int16 channel number, so that programs can subscribe to specific channels. The message format is found in file BINARY_FORMATS.md
 
 ### Pulse summaries (BASE+4)
 
-Each message on these ports consists _summaries_ of a single pulse record. The first 4 bytes are an int32 channel number, so that programs can subscribe to specific channels. The message format is found in file BINARY_FORMATS.md
+Each message on these ports consists _summaries_ of a single pulse record. The first 2 bytes are an int16 channel number, so that programs can subscribe to specific channels. The message format is found in file BINARY_FORMATS.md
