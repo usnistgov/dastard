@@ -165,7 +165,7 @@ func (dp *DataPublisher) SetPubRecords() {
 	}
 }
 
-// RemovePubRecords stops publing records on PortTrigs
+// RemovePubRecords stops publishing records on PortTrigs
 func (dp *DataPublisher) RemovePubRecords() {
 	dp.PubRecordsChan = nil
 }
@@ -264,7 +264,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 // messageSummaries makes a message with the following format for publishing on portTrigs
 // Structure of the message header is defined in BINARY_FORMATS.md
 // uint16: channel number
-// uint8: header version number
+// uint16: header version number
 // uint32: bits: Presamples
 // uint32: length of record
 // float32: pretrigMean
@@ -277,11 +277,11 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 //  end of first message packet
 //  modelCoefs, each coef is float32, length can vary
 func messageSummaries(rec *DataRecord) [][]byte {
-	const headerVersion = uint8(0)
+	const headerVersion = uint16(0)
 
 	header := new(bytes.Buffer)
 	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
-	header.Write(getbytes.FromUint8(headerVersion))
+	header.Write(getbytes.FromUint16(headerVersion))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
 	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
 	header.Write(getbytes.FromFloat32(float32(rec.pretrigMean)))
