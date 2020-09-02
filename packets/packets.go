@@ -155,19 +155,19 @@ func (p *Packet) MakePretendPacket(seqnum uint32, nchan int) *Packet {
 	case []int16:
 		x := make([]int16, len(d))
 		for i := range d {
-			x[i] = d[i % nchan]
+			x[i] = d[i%nchan]
 		}
 		pretend.Data = x
 	case []int32:
 		x := make([]int32, len(d))
 		for i := range d {
-			x[i] = d[i % nchan]
+			x[i] = d[i%nchan]
 		}
 		pretend.Data = x
 	case []int64:
 		x := make([]int64, len(d))
 		for i := range d {
-			x[i] = d[i % nchan]
+			x[i] = d[i%nchan]
 		}
 		pretend.Data = x
 	}

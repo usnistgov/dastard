@@ -421,7 +421,7 @@ func TestFullPackets(t *testing.T) {
 		nsamp := pfake.Frames()
 		for i := 0; i < nsamp; i++ {
 			v := pfake.ReadValue(i)
-			want := 20*(i%8)
+			want := 20 * (i % 8)
 			if v != want {
 				t.Errorf("Packet.ReadValue(%d)=%d, want %d", i, v, want)
 			}
@@ -434,7 +434,7 @@ func TestFullPackets(t *testing.T) {
 		nsamp = p.Frames()
 		for i := 0; i < nsamp; i++ {
 			v := p.ReadValue(i)
-			want := 20*i
+			want := 20 * i
 			if v != want {
 				t.Errorf("Packet.ReadValue(%d)=%d, want %d", i, v, want)
 			}

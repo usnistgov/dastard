@@ -18,7 +18,7 @@ var buildDate = "build date not computed"
 
 // makeFileExist checks that dir/filename exists, and creates the directory
 // and file if it doesn't.
-func makeFileExist(dir, filename string) (string,  error) {
+func makeFileExist(dir, filename string) (string, error) {
 	// Replace 1 instance of "$HOME" in the path with the actual home directory.
 	if strings.Contains(dir, "$HOME") {
 		home, err := os.UserHomeDir()
@@ -83,15 +83,14 @@ func startProblemLogger(pfname string) *log.Logger {
 	}
 	probLogger := log.New(probFile, "", log.LstdFlags)
 	probLogger.SetOutput(&lumberjack.Logger{
-	    Filename:   pfname,
-	    MaxSize:    10,  // megabytes after which new file is created
-	    MaxBackups: 5,    // number of backups
-	    MaxAge:     365,  // days
+		Filename:   pfname,
+		MaxSize:    10,   // megabytes after which new file is created
+		MaxBackups: 5,    // number of backups
+		MaxAge:     365,  // days
 		Compress:   true, // whether to gzip the backups
 	})
 	return probLogger
 }
-
 
 func main() {
 	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems

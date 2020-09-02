@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 	"time"
-	)
+)
 
 // Portnumbers structs can contain all TCP port numbers used by Dastard.
 type Portnumbers struct {
