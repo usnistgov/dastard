@@ -16,7 +16,7 @@ func TestHelpers(t *testing.T) {
 	mins := []float64{0, -10, 10}
 	maxs := []float64{2, 0, 20}
 	expect := []float64{1, 0, 10}
-	for i := range(mins) {
+	for i := range mins {
 		coerceFloat(&f, mins[i], maxs[i])
 		if f != expect[i] {
 			t.Errorf("coerceInt made f=%.4f, want %.4f", f, expect[i])
@@ -36,27 +36,27 @@ func TestInterleave(t *testing.T) {
 	// First test interleaved, non-staggered packets
 	c1 := make([]chan []byte, ngroup)
 	p := make([][]byte, ngroup)
-	for i := 0; i<ngroup; i++ {
+	for i := 0; i < ngroup; i++ {
 		c1[i] = make(chan []byte)
 		p[i] = []byte{byte(i)}
 	}
 	c2 := make(chan []byte)
 	go interleavePackets(c2, c1, false)
 
-	for j := 0; j<ngroup; j++ {
+	for j := 0; j < ngroup; j++ {
 		go func(cid int) {
-			for i := 0; i<npackets; i++ {
+			for i := 0; i < npackets; i++ {
 				c1[cid] <- p[cid]
 			}
 			close(c1[cid])
 		}(j)
 	}
-	for i := 0; i<npackets*ngroup; i++ {
+	for i := 0; i < npackets*ngroup; i++ {
 		pi, ok := <-c2
 		if !ok {
 			t.Errorf("Expected %d non-staggered packets before output channel closed, got %d", npackets*ngroup, i)
 		}
-		expect := byte((i/4) % ngroup)
+		expect := byte((i / 4) % ngroup)
 		if pi[0] != expect {
 			t.Errorf("Non-staggered interleave packet %3d source is %d, want %d", i, pi[0], expect)
 		}
@@ -67,21 +67,21 @@ func TestInterleave(t *testing.T) {
 
 	// Now test staggered, interleaved packets
 	c1 = make([]chan []byte, ngroup)
-	for i := 0; i<ngroup; i++ {
+	for i := 0; i < ngroup; i++ {
 		c1[i] = make(chan []byte)
 	}
 	c2 = make(chan []byte)
 	go interleavePackets(c2, c1, true)
-	for j := 0; j<ngroup; j++ {
+	for j := 0; j < ngroup; j++ {
 		go func(cid int) {
-			for i := 0; i<npackets; i++ {
+			for i := 0; i < npackets; i++ {
 				c1[cid] <- p[cid]
 			}
 			close(c1[cid])
 		}(j)
 	}
-	expectby4 := []byte{0,1,1,2,2,2,0,0,0,1,1,1,2,2,2,0,0,0,1,1,2}
-	for i := 0; i<npackets*ngroup; i++ {
+	expectby4 := []byte{0, 1, 1, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 0, 0, 1, 1, 2}
+	for i := 0; i < npackets*ngroup; i++ {
 		pi, ok := <-c2
 		if !ok {
 			t.Errorf("Expected %d staggered packets before output channel closed, got %d", npackets*ngroup, i)
@@ -103,8 +103,8 @@ func TestGenerate(t *testing.T) {
 		time.Sleep(40 * time.Millisecond)
 		close(cancel)
 	}()
-	control := BahamaControl{Nchan:4, Ngroups:1, sinusoid:true, sawtooth:true, pulses:true,
-		noiselevel:5.0, samplerate:100000}
+	control := BahamaControl{Nchan: 4, Ngroups: 1, sinusoid: true, sawtooth: true, pulses: true,
+		noiselevel: 5.0, samplerate: 100000}
 	ch := make(chan []byte)
 	err := generateData(control.Nchan, 0, ch, cancel, control)
 	if err != nil {

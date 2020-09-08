@@ -599,11 +599,10 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	return nil
 }
 
-// RunRPCServer sets up and run a permanent JSON-RPC server.
-// If block, it will block until Ctrl-C and gracefully shut down.
-// (The intention is that block=true in normal operation, but false for tests.)
+// RunRPCServer sets up and runs a permanent JSON-RPC server.
+// If `block`, it will block until Ctrl-C and gracefully shut down.
+// (The intention is that block=true in normal operation, but false for certain tests.)
 func RunRPCServer(portrpc int, block bool) {
-
 	// Set up objects to handle remote calls
 	sourceControl := NewSourceControl()
 	defer sourceControl.lancero.Delete()
@@ -612,16 +611,17 @@ func RunRPCServer(portrpc int, block bool) {
 	mapServer := newMapServer()
 	mapServer.clientUpdates = clientMessageChan
 
-	// Signal clients that there's a new Dastard running
+	// Signal to clients that there's a new Dastard running
 	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
 
 	// Load stored settings, and transfer saved configuration
 	// from Viper to relevant objects. Note that these items are saved
 	// in client_updater.go
+	var err error
 	var okay bool
 	var spc SimPulseSourceConfig
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
-	err := viper.UnmarshalKey("simpulse", &spc)
+	err = viper.UnmarshalKey("simpulse", &spc)
 	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
 		spc.Nchan = 1
 	}
@@ -662,6 +662,7 @@ func RunRPCServer(portrpc int, block bool) {
 		_ = sourceControl.ConfigureRoachSource(&rsc, &okay)
 		// intentionally not checking for configure errors since it might fail on non roach systems
 	}
+
 	err = viper.UnmarshalKey("status", &sourceControl.status)
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle

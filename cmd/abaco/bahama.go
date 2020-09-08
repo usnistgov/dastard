@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"flag"
+	"fmt"
 	"math"
 	"math/rand"
 	"os"
@@ -23,24 +23,24 @@ func clearRings(nclear int) error {
 		if err != nil {
 			return fmt.Errorf("Could not open ringbuffer: %s", err)
 		}
-		ring.Unlink()  // in case it exists from before
+		ring.Unlink() // in case it exists from before
 	}
 	return nil
 }
 
 // BahamaControl carries all the free parameters of the data generator
 type BahamaControl struct {
-	Nchan int
-	Ngroups int
-	sinusoid bool
-	sawtooth bool
-	pulses bool
+	Nchan      int
+	Ngroups    int
+	sinusoid   bool
+	sawtooth   bool
+	pulses     bool
 	interleave bool
-	stagger bool
+	stagger    bool
 	noiselevel float64
 	samplerate float64
+	dropfrac   float64
 }
-
 
 // interleavePackets takes packets from the N channels `inchans` and puts them onto `outchan` in a
 // specific order to test Dastard's handling of various packet orderings
@@ -55,9 +55,9 @@ func interleavePackets(outchan chan []byte, inchans []chan []byte, stagger bool)
 		latersize *= len(inchans)
 	}
 	sendsize := make([]int, len(inchans))
-	for i := range(inchans) {
+	for i := range inchans {
 		if stagger {
-			sendsize[i] = (i+1)*bucketsize
+			sendsize[i] = (i + 1) * bucketsize
 		} else {
 			sendsize[i] = bucketsize
 		}
@@ -66,7 +66,7 @@ func interleavePackets(outchan chan []byte, inchans []chan []byte, stagger bool)
 	someopen := true
 	for someopen {
 		someopen = false
-		for i, ic := range(inchans) {
+		for i, ic := range inchans {
 			for j := 0; j < sendsize[i]; j++ {
 				p, ok := <-ic
 				if ok {
@@ -82,10 +82,10 @@ func interleavePackets(outchan chan []byte, inchans []chan []byte, stagger bool)
 
 func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel chan os.Signal, control BahamaControl) error {
 	// Data will play on infinite repeat with this many samples and this repeat period:
-	const Nsamp = 40000  // This many samples before data repeats itself
+	const Nsamp = 40000 // This many samples before data repeats itself
 	sampleRate := control.samplerate
-	periodns := float64(Nsamp)/sampleRate*1e9
-	repeatTime := time.Duration(periodns+0.5)*time.Nanosecond // Repeat data with this period
+	periodns := float64(Nsamp) / sampleRate * 1e9
+	repeatTime := time.Duration(periodns+0.5) * time.Nanosecond // Repeat data with this period
 
 	stride := 4000 / Nchan // We'll put this many samples into each packet
 	valuesPerPacket := stride * Nchan
@@ -93,9 +93,9 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
 	}
 	const counterRate = 1e8 // counts per second
-	countsPerSample := uint64(counterRate/sampleRate+0.5)
+	countsPerSample := uint64(counterRate/sampleRate + 0.5)
 
- 	randsource := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randsource := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// Raw packets
 	const version = 10
@@ -106,8 +106,8 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	// Raw data that will go into packets
 	d := make([]int16, Nchan*Nsamp)
 	for i := 0; i < Nchan; i++ {
-		cnum := i+firstchanOffset
-		offset := int16(cnum*1000)
+		cnum := i + firstchanOffset
+		offset := int16(cnum * 1000)
 		for j := 0; j < Nsamp; j++ {
 			d[i+Nchan*j] = offset
 		}
@@ -115,19 +115,19 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 			freq := (float64(cnum+1) * 2 * math.Pi) / float64(Nsamp)
 			amplitude := 1000.0
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(amplitude*math.Sin(freq*float64(j)))
+				d[i+Nchan*j] += int16(amplitude * math.Sin(freq*float64(j)))
 			}
 		}
 		if control.sawtooth {
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(j%5000)
+				d[i+Nchan*j] += int16(j % 5000)
 			}
 		}
 		if control.pulses {
-			amplitude := 5000.0+200.0*float64(cnum)
-			scale := amplitude*2.116
-			for j := 0; j < Nsamp / 4; j++ {
-				pulsevalue := int16(scale*(math.Exp(-float64(j)/1200.0)-math.Exp(-float64(j)/300.0)))
+			amplitude := 5000.0 + 200.0*float64(cnum)
+			scale := amplitude * 2.116
+			for j := 0; j < Nsamp/4; j++ {
+				pulsevalue := int16(scale * (math.Exp(-float64(j)/1200.0) - math.Exp(-float64(j)/300.0)))
 				// Same pulse repeats 4x
 				for k := 0; k < 4; k++ {
 					d[i+Nchan*(j+k*(Nsamp/4))] += pulsevalue
@@ -136,7 +136,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		}
 		if control.noiselevel > 0.0 {
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(randsource.NormFloat64()*control.noiselevel)
+				d[i+Nchan*j] += int16(randsource.NormFloat64() * control.noiselevel)
 			}
 		}
 
@@ -146,7 +146,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		if FractionBits < 16 {
 			for j := 0; j < Nsamp; j++ {
 				raw := d[i+Nchan*j]
-				d[i+Nchan*j] = raw % (1<<FractionBits)
+				d[i+Nchan*j] = raw % (1 << FractionBits)
 			}
 		}
 	}
@@ -162,15 +162,17 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		case <-timer.C:
 			for i := 0; i < Nchan*Nsamp; i += valuesPerPacket {
 				// Must be careful: the last iteration might have fewer samples than the others.
-				lastsamp := i+valuesPerPacket
+				lastsamp := i + valuesPerPacket
 				if lastsamp > Nchan*Nsamp {
-					lastsamp = Nchan*Nsamp
+					lastsamp = Nchan * Nsamp
 				}
 				packet.NewData(d[i:lastsamp], dims)
 				ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
 				packet.SetTimestamp(ts)
-				packetchan <- packet.Bytes()
-				timeCounter += countsPerSample*uint64((lastsamp-i)/Nchan)
+				if control.dropfrac == 0.0 || control.dropfrac < randsource.Float64() {
+					packetchan <- packet.Bytes()
+				}
+				timeCounter += countsPerSample * uint64((lastsamp-i)/Nchan)
 			}
 		}
 	}
@@ -185,7 +187,7 @@ func ringwriter(cardnum int, packetchan chan []byte) error {
 	if err != nil {
 		return fmt.Errorf("Could not open ringbuffer %d: %s", cardnum, err)
 	}
-	ring.Unlink()       // in case it exists from before
+	ring.Unlink() // in case it exists from before
 	if err = ring.Create(256 * packetAlign); err != nil {
 		return fmt.Errorf("Failed RingBuffer.Create: %s", err)
 	}
@@ -195,7 +197,7 @@ func ringwriter(cardnum int, packetchan chan []byte) error {
 		defer ring.Unlink() // so it won't exist after
 		empty := make([]byte, packetAlign)
 		for {
-			b, ok:= <- packetchan
+			b, ok := <-packetchan
 			if !ok {
 				return
 			}
@@ -242,26 +244,30 @@ func main() {
 	usepulses := flag.Bool("pulse", false, "Whether to add pulse-like data")
 	interleave := flag.Bool("interleave", false, "Whether to interleave channel groups' packets regularly")
 	stagger := flag.Bool("stagger", false, "Whether to stagger channel groups' packets so each gets 'ahead' of the others")
+	droppct := flag.Float64("droppct", 0.0, "Drop this percentage of packets")
 	flag.Usage = func() {
 		fmt.Println("BAHAMA, the Basic Abaco Hardware Artificial Message Assembler")
 		fmt.Println("Usage:")
 		flag.PrintDefaults()
 		fmt.Println("If none of noise, saw, or pulse are given, saw will be used.")
 	}
- 	flag.Parse()
+	flag.Parse()
 
 	clearRings(maxRings)
 	coerceInt(nchan, 4, 512)
 	coerceInt(nring, 1, 4)
 	coerceInt(ngroups, 1, *nchan/4)
 	coerceFloat(samplerate, 1000, 500000)
+	coerceFloat(droppct, 0, 100)
 
-	control := BahamaControl{Nchan:*nchan, Ngroups:*ngroups,
-		stagger:*stagger, interleave:*interleave,
-		sawtooth:*usesawtooth, pulses:*usepulses,
-		sinusoid:*usesine, noiselevel:*noiselevel, samplerate:*samplerate}
+	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
+		stagger: *stagger, interleave: *interleave,
+		sawtooth: *usesawtooth, pulses: *usepulses,
+		sinusoid: *usesine, noiselevel: *noiselevel,
+		samplerate: *samplerate, dropfrac: (*droppct) / 100.0}
 
 	fmt.Println("Samples per second:      ", *samplerate)
+	fmt.Printf("Drop packets randomly:    %.2f%%\n", *droppct)
 	fmt.Println("Number of ring buffers:  ", *nring)
 	fmt.Println("Channels per ring:       ", control.Nchan)
 	fmt.Println("Channel groups per ring: ", control.Ngroups)
@@ -311,11 +317,11 @@ func main() {
 		}
 
 		stage1pchans := make([]chan []byte, control.Ngroups)
-		chanPerGroup := (1+(control.Nchan-1) / control.Ngroups)
-		for i:= 0; i<control.Nchan; i+= chanPerGroup {
+		chanPerGroup := (1 + (control.Nchan-1)/control.Ngroups)
+		for i := 0; i < control.Nchan; i += chanPerGroup {
 			nch := chanPerGroup
 			if i*chanPerGroup+nch > control.Nchan {
-				nch = control.Nchan-i
+				nch = control.Nchan - i
 			}
 			pchan := packetchan
 			if control.interleave {

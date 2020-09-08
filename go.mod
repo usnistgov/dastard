@@ -9,4 +9,5 @@ require (
 	github.com/spf13/viper v1.6.3
 	github.com/zeromq/goczmq v0.0.0-20190906225145-a7546843a315
 	gonum.org/v1/gonum v0.7.0
+	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )

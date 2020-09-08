@@ -21,9 +21,9 @@ type Packet struct {
 	packetLength   int
 
 	// Expected TLV objects. If 0 or 2+ examples, this cannot be processed
-	format *headPayloadFormat
-	shape  *headPayloadShape
-	offset headChannelOffset
+	format    *headPayloadFormat
+	shape     *headPayloadShape
+	offset    headChannelOffset
 	timestamp *PacketTimestamp
 
 	// Any other TLV objects.
@@ -74,11 +74,11 @@ func (p *Packet) ClearData() error {
 	return nil
 }
 
-// // String returns a string summarizing the packet's version, sequence number, and size.
-// func (p *Packet) String() string {
-// 	return fmt.Sprintf("Packet v0x%2.2x 0x%8.8x  Size (%2d+%5d)", p.version,
-// 		p.sequenceNumber, p.headerLength, p.payloadLength)
-// }
+// String returns a string summarizing the packet's version, sequence number, and size.
+func (p *Packet) String() string {
+	return fmt.Sprintf("Packet v0x%2.2x 0x%8.8x  Size (%2d+%5d)", p.version,
+		p.sequenceNumber, p.headerLength, p.payloadLength)
+}
 
 // Length returns the length of the entire packet, in bytes
 func (p *Packet) Length() int {
@@ -145,25 +145,31 @@ func (p *Packet) ResetTimestamp() error {
 	return nil
 }
 
-// MakePretendPacket generates a copy of p with the given sequence number
-// and with the given value for the whole data payload.
+// MakePretendPacket generates a copy of p with the given sequence number.
+// Each channel will repeat the first value in p.
 // Use it for making fake data to fill in where packets were dropped.
-func (p *Packet) MakePretendPacket(seqnum uint32, value int) (*Packet) {
+func (p *Packet) MakePretendPacket(seqnum uint32, nchan int) *Packet {
 	pretend := *p
 	pretend.sequenceNumber = seqnum
-	switch d := pretend.Data.(type) {
+	switch d := p.Data.(type) {
 	case []int16:
-		for i := range(d) {
-			d[i] = int16(value)
+		x := make([]int16, len(d))
+		for i := range d {
+			x[i] = d[i%nchan]
 		}
+		pretend.Data = x
 	case []int32:
-		for i := range(d) {
-			d[i] = int32(value)
+		x := make([]int32, len(d))
+		for i := range d {
+			x[i] = d[i%nchan]
 		}
+		pretend.Data = x
 	case []int64:
-		for i := range(d) {
-			d[i] = int64(value)
+		x := make([]int64, len(d))
+		for i := range d {
+			x[i] = d[i%nchan]
 		}
+		pretend.Data = x
 	}
 	return &pretend
 }
@@ -259,7 +265,7 @@ func (p *Packet) Bytes() []byte {
 		exp = -11 // precise to 10 ps
 		period := math.Pow10(-int(exp)) / ts.Rate
 		denom = 1
-		for ;period > 65535; period *=0.5 {
+		for ; period > 65535; period *= 0.5 {
 			denom *= 2
 		}
 		num = uint16(math.Round(period))

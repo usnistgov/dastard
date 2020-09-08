@@ -136,7 +136,7 @@ func (group *AbacoGroup) firstSeqNum() (uint32, error) {
 
 // fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
 // pretend packets.
-func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
+func (group *AbacoGroup) fillMissingPackets() (packetsAdded, framesAdded int) {
 	if len(group.queue) == 0 {
 		return
 	}
@@ -145,21 +145,20 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 	snexpect := group.lastSN + 1
 	for _, p := range group.queue {
 		sn := p.SequenceNumber()
-		for ; snexpect < sn; {
-			val := p.ReadValue(0) // Fill data with first sample from next non-missing packet
-			pfake := p.MakePretendPacket(snexpect, val)
+		for snexpect < sn {
+			pfake := p.MakePretendPacket(snexpect, group.nchan)
 			newq = append(newq, pfake)
-			numberAdded++
+			packetsAdded++
+			framesAdded += p.Frames()
 			snexpect++
 		}
 		newq = append(newq, p)
 		snexpect++
 	}
-	if numberAdded > 0 {
+	if packetsAdded > 0 {
 		group.queue = newq
 	}
 	group.lastSN = group.queue[len(group.queue)-1].SequenceNumber()
-	// fmt.Printf("fillMissingPackets added %d packets to make queue size %d\n", numberAdded, len(group.queue))
 	return
 }
 
@@ -167,7 +166,7 @@ func (group *AbacoGroup) fillMissingPackets() (numberAdded int) {
 // firstSn is a "global sequence number", thus relative to the group.seqnumsync
 func (group *AbacoGroup) trimPacketsBefore(firstSn uint32) {
 	firstSn += group.seqnumsync
-	for ;; {
+	for {
 		sn0 := group.queue[0].SequenceNumber()
 		if sn0 >= firstSn {
 			return
@@ -276,9 +275,9 @@ const maxAbacoRings = 4 // Don't allow more than this many ring buffers.
 
 const abacoFractionBits = 13
 const abacoBitsToDrop = 1
+
 // That is, Abaco data is of the form iii.bbbb bbbb bbbb b with 3 integer bits
 // and 13 fractional bits. In the unwrapping process, we drop 1, making it 4/12.
-
 
 // NewAbacoRing creates a new AbacoRing and opens the underlying shared memory for reading.
 func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {
@@ -391,7 +390,7 @@ type AbacoSource struct {
 	arings map[int]*AbacoRing
 	active []*AbacoRing
 
-	groups map[GroupIndex]*AbacoGroup
+	groups          map[GroupIndex]*AbacoGroup
 	groupKeysSorted []GroupIndex
 
 	readPeriod  time.Duration
@@ -600,6 +599,7 @@ type AbacoBuffersType struct {
 	lastSampleTime time.Time
 	timeDiff       time.Duration
 	totalBytes     int
+	droppedFrames  int
 }
 
 func (as *AbacoSource) readerMainLoop() {
@@ -611,6 +611,7 @@ func (as *AbacoSource) readerMainLoop() {
 	defer timeout.Stop()
 	as.lastread = time.Now()
 
+awaitmoredata:
 	for {
 		select {
 		case <-as.abortSelf:
@@ -624,8 +625,8 @@ func (as *AbacoSource) readerMainLoop() {
 
 		case <-ticker.C:
 			// read from the ring buffer
-			// totalBytes := 0
 			var lastSampleTime time.Time
+			var droppedFrames int
 			for _, ring := range as.active {
 				allPackets, err := ring.ReadAllPackets()
 				lastSampleTime = time.Now()
@@ -640,12 +641,18 @@ func (as *AbacoSource) readerMainLoop() {
 			// in each group and trimming leading packets if any precede the others.
 			// Fill in for any missing packets first, so a missing first packet isn't a problem.
 			firstSn := uint32(0)
-			for _, group := range as.groups {
-				group.fillMissingPackets()
+			for idx, group := range as.groups {
+				packetsAdded, framesAdded := group.fillMissingPackets()
+				droppedFrames += framesAdded
+				if packetsAdded > 0 && ProblemLogger != nil {
+					cfirst := idx.firstchan
+					clast := cfirst + idx.nchan - 1
+					ProblemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets (%d frames)", idx,
+						cfirst, clast, packetsAdded, framesAdded)
+				}
 				sn0, err := group.firstSeqNum()
-				if err != nil {
-					msg := fmt.Sprintf("AbacoSource.Sample finds no packets for group %v: %v", group, err)
-					panic(msg)
+				if err != nil { // That is, no data available from this group
+					continue awaitmoredata
 				}
 				if sn0 > firstSn {
 					firstSn = sn0
@@ -661,6 +668,9 @@ func (as *AbacoSource) readerMainLoop() {
 					framesToDeMUX = nsamp
 				}
 			}
+			if framesToDeMUX <= 0 {
+				continue awaitmoredata
+			}
 
 			// Demux data into this slice of slices of RawType (reserve capacity=framesToDeMUX)
 			datacopies := make([][]RawType, as.nchan)
@@ -671,7 +681,7 @@ func (as *AbacoSource) readerMainLoop() {
 			bytesProcessed := 0
 			for _, k := range as.groupKeysSorted {
 				group := as.groups[k]
-				dc := datacopies[chanProcessed:chanProcessed+group.nchan]
+				dc := datacopies[chanProcessed : chanProcessed+group.nchan]
 				bytesProcessed += group.demuxData(dc, framesToDeMUX)
 				chanProcessed += group.nchan
 			}
@@ -692,6 +702,7 @@ func (as *AbacoSource) readerMainLoop() {
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
 				totalBytes:     bytesProcessed,
+				droppedFrames:  droppedFrames,
 			}
 			if bytesProcessed > 0 {
 				timeout.Reset(timeoutPeriod)
@@ -774,6 +785,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 				firstFramenum:   as.nextFrameNum,
 				firstTime:       firstTime,
 				signed:          true,
+				droppedFrames:   buffersMsg.droppedFrames,
 			}
 			block.segments[channelIndex] = seg
 			block.nSamp = len(data)

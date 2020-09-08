@@ -218,7 +218,7 @@ func TestAbacoSource(t *testing.T) {
 		dims := []int16{Nchan}
 		timer := time.NewTicker(10 * time.Millisecond)
 		packetcount := 0
-		for ;; {
+		for {
 			select {
 			case <-abortSupply:
 				return
@@ -227,7 +227,7 @@ func TestAbacoSource(t *testing.T) {
 					p.NewData(d[i:i+stride*Nchan], dims)
 					// Skip 2 packets of every 80, the 1st and 80th.
 					packetcount++
-					if packetcount % 80 < 2 {
+					if packetcount%80 < 2 {
 						continue
 					}
 					b := p.Bytes()
