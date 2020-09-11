@@ -139,8 +139,8 @@ type LanceroDastardOutputJSON struct {
 // FiberMask must be identical across all cards, 0xFFFF uses all fibers, 0x0001 uses only fiber 0
 // ClockMhz must be identical arcross all cards, as of June 2018 it's always 125
 // CardDelay can have one value, which is shared across all cards, or must be one entry per card
-// ActiveCards is a slice of indicies into ls.devices to activate
-// AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
+// ActiveCards is a slice of indices into ls.devices to activate
+// AvailableCards is an output, contains a sorted slice of valid indices for use in ActiveCards
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	ls.sourceStateLock.Lock()
 	defer ls.sourceStateLock.Unlock()
