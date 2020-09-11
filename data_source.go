@@ -765,6 +765,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	for channelIndex := range ds.processors {
 		dsp := NewDataStreamProcessor(channelIndex, ds.broker, Npresamples, Nsamples)
 		dsp.Name = ds.chanNames[channelIndex]
+		dsp.ChannelNumber = ds.chanNumbers[channelIndex]
 		dsp.SampleRate = ds.sampleRate
 		dsp.stream.voltsPerArb = vpa[channelIndex]
 		ds.processors[channelIndex] = dsp

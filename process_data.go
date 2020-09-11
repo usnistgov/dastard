@@ -11,6 +11,7 @@ import (
 // DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
 type DataStreamProcessor struct {
 	channelIndex         int
+	ChannelNumber        int
 	Name                 string
 	Broker               *TriggerBroker
 	NSamples             int
