@@ -422,6 +422,8 @@ type cringeGlobals struct {
 	BAD16CardDelay   int `json:"carddelay"`
 	XPT              int `json:"XPT"`
 	ClockMHz         int
+	// TODO. Someday Cringe will tell Dastard two more facts: the number of rows that exist
+	// (which might be more than the number read out) and the first row # being read out now.
 }
 
 // cringeGlobalsPath calculate the path to ~/.cringe/cringeGlobals.json by expanding the ~

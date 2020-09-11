@@ -547,6 +547,21 @@ func (as *AbacoSource) Sample() error {
 	sort.Sort(ByGroup(keys))
 	as.groupKeysSorted = keys
 
+	// Fill the channel names and numbers slices
+	as.chanNames = make([]string, 0, as.nchan)
+	as.chanNumbers = make([]int, 0, as.nchan)
+	as.rowColCodes = make([]RowColCode, 0, as.nchan)
+	ncol := len(keys)
+	for col, g := range as.groupKeysSorted {
+		for row := 0; row<g.nchan; row++ {
+			cnum := row + g.firstchan
+			name := fmt.Sprintf("chan%d", cnum)
+			as.chanNames = append(as.chanNames, name)
+			as.chanNumbers = append(as.chanNumbers, cnum)
+			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.nchan, ncol))
+		}
+	}
+
 	// Each AbacoGroup should process its sampled packets.
 	for _, group := range as.groups {
 		group.samplePackets()
