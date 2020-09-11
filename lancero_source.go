@@ -70,6 +70,7 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.name = "Lancero"
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
+	source.channelsPerPixel = 2
 
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
@@ -139,8 +140,8 @@ type LanceroDastardOutputJSON struct {
 // FiberMask must be identical across all cards, 0xFFFF uses all fibers, 0x0001 uses only fiber 0
 // ClockMhz must be identical arcross all cards, as of June 2018 it's always 125
 // CardDelay can have one value, which is shared across all cards, or must be one entry per card
-// ActiveCards is a slice of indicies into ls.devices to activate
-// AvailableCards is an output, contains a sorted slice of valid indicies for use in ActiveCards
+// ActiveCards is a slice of indices into ls.devices to activate
+// AvailableCards is an output, contains a sorted slice of valid indices for use in ActiveCards
 func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	ls.sourceStateLock.Lock()
 	defer ls.sourceStateLock.Unlock()
@@ -296,10 +297,11 @@ func (ls *LanceroSource) Sample() error {
 	ls.chanNames = make([]string, ls.nchan)
 	ls.chanNumbers = make([]int, ls.nchan)
 	for i := 1; i < ls.nchan; i += 2 {
-		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
-		ls.chanNames[i] = fmt.Sprintf("chan%d", 1+i/2)
-		ls.chanNumbers[i-1] = 1 + i/2
-		ls.chanNumbers[i] = 1 + i/2
+		cnum := 1+i/2
+		ls.chanNames[i-1] = fmt.Sprintf("err%d", cnum)
+		ls.chanNames[i] = fmt.Sprintf("chan%d", cnum)
+		ls.chanNumbers[i-1] = cnum
+		ls.chanNumbers[i] = cnum
 	}
 
 	return nil
@@ -422,6 +424,8 @@ type cringeGlobals struct {
 	BAD16CardDelay   int `json:"carddelay"`
 	XPT              int `json:"XPT"`
 	ClockMHz         int
+	// TODO. Someday Cringe will tell Dastard two more facts: the number of rows that exist
+	// (which might be more than the number read out) and the first row # being read out now.
 }
 
 // cringeGlobalsPath calculate the path to ~/.cringe/cringeGlobals.json by expanding the ~

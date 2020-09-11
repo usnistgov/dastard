@@ -404,6 +404,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.name = "Abaco"
 	source.arings = make(map[int]*AbacoRing)
 	source.groups = make(map[GroupIndex]*AbacoGroup)
+	source.channelsPerPixel = 1
 
 	deviceCodes, err := enumerateAbacoRings()
 	if err != nil {
@@ -547,14 +548,29 @@ func (as *AbacoSource) Sample() error {
 	sort.Sort(ByGroup(keys))
 	as.groupKeysSorted = keys
 
+	// Fill the channel names and numbers slices
+	// For rowColCodes, treat each channel group as a "column" and number chan within it
+	// as rows 0...g.nchan-1.
+	as.chanNames = make([]string, 0, as.nchan)
+	as.chanNumbers = make([]int, 0, as.nchan)
+	as.rowColCodes = make([]RowColCode, 0, as.nchan)
+	ncol := len(keys)
+	for col, g := range as.groupKeysSorted {
+		for row := 0; row<g.nchan; row++ {
+			cnum := row + g.firstchan
+			name := fmt.Sprintf("chan%d", cnum)
+			as.chanNames = append(as.chanNames, name)
+			as.chanNumbers = append(as.chanNumbers, cnum)
+			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.nchan, ncol))
+		}
+	}
+
 	// Each AbacoGroup should process its sampled packets.
 	for _, group := range as.groups {
 		group.samplePackets()
 	}
 
-	// Treat groups as 1 row x N columns.
-	as.rowColCodes = make([]RowColCode, as.nchan)
-	i := 0
+	as.sampleRate = 0
 	for _, group := range as.groups {
 		if as.sampleRate == 0 {
 			as.sampleRate = group.sampleRate
@@ -563,10 +579,6 @@ func (as *AbacoSource) Sample() error {
 			fmt.Printf("Oh crap! Two groups have different sample rates: %f, %f", as.sampleRate, group.sampleRate)
 			panic("Oh crap! Two groups have different sample rates.")
 			// TODO: what if multiple groups have unequal rates??
-		}
-		for j := 0; j < group.nchan; j++ {
-			as.rowColCodes[i] = rcCode(0, i, 1, group.nchan)
-			i++
 		}
 	}
 
@@ -712,7 +724,7 @@ awaitmoredata:
 }
 
 // getNextBlock returns the channel on which data sources send data and any errors.
-// More importantly, wait on this returned channel to await the source having a data block.
+// Waiting on this channel = waiting on the source to produce a data block.
 // This goroutine will end by putting a valid or error-ish dataBlock onto as.nextBlock.
 // If the block has a non-nil error, this goroutine will also close as.nextBlock.
 // The AbacoSource version also has to monitor the timeout channel and wait for

@@ -100,15 +100,16 @@ func (ds *AnySource) ConfigureMixFraction(mfo *MixFractionObject) ([]float64, er
 }
 
 // getNextBlock returns the channel on which data sources send data and any errors.
-// More importantly, wait on this channel to wait on the source to have a data block.
+// Waiting on this channel = waiting on the source to produce a data block.
 func (ds *AnySource) getNextBlock() chan *dataBlock {
 	return ds.nextBlock
 }
 
-// Start will start the given DataSource, including sampling its data for # channels.
-// Steps are: 1) Sample: a per-source method that determines the # of channels and other
-// internal facts that we need to know.  2) PrepareRun: an AnySource method to do the
-// actions that any source needs before starting the actual acquisition phase.
+// Start will start the given DataSource, including sampling its data for # channels. Steps:
+// 1) Sample: a method implemented per source that determines the # of channels and other
+//    internal facts that we need to know.
+// 2) PrepareRun: an AnySource method to do the actions that any source needs
+//    before starting the actual acquisition phase.
 // 3) StartRun: a per-source method to begin data acquisition, if relevant.
 // 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 // When done with the loop, close all channels to DataStreamProcessor objects.
@@ -116,7 +117,6 @@ func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int
 	if err := ds.SetStateStarting(); err != nil {
 		return err
 	}
-
 	if err := ds.Sample(); err != nil {
 		ds.SetStateInactive()
 		return err
@@ -127,7 +127,7 @@ func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int
 		return err
 	}
 
-	ds.RunDoneActivate() // We'll call RunDoneDeactivate when CoreLoop returns.
+	ds.RunDoneActivate() // Call RunDoneDeactivate inside CoreLoop when it returns.
 	if err := ds.StartRun(); err != nil {
 		ds.RunDoneDeactivate()
 		return err
@@ -162,15 +162,15 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 
 			} else if block.err != nil {
 				// errors in block indicate a problem with source: need to close down
-				log.Printf("nextBlock receives Error; stopping source: %s\n", block.err.Error())
+				log.Printf("nextBlock received Error; stopping source: %s\n", block.err.Error())
 				return
 			}
 			if err := ds.ProcessSegments(block); err != nil {
 				log.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
-				panic("panic to stop source when processSegments, this seems to keep the lancero working better than stopping the source")
+				panic("Panic to stop source when processSegments errors. This seems to keep the Lancero working better than stopping the source")
 			}
 			// In some sources, ds.getNextBlock has to be called again to initiate the next
-			// data acquisition step (Lancero specifically).
+			// data acquisition step (Lancero, specifically).
 			nextBlock = ds.getNextBlock()
 		}
 	}
@@ -185,7 +185,7 @@ func (ds *AnySource) Stop() error {
 		return fmt.Errorf("AnySource not active, cannot stop")
 
 	case Starting:
-		log.Println("deleteme: called Stop on a Starting source; how to handle this??")
+		panic("Called Stop on a Starting source; how to handle this??")
 
 	case Active:
 		log.Println("AnySource.Stop() was called to stop an active source")
@@ -241,6 +241,8 @@ func rcCode(row, col, rows, cols int) RowColCode {
 }
 
 // dataBlock contains a block of data (one segment per data stream)
+// This implies that dataBlock has synchronized data across all parts of a source (all Lancero
+// cards, all Abaco ring buffers and channel groups, etc.).
 type dataBlock struct {
 	segments                 []DataSegment
 	externalTriggerRowcounts []int64
@@ -277,6 +279,7 @@ type AnySource struct {
 	sourceStateLock     sync.Mutex // guards sourceState
 	runDone             sync.WaitGroup
 	readCounter         int
+	channelsPerPixel    int
 }
 
 // SamplePeriod returns the sample period of the underlying source.
@@ -293,7 +296,8 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 	NSamples := ds.processors[0].NSamples
 	for _, dsp := range ds.processors {
 		if dsp.NPresamples != NPresamples || dsp.NSamples != NSamples {
-			return 0, 0, fmt.Errorf("not all processors have same record lengths, NPresamples %v, dsp.NPresample %v, NSamples %v, dsp.NSamples %v", NPresamples, dsp.NPresamples, NSamples, dsp.NSamples)
+			return 0, 0, fmt.Errorf("not all processors have same record lengths, NPresamples %v, dsp.NPresample %v, NSamples %v, dsp.NSamples %v",
+				NPresamples, dsp.NPresamples, NSamples, dsp.NSamples)
 		}
 	}
 	return NPresamples, NSamples, nil
@@ -305,9 +309,11 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	var wg sync.WaitGroup
 	if len(ds.processors) != len(block.segments) {
-		panic(fmt.Sprintf("Oh crap! block has %d segments but Source has %d processors",
+		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)",
 			len(block.segments), len(ds.processors)))
 	}
+
+	// Each processor (channel) handles its segment in parallel.
 	for i, dsp := range ds.processors {
 		segment := block.segments[i]
 		wg.Add(1)
@@ -317,6 +323,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		}(dsp)
 	}
 	wg.Wait()
+
 	tStart := time.Now()
 	for i, dsp := range ds.processors {
 		if (i+ds.readCounter)%20 == 0 { // flush each dsp once per 20 reads, but not all at once
@@ -328,6 +335,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	if flushDuration > 50*time.Millisecond {
 		log.Println("flushDuration", flushDuration)
 	}
+
 	numberWritten := make([]int, ds.nchan)
 	for i, dsp := range ds.processors {
 		numberWritten[i] = dsp.numberWritten
@@ -387,7 +395,7 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 			}
 		}
 	}
-	select { // occasionally flush file and send messae about number of observed data drops
+	select { // occasionally flush file and send message about number of observed data drops
 	case <-ds.writingState.dataDropTicker.C:
 		// flush file
 		if ds.writingState.dataDropFileBufferedWriter != nil {
@@ -454,10 +462,10 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 	return nil
 }
 
-// makeDirectory creates directory of the form basepath/20060102/000 where
-// the 3-digit subdirectory counts separate file-writing occasions.
+// makeDirectory creates directory of the form basepath/20060102/0000 where
+// the 4-digit subdirectory counts separate file-writing occasions.
 // It also returns the formatting code for use in an Sprintf call
-// basepath/20060102/000/20060102_run000_%s.%s and an error, if any.
+// (e.g., basepath/20060102/0000/20060102_run0000_%s.%s) and an error, if any.
 func makeDirectory(basepath string) (string, error) {
 	if len(basepath) == 0 {
 		return "", fmt.Errorf("BasePath is the empty string")
@@ -553,11 +561,10 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			return fmt.Errorf("no projectors are loaded, OFF files require projectors")
 		}
 	}
-	channelsPerPixel := ds.ChannelsPerPixel()
 	if config.MapInternalOnly != nil {
-		if len(config.MapInternalOnly.Pixels) != ds.nchan/channelsPerPixel {
+		if len(config.MapInternalOnly.Pixels) != ds.nchan/ds.channelsPerPixel {
 			return mapError{msg: fmt.Sprintf("map error: have length %v, want %v, want value calculated as (nchan %v / channelsPerPixel %v)",
-				len(config.MapInternalOnly.Pixels), ds.nchan/channelsPerPixel, ds.nchan, channelsPerPixel)}
+				len(config.MapInternalOnly.Pixels), ds.nchan/ds.channelsPerPixel, ds.nchan, ds.channelsPerPixel)}
 		}
 	}
 	path := ds.writingState.BasePath
@@ -629,7 +636,7 @@ func (ds *AnySource) ConfigureProjectorsBases(channelIndex int, projectors *mat.
 	return dsp.SetProjectorsBasis(projectors, basis, modelDescription)
 }
 
-// ChannelsWithProjectors returns a list of the ChannelIndicies of channels that have projectors loaded
+// ChannelsWithProjectors returns a list of the ChannelIndices of channels that have projectors loaded
 func (ds *AnySource) ChannelsWithProjectors() []int {
 	result := make([]int, 0)
 	for channelIndex := 0; channelIndex < len(ds.processors); channelIndex++ {
@@ -711,7 +718,11 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
-	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
+	if ds.channelsPerPixel < 1 {
+		ds.channelsPerPixel = 1
+	}
+
+	ds.setDefaultChannelNames() // acts only if not already set in ds.Sample()
 	ds.abortSelf = make(chan struct{})
 	ds.nextBlock = make(chan *dataBlock)
 
@@ -735,7 +746,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	}
 	tsptrs := make([]*TriggerState, ds.nchan)
 	for i, ts := range fts {
-		for _, channelIndex := range ts.ChannelIndicies {
+		for _, channelIndex := range ts.ChannelIndices {
 			if channelIndex < ds.nchan {
 				tsptrs[channelIndex] = &(fts[i].TriggerState)
 			}
@@ -757,6 +768,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	for channelIndex := range ds.processors {
 		dsp := NewDataStreamProcessor(channelIndex, ds.broker, Npresamples, Nsamples)
 		dsp.Name = ds.chanNames[channelIndex]
+		dsp.ChannelNumber = ds.chanNumbers[channelIndex]
 		dsp.SampleRate = ds.sampleRate
 		dsp.stream.voltsPerArb = vpa[channelIndex]
 		ds.processors[channelIndex] = dsp
@@ -767,7 +779,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 		}
 		dsp.TriggerState = *ts
 
-		// Publish Records and Summaries over ZMQ. Not optional at this time.
+		// Publish Records and Record Summaries over ZMQ. Not optional at this time.
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 	}
@@ -777,7 +789,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 
 // FullTriggerState used to collect channels that share the same TriggerState
 type FullTriggerState struct {
-	ChannelIndicies []int
+	ChannelIndices []int
 	TriggerState
 }
 
@@ -798,22 +810,22 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 	// Now "unroll" that map into a vector of FullTriggerState objects
 	fts := []FullTriggerState{}
 	for k, v := range result {
-		fts = append(fts, FullTriggerState{ChannelIndicies: v, TriggerState: k})
+		fts = append(fts, FullTriggerState{ChannelIndices: v, TriggerState: k})
 	}
 	return fts
 }
 
 // ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
-	if state.ChannelIndicies == nil || len(state.ChannelIndicies) < 1 {
-		return fmt.Errorf("got ConfigureTriggers with no valid ChannelIndicies")
+	if state.ChannelIndices == nil || len(state.ChannelIndices) < 1 {
+		return fmt.Errorf("got ConfigureTriggers with no valid ChannelIndices")
 	}
-	for _, channelIndex := range state.ChannelIndicies {
+	for _, channelIndex := range state.ChannelIndices {
 		if channelIndex >= ds.nchan {
 			return fmt.Errorf("channelIndex %v is >= ds.nchan %v", channelIndex, ds.nchan)
 		}
 	}
-	for _, channelIndex := range state.ChannelIndicies {
+	for _, channelIndex := range state.ChannelIndices {
 		dsp := ds.processors[channelIndex]
 		dsp.ConfigureTrigger(state.TriggerState)
 	}
@@ -843,27 +855,6 @@ func (ds *AnySource) SetCoupling(status CouplingStatus) error {
 	return fmt.Errorf("Generic data sources do not support FB/error coupling")
 }
 
-// ChannelsPerPixel return the number of challes per pixel, eg 2 for LanceroSource since each pixel has chan and err
-func (ds *AnySource) ChannelsPerPixel() int {
-
-	// minMax return the minimum and maximum value of an int slice
-	minMax := func(array []int) (int, int) {
-		var max = array[0]
-		var min = array[0]
-		for _, value := range array {
-			if max < value {
-				max = value
-			}
-			if min > value {
-				min = value
-			}
-		}
-		return min, max
-	}
-	_, max := minMax(ds.chanNumbers)
-	return max / ds.nchan
-}
-
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)
 // raw-physical units, first sample’s frame number and sample time. Not yet triggered.
 type DataSegment struct {
@@ -876,7 +867,6 @@ type DataSegment struct {
 	voltsPerArb     float32
 	processed       bool
 	droppedFrames   int // normally zero, positive if dropped frames detected
-	// facts about the data source?
 }
 
 // NewDataSegment generates a pointer to a new, initialized DataSegment object.
@@ -926,6 +916,7 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 }
 
 // TrimKeepingN will trim (discard) all but the last N values in the DataStream.
+// N larger than the number of available values is NOT an error.
 // Returns the number of values in the stream after trimming (should be <= N).
 func (stream *DataStream) TrimKeepingN(N int) int {
 	L := len(stream.rawData)

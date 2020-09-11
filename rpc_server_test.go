@@ -199,7 +199,7 @@ func TestServer(t *testing.T) {
 	if err1 := client.Call("SourceControl.ConfigureMixFraction", &mfo, &okay); err1 == nil {
 		t.Error("error on ConfigureMixFraction expected for non-mixable source")
 	}
-	tstate := FullTriggerState{ChannelIndicies: []int{0, 1, 2}}
+	tstate := FullTriggerState{ChannelIndices: []int{0, 1, 2}}
 	if err1 := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err1 != nil {
 		t.Error("error on ConfigureTriggers:", err)
 	}
