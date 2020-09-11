@@ -32,6 +32,8 @@ func clearRings(nclear int) error {
 type BahamaControl struct {
 	Nchan      int
 	Ngroups    int
+	Chan0      int // channel number of first channel
+	chanGaps   int // how many channel numbers to skip between groups/rings
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
@@ -236,6 +238,8 @@ func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
 	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
+	chan0 := flag.Int("firstchan", 0, "Channel number of the first channel")
+	changaps := flag.Int("gaps", 0, "How many channel numbers to skip between groups (relevant only if ngroups>1 or nring>1)")
 	ngroups := flag.Int("ngroups", 1, "Number of channel groups per ring, 1-Nchan/4 allowed")
 	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 1000-500000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
@@ -257,20 +261,26 @@ func main() {
 	coerceInt(nchan, 4, 512)
 	coerceInt(nring, 1, 4)
 	coerceInt(ngroups, 1, *nchan/4)
+	coerceInt(changaps, 0, math.MaxInt64)
 	coerceFloat(samplerate, 1000, 500000)
 	coerceFloat(droppct, 0, 100)
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
+		Chan0: *chan0, chanGaps: *changaps,
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses,
 		sinusoid: *usesine, noiselevel: *noiselevel,
 		samplerate: *samplerate, dropfrac: (*droppct) / 100.0}
 
-	fmt.Println("Samples per second:      ", *samplerate)
-	fmt.Printf("Drop packets randomly:    %.2f%%\n", *droppct)
-	fmt.Println("Number of ring buffers:  ", *nring)
-	fmt.Println("Channels per ring:       ", control.Nchan)
-	fmt.Println("Channel groups per ring: ", control.Ngroups)
+	fmt.Println("Samples per second:       ", *samplerate)
+	fmt.Printf("Drop packets randomly:     %.2f%%\n", *droppct)
+	fmt.Println("Number of ring buffers:   ", *nring)
+	fmt.Println("Channels per ring:        ", control.Nchan)
+	fmt.Println("Channel groups per ring:  ", control.Ngroups)
+	fmt.Println("Channel # of 1st chan:    ", control.Chan0)
+	if control.Ngroups > 1 || *nring > 1 {
+		fmt.Println("Skip # btwn groups/rings: ", control.chanGaps)
+	}
 	if control.Ngroups > 1 {
 		if control.stagger {
 			control.interleave = true
@@ -309,6 +319,7 @@ func main() {
 
 	cancel := make(chan os.Signal)
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
+	ch0 := control.Chan0
 	for cardnum := 0; cardnum < *nring; cardnum++ {
 		packetchan := make(chan []byte)
 		if err := ringwriter(cardnum, packetchan); err != nil {
@@ -332,7 +343,8 @@ func main() {
 				if err := generateData(nchan, chan0, pchan, cancel, control); err != nil {
 					fmt.Printf("generateData() failed: %v\n", err)
 				}
-			}(nch, i, pchan)
+			}(nch, ch0, pchan)
+			ch0 += nch + control.chanGaps
 		}
 		if control.interleave {
 			go interleavePackets(packetchan, stage1pchans, control.stagger)
