@@ -117,7 +117,6 @@ func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int
 	if err := ds.SetStateStarting(); err != nil {
 		return err
 	}
-
 	if err := ds.Sample(); err != nil {
 		ds.SetStateInactive()
 		return err
@@ -186,7 +185,7 @@ func (ds *AnySource) Stop() error {
 		return fmt.Errorf("AnySource not active, cannot stop")
 
 	case Starting:
-		log.Println("deleteme: called Stop on a Starting source; how to handle this??")
+		panic("Called Stop on a Starting source; how to handle this??")
 
 	case Active:
 		log.Println("AnySource.Stop() was called to stop an active source")
@@ -780,7 +779,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 		}
 		dsp.TriggerState = *ts
 
-		// Publish Records and Summaries over ZMQ. Not optional at this time.
+		// Publish Records and Record Summaries over ZMQ. Not optional at this time.
 		dsp.SetPubRecords()
 		dsp.SetPubSummaries()
 	}
@@ -868,7 +867,6 @@ type DataSegment struct {
 	voltsPerArb     float32
 	processed       bool
 	droppedFrames   int // normally zero, positive if dropped frames detected
-	// facts about the data source?
 }
 
 // NewDataSegment generates a pointer to a new, initialized DataSegment object.
@@ -918,6 +916,7 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 }
 
 // TrimKeepingN will trim (discard) all but the last N values in the DataStream.
+// N larger than the number of available values is NOT an error.
 // Returns the number of values in the stream after trimming (should be <= N).
 func (stream *DataStream) TrimKeepingN(N int) int {
 	L := len(stream.rawData)

@@ -297,10 +297,11 @@ func (ls *LanceroSource) Sample() error {
 	ls.chanNames = make([]string, ls.nchan)
 	ls.chanNumbers = make([]int, ls.nchan)
 	for i := 1; i < ls.nchan; i += 2 {
-		ls.chanNames[i-1] = fmt.Sprintf("err%d", 1+i/2)
-		ls.chanNames[i] = fmt.Sprintf("chan%d", 1+i/2)
-		ls.chanNumbers[i-1] = 1 + i/2
-		ls.chanNumbers[i] = 1 + i/2
+		cnum := 1+i/2
+		ls.chanNames[i-1] = fmt.Sprintf("err%d", cnum)
+		ls.chanNames[i] = fmt.Sprintf("chan%d", cnum)
+		ls.chanNumbers[i-1] = cnum
+		ls.chanNumbers[i] = cnum
 	}
 
 	return nil

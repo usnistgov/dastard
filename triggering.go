@@ -61,7 +61,6 @@ type TriggerState struct {
 func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
 	dsp.edgeMultiInternalSearchState = initial
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
-	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4
 	dsp.edgeMultiIPotential = -math.MaxInt64 / 4
 }
@@ -643,7 +642,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	return records, secondaries
 }
 
-// RecordSlice attaches the methods of sort.Interface to slices, sorting in increasing order.
+// RecordSlice attaches the methods of sort.Interface to slices of DataRecords, sorting in increasing order.
 type RecordSlice []*DataRecord
 
 func (p RecordSlice) Len() int           { return len(p) }
