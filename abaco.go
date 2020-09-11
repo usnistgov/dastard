@@ -404,6 +404,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.name = "Abaco"
 	source.arings = make(map[int]*AbacoRing)
 	source.groups = make(map[GroupIndex]*AbacoGroup)
+	source.channelsPerPixel = 1
 
 	deviceCodes, err := enumerateAbacoRings()
 	if err != nil {

@@ -280,6 +280,7 @@ type AnySource struct {
 	sourceStateLock     sync.Mutex // guards sourceState
 	runDone             sync.WaitGroup
 	readCounter         int
+	channelsPerPixel    int
 }
 
 // SamplePeriod returns the sample period of the underlying source.
@@ -561,11 +562,10 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			return fmt.Errorf("no projectors are loaded, OFF files require projectors")
 		}
 	}
-	channelsPerPixel := ds.ChannelsPerPixel()
 	if config.MapInternalOnly != nil {
-		if len(config.MapInternalOnly.Pixels) != ds.nchan/channelsPerPixel {
+		if len(config.MapInternalOnly.Pixels) != ds.nchan/ds.channelsPerPixel {
 			return mapError{msg: fmt.Sprintf("map error: have length %v, want %v, want value calculated as (nchan %v / channelsPerPixel %v)",
-				len(config.MapInternalOnly.Pixels), ds.nchan/channelsPerPixel, ds.nchan, channelsPerPixel)}
+				len(config.MapInternalOnly.Pixels), ds.nchan/ds.channelsPerPixel, ds.nchan, ds.channelsPerPixel)}
 		}
 	}
 	path := ds.writingState.BasePath
@@ -719,7 +719,11 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
-	ds.setDefaultChannelNames() // should be overwritten in ds.Sample()
+	if ds.channelsPerPixel < 1 {
+		ds.channelsPerPixel = 1
+	}
+
+	ds.setDefaultChannelNames() // acts only if not already set in ds.Sample()
 	ds.abortSelf = make(chan struct{})
 	ds.nextBlock = make(chan *dataBlock)
 
@@ -850,27 +854,6 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 // SetCoupling is not allowed for generic data sources
 func (ds *AnySource) SetCoupling(status CouplingStatus) error {
 	return fmt.Errorf("Generic data sources do not support FB/error coupling")
-}
-
-// ChannelsPerPixel return the number of challes per pixel, eg 2 for LanceroSource since each pixel has chan and err
-func (ds *AnySource) ChannelsPerPixel() int {
-
-	// minMax return the minimum and maximum value of an int slice
-	minMax := func(array []int) (int, int) {
-		var max = array[0]
-		var min = array[0]
-		for _, value := range array {
-			if max < value {
-				max = value
-			}
-			if min > value {
-				min = value
-			}
-		}
-		return min, max
-	}
-	_, max := minMax(ds.chanNumbers)
-	return max / ds.nchan
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)

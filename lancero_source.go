@@ -70,6 +70,7 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.name = "Lancero"
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
+	source.channelsPerPixel = 2
 
 	devnums, err := lancero.EnumerateLanceroDevices()
 	if err != nil {
