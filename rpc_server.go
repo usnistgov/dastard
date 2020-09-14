@@ -67,8 +67,7 @@ func NewSourceControl() *SourceControl {
 	sc.roach.heartbeats = sc.heartbeats
 	sc.abaco.heartbeats = sc.heartbeats
 
-	sc.status.Ncol = make([]int, 0)
-	sc.status.Nrow = make([]int, 0)
+	sc.status.ChanGroups = make([]GroupIndex, 0)
 	return sc
 }
 
@@ -80,8 +79,7 @@ type ServerStatus struct {
 	Nsamples               int
 	Npresamp               int
 	SamplePeriod           time.Duration // time per sample
-	Ncol                   []int
-	Nrow                   []int
+	ChanGroups             []GroupIndex // the channel groups
 	ChannelsWithProjectors []int // move this to something that reports mix also? and experimentStateLabel
 	// TODO: maybe bytes/sec data rate...?
 }
@@ -322,17 +320,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.isSourceActive = true
 	s.status.SamplePeriod = s.ActiveSource.SamplePeriod()
 	s.status.Nchannels = s.ActiveSource.Nchan()
-	if ls, ok := s.ActiveSource.(*LanceroSource); ok {
-		s.status.Ncol = make([]int, ls.ncards)
-		s.status.Nrow = make([]int, ls.ncards)
-		for i, device := range ls.active {
-			s.status.Ncol[i] = device.ncols
-			s.status.Nrow[i] = device.nrows
-		}
-	} else {
-		s.status.Ncol = make([]int, 0)
-		s.status.Nrow = make([]int, 0)
-	}
+	s.status.ChanGroups = s.ActiveSource.ChanGroups()
 	s.broadcastStatus()
 	s.broadcastTriggerState()
 	s.broadcastChannelNames()
@@ -591,6 +579,11 @@ func (s *SourceControl) broadcastChannelNames() {
 		s.clientUpdates <- ClientUpdate{"CHANNELNAMES", configs}
 	}
 }
+
+// func (s *SourceControl) storeChannelGroups() {
+// 	if s.isSourceActive && s.status.Running {
+// 	}
+// }
 
 // SendAllStatus causes a broadcast to clients containing all broadcastable status info
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {

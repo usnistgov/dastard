@@ -59,6 +59,7 @@ type DataSource interface {
 	SetStateInactive() error
 	getNextBlock() chan *dataBlock
 	Nchan() int
+	ChanGroups() []GroupIndex
 	SamplePeriod() time.Duration
 	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
@@ -215,6 +216,7 @@ func (ds *AnySource) Stop() error {
 	ds.sourceStateLock.Unlock()
 
 	ds.RunDoneWait()
+	ds.groupKeysSorted = make([]GroupIndex, 0)
 	if ds.writingState.Active { // if writing, Stop writing
 		wcc := WriteControlConfig{Request: "STOP"}
 		ds.WriteControl(&wcc)
@@ -272,6 +274,7 @@ type AnySource struct {
 	chanNames              []string      // one name per channel
 	chanNumbers            []int         // names have format "prefixNumber", this is the number
 	rowColCodes            []RowColCode  // one RowColCode per channel
+	groupKeysSorted        []GroupIndex  // sorted slice of channel group information
 	voltsPerArb            []float32     // the physical units per arb, one per channel
 	sampleRate             float64       // samples per second
 	samplePeriod           time.Duration // time per sample
@@ -667,6 +670,13 @@ func (ds *AnySource) Nchan() int {
 	return ds.nchan
 }
 
+// ChanGroups returns the sorted slice of channel GroupIndex values.
+func (ds *AnySource) ChanGroups() []GroupIndex {
+	cg := make([]GroupIndex, len(ds.groupKeysSorted))
+	copy(cg, ds.groupKeysSorted)
+	return cg
+}
+
 // Running tells whether the source is actively running.
 func (ds *AnySource) Running() bool {
 	return ds.GetState() == Active
@@ -732,11 +742,20 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
+
+	// Set up things that specific sources set up only if they have unusual settings.
 	if ds.channelsPerPixel < 1 {
 		ds.channelsPerPixel = 1
 	}
-
+	if ds.groupKeysSorted == nil {
+		ds.groupKeysSorted = make([]GroupIndex, 0)
+	}
+	if len(ds.groupKeysSorted) == 0 {
+		cg := GroupIndex{Firstchan:0, Nchan:ds.nchan}
+		ds.groupKeysSorted = append(ds.groupKeysSorted, cg)
+	}
 	ds.setDefaultChannelNames() // acts only if not already set in ds.Sample()
+
 	ds.abortSelf = make(chan struct{})
 	ds.nextBlock = make(chan *dataBlock)
 
