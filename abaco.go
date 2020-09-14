@@ -16,27 +16,12 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-//------------------------------------------------------------------------------------------------
-
-// GroupIndex represents the specifics of a channel group.
-// It should be globally unique across all Abaco data.
-type GroupIndex struct {
-	firstchan int // first channel number in this group
-	nchan     int // how many channels in this group
-}
 
 // gindex converts a packet to the GroupIndex whose data it contains
 func gIndex(p *packets.Packet) GroupIndex {
 	nchan, offset := p.ChannelInfo()
 	return GroupIndex{nchan: nchan, firstchan: offset}
 }
-
-// ByGroup implements sort.Interface for []GroupIndex so we can sort such slices.
-type ByGroup []GroupIndex
-
-func (g ByGroup) Len() int           { return len(g) }
-func (g ByGroup) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
-func (g ByGroup) Less(i, j int) bool { return g[i].firstchan < g[j].firstchan }
 
 //------------------------------------------------------------------------------------------------
 
