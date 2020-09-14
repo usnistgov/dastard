@@ -1,6 +1,9 @@
 ## DASTARD Versions
 
-**0.2.7** in progress in April 2020
+**0.2.8** Started September 2020
+* Remove idea of rows/columns from Dastard (use only in `LanceroSource`). Use chan groups otherwise.
+
+**0.2.7** September 10, 2020
 * Use package `zmq4`, a pure Go implementation of ZMQ.
 * Simplified testing on Travis because of that.
 * Then revert to `gozmq` because `zmq4` was dropping messages (issue 192).
