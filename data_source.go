@@ -24,8 +24,8 @@ type FrameIndex int64
 // GroupIndex represents the specifics of a channel group.
 // Channel numbers should be globally unique across a DataSource.
 type GroupIndex struct {
-	firstchan int // first channel number in this group
-	nchan     int // how many channels in this group
+	Firstchan int // first channel number in this group
+	Nchan     int // how many channels in this group
 }
 
 // ByGroup implements sort.Interface for []GroupIndex so we can sort such slices.
@@ -33,7 +33,7 @@ type ByGroup []GroupIndex
 
 func (g ByGroup) Len() int           { return len(g) }
 func (g ByGroup) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
-func (g ByGroup) Less(i, j int) bool { return g[i].firstchan < g[j].firstchan }
+func (g ByGroup) Less(i, j int) bool { return g[i].Firstchan < g[j].Firstchan }
 
 // SourceState is used to indicate the active/inactive/transition state of data sources
 type SourceState int
