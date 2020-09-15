@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -324,6 +325,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.broadcastStatus()
 	s.broadcastTriggerState()
 	s.broadcastChannelNames()
+	s.storeChannelGroups()
 	*reply = true
 	return nil
 }
@@ -580,10 +582,28 @@ func (s *SourceControl) broadcastChannelNames() {
 	}
 }
 
-// func (s *SourceControl) storeChannelGroups() {
-// 	if s.isSourceActive && s.status.Running {
-// 	}
-// }
+func (s *SourceControl) storeChannelGroups() error {
+	if s.isSourceActive && s.status.Running {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		filename := path.Join(home, ".dastard", "channels.json")
+		fp, err := os.Create(filename)
+		defer fp.Close()
+		if err != nil {
+			return err
+		}
+		text, err := json.MarshalIndent(s.status.ChanGroups, "", "  ")
+		if err != nil {
+			return err
+		}
+		if _, err = fp.Write(text); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // SendAllStatus causes a broadcast to clients containing all broadcastable status info
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
