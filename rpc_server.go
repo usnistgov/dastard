@@ -131,7 +131,7 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	s.lancero.configError = err
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
 	*reply = (err == nil)
-	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMhz, s.lancero.ncards)
+	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMHz, s.lancero.ncards)
 	return err
 }
 

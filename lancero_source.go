@@ -25,7 +25,7 @@ type LanceroDevice struct {
 	lsync       int
 	fiberMask   uint32
 	cardDelay   int
-	clockMhz    int
+	clockMHz    int
 	frameSize   int // frame size, in bytes
 	adapRunning bool
 	collRunning bool
@@ -49,7 +49,7 @@ type BuffersChanType struct {
 type LanceroSource struct {
 	devices                  map[int]*LanceroDevice
 	ncards                   int
-	clockMhz                 int
+	clockMHz                 int
 	nsamp                    int
 	active                   []*LanceroDevice
 	chan2readoutOrder        []int
@@ -171,7 +171,7 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	}
 
 	ls.active = make([]*LanceroDevice, 0)
-	ls.clockMhz = cg.ClockMHz
+	ls.clockMHz = cg.ClockMHz
 	ls.shouldAutoRestart = config.ShouldAutoRestart
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
@@ -188,7 +188,7 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 			dev.cardDelay = config.CardDelay[i]
 		}
 		dev.fiberMask = config.FiberMask
-		dev.clockMhz = cg.ClockMHz
+		dev.clockMHz = cg.ClockMHz
 		dev.nrows = cg.SequenceLength
 		dev.lsync = cg.Lsync
 	}
@@ -262,7 +262,7 @@ func (ls *LanceroSource) Sample() error {
 			return err
 		}
 		ls.nchan += device.ncols * device.nrows * 2
-		ls.sampleRate = float64(device.clockMhz) * 1e6 / float64(device.lsync*device.nrows)
+		ls.sampleRate = float64(device.clockMHz) * 1e6 / float64(device.lsync*device.nrows)
 	}
 
 	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
@@ -395,7 +395,7 @@ func (device *LanceroDevice) sampleCard() error {
 	}
 	if frameBitsHandled {
 		periodNS := timeFix.Sub(timeFix0).Nanoseconds() / (bytesReadSinceTimeFix0 / int64(device.frameSize))
-		calculatedLsync := roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
+		calculatedLsync := roundint((float64(periodNS) / 1000) * float64(device.clockMHz) / float64(device.nrows))
 		if math.Abs(float64(calculatedLsync)/float64(device.lsync)-1) > 0.02 {
 			fmt.Printf("WARNING: calculated lsync=%d, but have lsync=%d\n", calculatedLsync, device.lsync)
 		}
