@@ -291,26 +291,58 @@ func (ls *LanceroSource) Sample() error {
 	ls.mixRequests = make(chan *MixFractionObject, MIXDEPTH)
 	ls.currentMix = make(chan []float64, MIXDEPTH)
 
-	ls.rowColCodes = make([]RowColCode, ls.nchan)
-	i := 0
-	for _, device := range ls.active {
-		cardNchan := device.ncols * device.nrows * 2
-		for j := 0; j < cardNchan; j += 2 {
-			col := j / (2 * device.nrows)
-			row := (j % (2 * device.nrows)) / 2
-			ls.rowColCodes[i+j] = rcCode(row, col, device.nrows, device.ncols)
-			ls.rowColCodes[i+j+1] = ls.rowColCodes[i+j]
+	// Check that ls.chanSepColumns and chanSepCards are appropriate,
+	// i.e. large enough to avoid channel number collisions.
+	if ls.chanSepColumns > 0 {
+		for _, device := range ls.active {
+			if device.nrows > ls.chanSepColumns {
+				log.Printf("Warning: /dev/lancero%d has %d rows, which exceeds ChanSepColumns (%d). Setting latter to 0.",
+							device.devnum, device.nrows, ls.chanSepColumns)
+				ls.chanSepColumns = 0
+				break
+			}
 		}
-		i += cardNchan
 	}
+	if ls.chanSepCards > 0 {
+		for _, device := range ls.active {
+			colsep := device.nrows
+			if ls.chanSepColumns > 0 {
+				colsep = ls.chanSepColumns
+			}
+			if device.nrows*device.ncols > ls.chanSepCards {
+				log.Printf("Warning: /dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0.",
+							device.devnum, colsep*device.ncols, ls.chanSepCards)
+				ls.chanSepCards = 0
+				break
+			}
+		}
+	}
+
+	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	ls.chanNames = make([]string, ls.nchan)
 	ls.chanNumbers = make([]int, ls.nchan)
-	for i := 1; i < ls.nchan; i += 2 {
-		cnum := 1+i/2
-		ls.chanNames[i-1] = fmt.Sprintf("err%d", cnum)
-		ls.chanNames[i] = fmt.Sprintf("chan%d", cnum)
-		ls.chanNumbers[i-1] = cnum
-		ls.chanNumbers[i] = cnum
+	index := 0
+	cnum := ls.firstRowChanNum
+	for _, device := range ls.active {
+		if ls.chanSepCards > 0 {
+			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
+		}
+		for col := 0; col < device.ncols; col++ {
+			if ls.chanSepColumns > 0 {
+				cnum = device.devnum*ls.chanSepCards + col*ls.chanSepColumns + ls.firstRowChanNum
+			}
+			for row := 0; row < device.nrows; row++ {
+				ls.chanNames[index] = fmt.Sprintf("err%d", cnum)
+				ls.chanNumbers[index] = cnum
+				ls.rowColCodes[index] = rcCode(row, col, device.nrows, device.ncols)
+				index++
+				ls.chanNames[index] = fmt.Sprintf("chan%d", cnum)
+				ls.chanNumbers[index] = cnum
+				ls.rowColCodes[index] = rcCode(row, col, device.nrows, device.ncols)
+				index++
+				cnum++
+			}
+		}
 	}
 
 	return nil

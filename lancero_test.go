@@ -107,7 +107,7 @@ func TestNoHardwareSource(t *testing.T) {
 		t.Error("expected error for re-using a device")
 	}
 	config = LanceroSourceConfig{CardDelay: cardDelay,
-		ActiveCards: activeCards}
+		ActiveCards: activeCards, FirstRow: 1}
 	if err := source.Configure(&config); err != nil {
 		t.Error(err)
 	}
