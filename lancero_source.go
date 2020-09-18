@@ -58,6 +58,9 @@ type LanceroSource struct {
 	buffersChan              chan BuffersChanType
 	readPeriod               time.Duration
 	mixRequests              chan *MixFractionObject
+	firstRowChanNum          int // Channel number of the 1st row (default 1)
+	chanSepCards             int // Channel separation between cards (or 0 to indicate number sequentially)
+	chanSepColumns           int // Channel separation between columns (or 0 to indicate number sequentially)
 	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	externalTriggerLastState bool
 	previousLastSampleTime   time.Time
@@ -121,6 +124,9 @@ type LanceroSourceConfig struct {
 	CardDelay         []int
 	ActiveCards       []int
 	ShouldAutoRestart bool
+	FirstRow          int // Channel number of the 1st row (default 1)
+	ChanSepCards      int // Channel separation between cards (or 0 to indicate number sequentially)
+	ChanSepColumns    int // Channel separation between columns (or 0 to indicate number sequentially)
 	DastardOutput     LanceroDastardOutputJSON
 }
 
@@ -173,6 +179,9 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	ls.active = make([]*LanceroDevice, 0)
 	ls.clockMHz = cg.ClockMHz
 	ls.shouldAutoRestart = config.ShouldAutoRestart
+	ls.firstRowChanNum = config.FirstRow
+	ls.chanSepColumns = config.ChanSepColumns
+	ls.chanSepCards = config.ChanSepCards
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
 		if dev == nil {
