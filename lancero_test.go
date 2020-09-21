@@ -77,6 +77,114 @@ func TestChannelOrder(t *testing.T) {
 	}
 }
 
+func TestPrepareChannels(t *testing.T) {
+	ls, err := NewLanceroSource()
+	if err != nil {
+		t.Error("NewLanceroSource failed:", err)
+	}
+	d0 := LanceroDevice{devnum: 0, nrows: 4, ncols: 4, cardDelay: 1}
+	d1 := LanceroDevice{devnum: 1, nrows: 3, ncols: 3, cardDelay: 1}
+	ls.devices[0] = &d0
+	ls.devices[1] = &d1
+	ls.active = make([]*LanceroDevice, 2)
+	for i, device := range(ls.devices) {
+		ls.active[i] = device
+		ls.nchan += device.ncols * device.nrows * 2
+	}
+
+	// Test normal chan numbering
+	expect := make([]int, 0, 200)
+	ls.PrepareChannels()
+	for i:=0; i<ls.nchan/2; i++ {
+		expect = append(expect, i)
+		expect = append(expect, i)
+	}
+	for i:=0; i<len(expect); i++ {
+		if ls.chanNumbers[i] != expect[i] {
+			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+		}
+	}
+
+	// Test chan numbering with FirstRow > 1
+	ls.firstRowChanNum = 10
+	ls.PrepareChannels()
+	for i:=0; i<len(expect); i++ {
+		expect[i] += ls.firstRowChanNum
+		if ls.chanNumbers[i] != expect[i] {
+			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+		}
+	}
+
+	// Test chan numbering with chanSepCards > 1
+	ls.firstRowChanNum = 1
+	ls.chanSepCards = 1000
+	ls.PrepareChannels()
+	expect = expect[:0] // truncate
+	for i:=0; i<ls.nchan/2; i++ {
+		expect = append(expect, i)
+		expect = append(expect, i)
+	}
+	for i := 2*d0.nrows*d0.ncols; i<ls.nchan; i++ {
+		expect[i] += ls.chanSepCards - d0.nrows*d0.ncols
+	}
+	for i:=0; i<len(expect); i++ {
+		expect[i] += ls.firstRowChanNum
+		if ls.chanNumbers[i] != expect[i] {
+			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+		}
+	}
+
+	// Test chan numbering with chanSepCols > 1
+	ls.firstRowChanNum = 1
+	ls.chanSepCards = 0
+	ls.chanSepColumns= 100
+	ls.PrepareChannels()
+	expect = expect[:0] // truncate
+	for c := 0; c<d0.ncols; c++ {
+		for r := 0; r<d0.ncols; r++ {
+			expect = append(expect, r+c*ls.chanSepColumns)
+			expect = append(expect, r+c*ls.chanSepColumns)
+		}
+	}
+	for c := d0.ncols; c<d0.ncols+d1.ncols; c++ {
+		for r := 0; r<d1.ncols; r++ {
+			expect = append(expect, r+c*ls.chanSepColumns)
+			expect = append(expect, r+c*ls.chanSepColumns)
+		}
+	}
+	for i:=0; i<len(expect); i++ {
+		expect[i] += ls.firstRowChanNum
+		if ls.chanNumbers[i] != expect[i] {
+			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+		}
+	}
+
+	// Test chan numbering with chanSepCols > 1, chanSepColumns > 1
+	ls.firstRowChanNum = 1
+	ls.chanSepCards = 1000
+	ls.chanSepColumns= 100
+	ls.PrepareChannels()
+	expect = expect[:0] // truncate
+	for c := 0; c<d0.ncols; c++ {
+		for r := 0; r<d0.ncols; r++ {
+			expect = append(expect, r+c*ls.chanSepColumns)
+			expect = append(expect, r+c*ls.chanSepColumns)
+		}
+	}
+	for c := 0; c<d1.ncols; c++ {
+		for r := 0; r<d1.ncols; r++ {
+			expect = append(expect, r+c*ls.chanSepColumns+ls.chanSepCards)
+			expect = append(expect, r+c*ls.chanSepColumns+ls.chanSepCards)
+		}
+	}
+	for i:=0; i<len(expect); i++ {
+		expect[i] += ls.firstRowChanNum
+		if ls.chanNumbers[i] != expect[i] {
+			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+		}
+	}
+}
+
 func TestNoHardwareSource(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int
 	ncolsSet = 1

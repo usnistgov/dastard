@@ -306,7 +306,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 	if ls.chanSepColumns > 0 {
 		for _, device := range ls.active {
 			if device.nrows > ls.chanSepColumns {
-				err := fmt.Errorf("/dev/lancero%d has %d rows, which exceeds ChanSepColumns (%d). Setting latter to 0.",
+				err := fmt.Errorf("/dev/lancero%d has %d rows, which exceeds ChanSepColumns (%d). Setting latter to 0",
 							device.devnum, device.nrows, ls.chanSepColumns)
 				log.Printf("%v", err)
 				ls.chanSepColumns = 0
@@ -321,7 +321,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 				colsep = ls.chanSepColumns
 			}
 			if device.nrows*device.ncols > ls.chanSepCards {
-				err := fmt.Errorf("/dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0.",
+				err := fmt.Errorf("/dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0",
 							device.devnum, colsep*device.ncols, ls.chanSepCards)
 				log.Printf("%v", err)
 				ls.chanSepColumns = 0
@@ -335,14 +335,17 @@ func (ls *LanceroSource) PrepareChannels() error {
 	ls.chanNumbers = make([]int, ls.nchan)
 	index := 0
 	cnum := ls.firstRowChanNum
+	thisColFirstCnum := cnum - ls.chanSepColumns
 	for _, device := range ls.active {
 		if ls.chanSepCards > 0 {
 			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
+			thisColFirstCnum = cnum - ls.chanSepColumns
 		}
 		for col := 0; col < device.ncols; col++ {
 			if ls.chanSepColumns > 0 {
-				cnum = device.devnum*ls.chanSepCards + col*ls.chanSepColumns + ls.firstRowChanNum
+				cnum = thisColFirstCnum + ls.chanSepColumns
 			}
+			thisColFirstCnum = cnum
 			for row := 0; row < device.nrows; row++ {
 				ls.chanNames[index] = fmt.Sprintf("err%d", cnum)
 				ls.chanNumbers[index] = cnum
