@@ -183,6 +183,41 @@ func TestPrepareChannels(t *testing.T) {
 			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
 		}
 	}
+
+	// Make sure PrepareChannels also correctly checking chanSepCards/Columns
+	type Checks struct {
+		sepCards, sepColumns int
+		expect bool
+	}
+	checks := []Checks{
+		Checks{0, 0, true},
+		Checks{0, 2, false},
+		Checks{0, 3, false},
+		Checks{0, 4, true},
+		Checks{100, 0, true},
+		Checks{16, 0, true},
+		Checks{15, 0, false},
+		Checks{16, 4, true},
+		Checks{19, 4, true},
+		Checks{19, 5, false},
+		Checks{20, 5, true},
+	}
+	for _, chk := range checks {
+		ls.chanSepCards = chk.sepCards
+		ls.chanSepColumns = chk.sepColumns
+		err := ls.PrepareChannels()
+		succeed := err == nil
+		if succeed != chk.expect {
+			if chk.expect {
+				t.Errorf("LanceroSource.PrepareChannels() should succeed with sepCards=%d, sepColumns=%d, but returned %v",
+					chk.sepCards, chk.sepColumns, err)
+			} else {
+				t.Errorf("LanceroSource.PrepareChannels() should fail with sepCards=%d, sepColumns=%d, but didn't",
+					chk.sepCards, chk.sepColumns)
+			}
+		}
+
+	}
 }
 
 func TestNoHardwareSource(t *testing.T) {

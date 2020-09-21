@@ -320,7 +320,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 			if ls.chanSepColumns > 0 {
 				colsep = ls.chanSepColumns
 			}
-			if device.nrows*device.ncols > ls.chanSepCards {
+			if colsep*device.ncols > ls.chanSepCards {
 				err := fmt.Errorf("/dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0",
 							device.devnum, colsep*device.ncols, ls.chanSepCards)
 				log.Printf("%v", err)
