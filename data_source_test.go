@@ -11,7 +11,7 @@ import (
 
 func TestChannelNames(t *testing.T) {
 	ds := AnySource{nchan: 4}
-	ds.setDefaultChannelNames()
+	ds.PrepareChannels()
 	expect := []string{"chan0", "chan1", "chan2", "chan3"}
 	if len(ds.chanNames) != 4 {
 		t.Errorf("ds.chanNames length = %d, want 4", len(ds.chanNames))
@@ -71,6 +71,7 @@ func TestWritingFiles(t *testing.T) {
 
 	ds := AnySource{nchan: 4}
 	ds.rowColCodes = make([]RowColCode, ds.nchan)
+	ds.PrepareChannels()
 	ds.PrepareRun(256, 1024)
 	defer ds.Stop()
 	config := &WriteControlConfig{Request: "Pause", Path: tmp, WriteLJH22: true}

@@ -290,16 +290,27 @@ func (ls *LanceroSource) Sample() error {
 	const MIXDEPTH = 10 // How many active mix requests allowed before RPC backs up
 	ls.mixRequests = make(chan *MixFractionObject, MIXDEPTH)
 	ls.currentMix = make(chan []float64, MIXDEPTH)
+	return nil
+}
+
+// PrepareChannels configures a LanceroSource by initializing all data structures that
+// have to do with channels and their naming/numbering.
+func (ls *LanceroSource) PrepareChannels() error {
+	ls.channelsPerPixel = 2
+	ls.groupKeysSorted = make([]GroupIndex, 1)
+	cg := GroupIndex{Firstchan:0, Nchan:ls.nchan}
+	ls.groupKeysSorted[0] = cg
 
 	// Check that ls.chanSepColumns and chanSepCards are appropriate,
 	// i.e. large enough to avoid channel number collisions.
 	if ls.chanSepColumns > 0 {
 		for _, device := range ls.active {
 			if device.nrows > ls.chanSepColumns {
-				log.Printf("Warning: /dev/lancero%d has %d rows, which exceeds ChanSepColumns (%d). Setting latter to 0.",
+				err := fmt.Errorf("/dev/lancero%d has %d rows, which exceeds ChanSepColumns (%d). Setting latter to 0.",
 							device.devnum, device.nrows, ls.chanSepColumns)
+				log.Printf("%v", err)
 				ls.chanSepColumns = 0
-				break
+				return err
 			}
 		}
 	}
@@ -310,10 +321,11 @@ func (ls *LanceroSource) Sample() error {
 				colsep = ls.chanSepColumns
 			}
 			if device.nrows*device.ncols > ls.chanSepCards {
-				log.Printf("Warning: /dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0.",
+				err := fmt.Errorf("/dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0.",
 							device.devnum, colsep*device.ncols, ls.chanSepCards)
-				ls.chanSepCards = 0
-				break
+				log.Printf("%v", err)
+				ls.chanSepColumns = 0
+				return err
 			}
 		}
 	}
@@ -344,7 +356,6 @@ func (ls *LanceroSource) Sample() error {
 			}
 		}
 	}
-
 	return nil
 }
 

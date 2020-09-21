@@ -532,23 +532,6 @@ func (as *AbacoSource) Sample() error {
 	sort.Sort(ByGroup(keys))
 	as.groupKeysSorted = keys
 
-	// Fill the channel names and numbers slices
-	// For rowColCodes, treat each channel group as a "column" and number chan within it
-	// as rows 0...g.nchan-1.
-	as.chanNames = make([]string, 0, as.nchan)
-	as.chanNumbers = make([]int, 0, as.nchan)
-	as.rowColCodes = make([]RowColCode, 0, as.nchan)
-	ncol := len(keys)
-	for col, g := range as.groupKeysSorted {
-		for row := 0; row<g.Nchan; row++ {
-			cnum := row + g.Firstchan
-			name := fmt.Sprintf("chan%d", cnum)
-			as.chanNames = append(as.chanNames, name)
-			as.chanNumbers = append(as.chanNumbers, cnum)
-			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.Nchan, ncol))
-		}
-	}
-
 	// Each AbacoGroup should process its sampled packets.
 	for _, group := range as.groups {
 		group.samplePackets()
@@ -570,6 +553,31 @@ func (as *AbacoSource) Sample() error {
 
 	return nil
 }
+
+// PrepareChannels configures an AbacoSource by initializing all data structures that
+// have to do with channels and their naming/numbering.
+func (as *AbacoSource) PrepareChannels() error {
+	as.channelsPerPixel = 1
+
+	// Fill the channel names and numbers slices
+	// For rowColCodes, treat each channel group as a "column" and number chan within it
+	// as rows 0...g.nchan-1.
+	as.chanNames = make([]string, 0, as.nchan)
+	as.chanNumbers = make([]int, 0, as.nchan)
+	as.rowColCodes = make([]RowColCode, 0, as.nchan)
+	ncol := len(as.groups)
+	for col, g := range as.groupKeysSorted {
+		for row := 0; row<g.Nchan; row++ {
+			cnum := row + g.Firstchan
+			name := fmt.Sprintf("chan%d", cnum)
+			as.chanNames = append(as.chanNames, name)
+			as.chanNumbers = append(as.chanNumbers, cnum)
+			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.Nchan, ncol))
+		}
+	}
+	return nil
+}
+
 
 // StartRun tells the hardware to switch into data streaming mode.
 // For Abaco µMUX systems, we need to consume any initial data that constitutes
