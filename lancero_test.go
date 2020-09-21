@@ -201,6 +201,8 @@ func TestPrepareChannels(t *testing.T) {
 		Checks{19, 4, true},
 		Checks{19, 5, false},
 		Checks{20, 5, true},
+		Checks{-1, 0, false},
+		Checks{0, -1, false},
 	}
 	for _, chk := range checks {
 		ls.chanSepCards = chk.sepCards

@@ -303,6 +303,12 @@ func (ls *LanceroSource) PrepareChannels() error {
 
 	// Check that ls.chanSepColumns and chanSepCards are appropriate,
 	// i.e. large enough to avoid channel number collisions.
+	if ls.chanSepCards < 0 {
+		return fmt.Errorf("Lancero configured with ChanSepCards=%d, need non-negative", ls.chanSepCards)
+	}
+	if ls.chanSepColumns < 0 {
+		return fmt.Errorf("Lancero configured with chanSepColumns=%d, need non-negative", ls.chanSepColumns)
+	}
 	if ls.chanSepColumns > 0 {
 		for _, device := range ls.active {
 			if device.nrows > ls.chanSepColumns {
