@@ -21,6 +21,20 @@ type RawType uint16
 // FrameIndex is used for counting raw data frames.
 type FrameIndex int64
 
+// GroupIndex represents the specifics of a channel group.
+// Channel numbers should be globally unique across a DataSource.
+type GroupIndex struct {
+	Firstchan int // first channel number in this group
+	Nchan     int // how many channels in this group
+}
+
+// ByGroup implements sort.Interface for []GroupIndex so we can sort such slices.
+type ByGroup []GroupIndex
+
+func (g ByGroup) Len() int           { return len(g) }
+func (g ByGroup) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
+func (g ByGroup) Less(i, j int) bool { return g[i].Firstchan < g[j].Firstchan }
+
 // SourceState is used to indicate the active/inactive/transition state of data sources
 type SourceState int
 
@@ -37,6 +51,7 @@ const (
 type DataSource interface {
 	Sample() error
 	PrepareRun(int, int) error
+	PrepareChannels() error
 	StartRun() error
 	Stop() error
 	Running() bool
@@ -45,6 +60,7 @@ type DataSource interface {
 	SetStateInactive() error
 	getNextBlock() chan *dataBlock
 	Nchan() int
+	ChanGroups() []GroupIndex
 	SamplePeriod() time.Duration
 	VoltsPerArb() []float32
 	ComputeFullTriggerState() []FullTriggerState
@@ -108,16 +124,23 @@ func (ds *AnySource) getNextBlock() chan *dataBlock {
 // Start will start the given DataSource, including sampling its data for # channels. Steps:
 // 1) Sample: a method implemented per source that determines the # of channels and other
 //    internal facts that we need to know.
-// 2) PrepareRun: an AnySource method to do the actions that any source needs
+// 2) PrepareChannels: an AnySource method (but overridden by certain other sources). Set up
+//    the channel numbering and naming system.
+// 3) PrepareRun: an AnySource method to do the actions that any source needs
 //    before starting the actual acquisition phase.
-// 3) StartRun: a per-source method to begin data acquisition, if relevant.
-// 4) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
+// 4) StartRun: a per-source method to begin data acquisition, if relevant.
+// 5) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
 // When done with the loop, close all channels to DataStreamProcessor objects.
 func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int) error {
 	if err := ds.SetStateStarting(); err != nil {
 		return err
 	}
 	if err := ds.Sample(); err != nil {
+		ds.SetStateInactive()
+		return err
+	}
+
+	if err := ds.PrepareChannels(); err != nil {
 		ds.SetStateInactive()
 		return err
 	}
@@ -201,6 +224,7 @@ func (ds *AnySource) Stop() error {
 	ds.sourceStateLock.Unlock()
 
 	ds.RunDoneWait()
+	ds.groupKeysSorted = make([]GroupIndex, 0)
 	if ds.writingState.Active { // if writing, Stop writing
 		wcc := WriteControlConfig{Request: "STOP"}
 		ds.WriteControl(&wcc)
@@ -258,6 +282,7 @@ type AnySource struct {
 	chanNames              []string      // one name per channel
 	chanNumbers            []int         // names have format "prefixNumber", this is the number
 	rowColCodes            []RowColCode  // one RowColCode per channel
+	groupKeysSorted        []GroupIndex  // sorted slice of channel group information
 	voltsPerArb            []float32     // the physical units per arb, one per channel
 	sampleRate             float64       // samples per second
 	samplePeriod           time.Duration // time per sample
@@ -653,6 +678,13 @@ func (ds *AnySource) Nchan() int {
 	return ds.nchan
 }
 
+// ChanGroups returns the sorted slice of channel GroupIndex values.
+func (ds *AnySource) ChanGroups() []GroupIndex {
+	cg := make([]GroupIndex, len(ds.groupKeysSorted))
+	copy(cg, ds.groupKeysSorted)
+	return cg
+}
+
 // Running tells whether the source is actively running.
 func (ds *AnySource) Running() bool {
 	return ds.GetState() == Active
@@ -696,19 +728,23 @@ func (ds *AnySource) VoltsPerArb() []float32 {
 	return ds.voltsPerArb
 }
 
-// setDefaultChannelNames defensively sets channel names of the appropriate length.
-// They should have been set in DataSource.Sample()
-func (ds *AnySource) setDefaultChannelNames() {
-	// If the number of channel names is correct, assume it was set in Sample, as expected.
-	if len(ds.chanNames) == ds.nchan {
-		return
-	}
+// PrepareChannels configures an AnySource by initializing all data structures that
+// have to do with channels. Other objects that meet the DataSource spec might
+// override this default version.
+func (ds *AnySource) PrepareChannels() error {
+	ds.channelsPerPixel = 1
+
+	ds.groupKeysSorted = make([]GroupIndex, 1)
+	cg := GroupIndex{Firstchan:0, Nchan:ds.nchan}
+	ds.groupKeysSorted[0] = cg
+
 	ds.chanNames = make([]string, ds.nchan)
 	ds.chanNumbers = make([]int, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
 		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
 		ds.chanNumbers[i] = i
 	}
+	return nil
 }
 
 // PrepareRun configures an AnySource by initializing all data structures that
@@ -718,11 +754,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	if ds.nchan <= 0 {
 		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
 	}
-	if ds.channelsPerPixel < 1 {
-		ds.channelsPerPixel = 1
-	}
 
-	ds.setDefaultChannelNames() // acts only if not already set in ds.Sample()
 	ds.abortSelf = make(chan struct{})
 	ds.nextBlock = make(chan *dataBlock)
 

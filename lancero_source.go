@@ -25,7 +25,7 @@ type LanceroDevice struct {
 	lsync       int
 	fiberMask   uint32
 	cardDelay   int
-	clockMhz    int
+	clockMHz    int
 	frameSize   int // frame size, in bytes
 	adapRunning bool
 	collRunning bool
@@ -49,7 +49,7 @@ type BuffersChanType struct {
 type LanceroSource struct {
 	devices                  map[int]*LanceroDevice
 	ncards                   int
-	clockMhz                 int
+	clockMHz                 int
 	nsamp                    int
 	active                   []*LanceroDevice
 	chan2readoutOrder        []int
@@ -58,6 +58,9 @@ type LanceroSource struct {
 	buffersChan              chan BuffersChanType
 	readPeriod               time.Duration
 	mixRequests              chan *MixFractionObject
+	firstRowChanNum          int // Channel number of the 1st row (default 1)
+	chanSepCards             int // Channel separation between cards (or 0 to indicate number sequentially)
+	chanSepColumns           int // Channel separation between columns (or 0 to indicate number sequentially)
 	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	externalTriggerLastState bool
 	previousLastSampleTime   time.Time
@@ -121,6 +124,9 @@ type LanceroSourceConfig struct {
 	CardDelay         []int
 	ActiveCards       []int
 	ShouldAutoRestart bool
+	FirstRow          int // Channel number of the 1st row (default 1)
+	ChanSepCards      int // Channel separation between cards (or 0 to indicate number sequentially)
+	ChanSepColumns    int // Channel separation between columns (or 0 to indicate number sequentially)
 	DastardOutput     LanceroDastardOutputJSON
 }
 
@@ -171,8 +177,11 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 	}
 
 	ls.active = make([]*LanceroDevice, 0)
-	ls.clockMhz = cg.ClockMHz
+	ls.clockMHz = cg.ClockMHz
 	ls.shouldAutoRestart = config.ShouldAutoRestart
+	ls.firstRowChanNum = config.FirstRow
+	ls.chanSepColumns = config.ChanSepColumns
+	ls.chanSepCards = config.ChanSepCards
 	for i, c := range config.ActiveCards {
 		dev := ls.devices[c]
 		if dev == nil {
@@ -188,7 +197,7 @@ func (ls *LanceroSource) Configure(config *LanceroSourceConfig) (err error) {
 			dev.cardDelay = config.CardDelay[i]
 		}
 		dev.fiberMask = config.FiberMask
-		dev.clockMhz = cg.ClockMHz
+		dev.clockMHz = cg.ClockMHz
 		dev.nrows = cg.SequenceLength
 		dev.lsync = cg.Lsync
 	}
@@ -262,7 +271,7 @@ func (ls *LanceroSource) Sample() error {
 			return err
 		}
 		ls.nchan += device.ncols * device.nrows * 2
-		ls.sampleRate = float64(device.clockMhz) * 1e6 / float64(device.lsync*device.nrows)
+		ls.sampleRate = float64(device.clockMHz) * 1e6 / float64(device.lsync*device.nrows)
 	}
 
 	ls.samplePeriod = time.Duration(roundint(1e9 / ls.sampleRate))
@@ -281,29 +290,81 @@ func (ls *LanceroSource) Sample() error {
 	const MIXDEPTH = 10 // How many active mix requests allowed before RPC backs up
 	ls.mixRequests = make(chan *MixFractionObject, MIXDEPTH)
 	ls.currentMix = make(chan []float64, MIXDEPTH)
+	return nil
+}
+
+// PrepareChannels configures a LanceroSource by initializing all data structures that
+// have to do with channels and their naming/numbering.
+func (ls *LanceroSource) PrepareChannels() error {
+	ls.channelsPerPixel = 2
+	ls.groupKeysSorted = make([]GroupIndex, 1)
+	cg := GroupIndex{Firstchan:0, Nchan:ls.nchan}
+	ls.groupKeysSorted[0] = cg
+
+	// Check that ls.chanSepColumns and chanSepCards are appropriate,
+	// i.e. large enough to avoid channel number collisions.
+	if ls.chanSepCards < 0 {
+		return fmt.Errorf("Lancero configured with ChanSepCards=%d, need non-negative", ls.chanSepCards)
+	}
+	if ls.chanSepColumns < 0 {
+		return fmt.Errorf("Lancero configured with chanSepColumns=%d, need non-negative", ls.chanSepColumns)
+	}
+	if ls.chanSepColumns > 0 {
+		for _, device := range ls.active {
+			if device.nrows > ls.chanSepColumns {
+				err := fmt.Errorf("/dev/lancero%d has %d rows, which exceeds ChanSepColumns (%d). Setting latter to 0",
+							device.devnum, device.nrows, ls.chanSepColumns)
+				log.Printf("%v", err)
+				ls.chanSepColumns = 0
+				return err
+			}
+		}
+	}
+	if ls.chanSepCards > 0 {
+		for _, device := range ls.active {
+			colsep := device.nrows
+			if ls.chanSepColumns > 0 {
+				colsep = ls.chanSepColumns
+			}
+			if colsep*device.ncols > ls.chanSepCards {
+				err := fmt.Errorf("/dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0",
+							device.devnum, colsep*device.ncols, ls.chanSepCards)
+				log.Printf("%v", err)
+				ls.chanSepColumns = 0
+				return err
+			}
+		}
+	}
 
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
-	i := 0
-	for _, device := range ls.active {
-		cardNchan := device.ncols * device.nrows * 2
-		for j := 0; j < cardNchan; j += 2 {
-			col := j / (2 * device.nrows)
-			row := (j % (2 * device.nrows)) / 2
-			ls.rowColCodes[i+j] = rcCode(row, col, device.nrows, device.ncols)
-			ls.rowColCodes[i+j+1] = ls.rowColCodes[i+j]
-		}
-		i += cardNchan
-	}
 	ls.chanNames = make([]string, ls.nchan)
 	ls.chanNumbers = make([]int, ls.nchan)
-	for i := 1; i < ls.nchan; i += 2 {
-		cnum := 1+i/2
-		ls.chanNames[i-1] = fmt.Sprintf("err%d", cnum)
-		ls.chanNames[i] = fmt.Sprintf("chan%d", cnum)
-		ls.chanNumbers[i-1] = cnum
-		ls.chanNumbers[i] = cnum
+	index := 0
+	cnum := ls.firstRowChanNum
+	thisColFirstCnum := cnum - ls.chanSepColumns
+	for _, device := range ls.active {
+		if ls.chanSepCards > 0 {
+			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
+			thisColFirstCnum = cnum - ls.chanSepColumns
+		}
+		for col := 0; col < device.ncols; col++ {
+			if ls.chanSepColumns > 0 {
+				cnum = thisColFirstCnum + ls.chanSepColumns
+			}
+			thisColFirstCnum = cnum
+			for row := 0; row < device.nrows; row++ {
+				ls.chanNames[index] = fmt.Sprintf("err%d", cnum)
+				ls.chanNumbers[index] = cnum
+				ls.rowColCodes[index] = rcCode(row, col, device.nrows, device.ncols)
+				index++
+				ls.chanNames[index] = fmt.Sprintf("chan%d", cnum)
+				ls.chanNumbers[index] = cnum
+				ls.rowColCodes[index] = rcCode(row, col, device.nrows, device.ncols)
+				index++
+				cnum++
+			}
+		}
 	}
-
 	return nil
 }
 
@@ -395,7 +456,7 @@ func (device *LanceroDevice) sampleCard() error {
 	}
 	if frameBitsHandled {
 		periodNS := timeFix.Sub(timeFix0).Nanoseconds() / (bytesReadSinceTimeFix0 / int64(device.frameSize))
-		calculatedLsync := roundint((float64(periodNS) / 1000) * float64(device.clockMhz) / float64(device.nrows))
+		calculatedLsync := roundint((float64(periodNS) / 1000) * float64(device.clockMHz) / float64(device.nrows))
 		if math.Abs(float64(calculatedLsync)/float64(device.lsync)-1) > 0.02 {
 			fmt.Printf("WARNING: calculated lsync=%d, but have lsync=%d\n", calculatedLsync, device.lsync)
 		}

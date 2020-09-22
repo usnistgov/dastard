@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -67,8 +68,7 @@ func NewSourceControl() *SourceControl {
 	sc.roach.heartbeats = sc.heartbeats
 	sc.abaco.heartbeats = sc.heartbeats
 
-	sc.status.Ncol = make([]int, 0)
-	sc.status.Nrow = make([]int, 0)
+	sc.status.ChanGroups = make([]GroupIndex, 0)
 	return sc
 }
 
@@ -80,8 +80,7 @@ type ServerStatus struct {
 	Nsamples               int
 	Npresamp               int
 	SamplePeriod           time.Duration // time per sample
-	Ncol                   []int
-	Nrow                   []int
+	ChanGroups             []GroupIndex // the channel groups
 	ChannelsWithProjectors []int // move this to something that reports mix also? and experimentStateLabel
 	// TODO: maybe bytes/sec data rate...?
 }
@@ -132,7 +131,7 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	s.lancero.configError = err
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
 	*reply = (err == nil)
-	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMhz, s.lancero.ncards)
+	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMHz, s.lancero.ncards)
 	return err
 }
 
@@ -322,20 +321,11 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.isSourceActive = true
 	s.status.SamplePeriod = s.ActiveSource.SamplePeriod()
 	s.status.Nchannels = s.ActiveSource.Nchan()
-	if ls, ok := s.ActiveSource.(*LanceroSource); ok {
-		s.status.Ncol = make([]int, ls.ncards)
-		s.status.Nrow = make([]int, ls.ncards)
-		for i, device := range ls.active {
-			s.status.Ncol[i] = device.ncols
-			s.status.Nrow[i] = device.nrows
-		}
-	} else {
-		s.status.Ncol = make([]int, 0)
-		s.status.Nrow = make([]int, 0)
-	}
+	s.status.ChanGroups = s.ActiveSource.ChanGroups()
 	s.broadcastStatus()
 	s.broadcastTriggerState()
 	s.broadcastChannelNames()
+	s.storeChannelGroups()
 	*reply = true
 	return nil
 }
@@ -590,6 +580,29 @@ func (s *SourceControl) broadcastChannelNames() {
 		// log.Printf("chanNames: %v\n", configs)
 		s.clientUpdates <- ClientUpdate{"CHANNELNAMES", configs}
 	}
+}
+
+func (s *SourceControl) storeChannelGroups() error {
+	if s.isSourceActive && s.status.Running {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		filename := path.Join(home, ".dastard", "channels.json")
+		fp, err := os.Create(filename)
+		defer fp.Close()
+		if err != nil {
+			return err
+		}
+		text, err := json.MarshalIndent(s.status.ChanGroups, "", "  ")
+		if err != nil {
+			return err
+		}
+		if _, err = fp.Write(text); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SendAllStatus causes a broadcast to clients containing all broadcastable status info

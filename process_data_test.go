@@ -255,6 +255,7 @@ func TestDataSignedness(t *testing.T) {
 	// Make sure PrepareRun produces the right answers.
 	var ts TriangleSource
 	ts.nchan = 4
+	ts.PrepareChannels()
 	ts.PrepareRun(256, 1024)
 	defer ts.Stop()
 	for i, dsp := range ts.processors {
@@ -267,6 +268,7 @@ func TestDataSignedness(t *testing.T) {
 	// TODO: use a no-hardware source to test this!
 	var ls LanceroSource
 	ls.nchan = 4
+	ls.PrepareChannels()	
 	ls.PrepareRun(256, 1024)
 	defer ls.Stop()
 

@@ -16,27 +16,12 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-//------------------------------------------------------------------------------------------------
-
-// GroupIndex represents the specifics of a channel group.
-// It should be globally unique across all Abaco data.
-type GroupIndex struct {
-	firstchan int // first channel number in this group
-	nchan     int // how many channels in this group
-}
 
 // gindex converts a packet to the GroupIndex whose data it contains
 func gIndex(p *packets.Packet) GroupIndex {
 	nchan, offset := p.ChannelInfo()
-	return GroupIndex{nchan: nchan, firstchan: offset}
+	return GroupIndex{Firstchan: offset, Nchan: nchan}
 }
-
-// ByGroup implements sort.Interface for []GroupIndex so we can sort such slices.
-type ByGroup []GroupIndex
-
-func (g ByGroup) Len() int           { return len(g) }
-func (g ByGroup) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
-func (g ByGroup) Less(i, j int) bool { return g[i].firstchan < g[j].firstchan }
 
 //------------------------------------------------------------------------------------------------
 
@@ -57,7 +42,7 @@ type AbacoGroup struct {
 func NewAbacoGroup(index GroupIndex) *AbacoGroup {
 	g := new(AbacoGroup)
 	g.index = index
-	g.nchan = index.nchan
+	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
 	for i := range g.unwrap {
@@ -391,7 +376,6 @@ type AbacoSource struct {
 	active []*AbacoRing
 
 	groups          map[GroupIndex]*AbacoGroup
-	groupKeysSorted []GroupIndex
 
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
@@ -521,7 +505,7 @@ func (as *AbacoSource) Sample() error {
 			cidx := gIndex(p)
 			if _, ok := as.groups[cidx]; !ok {
 				as.groups[cidx] = NewAbacoGroup(cidx)
-				as.nchan += cidx.nchan
+				as.nchan += cidx.Nchan
 			}
 		}
 		as.distributePackets(results.allpackets, now)
@@ -530,8 +514,8 @@ func (as *AbacoSource) Sample() error {
 	// Verify that no channel # appears in 2 groups.
 	known := make(map[int]bool)
 	for _, g := range as.groups {
-		cinit := g.index.firstchan
-		cend := cinit + g.index.nchan
+		cinit := g.index.Firstchan
+		cend := cinit + g.index.Nchan
 		for cnum := cinit; cnum < cend; cnum++ {
 			if known[cnum] {
 				return fmt.Errorf("Channel group %v sees channel %d, which was in another group", g.index, cnum)
@@ -547,23 +531,6 @@ func (as *AbacoSource) Sample() error {
 	}
 	sort.Sort(ByGroup(keys))
 	as.groupKeysSorted = keys
-
-	// Fill the channel names and numbers slices
-	// For rowColCodes, treat each channel group as a "column" and number chan within it
-	// as rows 0...g.nchan-1.
-	as.chanNames = make([]string, 0, as.nchan)
-	as.chanNumbers = make([]int, 0, as.nchan)
-	as.rowColCodes = make([]RowColCode, 0, as.nchan)
-	ncol := len(keys)
-	for col, g := range as.groupKeysSorted {
-		for row := 0; row<g.nchan; row++ {
-			cnum := row + g.firstchan
-			name := fmt.Sprintf("chan%d", cnum)
-			as.chanNames = append(as.chanNames, name)
-			as.chanNumbers = append(as.chanNumbers, cnum)
-			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.nchan, ncol))
-		}
-	}
 
 	// Each AbacoGroup should process its sampled packets.
 	for _, group := range as.groups {
@@ -586,6 +553,31 @@ func (as *AbacoSource) Sample() error {
 
 	return nil
 }
+
+// PrepareChannels configures an AbacoSource by initializing all data structures that
+// have to do with channels and their naming/numbering.
+func (as *AbacoSource) PrepareChannels() error {
+	as.channelsPerPixel = 1
+
+	// Fill the channel names and numbers slices
+	// For rowColCodes, treat each channel group as a "column" and number chan within it
+	// as rows 0...g.nchan-1.
+	as.chanNames = make([]string, 0, as.nchan)
+	as.chanNumbers = make([]int, 0, as.nchan)
+	as.rowColCodes = make([]RowColCode, 0, as.nchan)
+	ncol := len(as.groups)
+	for col, g := range as.groupKeysSorted {
+		for row := 0; row<g.Nchan; row++ {
+			cnum := row + g.Firstchan
+			name := fmt.Sprintf("chan%d", cnum)
+			as.chanNames = append(as.chanNames, name)
+			as.chanNumbers = append(as.chanNumbers, cnum)
+			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.Nchan, ncol))
+		}
+	}
+	return nil
+}
+
 
 // StartRun tells the hardware to switch into data streaming mode.
 // For Abaco µMUX systems, we need to consume any initial data that constitutes
@@ -657,8 +649,8 @@ awaitmoredata:
 				packetsAdded, framesAdded := group.fillMissingPackets()
 				droppedFrames += framesAdded
 				if packetsAdded > 0 && ProblemLogger != nil {
-					cfirst := idx.firstchan
-					clast := cfirst + idx.nchan - 1
+					cfirst := idx.Firstchan
+					clast := cfirst + idx.Nchan - 1
 					ProblemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets (%d frames)", idx,
 						cfirst, clast, packetsAdded, framesAdded)
 				}

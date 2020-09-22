@@ -43,12 +43,12 @@ Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download.
 that MacPorts is already installed, it's simple:
 
 ### MacOS Dependencies
- 
+
 #### Homebrew
 `brew install go pkg-config czmq libsodium`
 
 #### Macports
-`port install go libczmq-dev libsodium-dev pkg-config`
+`port install go czmq libsodium-dev pkg-config`
 
 
 
