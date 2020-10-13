@@ -146,6 +146,15 @@ func chanOffsetToPacket(off headChannelOffset) []byte {
 	return buf.Bytes()
 }
 
+func nonsensePacket() []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, byte(tlvINVALID))
+	binary.Write(buf, binary.BigEndian, byte(1))
+	binary.Write(buf, binary.BigEndian, uint16(0))
+	binary.Write(buf, binary.BigEndian, uint32(0))
+	return buf.Bytes()
+}
+
 func TestTLVs(t *testing.T) {
 	// Try a counter
 	c := HeadCounter{1234, 987654321}
@@ -218,6 +227,13 @@ func TestTLVs(t *testing.T) {
 	tp[2] = 66
 	if _, err = readTLV(bytes.NewReader(tp), 16); err == nil {
 		t.Errorf("readTLV() for PacketTimestamp succeeds with %d bits (>64), should fail", tp[2])
+	}
+
+	// Try a nonsensical TLV type. Should not be an error
+	nonsense := nonsensePacket()
+	_, err = readTLV(bytes.NewReader(nonsense), 8)
+	if err != nil {
+		t.Errorf("readTLV() for invalid TLV should be ignored, but returns %v", err)
 	}
 
 	// Try a channel offset
