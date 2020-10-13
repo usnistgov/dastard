@@ -47,6 +47,7 @@ const (
 	tlvSHAPE          = byte(0x22)
 	tlvCHANOFFSET     = byte(0x23)
 	tlvUNKNOWNMYSTERY = byte(0x29)
+	tlvINVALID        = byte(0xff)
 )
 
 // NewPacket generates a new packet with the given facts. No data are configured or stored.
@@ -498,15 +499,6 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 				t, tlvsize, size)
 		}
 		switch t {
-		case tlvNULL, tlvUNKNOWNMYSTERY:
-			// Consume the remainder of the TLV
-			var d uint16
-			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
-				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
-					return result, err
-				}
-			}
-
 		case tlvTIMESTAMP: // timestamps without units
 			var x uint16
 			var y uint32
@@ -636,9 +628,14 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			result = append(result, offset)
 
 		default:
-			return result, fmt.Errorf("Unknown TLV type 0x%x", t)
+			// Consume the remainder of the TLV
+			var d uint16
+			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
+				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
+					return result, err
+				}
+			}
 		}
-
 		size -= 8 * tlvsize
 	}
 	return
