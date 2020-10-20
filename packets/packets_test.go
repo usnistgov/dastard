@@ -99,6 +99,15 @@ func counterToPacket(c *HeadCounter) []byte {
 	return buf.Bytes()
 }
 
+func tagToPacket(tag *PacketTag) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, byte(tlvTAG))
+	binary.Write(buf, binary.BigEndian, byte(1))
+	binary.Write(buf, binary.BigEndian, uint16(0))
+	binary.Write(buf, binary.BigEndian, tag)
+	return buf.Bytes()
+}
+
 func timestampToPacket(ts *PacketTimestamp) []byte {
 	buf := new(bytes.Buffer)
 	if ts.Rate == 0.0 {
@@ -234,6 +243,22 @@ func TestTLVs(t *testing.T) {
 	_, err = readTLV(bytes.NewReader(nonsense), 8)
 	if err != nil {
 		t.Errorf("readTLV() for invalid TLV should be ignored, but returns %v", err)
+	}
+
+	// Check packet tags.
+	tagval := PacketTag(0xda37a9d)
+	tagpacket := tagToPacket(&tagval)
+	tlvs, err = readTLV(bytes.NewReader(tagpacket), 8)
+	if err != nil {
+		t.Errorf("readTLV() for TAG TLV returns %v", err)
+	}
+	switch pt := tlvs[0].(type) {
+	case PacketTag:
+		if pt != tagval {
+			t.Errorf("PacketTag = 0x%x, want 0x%x", pt, tagval)
+		}
+	default:
+		t.Errorf("expected type PacketTag, got %v", pt)
 	}
 
 	// Try a channel offset

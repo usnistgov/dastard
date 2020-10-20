@@ -40,6 +40,7 @@ const maxPACKETLENGTH int = 8192
 // TLV types
 const (
 	tlvNULL           = byte(0)
+	tlvTAG            = byte(0x09)
 	tlvTIMESTAMP      = byte(0x11)
 	tlvCOUNTER        = byte(0x12)
 	tlvTIMESTAMPUNIT  = byte(0x13)
@@ -440,6 +441,9 @@ type PacketTimestamp struct {
 	Rate float64 // Count rate, in counts per second
 }
 
+// PacketTag represents a data type tag.
+type PacketTag uint32
+
 // MakeTimestamp creates a `PacketTimestamp` from data
 func MakeTimestamp(x uint16, y uint32, rate float64) *PacketTimestamp {
 	ts := new(PacketTimestamp)
@@ -499,6 +503,20 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 				t, tlvsize, size)
 		}
 		switch t {
+		case tlvTAG:
+			var x uint16
+			var tag PacketTag
+			if err = binary.Read(data, binary.BigEndian, &x); err != nil {
+				return result, err
+			}
+			if x != 0 {
+				return result, fmt.Errorf("TAG TLV has value 0x%x, expect 0", x)
+			}
+			if err = binary.Read(data, binary.BigEndian, &tag); err != nil {
+				return result, err
+			}
+			result = append(result, tag)
+
 		case tlvTIMESTAMP: // timestamps without units
 			var x uint16
 			var y uint32
