@@ -514,3 +514,62 @@ func TestExamplePackets(t *testing.T) {
 		// 	h.packetLength, h.format.rawfmt, loc)
 	}
 }
+
+
+func BenchmarkPacketEncoding(b *testing.B) {
+	Npackets := 2000
+	Nsamples := 2500
+	packets := make([]*Packet, Npackets)
+	payload := make([]int16, Nsamples)
+	for i:=0; i<Nsamples; i++ {
+		payload[i] = int16(i)
+	}
+	dims := make([]int16, 1)
+	dims[0] = int16(Nsamples)
+	// ctrpk := counterToPacket(&HeadCounter{5, 99})
+	// fmt.Printf("ctrpk: %v\n", ctrpk)
+
+	for i:=0; i<Npackets; i++ {
+		p := NewPacket(1, 20, uint32(1000+i), 1)
+		p.NewData(payload, dims)
+		// p.otherTLV = append(p.otherTLV, ctrpk)
+		// p.otherTLV = append(p.otherTLV, ctrpk)
+		packets[i] = p
+	}
+
+	for i := 0; i<b.N; i++ {
+		for j := 0; j<Npackets; j++ {
+			p := packets[i]
+			p.Bytes()
+		}
+	}
+}
+
+func BenchmarkPacketDecoding(b *testing.B) {
+	Npackets := 2000
+	Nsamples := 2500
+	payload := make([]int16, Nsamples)
+	for i:=0; i<Nsamples; i++ {
+		payload[i] = int16(i)
+	}
+	dims := make([]int16, 1)
+	dims[0] = int16(Nsamples)
+
+	var buf bytes.Buffer // A Buffer needs no initialization.
+
+	for i:=0; i<Npackets; i++ {
+		p := NewPacket(1, 20, uint32(1000+i), 1)
+		p.NewData(payload, dims)
+		buf.Write(p.Bytes())
+	}
+	fulltext := buf.Bytes()
+
+	for i := 0; i<b.N; i++ {
+		b2 := bytes.NewBuffer(fulltext)
+		for j := 0; j<Npackets; j++ {
+			if _, err := ReadPacket(b2); err != nil {
+				b.Errorf("Could not read packet with error %v", err)
+			}
+		}
+	}
+}
