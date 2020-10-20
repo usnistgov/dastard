@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math"
 	"reflect"
+	"github.com/usnistgov/dastard/getbytes"
 )
 
 // Packet represents the header of an Abaco data packet
@@ -281,14 +282,14 @@ func (p *Packet) Bytes() []byte {
 	if p.Data != nil && p.shape != nil && p.format != nil {
 		binary.Write(buf, binary.BigEndian, byte(tlvFORMAT))
 		binary.Write(buf, binary.BigEndian, byte(1))
-		fmt := []byte(p.format.rawfmt)
-		if len(fmt) > 6 {
-			fmt = fmt[:6]
+		rfmt := []byte(p.format.rawfmt)
+		if len(rfmt) > 6 {
+			rfmt = rfmt[:6]
 		}
-		for len(fmt) < 6 {
-			fmt = append(fmt, 0x0)
+		for len(rfmt) < 6 {
+			rfmt = append(rfmt, 0x0)
 		}
-		binary.Write(buf, binary.BigEndian, fmt)
+		binary.Write(buf, binary.BigEndian, rfmt)
 
 		binary.Write(buf, binary.BigEndian, byte(tlvSHAPE))
 		binary.Write(buf, binary.BigEndian, byte(1+len(p.shape.Sizes)/4))
