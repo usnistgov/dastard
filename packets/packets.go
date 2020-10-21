@@ -301,7 +301,17 @@ func (p *Packet) Bytes() []byte {
 			binary.Write(buf, binary.BigEndian, &zero)
 		}
 
-		binary.Write(buf, p.format.endian, p.Data)
+		if (p.format.endian == binary.BigEndian) {
+			binary.Write(buf, p.format.endian, p.Data)
+		} else {
+			switch d:= p.Data.(type) {
+			case []int16:
+				b := getbytes.FromSliceInt16(d)
+				buf.Write(b)
+			default:
+				binary.Write(buf, p.format.endian, p.Data)
+			}
+		}
 	}
 	return buf.Bytes()
 }
@@ -400,8 +410,15 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 			switch p.format.dtype[0] {
 			case reflect.Int16:
 				result := make([]int16, p.payloadLength/2)
-				if err = binary.Read(data, p.format.endian, result); err != nil {
-					return nil, err
+				if p.format.endian == binary.BigEndian {
+					if err = binary.Read(data, p.format.endian, result); err != nil {
+						return nil, err
+					}
+				} else {
+					bslice := getbytes.FromSliceInt16(result)
+					if _, err = io.ReadFull(data, bslice); err != nil {
+						return nil, err
+					}
 				}
 				p.Data = result
 
