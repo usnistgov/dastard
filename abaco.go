@@ -494,6 +494,7 @@ func (as *AbacoSource) Sample() error {
 
 	// Now sort the packets received into the right AbacoGroups
 	as.nchan = 0
+	as.groups = make(map[GroupIndex]*AbacoGroup)
 	for _ = range as.active {
 		results := <-sampleResults
 		now := time.Now()

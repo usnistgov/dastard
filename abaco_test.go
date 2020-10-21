@@ -253,6 +253,15 @@ func TestAbacoSource(t *testing.T) {
 	}
 	time.Sleep(250 * time.Millisecond)
 	source.Stop()
+	source.RunDoneWait()
+
+	// Start a 2nd time
+	if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
+		fmt.Printf("Result of Start(source,...): %s\n", err)
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	source.Stop()
 	close(abortSupply)
 	source.RunDoneWait()
 }
