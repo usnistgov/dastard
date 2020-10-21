@@ -10,6 +10,9 @@ go:
 
 go_import_path: github.com/usnistgov/dastard
 
+script:
+  - go test -v ./...
+
 addons:
   apt:
     sources:
