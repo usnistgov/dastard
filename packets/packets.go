@@ -41,6 +41,7 @@ const maxPACKETLENGTH int = 8192
 // TLV types
 const (
 	tlvNULL           = byte(0)
+	tlvTAG            = byte(0x09)
 	tlvTIMESTAMP      = byte(0x11)
 	tlvCOUNTER        = byte(0x12)
 	tlvTIMESTAMPUNIT  = byte(0x13)
@@ -48,6 +49,7 @@ const (
 	tlvSHAPE          = byte(0x22)
 	tlvCHANOFFSET     = byte(0x23)
 	tlvUNKNOWNMYSTERY = byte(0x29)
+	tlvINVALID        = byte(0xff)
 )
 
 // NewPacket generates a new packet with the given facts. No data are configured or stored.
@@ -457,6 +459,9 @@ type PacketTimestamp struct {
 	Rate float64 // Count rate, in counts per second
 }
 
+// PacketTag represents a data type tag.
+type PacketTag uint32
+
 // MakeTimestamp creates a `PacketTimestamp` from data
 func MakeTimestamp(x uint16, y uint32, rate float64) *PacketTimestamp {
 	ts := new(PacketTimestamp)
@@ -516,14 +521,19 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 				t, tlvsize, size)
 		}
 		switch t {
-		case tlvNULL, tlvUNKNOWNMYSTERY:
-			// Consume the remainder of the TLV
-			var d uint16
-			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
-				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
-					return result, err
-				}
+		case tlvTAG:
+			var x uint16
+			var tag PacketTag
+			if err = binary.Read(data, binary.BigEndian, &x); err != nil {
+				return result, err
 			}
+			if x != 0 {
+				return result, fmt.Errorf("TAG TLV has value 0x%x, expect 0", x)
+			}
+			if err = binary.Read(data, binary.BigEndian, &tag); err != nil {
+				return result, err
+			}
+			result = append(result, tag)
 
 		case tlvTIMESTAMP: // timestamps without units
 			var x uint16
@@ -654,9 +664,14 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			result = append(result, offset)
 
 		default:
-			return result, fmt.Errorf("Unknown TLV type 0x%x", t)
+			// Consume the remainder of the TLV
+			var d uint16
+			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
+				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
+					return result, err
+				}
+			}
 		}
-
 		size -= 8 * tlvsize
 	}
 	return
