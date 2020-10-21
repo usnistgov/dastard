@@ -61,32 +61,39 @@ func TestHeader(t *testing.T) {
 	}
 
 	// Make sure incomplete headers fail
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{})); err2 == nil {
-		t.Errorf("ReadPacket should fail if version cannot be read")
-	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if header length cannot be read")
-	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 15})); err2 == nil {
+	hdr := make([]byte, 16)
+	if _, err2 := ReadPacket(bytes.NewReader(hdr[:5])); err2 == nil {
 		t.Errorf("ReadPacket should fail if header length < 16")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16})); err2 == nil {
-		t.Errorf("ReadPacket should fail if payload length cannot be read")
+	hdr[1] = 9
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if header stated length < 16")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if magic cannot be read")
+	hdr[1] = 16
+	hdr[3] = 7
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if payload length is not a multiple of 8")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 1, 2, 3, 4})); err2 == nil {
+	hdr[3] = 16
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
 		t.Errorf("ReadPacket should fail if magic is wrong")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff})); err2 == nil {
-		t.Errorf("ReadPacket should fail if source ID cannot be read")
+	hdr[4] = 0x81
+	hdr[5] = 0x0b
+	hdr[7] = 0xff
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 != nil {
+		t.Errorf("ReadPacket should failed on valid header")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if sequence number cannot be read")
+
+	hdr[1] = 24
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if header stated length is longer than actual")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 9, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0, 0, 0, 0, 0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if payload length is not a multiple of 8")
+
+	// Now add a failing TLV
+	hdr = append(hdr, make([]byte, 8)...)
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if header stated length is longer than actual")
 	}
 }
 
