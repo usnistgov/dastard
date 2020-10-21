@@ -352,38 +352,33 @@ func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
 
 // ReadPacket returns a Packet read from an io.reader
 func ReadPacket(data io.Reader) (p *Packet, err error) {
-	p = new(Packet)
-	if err = binary.Read(data, binary.BigEndian, &p.version); err != nil {
-		return nil, err
-	}
-	if err = binary.Read(data, binary.BigEndian, &p.headerLength); err != nil {
-		return nil, err
-	}
 	const MINLENGTH uint8 = 16
-	if p.headerLength < MINLENGTH {
-		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
+	hdr := make([]byte, MINLENGTH)
+	if _, err = io.ReadFull(data, hdr); err != nil {
+		return nil, err
 	}
 
-	if err = binary.Read(data, binary.BigEndian, &p.payloadLength); err != nil {
-		return nil, err
+	p = new(Packet)
+	p.version = hdr[0]
+	p.headerLength = hdr[1]
+	p.payloadLength = binary.BigEndian.Uint16(hdr[2:])
+	if p.headerLength < MINLENGTH {
+		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
 	}
 	if p.payloadLength%8 != 0 {
 		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", p.payloadLength)
 	}
 	p.packetLength = int(p.headerLength) + int(p.payloadLength)
 
-	var magic uint32
-	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
-		return nil, err
-	}
+	magic := binary.BigEndian.Uint32(hdr[4:])
+	p.sourceID = binary.BigEndian.Uint32(hdr[8:])
+	p.sequenceNumber = binary.BigEndian.Uint32(hdr[12:])
 	if magic != packetMAGIC {
 		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, packetMAGIC)
 	}
 
-	if err = binary.Read(data, binary.BigEndian, &p.sourceID); err != nil {
-		return nil, err
-	}
-	if err = binary.Read(data, binary.BigEndian, &p.sequenceNumber); err != nil {
+	tlvdata := make([]byte, p.headerLength-MINLENGTH)
+	if _, err = io.ReadFull(data, tlvdata); err != nil {
 		return nil, err
 	}
 	allTLV, err := readTLV(data, p.headerLength-MINLENGTH)
