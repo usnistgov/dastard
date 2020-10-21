@@ -11,6 +11,43 @@ import (
 	// "github.com/davecgh/go-spew/spew"
 )
 
+func TestByteSwap(t *testing.T) {
+	v1a := []int16{0x0102, 0x0a0b, 0x004f}
+	v1b := []int16{0x0201, 0x0b0a, 0x4f00}
+	v2a := []int32{0x01020304, 0x0a0b0c0d, 0x0000ff1f}
+	v2b := []int32{0x04030201, 0x0d0c0b0a, 0x1fff0000}
+	v3a := []int64{0x0102030405060708, 0x08090a0b0c0d0e0f, 0x0123456789abcd0f}
+	v3b := []int64{0x0807060504030201, 0x0f0e0d0c0b0a0908, 0x0fcdab8967452301}
+	if err:= byteSwap(v1a); err != nil {
+		t.Errorf("byteSwap(%T) error: %v", v1a, err)
+	}
+	if err:= byteSwap(v2a); err != nil {
+		t.Errorf("byteSwap(%T) error: %v", v2a, err)
+	}
+	if err:= byteSwap(v3a); err != nil {
+		t.Errorf("byteSwap(%T) error: %v", v3a, err)
+	}
+	for i, v := range v1a {
+		if v != v1b[i] {
+			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v1b, i, v, v1b[i])
+		}
+	}
+	for i, v := range v2a {
+		if v != v2b[i] {
+			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v2b, i, v, v2b[i])
+		}
+	}
+	for i, v := range v3a {
+		if v != v3b[i] {
+			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v3b, i, v, v3b[i])
+		}
+	}
+	if err:= byteSwap([]float64{2.5, 3.5}); err == nil {
+		t.Errorf("byteSwap([]float64) should error, did not.")
+	}
+}
+
+
 func TestHeader(t *testing.T) {
 	hdr1 := NewPacket(0x11, 0x44, 0x55, 0)
 	data := hdr1.Bytes()

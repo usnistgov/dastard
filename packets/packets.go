@@ -350,6 +350,62 @@ func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
 	return p, nil
 }
 
+func byteSwap2(b []byte, nb int) error {
+	switch nb {
+	case 2:
+		for i:=0; i<len(b); i+=nb {
+			b[i], b[i+1] = b[i+1], b[i]
+		}
+	case 4:
+		for i:=0; i<len(b); i+=nb {
+			b[i], b[i+3] = b[i+3], b[i]
+			b[i+1], b[i+2] = b[i+2], b[i+1]
+		}
+	case 8:
+		for i:=0; i<len(b); i+=nb {
+			b[i], b[i+7] = b[i+7], b[i]
+			b[i+1], b[i+6] = b[i+6], b[i+1]
+			b[i+2], b[i+5] = b[i+5], b[i+2]
+			b[i+3], b[i+4] = b[i+4], b[i+3]
+		}
+	default:
+		return fmt.Errorf("byteSwap2(b, nb) with nb=%d not allowed", nb)
+	}
+	return nil
+}
+
+func byteSwap(vectorIn interface{}) error {
+	switch v := vectorIn.(type) {
+	case []uint8:
+	case []int8:
+		return nil
+	case []uint16:
+		b := getbytes.FromSliceUint16(v)
+		return byteSwap2(b, 2)
+	case []int16:
+		b := getbytes.FromSliceInt16(v)
+		return byteSwap2(b, 2)
+
+	case []uint32:
+		b := getbytes.FromSliceUint32(v)
+		return byteSwap2(b, 4)
+	case []int32:
+		b := getbytes.FromSliceInt32(v)
+		return byteSwap2(b, 4)
+
+	case []uint64:
+		b := getbytes.FromSliceUint64(v)
+		return byteSwap2(b, 8)
+	case []int64:
+		b := getbytes.FromSliceInt64(v)
+		return byteSwap2(b, 8)
+
+	default:
+		return fmt.Errorf("Cannot byte swap object of type %T", v)
+	}
+	return nil
+}
+
 // ReadPacket returns a Packet read from an io.reader
 func ReadPacket(data io.Reader) (p *Packet, err error) {
 	const MINLENGTH uint8 = 16
@@ -407,34 +463,35 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 			switch p.format.dtype[0] {
 			case reflect.Int16:
 				result := make([]int16, p.payloadLength/2)
-				if p.format.endian == binary.BigEndian {
-					if err = binary.Read(data, p.format.endian, result); err != nil {
-						return nil, err
-					}
-				} else {
-					bslice := getbytes.FromSliceInt16(result)
-					if _, err = io.ReadFull(data, bslice); err != nil {
-						return nil, err
-					}
+				bslice := getbytes.FromSliceInt16(result)
+				if _, err = io.ReadFull(data, bslice); err != nil {
+					return nil, err
 				}
 				p.Data = result
 
 			case reflect.Int32:
 				result := make([]int32, p.payloadLength/4)
-				if err = binary.Read(data, p.format.endian, result); err != nil {
+				bslice := getbytes.FromSliceInt32(result)
+				if _, err = io.ReadFull(data, bslice); err != nil {
 					return nil, err
 				}
 				p.Data = result
 
 			case reflect.Int64:
 				result := make([]int64, p.payloadLength/8)
-				if err = binary.Read(data, p.format.endian, result); err != nil {
+				bslice := getbytes.FromSliceInt64(result)
+				if _, err = io.ReadFull(data, bslice); err != nil {
 					return nil, err
 				}
 				p.Data = result
 
 			default:
 				return nil, fmt.Errorf("Did not know how to read type %v", p.format.dtype)
+			}
+			if p.format.endian == binary.BigEndian {
+				if err = byteSwap(p.Data); err != nil {
+					return nil, err
+				}
 			}
 		} else {
 			result := make([]byte, p.payloadLength)
