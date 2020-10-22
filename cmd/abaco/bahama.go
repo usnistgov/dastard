@@ -150,6 +150,21 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	const counterRate = 1e8 // counts per second
 	countsPerSample := uint64(counterRate/sampleRate + 0.5)
 
+	// Unfortunately, repetition after Nsamp values might take longer than we want at low sampleRate.
+	// Strategy: break one rep of data into N bursts, which will be sent ~10 ms apart.
+	nbursts := int(repeatTime+5*time.Millisecond) / int(10*time.Millisecond)
+	if nbursts <= 0 {
+		nbursts = 1
+	}
+	burstTime := repeatTime / time.Duration(nbursts)
+	TotalNvalues := Nchan*Nsamp  // one rep has this many values
+	BurstNvalues := TotalNvalues/nbursts
+	BurstNvalues -= BurstNvalues % valuesPerPacket // bursts should have integer number of packets
+	for BurstNvalues*nbursts < TotalNvalues {  // last burst should be shorter, not longer than the others.
+		BurstNvalues += valuesPerPacket
+	}
+	fmt.Printf("Breaking data into %d bursts with %d values each, burst time %v\n", nbursts, BurstNvalues, burstTime)
+
 	randsource := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// Raw packets
@@ -207,27 +222,34 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	}
 
 	dims := []int16{int16(Nchan)}
-	timer := time.NewTicker(repeatTime)
+	timer := time.NewTicker(burstTime)
 	timeCounter := uint64(0)
 	for {
-		select {
-		case <-cancel:
-			close(packetchan)
-			return nil
-		case <-timer.C:
-			for i := 0; i < Nchan*Nsamp; i += valuesPerPacket {
-				// Must be careful: the last iteration might have fewer samples than the others.
-				lastsamp := i + valuesPerPacket
-				if lastsamp > Nchan*Nsamp {
-					lastsamp = Nchan * Nsamp
+		for burstnum := 0; burstnum < nbursts; burstnum++ {
+			select {
+			case <-cancel:
+				close(packetchan)
+				return nil
+			case <-timer.C:
+				lastvalue := (burstnum+1)*BurstNvalues
+				if TotalNvalues < lastvalue {
+					lastvalue = TotalNvalues
 				}
-				packet.NewData(d[i:lastsamp], dims)
-				ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
-				packet.SetTimestamp(ts)
-				if control.dropfrac == 0.0 || control.dropfrac < randsource.Float64() {
-					packetchan <- packet.Bytes()
+
+				for i := burstnum*BurstNvalues; i < lastvalue; i += valuesPerPacket {
+					// Must be careful: the last iteration might have fewer samples than the others.
+					lastsamp := i + valuesPerPacket
+					if lastsamp > TotalNvalues {
+						lastsamp = TotalNvalues
+					}
+					if control.dropfrac == 0.0 || control.dropfrac < randsource.Float64() {
+						packet.NewData(d[i:lastsamp], dims)
+						ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
+						packet.SetTimestamp(ts)
+						packetchan <- packet.Bytes()
+					}
+					timeCounter += countsPerSample * uint64((lastsamp-i)/Nchan)
 				}
-				timeCounter += countsPerSample * uint64((lastsamp-i)/Nchan)
 			}
 		}
 	}
