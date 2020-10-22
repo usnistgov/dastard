@@ -15,6 +15,8 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
+const packetAlign = 8192 // Packets go into the ring buffer at this stride (bytes)
+
 func clearRings(nclear int) error {
 	for cardnum := 0; cardnum < nclear; cardnum++ {
 		ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
@@ -32,8 +34,10 @@ func clearRings(nclear int) error {
 type BahamaControl struct {
 	Nchan      int
 	Ngroups    int
+	Nrings     int
 	Chan0      int // channel number of first channel
 	chanGaps   int // how many channel numbers to skip between groups/rings
+	ringsize   int // Bytes per ring
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
@@ -42,6 +46,55 @@ type BahamaControl struct {
 	noiselevel float64
 	samplerate float64
 	dropfrac   float64
+}
+
+// Report prints the Bahama configuration to the terminal.
+func (control *BahamaControl) Report() {
+	fmt.Println("Samples per second:       ", control.samplerate)
+	fmt.Printf("Drop packets randomly:     %.2f%%\n", 100.0*control.dropfrac)
+	fmt.Println("Number of ring buffers:   ", control.Nrings)
+	fmt.Println("Size of each ring:        ", control.ringsize)
+	fmt.Println("Channels per ring:        ", control.Nchan)
+	fmt.Println("Channel groups per ring:  ", control.Ngroups)
+	fmt.Println("Channel # of 1st chan:    ", control.Chan0)
+	if control.Ngroups > 1 || control.Nrings > 1 {
+		fmt.Println("Skip # btwn groups/rings: ", control.chanGaps)
+	}
+	if control.Ngroups > 1 {
+		if control.stagger {
+			control.interleave = true
+		}
+	} else {
+		if control.stagger || control.interleave {
+			fmt.Println("Warning: -stagger and -interleave arguments are ignored with only 1 channel group")
+		}
+		control.stagger = false
+		control.interleave = false
+	}
+	if control.stagger {
+		fmt.Println("  Packets from channel groups are staggered so each group is sometimes ahead of the others")
+	} else if control.interleave {
+		fmt.Println("  Packets from channel groups are interleaved regularly")
+	}
+
+	if !(control.noiselevel > 0.0 || control.sawtooth || control.pulses || control.sinusoid) {
+		control.sawtooth = true
+	}
+	var sources []string
+	if control.noiselevel > 0.0 {
+		sources = append(sources, "noise")
+	}
+	if control.sawtooth {
+		sources = append(sources, "sawtooth")
+	}
+	if control.pulses {
+		sources = append(sources, "pulses")
+	}
+	if control.sinusoid {
+		sources = append(sources, "sinusoids")
+	}
+	fmt.Printf("Data will be the sum of these source types: %s.\n", strings.Join(sources, "+"))
+	fmt.Println("Type Ctrl-C to stop generating Abaco-style data.")
 }
 
 // interleavePackets takes packets from the N channels `inchans` and puts them onto `outchan` in a
@@ -180,8 +233,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	}
 }
 
-func ringwriter(cardnum int, packetchan chan []byte) error {
-	const packetAlign = 8192 // Packets go into the ring buffer at this stride (bytes)
+func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
@@ -190,8 +242,8 @@ func ringwriter(cardnum int, packetchan chan []byte) error {
 		return fmt.Errorf("Could not open ringbuffer %d: %s", cardnum, err)
 	}
 	ring.Unlink() // in case it exists from before
-	if err = ring.Create(256 * packetAlign); err != nil {
-		return fmt.Errorf("Failed RingBuffer.Create: %s", err)
+	if err = ring.Create(ringsize); err != nil {
+		return fmt.Errorf("Failed RingBuffer.Create(%d): %s", ringsize, err)
 	}
 	fmt.Printf("Generating data in shm:%s\n", ringname)
 
@@ -265,64 +317,31 @@ func main() {
 	coerceFloat(samplerate, 1000, 500000)
 	coerceFloat(droppct, 0, 100)
 
-	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
-		Chan0: *chan0, chanGaps: *changaps,
+	// Compute the size of each ring buffer. Let it be big enough to hold 0.5 seconds of data
+	// or 500 packets, and be a multiple of packetAlign.
+	ringlasts := 0.5  // seconds
+	byterate := 2.0*float64(*nchan)*(*samplerate)
+	ringsize := int(byterate*ringlasts) + packetAlign
+	ringsize -= ringsize % packetAlign
+	if ringsize < 500*packetAlign {
+		ringsize = 500*packetAlign
+	}
+
+	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups, Nrings: *nring,
+		Chan0: *chan0, chanGaps: *changaps, ringsize: ringsize,
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses,
 		sinusoid: *usesine, noiselevel: *noiselevel,
 		samplerate: *samplerate, dropfrac: (*droppct) / 100.0}
 
-	fmt.Println("Samples per second:       ", *samplerate)
-	fmt.Printf("Drop packets randomly:     %.2f%%\n", *droppct)
-	fmt.Println("Number of ring buffers:   ", *nring)
-	fmt.Println("Channels per ring:        ", control.Nchan)
-	fmt.Println("Channel groups per ring:  ", control.Ngroups)
-	fmt.Println("Channel # of 1st chan:    ", control.Chan0)
-	if control.Ngroups > 1 || *nring > 1 {
-		fmt.Println("Skip # btwn groups/rings: ", control.chanGaps)
-	}
-	if control.Ngroups > 1 {
-		if control.stagger {
-			control.interleave = true
-		}
-	} else {
-		if control.stagger || control.interleave {
-			fmt.Println("Warning: -stagger and -interleave arguments are ignored with only 1 channel group")
-		}
-		control.stagger = false
-		control.interleave = false
-	}
-	if control.stagger {
-		fmt.Println("  Packets from channel groups are staggered so each group is sometimes ahead of the others")
-	} else if control.interleave {
-		fmt.Println("  Packets from channel groups are interleaved regularly")
-	}
-
-	if !(control.noiselevel > 0.0 || control.sawtooth || control.pulses || control.sinusoid) {
-		control.sawtooth = true
-	}
-	var sources []string
-	if control.noiselevel > 0.0 {
-		sources = append(sources, "noise")
-	}
-	if control.sawtooth {
-		sources = append(sources, "sawtooth")
-	}
-	if control.pulses {
-		sources = append(sources, "pulses")
-	}
-	if control.sinusoid {
-		sources = append(sources, "sinusoids")
-	}
-	fmt.Printf("Data will be the sum of these source types: %s.\n", strings.Join(sources, "+"))
-	fmt.Println("Type Ctrl-C to stop generating Abaco-style data.")
+	control.Report()
 
 	cancel := make(chan os.Signal)
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	ch0 := control.Chan0
 	for cardnum := 0; cardnum < *nring; cardnum++ {
 		packetchan := make(chan []byte)
-		if err := ringwriter(cardnum, packetchan); err != nil {
+		if err := ringwriter(cardnum, packetchan, ringsize); err != nil {
 			fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
 			continue
 		}
