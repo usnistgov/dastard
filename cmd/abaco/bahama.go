@@ -163,7 +163,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	for BurstNvalues*nbursts < TotalNvalues {  // last burst should be shorter, not longer than the others.
 		BurstNvalues += valuesPerPacket
 	}
-	fmt.Printf("Breaking data into %d bursts with %d values each, burst time %v\n", nbursts, BurstNvalues, burstTime)
+	// fmt.Printf("Breaking data into %d bursts with %d values each, burst time %v\n", nbursts, BurstNvalues, burstTime)
 
 	randsource := rand.New(rand.NewSource(time.Now().UnixNano()))
 
