@@ -239,9 +239,16 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 		panic(msg)
 	}
 
-	for i, unwrap := range group.unwrap {
-		unwrap.UnwrapInPlace(&datacopies[i])
+	// Apply phase unwrapping to each channel's data. Do in parallel to use multiple processors.
+	var wg sync.WaitGroup
+	for i, unwrapper := range group.unwrap {
+		wg.Add(1)
+		go func(up *PhaseUnwrapper, dc *[]RawType) {
+			defer wg.Done()
+			up.UnwrapInPlace(dc)
+		}(unwrapper, &datacopies[i])
 	}
+	wg.Wait()
 
 	return totalBytes
 }
