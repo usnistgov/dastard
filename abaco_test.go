@@ -275,7 +275,7 @@ func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 
 	copies := make([][]RawType, nchan)
 	for i:=0; i<nchan; i++ {
-		copies[i] = make([]RawType, 0, nframes)
+		copies[i] = make([]RawType, nframes)
 	}
 	const stride = 4096/nchan
 	dims := []int16{nchan}

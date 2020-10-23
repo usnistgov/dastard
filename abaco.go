@@ -189,6 +189,9 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 	// Within a slice of values, handle all channels for frame 0, then all for frame 1...
 	totalBytes := 0
 	packetsConsumed := 0
+	samplesConsumed := 0
+	nchan := group.nchan
+
 	for _, p := range group.queue {
 		gidx := gIndex(p)
 		if gidx != group.index {
@@ -201,16 +204,20 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 		if frameAvail > frames {
 			break
 		}
-
 		frames -= frameAvail
 		packetsConsumed++
+
 		switch d := p.Data.(type) {
 		case []int16:
-			// Reading vector d in order was faster than the reverse.
-			for j, val := range d {
-				idx := j % group.nchan
-				datacopies[idx] = append(datacopies[idx], RawType(val))
+			// Reading vector d in channel order was faster than in packet-data order.
+			nsamp := len(d)/nchan
+			for idx, dc := range datacopies {
+				for i, j := 0, idx; i<nsamp; i++ {
+					dc[i+samplesConsumed] = RawType(d[j])
+					j += nchan
+				}
 			}
+			samplesConsumed += nsamp
 			totalBytes += 2 * len(d)
 
 		case []int32:
@@ -218,10 +225,15 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 			// 12 bits into the 16-bit datacopies[] slice. If we need a
 			// permanent solution to 32-bit raw data, then it might need to be flexible
 			// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
-			for j, val := range d {
-				idx := j % group.nchan
-				datacopies[idx] = append(datacopies[idx], RawType(val/0x1000))
+
+			nsamp := len(d)/nchan
+			for idx, dc := range datacopies {
+				for i, j := 0, idx; i<nsamp; i++ {
+					dc[i+samplesConsumed] = RawType(d[j]/0x1000)
+					j += nchan
+				}
 			}
+			samplesConsumed += nsamp
 			totalBytes += 4 * len(d)
 
 		default:
@@ -684,10 +696,10 @@ awaitmoredata:
 				continue awaitmoredata
 			}
 
-			// Demux data into this slice of slices of RawType (reserve capacity=framesToDeMUX)
+			// Demux data into this slice of slices of RawType
 			datacopies := make([][]RawType, as.nchan)
 			for i := 0; i < as.nchan; i++ {
-				datacopies[i] = make([]RawType, 0, framesToDeMUX)
+				datacopies[i] = make([]RawType, framesToDeMUX)
 			}
 			chanProcessed := 0
 			bytesProcessed := 0
