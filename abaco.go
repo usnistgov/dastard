@@ -660,6 +660,9 @@ awaitmoredata:
 				}
 				as.distributePackets(allPackets, lastSampleTime)
 			}
+			// var t1, t2 time.Time
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to distributePackets: %v\n", t2.Sub(t1))
 
 			// Align the first sample in each group. Do this by checking the first global sequenceNumber
 			// in each group and trimming leading packets if any precede the others.
@@ -682,6 +685,8 @@ awaitmoredata:
 					firstSn = sn0
 				}
 			}
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to fillMissingPackets: %v\n", t2.Sub(t1))
 
 			// For any queue that starts before maxsn0, trim the leading packets. Learn the # of samples.
 			framesToDeMUX := math.MaxInt64
@@ -695,6 +700,8 @@ awaitmoredata:
 			if framesToDeMUX <= 0 {
 				continue awaitmoredata
 			}
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to trimPacketsBefore: %v\n", t2.Sub(t1))
 
 			// Demux data into this slice of slices of RawType
 			datacopies := make([][]RawType, as.nchan)
@@ -709,6 +716,8 @@ awaitmoredata:
 				bytesProcessed += group.demuxData(dc, framesToDeMUX)
 				chanProcessed += group.nchan
 			}
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to demuxData: %v\n", t2.Sub(t1))
 
 			timeDiff := lastSampleTime.Sub(as.lastread)
 			if timeDiff > 2*as.readPeriod {

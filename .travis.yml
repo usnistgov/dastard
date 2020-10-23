@@ -1,6 +1,6 @@
 language: go
 
-dist: xenial
+dist: bionic
 sudo: required
 
 go:
@@ -16,7 +16,7 @@ script:
 addons:
   apt:
     sources:
-    - sourceline: 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/ ./'
-      key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_16.04/Release.key'
+    - sourceline: 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_18.04/ ./'
+      key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_18.04/Release.key'
     packages:
     - libczmq-dev libzmq3-dev libsodium-dev
