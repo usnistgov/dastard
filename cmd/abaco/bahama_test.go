@@ -104,8 +104,15 @@ func TestGenerate(t *testing.T) {
 		close(cancel)
 	}()
 	control := BahamaControl{Nchan: 4, Ngroups: 1, sinusoid: true, sawtooth: true, pulses: true,
-		noiselevel: 5.0, samplerate: 100000}
+		noiselevel: 5.0, samplerate: 100000, ringsize: 1000000}
+
+	// Keep the data channel drained...
 	ch := make(chan []byte)
+	go func() {
+		for {
+			<-ch
+		}
+	}()
 	err := generateData(control.Nchan, 0, ch, cancel, control)
 	if err != nil {
 		t.Errorf("generateData() returned %s", err.Error())

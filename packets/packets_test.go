@@ -11,6 +11,43 @@ import (
 	// "github.com/davecgh/go-spew/spew"
 )
 
+func TestByteSwap(t *testing.T) {
+	v1a := []int16{0x0102, 0x0a0b, 0x004f}
+	v1b := []int16{0x0201, 0x0b0a, 0x4f00}
+	v2a := []int32{0x01020304, 0x0a0b0c0d, 0x0000ff1f}
+	v2b := []int32{0x04030201, 0x0d0c0b0a, 0x1fff0000}
+	v3a := []int64{0x0102030405060708, 0x08090a0b0c0d0e0f, 0x0123456789abcd0f}
+	v3b := []int64{0x0807060504030201, 0x0f0e0d0c0b0a0908, 0x0fcdab8967452301}
+	if err:= byteSwap(v1a); err != nil {
+		t.Errorf("byteSwap(%T) error: %v", v1a, err)
+	}
+	if err:= byteSwap(v2a); err != nil {
+		t.Errorf("byteSwap(%T) error: %v", v2a, err)
+	}
+	if err:= byteSwap(v3a); err != nil {
+		t.Errorf("byteSwap(%T) error: %v", v3a, err)
+	}
+	for i, v := range v1a {
+		if v != v1b[i] {
+			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v1b, i, v, v1b[i])
+		}
+	}
+	for i, v := range v2a {
+		if v != v2b[i] {
+			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v2b, i, v, v2b[i])
+		}
+	}
+	for i, v := range v3a {
+		if v != v3b[i] {
+			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v3b, i, v, v3b[i])
+		}
+	}
+	if err:= byteSwap([]float64{2.5, 3.5}); err == nil {
+		t.Errorf("byteSwap([]float64) should error, did not.")
+	}
+}
+
+
 func TestHeader(t *testing.T) {
 	hdr1 := NewPacket(0x11, 0x44, 0x55, 0)
 	data := hdr1.Bytes()
@@ -61,32 +98,39 @@ func TestHeader(t *testing.T) {
 	}
 
 	// Make sure incomplete headers fail
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{})); err2 == nil {
-		t.Errorf("ReadPacket should fail if version cannot be read")
-	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if header length cannot be read")
-	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 15})); err2 == nil {
+	hdr := make([]byte, 16)
+	if _, err2 := ReadPacket(bytes.NewReader(hdr[:5])); err2 == nil {
 		t.Errorf("ReadPacket should fail if header length < 16")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16})); err2 == nil {
-		t.Errorf("ReadPacket should fail if payload length cannot be read")
+	hdr[1] = 9
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if header stated length < 16")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if magic cannot be read")
+	hdr[1] = 16
+	hdr[3] = 7
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if payload length is not a multiple of 8")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 1, 2, 3, 4})); err2 == nil {
+	hdr[3] = 16
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
 		t.Errorf("ReadPacket should fail if magic is wrong")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff})); err2 == nil {
-		t.Errorf("ReadPacket should fail if source ID cannot be read")
+	hdr[4] = 0x81
+	hdr[5] = 0x0b
+	hdr[7] = 0xff
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 != nil {
+		t.Errorf("ReadPacket should failed on valid header")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 0, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if sequence number cannot be read")
+
+	hdr[1] = 24
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if header stated length is longer than actual")
 	}
-	if _, err2 := ReadPacket(bytes.NewReader([]byte{0, 16, 0, 9, 0x81, 0xb, 0, 0xff, 0, 0, 0, 0, 0, 0, 0, 0})); err2 == nil {
-		t.Errorf("ReadPacket should fail if payload length is not a multiple of 8")
+
+	// Now add a failing TLV
+	hdr = append(hdr, make([]byte, 8)...)
+	if _, err2 := ReadPacket(bytes.NewReader(hdr)); err2 == nil {
+		t.Errorf("ReadPacket should fail if header stated length is longer than actual")
 	}
 }
 
@@ -168,9 +212,9 @@ func TestTLVs(t *testing.T) {
 	// Try a counter
 	c := HeadCounter{1234, 987654321}
 	cp := counterToPacket(&c)
-	tlvs, err := readTLV(bytes.NewReader(cp), 8)
+	tlvs, err := parseTLV(cp)
 	if err != nil {
-		t.Errorf("readTLV() for HeadCounter returns %v", err)
+		t.Errorf("parseTLV() for HeadCounter returns: %v", err)
 	}
 	switch hc := tlvs[0].(type) {
 	case *HeadCounter:
@@ -188,9 +232,9 @@ func TestTLVs(t *testing.T) {
 	// Try a timestamp, with and without units
 	ts := PacketTimestamp{0x0000030405060708, 0}
 	tp := timestampToPacket(&ts)
-	tlvs, err = readTLV(bytes.NewReader(tp), 8)
+	tlvs, err = parseTLV(tp)
 	if err != nil {
-		t.Errorf("readTLV() for PacketTimestamp returns %v", err)
+		t.Errorf("parseTLV() for PacketTimestamp returns %v", err)
 	}
 	switch hts := tlvs[0].(type) {
 	case *PacketTimestamp:
@@ -204,9 +248,9 @@ func TestTLVs(t *testing.T) {
 	ts = PacketTimestamp{0x0102030405060708, 0}
 	ts.Rate = 256e6
 	tp = timestampToPacket(&ts)
-	tlvs, err = readTLV(bytes.NewReader(tp), 16)
+	tlvs, err = parseTLV(tp)
 	if err != nil {
-		t.Errorf("readTLV() for PacketTimestamp returns %v", err)
+		t.Errorf("parseTLV() for PacketTimestamp returns %v", err)
 	}
 	switch hts := tlvs[0].(type) {
 	case *PacketTimestamp:
@@ -219,9 +263,9 @@ func TestTLVs(t *testing.T) {
 	tryTSNbits := []uint8{64, 48, 32, 16, 8}
 	for _, nbits := range tryTSNbits {
 		tp[2] = nbits
-		tlvs, err = readTLV(bytes.NewReader(tp), 16)
+		tlvs, err = parseTLV(tp)
 		if err != nil {
-			t.Errorf("readTLV() for PacketTimestamp returns %v", err)
+			t.Errorf("parseTLV() for PacketTimestamp returns %v", err)
 		}
 		switch hts := tlvs[0].(type) {
 		case *PacketTimestamp:
@@ -234,23 +278,23 @@ func TestTLVs(t *testing.T) {
 		}
 	}
 	tp[2] = 66
-	if _, err = readTLV(bytes.NewReader(tp), 16); err == nil {
-		t.Errorf("readTLV() for PacketTimestamp succeeds with %d bits (>64), should fail", tp[2])
+	if _, err = parseTLV(tp); err == nil {
+		t.Errorf("parseTLV() for PacketTimestamp succeeds with %d bits (>64), should fail", tp[2])
 	}
 
 	// Try a nonsensical TLV type. Should not be an error
 	nonsense := nonsensePacket()
-	_, err = readTLV(bytes.NewReader(nonsense), 8)
+	_, err = parseTLV(nonsense)
 	if err != nil {
-		t.Errorf("readTLV() for invalid TLV should be ignored, but returns %v", err)
+		t.Errorf("parseTLV() for invalid TLV should be ignored, but returns %v", err)
 	}
 
 	// Check packet tags.
 	tagval := PacketTag(0xda37a9d)
 	tagpacket := tagToPacket(&tagval)
-	tlvs, err = readTLV(bytes.NewReader(tagpacket), 8)
+	tlvs, err = parseTLV(tagpacket)
 	if err != nil {
-		t.Errorf("readTLV() for TAG TLV returns %v", err)
+		t.Errorf("parseTLV() for TAG TLV returns %v", err)
 	}
 	switch pt := tlvs[0].(type) {
 	case PacketTag:
@@ -264,9 +308,9 @@ func TestTLVs(t *testing.T) {
 	// Try a channel offset
 	offset := headChannelOffset(13579)
 	op := chanOffsetToPacket(offset)
-	tlvs, err = readTLV(bytes.NewReader(op), 8)
+	tlvs, err = parseTLV(op)
 	if err != nil {
-		t.Errorf("readTLV() for headChannelOffset returns %v", err)
+		t.Errorf("parseTLV() for headChannelOffset returns %v", err)
 	}
 	switch hoff := tlvs[0].(type) {
 	case headChannelOffset:
@@ -279,12 +323,12 @@ func TestTLVs(t *testing.T) {
 
 	// Try a payload format TLV
 	x := []byte{tlvFORMAT, 1, '>', 'i', 'i', 0, 0, 0}
-	tlvs, err = readTLV(bytes.NewReader(x), 8)
+	tlvs, err = parseTLV(x)
 	if err != nil {
-		t.Errorf("readTLV() for headPayloadFormat returns %v", err)
+		t.Errorf("parseTLV() for headPayloadFormat returns %v", err)
 	}
 	if len(tlvs) != 1 {
-		t.Errorf("readTLV() for headPayloadFormat returns array length %d, want 1", len(tlvs))
+		t.Errorf("parseTLV() for headPayloadFormat returns array length %d, want 1", len(tlvs))
 	}
 	switch hpf := tlvs[0].(type) {
 	case *headPayloadFormat:
@@ -296,12 +340,12 @@ func TestTLVs(t *testing.T) {
 		t.Errorf("expected type headPayloadFormat, got %v", hpf)
 	}
 	x[4] = 'Q'
-	if _, err = readTLV(bytes.NewReader(x), 8); err != nil {
-		t.Errorf("Error on readTLV with mixed format characters: %v", err)
+	if _, err = parseTLV(x); err != nil {
+		t.Errorf("Error on parseTLV with mixed format characters: %v", err)
 	}
 	x[3] = 'a'
-	if _, err = readTLV(bytes.NewReader(x), 8); err == nil {
-		t.Errorf("Expect error on readTLV with unknown format character")
+	if _, err = parseTLV(x); err == nil {
+		t.Errorf("Expect error on parseTLV with unknown format character")
 	}
 
 	// Check all types
@@ -325,25 +369,25 @@ func TestTLVs(t *testing.T) {
 	}
 	for _, test := range tests {
 		x[3] = test.tag
-		tlvs, err = readTLV(bytes.NewReader(x), 8)
+		tlvs, err = parseTLV(x)
 		if err != nil {
-			t.Errorf("readTLV failed on format string '%s'", string(x[2:]))
+			t.Errorf("parseTLV failed on format string '%s'", string(x[2:]))
 		}
 		if len(tlvs) != 1 {
-			t.Errorf("readTLV() for headPayloadFormat returns array length %d, want 1", len(tlvs))
+			t.Errorf("parseTLV() for headPayloadFormat returns array length %d, want 1", len(tlvs))
 		}
 		h, ok := tlvs[0].(*headPayloadFormat)
 		if !ok {
-			t.Errorf("readTLV()[0] is %v, fails type assertion to &headPayloadFormat", tlvs[0])
+			t.Errorf("parseTLV()[0] is %v, fails type assertion to &headPayloadFormat", tlvs[0])
 		}
 		if h.dtype[0] != test.dtype {
-			t.Errorf("readTLV for headPayloadFormat is dtype %v for tag '%c', want %v", h.dtype, test.tag, test.dtype)
+			t.Errorf("parseTLV for headPayloadFormat is dtype %v for tag '%c', want %v", h.dtype, test.tag, test.dtype)
 		}
 		if h.endian == binary.BigEndian {
-			t.Errorf("readTLV for headPayloadFormat is BigEndian, want LittleEndian")
+			t.Errorf("parseTLV for headPayloadFormat is BigEndian, want LittleEndian")
 		}
 		if h.nvals != 1 {
-			t.Errorf("readTLV for headPayloadFormat has nvals %d, want 1", h.nvals)
+			t.Errorf("parseTLV for headPayloadFormat has nvals %d, want 1", h.nvals)
 		}
 	}
 
@@ -352,12 +396,12 @@ func TestTLVs(t *testing.T) {
 	ps.Sizes = append(ps.Sizes, int16(5))
 	ps.Sizes = append(ps.Sizes, int16(6))
 	pp := payloadshapeToPacket(ps)
-	tlvs, err = readTLV(bytes.NewReader(pp), 8)
+	tlvs, err = parseTLV(pp)
 	if err != nil {
-		t.Errorf("readTLV() for headPayloadShape returns %v", err)
+		t.Errorf("parseTLV() for headPayloadShape returns %v", err)
 	}
 	if len(tlvs) != 1 {
-		t.Errorf("readTLV() for headPayloadShape returns array length %d, want 1", len(tlvs))
+		t.Errorf("parseTLV() for headPayloadShape returns array length %d, want 1", len(tlvs))
 	}
 	switch hps := tlvs[0].(type) {
 	case *headPayloadShape:
@@ -369,50 +413,50 @@ func TestTLVs(t *testing.T) {
 	}
 
 	// Make sure errors happen when packet is incomplete
-	if _, err := readTLV(bytes.NewReader([]byte{}), 7); err == nil {
-		t.Errorf("readTLV on fewer than 8 bytes should error")
+	s := make([]byte, 8)
+	if _, err := parseTLV(s[:7]); err == nil {
+		t.Errorf("parseTLV on fewer than 8 bytes should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{}), 8); err == nil {
-		t.Errorf("readTLV on empty string should error")
+	s[0] = tlvFORMAT
+	s[1] = 0
+	if _, err := parseTLV(s); err == nil {
+		t.Errorf("parseTLV on L=0 should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvFORMAT}), 8); err == nil {
-		t.Errorf("readTLV on short string should error")
+	s[1] = 2
+	if _, err := parseTLV(s); err == nil {
+		t.Errorf("parseTLV with L=2 but size-8 string should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvFORMAT, 0x2}), 8); err == nil {
-		t.Errorf("readTLV with L=2 but size-8 string should error")
+	s[0] = tlvTIMESTAMPUNIT
+	s[1] = 1
+	if _, err := parseTLV(s); err == nil {
+		t.Errorf("parseTLV without timestamp upper bytes should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvTIMESTAMP, 0x1}), 8); err == nil {
-		t.Errorf("readTLV without timestamp upper bytes should error")
+	s2 := make([]byte, 16)
+	s2[0] = tlvCOUNTER
+	s2[1] = 2
+	if _, err := parseTLV(s2); err == nil {
+		t.Errorf("parseTLV with L>1 counters should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvTIMESTAMP, 0x1, 0, 0}), 8); err == nil {
-		t.Errorf("readTLV without timestamp lower bytes should error")
+	s[0] = tlvSHAPE
+	s[1] = 1
+	s[2] = 0
+	if _, err := parseTLV(s); err == nil {
+		t.Errorf("parseTLV on shape without any dimensions should error")
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvCOUNTER, 0x2}), 16); err == nil {
-		t.Errorf("readTLV with L>1 counters should error")
+	expectZeroPads := []uint8{tlvCHANOFFSET, tlvTAG}
+	for _, v := range expectZeroPads {
+		s[0] = v
+		s[2] = 9
+		if _, err := parseTLV(s); err == nil {
+			t.Errorf("parseTLV on type 0x%x should require 0x0000 padding", v)
+		}
 	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvCOUNTER, 0x1, 0}), 8); err == nil {
-		t.Errorf("readTLV without counter ID should error")
-	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvCOUNTER, 0x1, 0, 0}), 8); err == nil {
-		t.Errorf("readTLV without counter value should error")
-	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvFORMAT, 1}), 8); err == nil {
-		t.Errorf("readTLV on payload format with short string should error")
-	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvSHAPE, 1, 0}), 8); err == nil {
-		t.Errorf("readTLV on channel offset without any dimensions should error")
-	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvCHANOFFSET, 1, 0}), 8); err == nil {
-		t.Errorf("readTLV on channel offset without padding should error")
-	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvCHANOFFSET, 1, 0, 9}), 8); err == nil {
-		t.Errorf("readTLV on channel offset with nonzero padding should error")
-	}
-	if _, err := readTLV(bytes.NewReader([]byte{tlvCHANOFFSET, 1, 0, 0, 0}), 8); err == nil {
-		t.Errorf("readTLV on channel offset without offset should error")
-	}
-	if _, err := readTLV(bytes.NewReader([]byte{0xff, 1}), 8); err == nil {
-		t.Errorf("readTLV on unknown type should error")
+	tryTheseTypes := []uint8{0x40, 0xf0, 0xff}
+	for _, v := range tryTheseTypes {
+		s[0] = v
+		if _, err := parseTLV(s); err != nil {
+			t.Errorf("parseTLV on type 0x%x should not error, but error %v", v, err)
+		}
 	}
 }
 
@@ -553,5 +597,64 @@ func TestExamplePackets(t *testing.T) {
 		// loc, _ := f.Seek(0, 1)
 		// fmt.Printf("Read packet %4d  of size %4d  fmt %s now at byte %8d\n", i,
 		// 	h.packetLength, h.format.rawfmt, loc)
+	}
+}
+
+
+func BenchmarkPacketEncoding(b *testing.B) {
+	Npackets := 2000
+	Nsamples := 2500
+	packets := make([]*Packet, Npackets)
+	payload := make([]int16, Nsamples)
+	for i:=0; i<Nsamples; i++ {
+		payload[i] = int16(i)
+	}
+	dims := make([]int16, 1)
+	dims[0] = int16(Nsamples)
+	// ctrpk := counterToPacket(&HeadCounter{5, 99})
+	// fmt.Printf("ctrpk: %v\n", ctrpk)
+
+	for i:=0; i<Npackets; i++ {
+		p := NewPacket(1, 20, uint32(1000+i), 1)
+		p.NewData(payload, dims)
+		// p.otherTLV = append(p.otherTLV, ctrpk)
+		// p.otherTLV = append(p.otherTLV, ctrpk)
+		packets[i] = p
+	}
+
+	for i := 0; i<b.N; i++ {
+		for j := 0; j<Npackets; j++ {
+			p := packets[i]
+			p.Bytes()
+		}
+	}
+}
+
+func BenchmarkPacketDecoding(b *testing.B) {
+	Npackets := 2000
+	Nsamples := 2500
+	payload := make([]int16, Nsamples)
+	for i:=0; i<Nsamples; i++ {
+		payload[i] = int16(i)
+	}
+	dims := make([]int16, 1)
+	dims[0] = int16(Nsamples)
+
+	var buf bytes.Buffer // A Buffer needs no initialization.
+
+	for i:=0; i<Npackets; i++ {
+		p := NewPacket(1, 20, uint32(1000+i), 1)
+		p.NewData(payload, dims)
+		buf.Write(p.Bytes())
+	}
+	fulltext := buf.Bytes()
+
+	for i := 0; i<b.N; i++ {
+		b2 := bytes.NewBuffer(fulltext)
+		for j := 0; j<Npackets; j++ {
+			if _, err := ReadPacket(b2); err != nil {
+				b.Errorf("Could not read packet with error %v", err)
+			}
+		}
 	}
 }

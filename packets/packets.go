@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math"
 	"reflect"
+	"github.com/usnistgov/dastard/getbytes"
 )
 
 // Packet represents the header of an Abaco data packet
@@ -283,14 +284,14 @@ func (p *Packet) Bytes() []byte {
 	if p.Data != nil && p.shape != nil && p.format != nil {
 		binary.Write(buf, binary.BigEndian, byte(tlvFORMAT))
 		binary.Write(buf, binary.BigEndian, byte(1))
-		fmt := []byte(p.format.rawfmt)
-		if len(fmt) > 6 {
-			fmt = fmt[:6]
+		rfmt := []byte(p.format.rawfmt)
+		if len(rfmt) > 6 {
+			rfmt = rfmt[:6]
 		}
-		for len(fmt) < 6 {
-			fmt = append(fmt, 0x0)
+		for len(rfmt) < 6 {
+			rfmt = append(rfmt, 0x0)
 		}
-		binary.Write(buf, binary.BigEndian, fmt)
+		binary.Write(buf, binary.BigEndian, rfmt)
 
 		binary.Write(buf, binary.BigEndian, byte(tlvSHAPE))
 		binary.Write(buf, binary.BigEndian, byte(1+len(p.shape.Sizes)/4))
@@ -302,7 +303,17 @@ func (p *Packet) Bytes() []byte {
 			binary.Write(buf, binary.BigEndian, &zero)
 		}
 
-		binary.Write(buf, p.format.endian, p.Data)
+		if (p.format.endian == binary.BigEndian) {
+			binary.Write(buf, p.format.endian, p.Data)
+		} else {
+			switch d:= p.Data.(type) {
+			case []int16:
+				b := getbytes.FromSliceInt16(d)
+				buf.Write(b)
+			default:
+				binary.Write(buf, p.format.endian, p.Data)
+			}
+		}
 	}
 	return buf.Bytes()
 }
@@ -339,43 +350,94 @@ func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
 	return p, nil
 }
 
+func byteSwap2(b []byte, nb int) error {
+	switch nb {
+	case 2:
+		for i:=0; i<len(b); i+=nb {
+			b[i], b[i+1] = b[i+1], b[i]
+		}
+	case 4:
+		for i:=0; i<len(b); i+=nb {
+			b[i], b[i+3] = b[i+3], b[i]
+			b[i+1], b[i+2] = b[i+2], b[i+1]
+		}
+	case 8:
+		for i:=0; i<len(b); i+=nb {
+			b[i], b[i+7] = b[i+7], b[i]
+			b[i+1], b[i+6] = b[i+6], b[i+1]
+			b[i+2], b[i+5] = b[i+5], b[i+2]
+			b[i+3], b[i+4] = b[i+4], b[i+3]
+		}
+	default:
+		return fmt.Errorf("byteSwap2(b, nb) with nb=%d not allowed", nb)
+	}
+	return nil
+}
+
+func byteSwap(vectorIn interface{}) error {
+	switch v := vectorIn.(type) {
+	case []uint8:
+	case []int8:
+		return nil
+	case []uint16:
+		b := getbytes.FromSliceUint16(v)
+		return byteSwap2(b, 2)
+	case []int16:
+		b := getbytes.FromSliceInt16(v)
+		return byteSwap2(b, 2)
+
+	case []uint32:
+		b := getbytes.FromSliceUint32(v)
+		return byteSwap2(b, 4)
+	case []int32:
+		b := getbytes.FromSliceInt32(v)
+		return byteSwap2(b, 4)
+
+	case []uint64:
+		b := getbytes.FromSliceUint64(v)
+		return byteSwap2(b, 8)
+	case []int64:
+		b := getbytes.FromSliceInt64(v)
+		return byteSwap2(b, 8)
+
+	default:
+		return fmt.Errorf("Cannot byte swap object of type %T", v)
+	}
+	return nil
+}
+
 // ReadPacket returns a Packet read from an io.reader
 func ReadPacket(data io.Reader) (p *Packet, err error) {
-	p = new(Packet)
-	if err = binary.Read(data, binary.BigEndian, &p.version); err != nil {
-		return nil, err
-	}
-	if err = binary.Read(data, binary.BigEndian, &p.headerLength); err != nil {
-		return nil, err
-	}
 	const MINLENGTH uint8 = 16
-	if p.headerLength < MINLENGTH {
-		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
+	hdr := make([]byte, MINLENGTH)
+	if _, err = io.ReadFull(data, hdr); err != nil {
+		return nil, err
 	}
 
-	if err = binary.Read(data, binary.BigEndian, &p.payloadLength); err != nil {
-		return nil, err
+	p = new(Packet)
+	p.version = hdr[0]
+	p.headerLength = hdr[1]
+	p.payloadLength = binary.BigEndian.Uint16(hdr[2:])
+	if p.headerLength < MINLENGTH {
+		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
 	}
 	if p.payloadLength%8 != 0 {
 		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", p.payloadLength)
 	}
 	p.packetLength = int(p.headerLength) + int(p.payloadLength)
 
-	var magic uint32
-	if err = binary.Read(data, binary.BigEndian, &magic); err != nil {
-		return nil, err
-	}
+	magic := binary.BigEndian.Uint32(hdr[4:])
+	p.sourceID = binary.BigEndian.Uint32(hdr[8:])
+	p.sequenceNumber = binary.BigEndian.Uint32(hdr[12:])
 	if magic != packetMAGIC {
 		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, packetMAGIC)
 	}
 
-	if err = binary.Read(data, binary.BigEndian, &p.sourceID); err != nil {
+	tlvdata := make([]byte, p.headerLength-MINLENGTH)
+	if _, err = io.ReadFull(data, tlvdata); err != nil {
 		return nil, err
 	}
-	if err = binary.Read(data, binary.BigEndian, &p.sequenceNumber); err != nil {
-		return nil, err
-	}
-	allTLV, err := readTLV(data, p.headerLength-MINLENGTH)
+	allTLV, err := parseTLV(tlvdata)
 	if err != nil {
 		return nil, err
 	}
@@ -401,27 +463,35 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 			switch p.format.dtype[0] {
 			case reflect.Int16:
 				result := make([]int16, p.payloadLength/2)
-				if err = binary.Read(data, p.format.endian, result); err != nil {
+				bslice := getbytes.FromSliceInt16(result)
+				if _, err = io.ReadFull(data, bslice); err != nil {
 					return nil, err
 				}
 				p.Data = result
 
 			case reflect.Int32:
 				result := make([]int32, p.payloadLength/4)
-				if err = binary.Read(data, p.format.endian, result); err != nil {
+				bslice := getbytes.FromSliceInt32(result)
+				if _, err = io.ReadFull(data, bslice); err != nil {
 					return nil, err
 				}
 				p.Data = result
 
 			case reflect.Int64:
 				result := make([]int64, p.payloadLength/8)
-				if err = binary.Read(data, p.format.endian, result); err != nil {
+				bslice := getbytes.FromSliceInt64(result)
+				if _, err = io.ReadFull(data, bslice); err != nil {
 					return nil, err
 				}
 				p.Data = result
 
 			default:
 				return nil, fmt.Errorf("Did not know how to read type %v", p.format.dtype)
+			}
+			if p.format.endian == binary.BigEndian {
+				if err = byteSwap(p.Data); err != nil {
+					return nil, err
+				}
 			}
 		} else {
 			result := make([]byte, p.payloadLength)
@@ -484,84 +554,54 @@ type headPayloadShape struct {
 	Sizes []int16
 }
 
-// readTLV reads data for size bytes, generating a list of all TLV objects
-func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
-	var t uint8
-	var tlvsize uint8
-	for size > 0 {
-		if size < 8 {
-			return result, fmt.Errorf("readTLV needs to read multiples of 8 bytes")
+// parseTLV parses data, generating a list of all TLV objects
+func parseTLV(data []byte) (result []interface{}, err error) {
+	bytesRemaining := len(data)
+	for bytesRemaining > 0 {
+		if bytesRemaining < 8 {
+			return result, fmt.Errorf("parseTLV needs to read multiples of 8 bytes")
 		}
-		if err = binary.Read(data, binary.BigEndian, &t); err != nil {
-			return result, err
+		t := data[0]
+		tlvsize := 8*int(data[1])
+		if tlvsize > bytesRemaining {
+			return result, fmt.Errorf("TLV type 0x%x has len %d, but remaining hdr size is %d",
+				t, tlvsize, bytesRemaining)
 		}
-		if err = binary.Read(data, binary.BigEndian, &tlvsize); err != nil {
-			return result, err
-		}
-		if 8*tlvsize > size {
-			return result, fmt.Errorf("TLV type 0x%x has len 8*%d, but remaining hdr size is %d",
-				t, tlvsize, size)
+		if tlvsize <= 0 {
+			return result, fmt.Errorf("TLV reports negative size %d", tlvsize)
 		}
 		switch t {
 		case tlvTAG:
-			var x uint16
-			var tag PacketTag
-			if err = binary.Read(data, binary.BigEndian, &x); err != nil {
-				return result, err
-			}
+			x := binary.BigEndian.Uint16(data[2:])
+			tag := PacketTag(binary.BigEndian.Uint32(data[4:]))
 			if x != 0 {
 				return result, fmt.Errorf("TAG TLV has value 0x%x, expect 0", x)
-			}
-			if err = binary.Read(data, binary.BigEndian, &tag); err != nil {
-				return result, err
 			}
 			result = append(result, tag)
 
 		case tlvTIMESTAMP: // timestamps without units
-			var x uint16
-			var y uint32
-			if err = binary.Read(data, binary.BigEndian, &x); err != nil {
-				return result, err
-			}
-			if err = binary.Read(data, binary.BigEndian, &y); err != nil {
-				return result, err
-			}
+			x := binary.BigEndian.Uint16(data[2:])
+			y := binary.BigEndian.Uint32(data[4:])
 			result = append(result, MakeTimestamp(x, y, 0.0))
 
 		case tlvCOUNTER:
+			if tlvsize != 8 {
+				return result, fmt.Errorf("TLV counter size %d, must be size 8 (32 bit counter) as currently implemented", tlvsize)
+			}
 			ctr := new(HeadCounter)
-			if tlvsize != 1 {
-				return result, fmt.Errorf("TLV counter size %d, must be size 1 (32 bits) as currently implemented", tlvsize)
-			}
-			if err = binary.Read(data, binary.BigEndian, &ctr.ID); err != nil {
-				return result, err
-			}
-			if err = binary.Read(data, binary.BigEndian, &ctr.Count); err != nil {
-				return result, err
-			}
+			ctr.ID = int16(binary.BigEndian.Uint16(data[2:]))
+			ctr.Count = int32(binary.BigEndian.Uint32(data[4:]))
 			result = append(result, ctr)
 
 		case tlvTIMESTAMPUNIT:
-			var nbits uint8
-			var exp int8
-			var num, denom uint16
-			var t uint64
-			ts := new(PacketTimestamp)
-			if err = binary.Read(data, binary.BigEndian, &nbits); err != nil {
-				return result, err
+			if tlvsize < 16 {
+				return result, fmt.Errorf("TLV timestamp-with-unit size %d, must be size at least 16 as currently implemented", tlvsize)
 			}
-			if err = binary.Read(data, binary.BigEndian, &exp); err != nil {
-				return result, err
-			}
-			if err = binary.Read(data, binary.BigEndian, &num); err != nil {
-				return result, err
-			}
-			if err = binary.Read(data, binary.BigEndian, &denom); err != nil {
-				return result, err
-			}
-			if err = binary.Read(data, binary.BigEndian, &t); err != nil {
-				return result, err
-			}
+			nbits := data[2]
+			exp := int8(data[3])
+			num := binary.BigEndian.Uint16(data[4:])
+			denom := binary.BigEndian.Uint16(data[6:])
+			t := binary.BigEndian.Uint64(data[8:])
 			switch {
 			case nbits < 64:
 				mask := ^(uint64(math.MaxUint64) << nbits)
@@ -570,18 +610,15 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 			default:
 				return result, fmt.Errorf("TLV timestamp with unit calls for %d bits", nbits)
 			}
+			ts := new(PacketTimestamp)
 			ts.T = t
 			// (num/denom) * pow(10, exp) is the clock period. We want rate = 1/period, so...
 			ts.Rate = float64(denom) / float64(num) * math.Pow10(-int(exp))
 			result = append(result, ts)
 
 		case tlvFORMAT:
-			b := make([]byte, 8*int(tlvsize)-2)
-			if n, err := data.Read(b); err != nil || n < len(b) {
-				return result, err
-			}
 			pfmt := new(headPayloadFormat)
-			pfmt.rawfmt = string(b)
+			pfmt.rawfmt = string(data[2:int(tlvsize)])
 			for _, c := range pfmt.rawfmt {
 				switch c {
 				case 0, ' ':
@@ -620,41 +657,31 @@ func readTLV(data io.Reader, size uint8) (result []interface{}, err error) {
 
 		case tlvSHAPE:
 			shape := new(headPayloadShape)
-			var d int16
-			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
-				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
-					return result, err
-				}
+			for i := 2; i < tlvsize; i += 2 {
+				d := int16(binary.BigEndian.Uint16(data[i:]))
 				if d > 0 {
 					shape.Sizes = append(shape.Sizes, d)
 				}
 			}
+			if len(shape.Sizes) == 0 {
+				return result, fmt.Errorf("shape TLV contains no positive sizes")
+			}
 			result = append(result, shape)
 
 		case tlvCHANOFFSET:
-			var pad uint16
-			var offset headChannelOffset
-			if err = binary.Read(data, binary.BigEndian, &pad); err != nil {
-				return result, err
-			}
+			pad := binary.BigEndian.Uint16(data[2:])
+			offset := headChannelOffset(binary.BigEndian.Uint32(data[4:]))
 			if pad != 0 {
-				return result, fmt.Errorf("channel offset packet contains padding %du, want 0", pad)
-			}
-			if err = binary.Read(data, binary.BigEndian, &offset); err != nil {
-				return result, err
+				return result, fmt.Errorf("channel offset TLV contains padding %du, want 0", pad)
 			}
 			result = append(result, offset)
 
 		default:
-			// Consume the remainder of the TLV
-			var d uint16
-			for i := 0; i < 8*int(tlvsize)-2; i += 2 {
-				if err = binary.Read(data, binary.BigEndian, &d); err != nil {
-					return result, err
-				}
-			}
+			// Ignore the remainder of the TLV
 		}
-		size -= 8 * tlvsize
+
+		data = data[tlvsize:]
+		bytesRemaining -= tlvsize
 	}
 	return
 }

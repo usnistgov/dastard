@@ -1,3 +1,6 @@
+// +build !ci
+// Don't run these Roach tests on Travis-CI. There were UDP problems 10/23/2020.
+
 package dastard
 
 import (

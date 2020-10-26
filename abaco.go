@@ -189,6 +189,9 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 	// Within a slice of values, handle all channels for frame 0, then all for frame 1...
 	totalBytes := 0
 	packetsConsumed := 0
+	samplesConsumed := 0
+	nchan := group.nchan
+
 	for _, p := range group.queue {
 		gidx := gIndex(p)
 		if gidx != group.index {
@@ -201,16 +204,20 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 		if frameAvail > frames {
 			break
 		}
-
 		frames -= frameAvail
 		packetsConsumed++
+
 		switch d := p.Data.(type) {
 		case []int16:
-			// Reading vector d in order was faster than the reverse.
-			for j, val := range d {
-				idx := j % group.nchan
-				datacopies[idx] = append(datacopies[idx], RawType(val))
+			// Reading vector d in channel order was faster than in packet-data order.
+			nsamp := len(d)/nchan
+			for idx, dc := range datacopies {
+				for i, j := 0, idx; i<nsamp; i++ {
+					dc[i+samplesConsumed] = RawType(d[j])
+					j += nchan
+				}
 			}
+			samplesConsumed += nsamp
 			totalBytes += 2 * len(d)
 
 		case []int32:
@@ -218,10 +225,15 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 			// 12 bits into the 16-bit datacopies[] slice. If we need a
 			// permanent solution to 32-bit raw data, then it might need to be flexible
 			// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
-			for j, val := range d {
-				idx := j % group.nchan
-				datacopies[idx] = append(datacopies[idx], RawType(val/0x1000))
+
+			nsamp := len(d)/nchan
+			for idx, dc := range datacopies {
+				for i, j := 0, idx; i<nsamp; i++ {
+					dc[i+samplesConsumed] = RawType(d[j]/0x1000)
+					j += nchan
+				}
 			}
+			samplesConsumed += nsamp
 			totalBytes += 4 * len(d)
 
 		default:
@@ -239,9 +251,16 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 		panic(msg)
 	}
 
-	for i, unwrap := range group.unwrap {
-		unwrap.UnwrapInPlace(&datacopies[i])
+	// Apply phase unwrapping to each channel's data. Do in parallel to use multiple processors.
+	var wg sync.WaitGroup
+	for i, unwrapper := range group.unwrap {
+		wg.Add(1)
+		go func(up *PhaseUnwrapper, dc *[]RawType) {
+			defer wg.Done()
+			up.UnwrapInPlace(dc)
+		}(unwrapper, &datacopies[i])
 	}
+	wg.Wait()
 
 	return totalBytes
 }
@@ -494,6 +513,7 @@ func (as *AbacoSource) Sample() error {
 
 	// Now sort the packets received into the right AbacoGroups
 	as.nchan = 0
+	as.groups = make(map[GroupIndex]*AbacoGroup)
 	for _ = range as.active {
 		results := <-sampleResults
 		now := time.Now()
@@ -640,6 +660,9 @@ awaitmoredata:
 				}
 				as.distributePackets(allPackets, lastSampleTime)
 			}
+			// var t1, t2 time.Time
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to distributePackets: %v\n", t2.Sub(t1))
 
 			// Align the first sample in each group. Do this by checking the first global sequenceNumber
 			// in each group and trimming leading packets if any precede the others.
@@ -662,6 +685,8 @@ awaitmoredata:
 					firstSn = sn0
 				}
 			}
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to fillMissingPackets: %v\n", t2.Sub(t1))
 
 			// For any queue that starts before maxsn0, trim the leading packets. Learn the # of samples.
 			framesToDeMUX := math.MaxInt64
@@ -675,11 +700,13 @@ awaitmoredata:
 			if framesToDeMUX <= 0 {
 				continue awaitmoredata
 			}
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to trimPacketsBefore: %v\n", t2.Sub(t1))
 
-			// Demux data into this slice of slices of RawType (reserve capacity=framesToDeMUX)
+			// Demux data into this slice of slices of RawType
 			datacopies := make([][]RawType, as.nchan)
 			for i := 0; i < as.nchan; i++ {
-				datacopies[i] = make([]RawType, 0, framesToDeMUX)
+				datacopies[i] = make([]RawType, framesToDeMUX)
 			}
 			chanProcessed := 0
 			bytesProcessed := 0
@@ -689,6 +716,8 @@ awaitmoredata:
 				bytesProcessed += group.demuxData(dc, framesToDeMUX)
 				chanProcessed += group.nchan
 			}
+			// t1, t2 = t2, time.Now()
+			// fmt.Printf("Time required to demuxData: %v\n", t2.Sub(t1))
 
 			timeDiff := lastSampleTime.Sub(as.lastread)
 			if timeDiff > 2*as.readPeriod {

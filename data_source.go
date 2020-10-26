@@ -752,7 +752,7 @@ func (ds *AnySource) PrepareChannels() error {
 // ds.nchan to be less than 1.
 func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	if ds.nchan <= 0 {
-		return fmt.Errorf("PrepareRun could not run with %d channels (expect > 0)", ds.nchan)
+		return fmt.Errorf("PrepareRun could not run with %d channels (require > 0)", ds.nchan)
 	}
 
 	ds.abortSelf = make(chan struct{})

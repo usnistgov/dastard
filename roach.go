@@ -91,7 +91,8 @@ func parsePacket(packet []byte) (header packetHeader, data []RawType) {
 			data[i] = data4[i*2]
 		}
 	default:
-		panic(fmt.Sprintf("wordLen %v not implemented", wordLen))
+		msg := fmt.Sprintf("wordLen %v not implemented. Header: %v", wordLen, header)
+		panic(msg)
 	}
 	return header, data
 }

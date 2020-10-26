@@ -1,9 +1,13 @@
 ## DASTARD Versions
 
-**0.2.8** Started September 2020
+**0.2.8** October 23, 2020
 * Remove idea of rows/columns from Dastard (used only in `LanceroSource`). Use chan groups otherwise (issue 214).
 * Lancero source can have more flexible channel numbers, such as 12043 for card 1, column 2, row 43 (issue 212).
 * Testing of the flexible channel numbering.
+* Add support for TAG TLVs in Abaco packet data (issue 216).
+* Ignore unknown TLV types in Abaco packet data (issue 217).
+* Fix bug that prevented stopping and restarting Abaco (issue 218).
+* Much improved speed of processing Abaco packets (issue 220).
 
 **0.2.7** September 10, 2020
 * Use package `zmq4`, a pure Go implementation of ZMQ.

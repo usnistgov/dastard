@@ -35,6 +35,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	for i, rawVal := range *data {
 		v := int16(rawVal) >> u.lowBitsToDrop
 		delta := v - u.lastVal
+		u.lastVal = v
 
 		// Short-term unwrapping
 		if delta > u.onePi {
@@ -46,22 +47,29 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		// Long-term unwrapping = keeping baseline at same ϕ0.
 		// So if the offset is nonzero for a long time, set it to zero.
 		// This will cause a one-time jump by an integer number of wraps.
-		if u.offset >= u.twoPi {
+		switch  {
+		case u.offset >= u.twoPi:
 			u.highCount++
 			u.lowCount = 0
-		} else if u.offset <= -u.twoPi {
+			if u.highCount > u.resetAfter {
+				u.offset = 0
+				u.highCount = 0
+			}
+			(*data)[i] = RawType(v + u.offset)
+
+		case u.offset <= -u.twoPi:
 			u.lowCount++
 			u.highCount = 0
-		} else {
+			if u.lowCount > u.resetAfter {
+				u.offset = 0
+				u.lowCount = 0
+			}
+			(*data)[i] = RawType(v + u.offset)
+
+		default:
 			u.lowCount = 0
 			u.highCount = 0
+			(*data)[i] = RawType(v)
 		}
-		if (u.highCount > u.resetAfter) || (u.lowCount > u.resetAfter) {
-			u.offset = 0
-			u.highCount = 0
-			u.lowCount = 0
-		}
-		(*data)[i] = RawType(v + u.offset)
-		u.lastVal = v
 	}
 }
