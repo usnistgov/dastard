@@ -58,9 +58,9 @@ type LanceroSource struct {
 	buffersChan              chan BuffersChanType
 	readPeriod               time.Duration
 	mixRequests              chan *MixFractionObject
-	firstRowChanNum          int // Channel number of the 1st row (default 1)
-	chanSepCards             int // Channel separation between cards (or 0 to indicate number sequentially)
-	chanSepColumns           int // Channel separation between columns (or 0 to indicate number sequentially)
+	firstRowChanNum          int            // Channel number of the 1st row (default 1)
+	chanSepCards             int            // Channel separation between cards (or 0 to indicate number sequentially)
+	chanSepColumns           int            // Channel separation between columns (or 0 to indicate number sequentially)
 	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	externalTriggerLastState bool
 	previousLastSampleTime   time.Time
@@ -297,9 +297,6 @@ func (ls *LanceroSource) Sample() error {
 // have to do with channels and their naming/numbering.
 func (ls *LanceroSource) PrepareChannels() error {
 	ls.channelsPerPixel = 2
-	ls.groupKeysSorted = make([]GroupIndex, 1)
-	cg := GroupIndex{Firstchan:0, Nchan:ls.nchan}
-	ls.groupKeysSorted[0] = cg
 
 	// Check that ls.chanSepColumns and chanSepCards are appropriate,
 	// i.e. large enough to avoid channel number collisions.
@@ -313,7 +310,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 		for _, device := range ls.active {
 			if device.nrows > ls.chanSepColumns {
 				err := fmt.Errorf("/dev/lancero%d has %d rows, which exceeds ChanSepColumns (%d). Setting latter to 0",
-							device.devnum, device.nrows, ls.chanSepColumns)
+					device.devnum, device.nrows, ls.chanSepColumns)
 				log.Printf("%v", err)
 				ls.chanSepColumns = 0
 				return err
@@ -328,7 +325,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 			}
 			if colsep*device.ncols > ls.chanSepCards {
 				err := fmt.Errorf("/dev/lancero%d needs %d channels, which exceeds ChanSepCards (%d). Setting latter to 0",
-							device.devnum, colsep*device.ncols, ls.chanSepCards)
+					device.devnum, colsep*device.ncols, ls.chanSepCards)
 				log.Printf("%v", err)
 				ls.chanSepColumns = 0
 				return err
@@ -342,6 +339,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 	index := 0
 	cnum := ls.firstRowChanNum
 	thisColFirstCnum := cnum - ls.chanSepColumns
+	ls.groupKeysSorted = make([]GroupIndex, 0)
 	for _, device := range ls.active {
 		if ls.chanSepCards > 0 {
 			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
@@ -352,6 +350,8 @@ func (ls *LanceroSource) PrepareChannels() error {
 				cnum = thisColFirstCnum + ls.chanSepColumns
 			}
 			thisColFirstCnum = cnum
+			cg := GroupIndex{Firstchan: cnum, Nchan: device.nrows}
+			ls.groupKeysSorted = append(ls.groupKeysSorted, cg)
 			for row := 0; row < device.nrows; row++ {
 				ls.chanNames[index] = fmt.Sprintf("err%d", cnum)
 				ls.chanNumbers[index] = cnum
