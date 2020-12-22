@@ -635,7 +635,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 
 			case <-ticker.C:
 				timeSinceLastSuccesfulRead := time.Now().Sub(lastSuccesfulRead)
-				if timeSinceLastSuccesfulRead > 5*time.Second {
+				if timeSinceLastSuccesfulRead > 10*time.Second {
 					panic("too long since last succesful read")
 				}
 				var buffers [][]RawType
@@ -759,7 +759,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 // The idea here is to minimize the number of long-running goroutines, which are hard
 // to reason about.
 func (ls *LanceroSource) getNextBlock() chan *dataBlock {
-	panicTime := time.Duration(cap(ls.buffersChan)) * ls.readPeriod
+	panicTime := time.Duration(10 * time.Second)
 	go func() {
 		for {
 			// This select statement was formerly the ls.blockingRead method
