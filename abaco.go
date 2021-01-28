@@ -120,7 +120,7 @@ func (group *AbacoGroup) firstSeqNum() (uint32, error) {
 
 // fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
 // pretend packets.
-func (group *AbacoGroup) fillMissingPackets() (packetsAdded, framesAdded int) {
+func (group *AbacoGroup) fillMissingPackets() (bytesAdded, packetsAdded, framesAdded int) {
 	if len(group.queue) == 0 {
 		return
 	}
@@ -134,6 +134,7 @@ func (group *AbacoGroup) fillMissingPackets() (packetsAdded, framesAdded int) {
 			newq = append(newq, pfake)
 			packetsAdded++
 			framesAdded += p.Frames()
+			bytesAdded += p.Length()
 			snexpect++
 		}
 		newq = append(newq, p)
@@ -669,8 +670,9 @@ awaitmoredata:
 			// Fill in for any missing packets first, so a missing first packet isn't a problem.
 			firstSn := uint32(0)
 			for idx, group := range as.groups {
-				packetsAdded, framesAdded := group.fillMissingPackets()
+				bytesAdded, packetsAdded, framesAdded := group.fillMissingPackets()
 				droppedFrames += framesAdded
+				droppedBytes += bytesAdded
 				if packetsAdded > 0 && ProblemLogger != nil {
 					cfirst := idx.Firstchan
 					clast := cfirst + idx.Nchan - 1
@@ -828,8 +830,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	as.nextFrameNum += FrameIndex(framesUsed)
 	if as.heartbeats != nil {
 		pmb := float64(buffersMsg.totalBytes) / 1e6
-		hwmb := pmb - float64(buffersMsg.droppedBytes)/1e6
-		fmt.Println("bmsg: ", buffersMsg.totalBytes, buffersMsg.droppedBytes, buffersMsg.droppedFrames)
+		hwmb := float64(buffersMsg.totalBytes-buffersMsg.droppedBytes) / 1e6
 		as.heartbeats <- Heartbeat{Running: true, HWactualMB: hwmb, DataMB: pmb,
 			Time: timeDiff.Seconds()}
 	}
