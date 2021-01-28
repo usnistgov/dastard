@@ -829,7 +829,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	if as.heartbeats != nil {
 		pmb := float64(buffersMsg.totalBytes) / 1e6
 		hwmb := pmb - float64(buffersMsg.droppedBytes)/1e6
-		as.heartbeats <- Heartbeat{Running: true, HWactualMB: hwmb, ProcessedMB: pmb,
+		fmt.Println("bmsg: ", buffersMsg.totalBytes, buffersMsg.droppedBytes, buffersMsg.droppedFrames)
+		as.heartbeats <- Heartbeat{Running: true, HWactualMB: hwmb, DataMB: pmb,
 			Time: timeDiff.Seconds()}
 	}
 	now := time.Now()

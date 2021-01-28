@@ -87,10 +87,10 @@ type ServerStatus struct {
 
 // Heartbeat is the info sent in the regular heartbeat to clients
 type Heartbeat struct {
-	Running     bool
-	Time        float64
-	HWactualMB  float64 // raw data received from hardware
-	ProcessedMB float64 // raw data processed (may exceed HWactualMB if missing data were filled in)
+	Running    bool
+	Time       float64
+	HWactualMB float64 // raw data received from hardware
+	DataMB     float64 // raw data processed (may exceed HWactualMB if missing data were filled in)
 }
 
 // FactorArgs holds the arguments to a Multiply operation (for testing!).
@@ -548,7 +548,7 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 func (s *SourceControl) broadcastHeartbeat() {
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.HWactualMB = 0
-	s.totalData.ProcessedMB = 0
+	s.totalData.DataMB = 0
 	s.totalData.Time = 0
 }
 
@@ -710,7 +710,7 @@ func RunRPCServer(portrpc int, block bool) {
 				sourceControl.broadcastHeartbeat()
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.HWactualMB += h.HWactualMB
-				sourceControl.totalData.ProcessedMB += h.ProcessedMB
+				sourceControl.totalData.DataMB += h.DataMB
 				sourceControl.totalData.Time += h.Time
 				sourceControl.totalData.Running = h.Running
 			}
