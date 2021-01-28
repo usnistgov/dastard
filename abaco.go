@@ -825,7 +825,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	wg.Wait()
 	as.nextFrameNum += FrameIndex(framesUsed)
 	if as.heartbeats != nil {
-		as.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
+		mb := float64(totalBytes) / 1e6
+		as.heartbeats <- Heartbeat{Running: true, ReceivedMB: mb, ProcessedMB: mb,
 			Time: timeDiff.Seconds()}
 	}
 	now := time.Now()
