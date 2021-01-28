@@ -3,6 +3,8 @@
 **0.2.9** Started December, 2020
 * Fix Lancero source: fill in channel groups as 1 group per column.
 * Use new `goczmq` API for setting socket options (issue 230).
+* Keep separate counts of the data rate _from_ the hardware, and data _processed_ (after dropped packets are
+  replaced by artificial data, the latter might be larger). Send both in heartbeat ("ALIVE") message (issue 229).
 
 **0.2.8** October 23, 2020
 * Remove idea of rows/columns from Dastard (used only in `LanceroSource`). Use chan groups otherwise (issue 214).
