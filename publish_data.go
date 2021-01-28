@@ -376,10 +376,10 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := czmq.NewPub(hostname)
-	pubSocket.SetOption(czmq.SockSetSndhwm(10))
 	if err != nil {
 		return nil, err
 	}
+	pubSocket.SetSndhwm(10)
 	go func() {
 		for {
 			records, ok := <-pubchan

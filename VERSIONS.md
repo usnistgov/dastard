@@ -1,5 +1,9 @@
 ## DASTARD Versions
 
+**0.2.9** Started December, 2020
+* Fix Lancero source: fill in channel groups as 1 group per column.
+* Use new `goczmq` API for setting socket options (issue 230).
+
 **0.2.8** October 23, 2020
 * Remove idea of rows/columns from Dastard (used only in `LanceroSource`). Use chan groups otherwise (issue 214).
 * Lancero source can have more flexible channel numbers, such as 12043 for card 1, column 2, row 43 (issue 212).
