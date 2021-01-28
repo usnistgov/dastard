@@ -621,6 +621,7 @@ type AbacoBuffersType struct {
 	lastSampleTime time.Time
 	timeDiff       time.Duration
 	totalBytes     int
+	droppedBytes   int
 	droppedFrames  int
 }
 
@@ -649,6 +650,7 @@ awaitmoredata:
 			// read from the ring buffer
 			var lastSampleTime time.Time
 			var droppedFrames int
+			var droppedBytes int
 			for _, ring := range as.active {
 				allPackets, err := ring.ReadAllPackets()
 				lastSampleTime = time.Now()
@@ -733,6 +735,7 @@ awaitmoredata:
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
 				totalBytes:     bytesProcessed,
+				droppedBytes:   droppedBytes,
 				droppedFrames:  droppedFrames,
 			}
 			if bytesProcessed > 0 {
@@ -787,7 +790,6 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
-	totalBytes := buffersMsg.totalBytes
 	framesUsed := len(datacopies[0])
 
 	// Backtrack to find the time associated with the first sample.
@@ -825,8 +827,9 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	wg.Wait()
 	as.nextFrameNum += FrameIndex(framesUsed)
 	if as.heartbeats != nil {
-		mb := float64(totalBytes) / 1e6
-		as.heartbeats <- Heartbeat{Running: true, ReceivedMB: mb, ProcessedMB: mb,
+		pmb := float64(buffersMsg.totalBytes) / 1e6
+		hwmb := pmb - float64(buffersMsg.droppedBytes)/1e6
+		as.heartbeats <- Heartbeat{Running: true, HWactualMB: hwmb, ProcessedMB: pmb,
 			Time: timeDiff.Seconds()}
 	}
 	now := time.Now()

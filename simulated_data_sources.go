@@ -106,7 +106,7 @@ func (ts *TriangleSource) StartRun() error {
 				if ts.heartbeats != nil {
 					dt := now.Sub(ts.lastread).Seconds()
 					mb := float64(ts.cycleLen*2*ts.nchan) / 1e6
-					ts.heartbeats <- Heartbeat{Running: true, Time: dt, ReceivedMB: mb, ProcessedMB: mb}
+					ts.heartbeats <- Heartbeat{Running: true, Time: dt, HWactualMB: mb, ProcessedMB: mb}
 				}
 				ts.lastread = nextread // ensure average cycle time is correct, using now would allow error to build up
 			}
@@ -262,7 +262,7 @@ func (sps *SimPulseSource) StartRun() error {
 					mb := float64(dataBytes) / 1e6
 					sps.heartbeats <- Heartbeat{Running: true,
 						Time:       sps.timeperbuf.Seconds() * float64(blocksSentSinceLastHeartbeat),
-						ReceivedMB: mb, ProcessedMB: mb}
+						HWactualMB: mb, ProcessedMB: mb}
 					blocksSentSinceLastHeartbeat = 0
 				}
 			}
