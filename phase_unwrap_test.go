@@ -7,7 +7,7 @@ import (
 func TestUnwrap(t *testing.T) {
 	const bits2drop = 2
 
-	for fractionbits := uint(13); fractionbits <= 14; fractionbits++ {
+	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		pu := NewPhaseUnwrapper(fractionbits, bits2drop)
 		const ndata = 16
 		data := make([]RawType, ndata)
@@ -54,7 +54,7 @@ func BenchmarkPhaseUnwrap(b *testing.B) {
 	}
 
 	const bits2drop = 2
-	for fractionbits := uint(13); fractionbits <= 14; fractionbits++ {
+	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		pu := NewPhaseUnwrapper(fractionbits, bits2drop)
 		for i := 0; i < b.N; i++ {
 			pu.UnwrapInPlace(&data)

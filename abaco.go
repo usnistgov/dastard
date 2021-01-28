@@ -221,15 +221,15 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 			totalBytes += 2 * len(d)
 
 		case []int32:
-			// TODO: We are squeezing the 16 bits higher than the lowest
-			// 12 bits into the 16-bit datacopies[] slice. If we need a
-			// permanent solution to 32-bit raw data, then it might need to be flexible
+			// TODO: We are squeezing the 16 highest bits into the 16-bit datacopies[] slice.
+			// This was changed Jan 2021 (issue 227). It was previously the 16 lowest above the 12 lowest.
+			// If we need a permanent solution to 32-bit raw data, then it might need to be flexible
 			// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
 
 			nsamp := len(d) / nchan
 			for idx, dc := range datacopies {
 				for i, j := 0, idx; i < nsamp; i++ {
-					dc[i+samplesConsumed] = RawType(d[j] / 0x1000)
+					dc[i+samplesConsumed] = RawType(d[j] / 0x10000)
 					j += nchan
 				}
 			}
@@ -277,11 +277,12 @@ type AbacoRing struct {
 
 const maxAbacoRings = 4 // Don't allow more than this many ring buffers.
 
-const abacoFractionBits = 13
-const abacoBitsToDrop = 1
+const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
+const abacoBitsToDrop = 4
 
-// That is, Abaco data is of the form iii.bbbb bbbb bbbb b with 3 integer bits
-// and 13 fractional bits. In the unwrapping process, we drop 1, making it 4/12.
+// That is, Abaco data is of the form bbbb bbbb bbbb bbbb with 0 integer bits
+// and 16 fractional bits. In the unwrapping process, we drop 4, making it 4/12, or
+// iiii.bbbb bbbb bbbb. This gives room for up to ±8ϕ0 (actually, -8ϕ0 and +8ϕ0 both map to 0x8000).
 
 // NewAbacoRing creates a new AbacoRing and opens the underlying shared memory for reading.
 func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {

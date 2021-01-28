@@ -22,6 +22,9 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint) *PhaseUnwrapper {
 	// so int(data[i])/2^fractionBits is a number from -0.5 to 0.5 ϕ0
 	// after this function we want 2^(fractionBits-lowBitsToDrop) to be
 	// exactly one single ϕ0, or 2π of phase.
+	//
+	// As of Jan 2021, we decided to let fractionBits = all bits, so 16
+	// or 32 for int16 or int32, but leave that parameter here...for now.
 	u.fractionBits = fractionBits
 	u.lowBitsToDrop = lowBitsToDrop
 	u.twoPi = int16(1) << (fractionBits - lowBitsToDrop)
