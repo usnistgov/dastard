@@ -236,19 +236,23 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 					lastvalue = TotalNvalues
 				}
 
-				for i := burstnum * BurstNvalues; i < lastvalue; i += valuesPerPacket {
+				for firstsamp := burstnum * BurstNvalues; firstsamp < lastvalue; firstsamp += valuesPerPacket {
 					// Must be careful: the last iteration might have fewer samples than the others.
-					lastsamp := i + valuesPerPacket
+					lastsamp := firstsamp + valuesPerPacket
 					if lastsamp > TotalNvalues {
 						lastsamp = TotalNvalues
 					}
+					// Do we generate and send a packet, or drop it?
 					if control.dropfrac == 0.0 || control.dropfrac < randsource.Float64() {
-						packet.NewData(d[i:lastsamp], dims)
+						packet.NewData(d[firstsamp:lastsamp], dims)
 						ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
 						packet.SetTimestamp(ts)
 						packetchan <- packet.Bytes()
+					} else {
+						// If dropping a packet, we still need to increment the serial number
+						packet.NewData(d[0:0], dims)
 					}
-					timeCounter += countsPerSample * uint64((lastsamp-i)/Nchan)
+					timeCounter += countsPerSample * uint64((lastsamp-firstsamp)/Nchan)
 				}
 			}
 		}
