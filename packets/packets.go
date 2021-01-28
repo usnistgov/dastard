@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/usnistgov/dastard/getbytes"
 	"io"
 	"io/ioutil"
 	"math"
 	"reflect"
-	"github.com/usnistgov/dastard/getbytes"
 )
 
 // Packet represents the header of an Abaco data packet
@@ -303,10 +303,10 @@ func (p *Packet) Bytes() []byte {
 			binary.Write(buf, binary.BigEndian, &zero)
 		}
 
-		if (p.format.endian == binary.BigEndian) {
+		if p.format.endian == binary.BigEndian {
 			binary.Write(buf, p.format.endian, p.Data)
 		} else {
-			switch d:= p.Data.(type) {
+			switch d := p.Data.(type) {
 			case []int16:
 				b := getbytes.FromSliceInt16(d)
 				buf.Write(b)
@@ -353,16 +353,16 @@ func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
 func byteSwap2(b []byte, nb int) error {
 	switch nb {
 	case 2:
-		for i:=0; i<len(b); i+=nb {
+		for i := 0; i < len(b); i += nb {
 			b[i], b[i+1] = b[i+1], b[i]
 		}
 	case 4:
-		for i:=0; i<len(b); i+=nb {
+		for i := 0; i < len(b); i += nb {
 			b[i], b[i+3] = b[i+3], b[i]
 			b[i+1], b[i+2] = b[i+2], b[i+1]
 		}
 	case 8:
-		for i:=0; i<len(b); i+=nb {
+		for i := 0; i < len(b); i += nb {
 			b[i], b[i+7] = b[i+7], b[i]
 			b[i+1], b[i+6] = b[i+6], b[i+1]
 			b[i+2], b[i+5] = b[i+5], b[i+2]
@@ -562,7 +562,7 @@ func parseTLV(data []byte) (result []interface{}, err error) {
 			return result, fmt.Errorf("parseTLV needs to read multiples of 8 bytes")
 		}
 		t := data[0]
-		tlvsize := 8*int(data[1])
+		tlvsize := 8 * int(data[1])
 		if tlvsize > bytesRemaining {
 			return result, fmt.Errorf("TLV type 0x%x has len %d, but remaining hdr size is %d",
 				t, tlvsize, bytesRemaining)

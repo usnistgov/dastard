@@ -18,13 +18,13 @@ func TestByteSwap(t *testing.T) {
 	v2b := []int32{0x04030201, 0x0d0c0b0a, 0x1fff0000}
 	v3a := []int64{0x0102030405060708, 0x08090a0b0c0d0e0f, 0x0123456789abcd0f}
 	v3b := []int64{0x0807060504030201, 0x0f0e0d0c0b0a0908, 0x0fcdab8967452301}
-	if err:= byteSwap(v1a); err != nil {
+	if err := byteSwap(v1a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v1a, err)
 	}
-	if err:= byteSwap(v2a); err != nil {
+	if err := byteSwap(v2a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v2a, err)
 	}
-	if err:= byteSwap(v3a); err != nil {
+	if err := byteSwap(v3a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v3a, err)
 	}
 	for i, v := range v1a {
@@ -42,11 +42,10 @@ func TestByteSwap(t *testing.T) {
 			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v3b, i, v, v3b[i])
 		}
 	}
-	if err:= byteSwap([]float64{2.5, 3.5}); err == nil {
+	if err := byteSwap([]float64{2.5, 3.5}); err == nil {
 		t.Errorf("byteSwap([]float64) should error, did not.")
 	}
 }
-
 
 func TestHeader(t *testing.T) {
 	hdr1 := NewPacket(0x11, 0x44, 0x55, 0)
@@ -600,13 +599,12 @@ func TestExamplePackets(t *testing.T) {
 	}
 }
 
-
 func BenchmarkPacketEncoding(b *testing.B) {
 	Npackets := 2000
 	Nsamples := 2500
 	packets := make([]*Packet, Npackets)
 	payload := make([]int16, Nsamples)
-	for i:=0; i<Nsamples; i++ {
+	for i := 0; i < Nsamples; i++ {
 		payload[i] = int16(i)
 	}
 	dims := make([]int16, 1)
@@ -614,7 +612,7 @@ func BenchmarkPacketEncoding(b *testing.B) {
 	// ctrpk := counterToPacket(&HeadCounter{5, 99})
 	// fmt.Printf("ctrpk: %v\n", ctrpk)
 
-	for i:=0; i<Npackets; i++ {
+	for i := 0; i < Npackets; i++ {
 		p := NewPacket(1, 20, uint32(1000+i), 1)
 		p.NewData(payload, dims)
 		// p.otherTLV = append(p.otherTLV, ctrpk)
@@ -622,8 +620,8 @@ func BenchmarkPacketEncoding(b *testing.B) {
 		packets[i] = p
 	}
 
-	for i := 0; i<b.N; i++ {
-		for j := 0; j<Npackets; j++ {
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < Npackets; j++ {
 			p := packets[i]
 			p.Bytes()
 		}
@@ -634,7 +632,7 @@ func BenchmarkPacketDecoding(b *testing.B) {
 	Npackets := 2000
 	Nsamples := 2500
 	payload := make([]int16, Nsamples)
-	for i:=0; i<Nsamples; i++ {
+	for i := 0; i < Nsamples; i++ {
 		payload[i] = int16(i)
 	}
 	dims := make([]int16, 1)
@@ -642,16 +640,16 @@ func BenchmarkPacketDecoding(b *testing.B) {
 
 	var buf bytes.Buffer // A Buffer needs no initialization.
 
-	for i:=0; i<Npackets; i++ {
+	for i := 0; i < Npackets; i++ {
 		p := NewPacket(1, 20, uint32(1000+i), 1)
 		p.NewData(payload, dims)
 		buf.Write(p.Bytes())
 	}
 	fulltext := buf.Bytes()
 
-	for i := 0; i<b.N; i++ {
+	for i := 0; i < b.N; i++ {
 		b2 := bytes.NewBuffer(fulltext)
-		for j := 0; j<Npackets; j++ {
+		for j := 0; j < Npackets; j++ {
 			if _, err := ReadPacket(b2); err != nil {
 				b.Errorf("Could not read packet with error %v", err)
 			}

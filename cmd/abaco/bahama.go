@@ -157,10 +157,10 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		nbursts = 1
 	}
 	burstTime := repeatTime / time.Duration(nbursts)
-	TotalNvalues := Nchan*Nsamp  // one rep has this many values
-	BurstNvalues := TotalNvalues/nbursts
+	TotalNvalues := Nchan * Nsamp // one rep has this many values
+	BurstNvalues := TotalNvalues / nbursts
 	BurstNvalues -= BurstNvalues % valuesPerPacket // bursts should have integer number of packets
-	for BurstNvalues*nbursts < TotalNvalues {  // last burst should be shorter, not longer than the others.
+	for BurstNvalues*nbursts < TotalNvalues {      // last burst should be shorter, not longer than the others.
 		BurstNvalues += valuesPerPacket
 	}
 	// fmt.Printf("Breaking data into %d bursts with %d values each, burst time %v\n", nbursts, BurstNvalues, burstTime)
@@ -231,12 +231,12 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 				close(packetchan)
 				return nil
 			case <-timer.C:
-				lastvalue := (burstnum+1)*BurstNvalues
+				lastvalue := (burstnum + 1) * BurstNvalues
 				if TotalNvalues < lastvalue {
 					lastvalue = TotalNvalues
 				}
 
-				for i := burstnum*BurstNvalues; i < lastvalue; i += valuesPerPacket {
+				for i := burstnum * BurstNvalues; i < lastvalue; i += valuesPerPacket {
 					// Must be careful: the last iteration might have fewer samples than the others.
 					lastsamp := i + valuesPerPacket
 					if lastsamp > TotalNvalues {
@@ -341,12 +341,12 @@ func main() {
 
 	// Compute the size of each ring buffer. Let it be big enough to hold 0.5 seconds of data
 	// or 500 packets, and be a multiple of packetAlign.
-	ringlasts := 0.5  // seconds
-	byterate := 2.0*float64(*nchan)*(*samplerate)
+	ringlasts := 0.5 // seconds
+	byterate := 2.0 * float64(*nchan) * (*samplerate)
 	ringsize := int(byterate*ringlasts) + packetAlign
 	ringsize -= ringsize % packetAlign
 	if ringsize < 500*packetAlign {
-		ringsize = 500*packetAlign
+		ringsize = 500 * packetAlign
 	}
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups, Nrings: *nring,
