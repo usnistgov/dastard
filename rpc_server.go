@@ -80,8 +80,8 @@ type ServerStatus struct {
 	Nsamples               int
 	Npresamp               int
 	SamplePeriod           time.Duration // time per sample
-	ChanGroups             []GroupIndex // the channel groups
-	ChannelsWithProjectors []int // move this to something that reports mix also? and experimentStateLabel
+	ChanGroups             []GroupIndex  // the channel groups
+	ChannelsWithProjectors []int         // move this to something that reports mix also? and experimentStateLabel
 	// TODO: maybe bytes/sec data rate...?
 }
 

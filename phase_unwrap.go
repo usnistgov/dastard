@@ -47,7 +47,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		// Long-term unwrapping = keeping baseline at same ϕ0.
 		// So if the offset is nonzero for a long time, set it to zero.
 		// This will cause a one-time jump by an integer number of wraps.
-		switch  {
+		switch {
 		case u.offset >= u.twoPi:
 			u.highCount++
 			u.lowCount = 0

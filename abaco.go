@@ -16,7 +16,6 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-
 // gindex converts a packet to the GroupIndex whose data it contains
 func gIndex(p *packets.Packet) GroupIndex {
 	nchan, offset := p.ChannelInfo()
@@ -210,9 +209,9 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 		switch d := p.Data.(type) {
 		case []int16:
 			// Reading vector d in channel order was faster than in packet-data order.
-			nsamp := len(d)/nchan
+			nsamp := len(d) / nchan
 			for idx, dc := range datacopies {
-				for i, j := 0, idx; i<nsamp; i++ {
+				for i, j := 0, idx; i < nsamp; i++ {
 					dc[i+samplesConsumed] = RawType(d[j])
 					j += nchan
 				}
@@ -226,10 +225,10 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 			// permanent solution to 32-bit raw data, then it might need to be flexible
 			// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
 
-			nsamp := len(d)/nchan
+			nsamp := len(d) / nchan
 			for idx, dc := range datacopies {
-				for i, j := 0, idx; i<nsamp; i++ {
-					dc[i+samplesConsumed] = RawType(d[j]/0x1000)
+				for i, j := 0, idx; i < nsamp; i++ {
+					dc[i+samplesConsumed] = RawType(d[j] / 0x1000)
 					j += nchan
 				}
 			}
@@ -394,7 +393,7 @@ type AbacoSource struct {
 	arings map[int]*AbacoRing
 	active []*AbacoRing
 
-	groups          map[GroupIndex]*AbacoGroup
+	groups map[GroupIndex]*AbacoGroup
 
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
@@ -587,7 +586,7 @@ func (as *AbacoSource) PrepareChannels() error {
 	as.rowColCodes = make([]RowColCode, 0, as.nchan)
 	ncol := len(as.groups)
 	for col, g := range as.groupKeysSorted {
-		for row := 0; row<g.Nchan; row++ {
+		for row := 0; row < g.Nchan; row++ {
 			cnum := row + g.Firstchan
 			name := fmt.Sprintf("chan%d", cnum)
 			as.chanNames = append(as.chanNames, name)
@@ -597,7 +596,6 @@ func (as *AbacoSource) PrepareChannels() error {
 	}
 	return nil
 }
-
 
 // StartRun tells the hardware to switch into data streaming mode.
 // For Abaco µMUX systems, we need to consume any initial data that constitutes

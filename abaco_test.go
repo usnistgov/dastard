@@ -266,21 +266,20 @@ func TestAbacoSource(t *testing.T) {
 	source.RunDoneWait()
 }
 
-
 func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
-	const offset=1
-	const nchan=16
+	const offset = 1
+	const nchan = 16
 	group := NewAbacoGroup(GroupIndex{Firstchan: offset, Nchan: nchan})
 	group.unwrap = group.unwrap[:0] // get rid of phase unwrapping
 
 	copies := make([][]RawType, nchan)
-	for i:=0; i<nchan; i++ {
+	for i := 0; i < nchan; i++ {
 		copies[i] = make([]RawType, nframes)
 	}
-	const stride = 4096/nchan
+	const stride = 4096 / nchan
 	dims := []int16{nchan}
 	allpackets := make([]*packets.Packet, 0)
-	for j:=0; j<nframes; j+= stride {
+	for j := 0; j < nframes; j += stride {
 		p := packets.NewPacket(10, 20, uint32(j/stride), offset)
 		d := make([]int16, 0, 4096)
 		for k := 0; k < stride; k++ {
@@ -294,10 +293,10 @@ func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	return group, allpackets, copies
 }
 
-func TestDemux (t *testing.T) {
-	const nframes=32768
+func TestDemux(t *testing.T) {
+	const nframes = 32768
 	group, allpackets, copies := prepareDemux(nframes)
-	want := (nframes*len(copies))/4096
+	want := (nframes * len(copies)) / 4096
 	if len(allpackets) != want {
 		t.Errorf("prepareDemux returns %d packets, want %d", len(allpackets), want)
 	}
@@ -315,9 +314,9 @@ func TestDemux (t *testing.T) {
 }
 
 func BenchmarkDemux(b *testing.B) {
-	const nframes=32768
+	const nframes = 32768
 	group, allpackets, copies := prepareDemux(nframes)
-	for i := 0; i<b.N; i++ {
+	for i := 0; i < b.N; i++ {
 		group.queue = append(group.queue, allpackets...)
 		group.demuxData(copies, nframes)
 	}

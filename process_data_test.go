@@ -268,7 +268,7 @@ func TestDataSignedness(t *testing.T) {
 	// TODO: use a no-hardware source to test this!
 	var ls LanceroSource
 	ls.nchan = 4
-	ls.PrepareChannels()	
+	ls.PrepareChannels()
 	ls.PrepareRun(256, 1024)
 	defer ls.Stop()
 
