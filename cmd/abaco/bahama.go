@@ -183,7 +183,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		}
 		if control.sinusoid {
 			freq := (float64(cnum+1) * 2 * math.Pi) / float64(Nsamp)
-			amplitude := 1000.0
+			amplitude := 8000.0
 			for j := 0; j < Nsamp; j++ {
 				d[i+Nchan*j] += int16(amplitude * math.Sin(freq*float64(j)))
 			}
@@ -194,7 +194,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 			}
 		}
 		if control.pulses {
-			amplitude := 5000.0 + 200.0*float64(cnum)
+			amplitude := 5000.0 + 100.0*float64(cnum)
 			scale := amplitude * 2.116
 			for j := 0; j < Nsamp/4; j++ {
 				pulsevalue := int16(scale * (math.Exp(-float64(j)/1200.0) - math.Exp(-float64(j)/300.0)))
@@ -212,7 +212,8 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 
 		// Abaco data only records the lowest N bits.
 		// Wrap the 16-bit data properly into [0, (2^N)-1]
-		FractionBits := 13
+		// As of Jan 2021, this became N=16, so no "wrapping" needed.
+		FractionBits := 16
 		if FractionBits < 16 {
 			for j := 0; j < Nsamp; j++ {
 				raw := d[i+Nchan*j]
