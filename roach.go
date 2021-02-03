@@ -300,7 +300,8 @@ func (rs *RoachSource) StartRun() error {
 
 				// Don't send heartbeats too often! Once per 100 ms only.
 				if rs.heartbeats != nil && timeDiff > 100*time.Millisecond {
-					rs.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
+					mb := float64(totalBytes) / 1e6
+					rs.heartbeats <- Heartbeat{Running: true, HWactualMB: mb, DataMB: mb,
 						Time: timeDiff.Seconds()}
 					lastHB = now
 					totalBytes = 0

@@ -16,7 +16,6 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-
 // gindex converts a packet to the GroupIndex whose data it contains
 func gIndex(p *packets.Packet) GroupIndex {
 	nchan, offset := p.ChannelInfo()
@@ -121,7 +120,7 @@ func (group *AbacoGroup) firstSeqNum() (uint32, error) {
 
 // fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
 // pretend packets.
-func (group *AbacoGroup) fillMissingPackets() (packetsAdded, framesAdded int) {
+func (group *AbacoGroup) fillMissingPackets() (bytesAdded, packetsAdded, framesAdded int) {
 	if len(group.queue) == 0 {
 		return
 	}
@@ -135,6 +134,7 @@ func (group *AbacoGroup) fillMissingPackets() (packetsAdded, framesAdded int) {
 			newq = append(newq, pfake)
 			packetsAdded++
 			framesAdded += p.Frames()
+			bytesAdded += p.Length()
 			snexpect++
 		}
 		newq = append(newq, p)
@@ -210,9 +210,9 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 		switch d := p.Data.(type) {
 		case []int16:
 			// Reading vector d in channel order was faster than in packet-data order.
-			nsamp := len(d)/nchan
+			nsamp := len(d) / nchan
 			for idx, dc := range datacopies {
-				for i, j := 0, idx; i<nsamp; i++ {
+				for i, j := 0, idx; i < nsamp; i++ {
 					dc[i+samplesConsumed] = RawType(d[j])
 					j += nchan
 				}
@@ -221,15 +221,15 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 			totalBytes += 2 * len(d)
 
 		case []int32:
-			// TODO: We are squeezing the 16 bits higher than the lowest
-			// 12 bits into the 16-bit datacopies[] slice. If we need a
-			// permanent solution to 32-bit raw data, then it might need to be flexible
+			// TODO: We are squeezing the 16 highest bits into the 16-bit datacopies[] slice.
+			// This was changed Jan 2021 (issue 227). It was previously the 16 lowest above the 12 lowest.
+			// If we need a permanent solution to 32-bit raw data, then it might need to be flexible
 			// about _which_ 16 bits are kept and which discarded. (JF 3/7/2020).
 
-			nsamp := len(d)/nchan
+			nsamp := len(d) / nchan
 			for idx, dc := range datacopies {
-				for i, j := 0, idx; i<nsamp; i++ {
-					dc[i+samplesConsumed] = RawType(d[j]/0x1000)
+				for i, j := 0, idx; i < nsamp; i++ {
+					dc[i+samplesConsumed] = RawType(d[j] / 0x10000)
 					j += nchan
 				}
 			}
@@ -277,11 +277,12 @@ type AbacoRing struct {
 
 const maxAbacoRings = 4 // Don't allow more than this many ring buffers.
 
-const abacoFractionBits = 13
-const abacoBitsToDrop = 1
+const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
+const abacoBitsToDrop = 4
 
-// That is, Abaco data is of the form iii.bbbb bbbb bbbb b with 3 integer bits
-// and 13 fractional bits. In the unwrapping process, we drop 1, making it 4/12.
+// That is, Abaco data is of the form bbbb bbbb bbbb bbbb with 0 integer bits
+// and 16 fractional bits. In the unwrapping process, we drop 4, making it 4/12, or
+// iiii.bbbb bbbb bbbb. This gives room for up to ±8ϕ0 (actually, -8ϕ0 and +8ϕ0 both map to 0x8000).
 
 // NewAbacoRing creates a new AbacoRing and opens the underlying shared memory for reading.
 func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {
@@ -394,7 +395,7 @@ type AbacoSource struct {
 	arings map[int]*AbacoRing
 	active []*AbacoRing
 
-	groups          map[GroupIndex]*AbacoGroup
+	groups map[GroupIndex]*AbacoGroup
 
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
@@ -587,7 +588,7 @@ func (as *AbacoSource) PrepareChannels() error {
 	as.rowColCodes = make([]RowColCode, 0, as.nchan)
 	ncol := len(as.groups)
 	for col, g := range as.groupKeysSorted {
-		for row := 0; row<g.Nchan; row++ {
+		for row := 0; row < g.Nchan; row++ {
 			cnum := row + g.Firstchan
 			name := fmt.Sprintf("chan%d", cnum)
 			as.chanNames = append(as.chanNames, name)
@@ -597,7 +598,6 @@ func (as *AbacoSource) PrepareChannels() error {
 	}
 	return nil
 }
-
 
 // StartRun tells the hardware to switch into data streaming mode.
 // For Abaco µMUX systems, we need to consume any initial data that constitutes
@@ -623,6 +623,7 @@ type AbacoBuffersType struct {
 	lastSampleTime time.Time
 	timeDiff       time.Duration
 	totalBytes     int
+	droppedBytes   int
 	droppedFrames  int
 }
 
@@ -651,6 +652,7 @@ awaitmoredata:
 			// read from the ring buffer
 			var lastSampleTime time.Time
 			var droppedFrames int
+			var droppedBytes int
 			for _, ring := range as.active {
 				allPackets, err := ring.ReadAllPackets()
 				lastSampleTime = time.Now()
@@ -669,8 +671,9 @@ awaitmoredata:
 			// Fill in for any missing packets first, so a missing first packet isn't a problem.
 			firstSn := uint32(0)
 			for idx, group := range as.groups {
-				packetsAdded, framesAdded := group.fillMissingPackets()
+				bytesAdded, packetsAdded, framesAdded := group.fillMissingPackets()
 				droppedFrames += framesAdded
+				droppedBytes += bytesAdded
 				if packetsAdded > 0 && ProblemLogger != nil {
 					cfirst := idx.Firstchan
 					clast := cfirst + idx.Nchan - 1
@@ -735,6 +738,7 @@ awaitmoredata:
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
 				totalBytes:     bytesProcessed,
+				droppedBytes:   droppedBytes,
 				droppedFrames:  droppedFrames,
 			}
 			if bytesProcessed > 0 {
@@ -789,7 +793,6 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
-	totalBytes := buffersMsg.totalBytes
 	framesUsed := len(datacopies[0])
 
 	// Backtrack to find the time associated with the first sample.
@@ -827,7 +830,9 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	wg.Wait()
 	as.nextFrameNum += FrameIndex(framesUsed)
 	if as.heartbeats != nil {
-		as.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
+		pmb := float64(buffersMsg.totalBytes) / 1e6
+		hwmb := float64(buffersMsg.totalBytes-buffersMsg.droppedBytes) / 1e6
+		as.heartbeats <- Heartbeat{Running: true, HWactualMB: hwmb, DataMB: pmb,
 			Time: timeDiff.Seconds()}
 	}
 	now := time.Now()

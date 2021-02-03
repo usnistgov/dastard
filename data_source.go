@@ -735,7 +735,7 @@ func (ds *AnySource) PrepareChannels() error {
 	ds.channelsPerPixel = 1
 
 	ds.groupKeysSorted = make([]GroupIndex, 1)
-	cg := GroupIndex{Firstchan:0, Nchan:ds.nchan}
+	cg := GroupIndex{Firstchan: 0, Nchan: ds.nchan}
 	ds.groupKeysSorted[0] = cg
 
 	ds.chanNames = make([]string, ds.nchan)

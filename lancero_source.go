@@ -874,7 +874,8 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	ls.nextFrameNum += FrameIndex(framesUsed)
 	ls.previousLastSampleTime = lastSampleTime
 	if ls.heartbeats != nil {
-		ls.heartbeats <- Heartbeat{Running: true, DataMB: float64(totalBytes) / 1e6,
+		mb := float64(totalBytes) / 1e6
+		ls.heartbeats <- Heartbeat{Running: true, HWactualMB: mb, DataMB: mb,
 			Time: timeDiff.Seconds()}
 	}
 	now := time.Now()

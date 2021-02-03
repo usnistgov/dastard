@@ -157,10 +157,10 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		nbursts = 1
 	}
 	burstTime := repeatTime / time.Duration(nbursts)
-	TotalNvalues := Nchan*Nsamp  // one rep has this many values
-	BurstNvalues := TotalNvalues/nbursts
+	TotalNvalues := Nchan * Nsamp // one rep has this many values
+	BurstNvalues := TotalNvalues / nbursts
 	BurstNvalues -= BurstNvalues % valuesPerPacket // bursts should have integer number of packets
-	for BurstNvalues*nbursts < TotalNvalues {  // last burst should be shorter, not longer than the others.
+	for BurstNvalues*nbursts < TotalNvalues {      // last burst should be shorter, not longer than the others.
 		BurstNvalues += valuesPerPacket
 	}
 	// fmt.Printf("Breaking data into %d bursts with %d values each, burst time %v\n", nbursts, BurstNvalues, burstTime)
@@ -183,7 +183,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		}
 		if control.sinusoid {
 			freq := (float64(cnum+1) * 2 * math.Pi) / float64(Nsamp)
-			amplitude := 1000.0
+			amplitude := 8000.0
 			for j := 0; j < Nsamp; j++ {
 				d[i+Nchan*j] += int16(amplitude * math.Sin(freq*float64(j)))
 			}
@@ -194,7 +194,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 			}
 		}
 		if control.pulses {
-			amplitude := 5000.0 + 200.0*float64(cnum)
+			amplitude := 5000.0 + 100.0*float64(cnum)
 			scale := amplitude * 2.116
 			for j := 0; j < Nsamp/4; j++ {
 				pulsevalue := int16(scale * (math.Exp(-float64(j)/1200.0) - math.Exp(-float64(j)/300.0)))
@@ -212,7 +212,8 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 
 		// Abaco data only records the lowest N bits.
 		// Wrap the 16-bit data properly into [0, (2^N)-1]
-		FractionBits := 13
+		// As of Jan 2021, this became N=16, so no "wrapping" needed.
+		FractionBits := 16
 		if FractionBits < 16 {
 			for j := 0; j < Nsamp; j++ {
 				raw := d[i+Nchan*j]
@@ -231,24 +232,28 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 				close(packetchan)
 				return nil
 			case <-timer.C:
-				lastvalue := (burstnum+1)*BurstNvalues
+				lastvalue := (burstnum + 1) * BurstNvalues
 				if TotalNvalues < lastvalue {
 					lastvalue = TotalNvalues
 				}
 
-				for i := burstnum*BurstNvalues; i < lastvalue; i += valuesPerPacket {
+				for firstsamp := burstnum * BurstNvalues; firstsamp < lastvalue; firstsamp += valuesPerPacket {
 					// Must be careful: the last iteration might have fewer samples than the others.
-					lastsamp := i + valuesPerPacket
+					lastsamp := firstsamp + valuesPerPacket
 					if lastsamp > TotalNvalues {
 						lastsamp = TotalNvalues
 					}
+					// Do we generate and send a packet, or drop it?
 					if control.dropfrac == 0.0 || control.dropfrac < randsource.Float64() {
-						packet.NewData(d[i:lastsamp], dims)
+						packet.NewData(d[firstsamp:lastsamp], dims)
 						ts := packets.MakeTimestamp(uint16(timeCounter>>32), uint32(timeCounter), counterRate)
 						packet.SetTimestamp(ts)
 						packetchan <- packet.Bytes()
+					} else {
+						// If dropping a packet, we still need to increment the serial number
+						packet.NewData(d[0:0], dims)
 					}
-					timeCounter += countsPerSample * uint64((lastsamp-i)/Nchan)
+					timeCounter += countsPerSample * uint64((lastsamp-firstsamp)/Nchan)
 				}
 			}
 		}
@@ -341,12 +346,12 @@ func main() {
 
 	// Compute the size of each ring buffer. Let it be big enough to hold 0.5 seconds of data
 	// or 500 packets, and be a multiple of packetAlign.
-	ringlasts := 0.5  // seconds
-	byterate := 2.0*float64(*nchan)*(*samplerate)
+	ringlasts := 0.5 // seconds
+	byterate := 2.0 * float64(*nchan) * (*samplerate)
 	ringsize := int(byterate*ringlasts) + packetAlign
 	ringsize -= ringsize % packetAlign
 	if ringsize < 500*packetAlign {
-		ringsize = 500*packetAlign
+		ringsize = 500 * packetAlign
 	}
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups, Nrings: *nring,

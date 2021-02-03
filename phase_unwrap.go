@@ -22,6 +22,9 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint) *PhaseUnwrapper {
 	// so int(data[i])/2^fractionBits is a number from -0.5 to 0.5 ϕ0
 	// after this function we want 2^(fractionBits-lowBitsToDrop) to be
 	// exactly one single ϕ0, or 2π of phase.
+	//
+	// As of Jan 2021, we decided to let fractionBits = all bits, so 16
+	// or 32 for int16 or int32, but leave that parameter here...for now.
 	u.fractionBits = fractionBits
 	u.lowBitsToDrop = lowBitsToDrop
 	u.twoPi = int16(1) << (fractionBits - lowBitsToDrop)
@@ -47,7 +50,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		// Long-term unwrapping = keeping baseline at same ϕ0.
 		// So if the offset is nonzero for a long time, set it to zero.
 		// This will cause a one-time jump by an integer number of wraps.
-		switch  {
+		switch {
 		case u.offset >= u.twoPi:
 			u.highCount++
 			u.lowCount = 0
