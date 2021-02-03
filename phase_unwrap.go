@@ -10,11 +10,12 @@ type PhaseUnwrapper struct {
 	twoPi         int16
 	highCount     int
 	lowCount      int
-	resetAfter    int // jump back to near 0 after this many
+	resetAfter    int  // jump back to near 0 after this many
+	enable        bool // are we even unwrapping at all?
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
-func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint) *PhaseUnwrapper {
+func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, resetAfter int) *PhaseUnwrapper {
 	u := new(PhaseUnwrapper)
 	// as read from the Roach
 	// data bytes representing a 2s complement integer
@@ -29,14 +30,28 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint) *PhaseUnwrapper {
 	u.lowBitsToDrop = lowBitsToDrop
 	u.twoPi = int16(1) << (fractionBits - lowBitsToDrop)
 	u.onePi = u.twoPi >> 1
-	u.resetAfter = 20000 // TODO: this should be a settable parameter
+	u.resetAfter = resetAfter
+	u.enable = enable
 	return u
 }
 
 // UnwrapInPlace unwraps in place
 func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
+	drop := u.lowBitsToDrop
+
+	// When unwrapping is disabled, simply drop the low bits.
+	if !u.enable {
+		u.lowCount = 0
+		u.highCount = 0
+		for i, rawVal := range *data {
+			(*data)[i] = rawVal >> drop
+		}
+		return
+	}
+
+	// Enter this loop only if unwrapping is enabled
 	for i, rawVal := range *data {
-		v := int16(rawVal) >> u.lowBitsToDrop
+		v := int16(rawVal) >> drop
 		delta := v - u.lastVal
 		u.lastVal = v
 
