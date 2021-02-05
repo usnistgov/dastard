@@ -33,7 +33,7 @@ func TestUnwrap(t *testing.T) {
 			}
 			pu.UnwrapInPlace(&data)
 
-			for i, want := range(original) {
+			for i, want := range original {
 				if enable {
 					want = 0
 				}
@@ -50,7 +50,7 @@ func TestUnwrap(t *testing.T) {
 				original[i] = data[i] >> bits2drop
 			}
 			pu.UnwrapInPlace(&data)
-			for i, want := range(original) {
+			for i, want := range original {
 				if enable {
 					want = RawType(i * (step >> bits2drop))
 				}
