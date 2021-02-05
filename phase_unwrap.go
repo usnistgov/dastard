@@ -32,6 +32,9 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, resetAfter
 	u.onePi = u.twoPi >> 1
 	u.resetAfter = resetAfter
 	u.enable = enable
+	if resetAfter <= 0 {
+		u.enable = false
+	}
 	return u
 }
 
