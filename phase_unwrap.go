@@ -1,5 +1,7 @@
 package dastard
 
+import "fmt"
+
 // PhaseUnwrapper makes phase values continous by adding integers as needed
 type PhaseUnwrapper struct {
 	lastVal       int16
@@ -32,8 +34,8 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, resetAfter
 	u.onePi = u.twoPi >> 1
 	u.resetAfter = resetAfter
 	u.enable = enable
-	if resetAfter <= 0 {
-		u.enable = false
+	if resetAfter <= 0 && enable {
+		panic(fmt.Sprintf("NewPhaseUnwrapper is enabled but with resetAfter=%d, expect positive", resetAfter))
 	}
 	return u
 }

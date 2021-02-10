@@ -4,9 +4,25 @@ import (
 	"testing"
 )
 
+func assertPanic(t *testing.T, f func()) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+	f()
+}
+
 func TestUnwrap(t *testing.T) {
 	const bits2drop = 2
 	enables := []bool{true, false}
+
+	shouldFail := func() {
+		NewPhaseUnwrapper(13, bits2drop, true, -1)
+	}
+	assertPanic(t, shouldFail)
+	NewPhaseUnwrapper(13, bits2drop, false, -1)
+	NewPhaseUnwrapper(13, bits2drop, true, 100)
 
 	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		for _, enable := range enables {
