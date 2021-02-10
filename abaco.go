@@ -397,8 +397,9 @@ type AbacoSource struct {
 
 	groups map[GroupIndex]*AbacoGroup
 
-	readPeriod      time.Duration
-	buffersChan     chan AbacoBuffersType
+	readPeriod  time.Duration
+	buffersChan chan AbacoBuffersType
+	// PhaseUnwrapper parameters must be stored for use when each AbacoGroup is created.
 	unwrapEnable    bool // whether to activate unwrapping
 	unwrapResetSamp int  // unwrap after this many samples (or never if ≤0)
 	AnySource
