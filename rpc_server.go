@@ -353,6 +353,8 @@ func (s *SourceControl) handlePossibleStoppedSource() {
 		s.status.Running = false
 		s.isSourceActive = false
 		s.clientUpdates <- ClientUpdate{"STATUS", s.status}
+		s.heartbeats <- Heartbeat{Running: false}
+
 		if s.ActiveSource.ShouldAutoRestart() {
 			log.Println("dastard is aware it should AutoRestart, but it's not implemented yet")
 		}
@@ -666,11 +668,15 @@ func RunRPCServer(portrpc int, block bool) {
 		// That is, we are intentionally NOT checking any error returned by ConfigureLanceroSource.
 	}
 	var asc AbacoSourceConfig
+	// Set reasonable defaults when not in the config file.
+	asc.Unwrapping = true
+	asc.UnwrapResetSamp = 20000
 	err = viper.UnmarshalKey("abaco", &asc)
 	if err == nil {
 		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)
 		// intentionally not checking for configure errors since it might fail on non abaco systems
 	}
+
 	var rsc RoachSourceConfig
 	err = viper.UnmarshalKey("roach", &rsc)
 	if err == nil {

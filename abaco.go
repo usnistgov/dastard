@@ -38,14 +38,14 @@ type AbacoGroup struct {
 }
 
 // NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
-func NewAbacoGroup(index GroupIndex) *AbacoGroup {
+func NewAbacoGroup(index GroupIndex, unwrapEnable bool, unwrapReset int) *AbacoGroup {
 	g := new(AbacoGroup)
 	g.index = index
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
 	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop)
+		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, unwrapEnable, unwrapReset)
 	}
 	return g
 }
@@ -399,6 +399,9 @@ type AbacoSource struct {
 
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
+	// PhaseUnwrapper parameters must be stored for use when each AbacoGroup is created.
+	unwrapEnable    bool // whether to activate unwrapping
+	unwrapResetSamp int  // unwrap after this many samples (or never if ≤0)
 	AnySource
 }
 
@@ -439,14 +442,20 @@ func (as *AbacoSource) Delete() {
 
 // AbacoSourceConfig holds the arguments needed to call AbacoSource.Configure by RPC.
 type AbacoSourceConfig struct {
-	ActiveCards    []int
-	AvailableCards []int
+	ActiveCards     []int
+	AvailableCards  []int
+	Unwrapping      bool // whether to activate unwrapping
+	UnwrapResetSamp int  // unwrap after this many samples (or never if ≤0)
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	as.sourceStateLock.Lock()
 	defer as.sourceStateLock.Unlock()
+
+	as.unwrapEnable = config.Unwrapping
+	as.unwrapResetSamp = config.UnwrapResetSamp
+
 	// Update the slice AvailableCards.
 	config.AvailableCards = make([]int, 0)
 	for k := range as.arings {
@@ -525,7 +534,7 @@ func (as *AbacoSource) Sample() error {
 		for _, p := range results.allpackets {
 			cidx := gIndex(p)
 			if _, ok := as.groups[cidx]; !ok {
-				as.groups[cidx] = NewAbacoGroup(cidx)
+				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapEnable, as.unwrapResetSamp)
 				as.nchan += cidx.Nchan
 			}
 		}
