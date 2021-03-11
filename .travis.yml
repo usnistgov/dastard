@@ -39,7 +39,10 @@ script:
   # - go test -v -race ./...
   - go test -tags ci -v ./...
   # Only build binaries from the latest Go release.
-  - if [ "${LATEST}" = "true" ]; then gox -os="linux darwin windows" -arch="amd64" -output="dastard_{{.OS}}_{{.Arch}}" -ldflags "-X main.buildDate=`date -u '+%Y-%m-%d.%H:%M:%S.%Z'` -X main.githash=`git rev-parse --short HEAD`" -verbose ./cmd/dastard; fi
+  # I could not get goczmq to cross-compile, so replaced gox with -os="linux darwin windows" with a linux-only build
+  # - if [ "${LATEST}" = "true" ]; then gox -os="linux darwin windows" -arch="amd64" -output="dastard_{{.OS}}_{{.Arch}}" -ldflags "-X main.buildDate=`date -u '+%Y-%m-%d.%H:%M:%S.%Z'` -X main.githash=`git rev-parse --short HEAD`" -verbose ./cmd/dastard; fi
+  # Build for current platform (see dist: bionic, above)
+  - if [ "${LATEST}" = "true" ]; then go build -o dastard_linux_amd64 -ldflags "-X main.buildDate=`date -u '+%Y-%m-%d.%H:%M:%S.%Z'` -X main.githash=`git rev-parse --short HEAD`" -verbose ./cmd/dastard; fi
 
 deploy:
   provider: releases
@@ -52,8 +55,8 @@ deploy:
     secure: "lTBRCHW4N4AwJj+aNzv50/eduOxRlB7/MROllkElXnObb9G9CjdnoZlFoxJuzYuvhk04kuO8+rlY+wk+QB0nLBk2uQ6KLOsh5rWZ/2vyM+bhMBfWZNtuyKgsliz3RnZXGxXdlCAJGigjapg61cArouM6B8uwDJV2L4xOqWdfV5e8DAa62qDfADbs5DTDMyJ6VIa/sBKFFDK60I2MBUk56ZkxX840DK63S4ReUiMT8ijwrnCviIX9rmHQnjLgjqjC6QJTTIh6OSujJ5BoeFO3sZe3blj2naX7QIx5vl4AmAzgUkIJNJUxy/EBxmpV2H9WUH71sCoHF2lrwKj0U+OKXu2vXyUbOPndxGJvFdvt6v0tDHKBJB1vjeBEc5Zl9/hIY4LmbOaJV5MlC0w6/EfmxQ5RSzCyBYQfUm7UvWZ2M2gI1HA9O8GfkWCKhehpwUXIrvV3XLtJ3/axEqrcs7GwCmunzGNSPLnI1rRxzl5xfTeY0b9MJPaDHWGimp/QUxcbFhooKbKRPDFufieXUXrm81Uv6bYPC1Rt+nYmDIMcHHJWrWu+atWep27E1ZXqfTsSOe3xM3EM2XVPFrok7exDUOhY4wjAbgoKSF3CvTh2hEYOmkWPywHdfdlPcEoBxJSoTUw2LWPxb9xpcNf47T0rD0p9hqlLMP+/Vyp+0h5rEmo="
   file:
   # The names of the binaries to output, based on the -output template passed to gox.
-  - dastard_windows_amd64.exe
-  - dastard_darwin_amd64
+  # - dastard_windows_amd64.exe
+  # - dastard_darwin_amd64
   - dastard_linux_amd64
   on:
     # What to repository to build
