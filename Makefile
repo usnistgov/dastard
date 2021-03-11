@@ -6,7 +6,7 @@ GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 BINARY_NAME=dastard
 
-LDFLAGS=-ldflags "-X main.buildDate=$(shell date -u '+%Y-%m-%d.%I:%M:%S.%p.%Z') -X main.githash=$(shell git rev-parse HEAD)"
+LDFLAGS=-ldflags "-X main.buildDate=$(shell date -u '+%Y-%m-%d.%H:%M:%S.%Z') -X main.githash=$(shell git rev-parse --short HEAD)"
 all: test build install
 build: $(BINARY_NAME)
 
