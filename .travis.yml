@@ -35,7 +35,7 @@ script:
   # - go test -v -race ./...
   - go test -tags ci -v ./...
   # Only build binaries from the latest Go release.
-  - if [ "${LATEST}" = "true" ]; then go build -o dastard_linux_amd64 -ldflags "-X main.buildDate=`date -u '+%Y-%m-%d.%H:%M:%S.%Z'` -X main.githash=`git rev-parse --short HEAD`" -verbose ./cmd/dastard; fi
+  - if [ "${LATEST}" = "true" ]; then go build -o dastard_linux_amd64 -ldflags "-X main.buildDate=`date -u '+%Y-%m-%d.%H:%M:%S.%Z'` -X main.githash=`git rev-parse --short HEAD`" ./cmd/dastard; fi
 
 deploy:
   provider: releases
