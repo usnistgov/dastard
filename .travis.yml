@@ -3,15 +3,19 @@ language: go
 dist: bionic
 sudo: required
 
-go:
-  # Test Go versions 1.13 and the most recent. Assume that in-between also works!
-  - 1.13.x  # This should stay at 1.13, as gonum supports only 1.13+
-  - 1.15.x  # This should track the lastest Go release (1.15 came out 10 Aug 2020)
+matrix:
+  include:
+    # "1.x" always refers to the latest Go version, inc. the patch release.
+    # e.g. "1.x" is 1.11 until 1.11.1 is available.
+    - go: 1.x  # This tracks the latest release
+      env: LATEST=true
+    - go: 1.13.x  # This should stay at 1.13, as gonum supports only 1.13+
+    - go: tip
+  allow_failures:
+    - go: tip
+
 
 go_import_path: github.com/usnistgov/dastard
-
-script:
-  - go test -tags ci -v ./...
 
 addons:
   apt:
@@ -20,3 +24,32 @@ addons:
       key_url: 'http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_18.04/Release.key'
     packages:
     - libczmq-dev libzmq3-dev libsodium-dev
+
+install:
+  - # skip
+
+script:
+  - go get -t -v ./...
+  - diff -u <(echo -n) <(gofmt -d .)
+  # - go test -v -race ./...
+  - go test -tags ci -v ./...
+  # Only build binaries from the latest Go release.
+  - if [ "${LATEST}" = "true" ]; then go build -o dastard_linux_amd64 -ldflags "-X main.buildDate=`date -u '+%Y-%m-%d.%H:%M:%S.%Z'` -X main.githash=`git rev-parse --short HEAD`" ./cmd/dastard; fi
+
+deploy:
+  provider: releases
+  api_key: "GITHUB OAUTH TOKEN"
+  skip_cleanup: true
+  on:
+    tags: true
+  api_key:
+    # Your *encrypted* GitHub key, as the output of the Travis CI CLI tool.
+    secure: "lTBRCHW4N4AwJj+aNzv50/eduOxRlB7/MROllkElXnObb9G9CjdnoZlFoxJuzYuvhk04kuO8+rlY+wk+QB0nLBk2uQ6KLOsh5rWZ/2vyM+bhMBfWZNtuyKgsliz3RnZXGxXdlCAJGigjapg61cArouM6B8uwDJV2L4xOqWdfV5e8DAa62qDfADbs5DTDMyJ6VIa/sBKFFDK60I2MBUk56ZkxX840DK63S4ReUiMT8ijwrnCviIX9rmHQnjLgjqjC6QJTTIh6OSujJ5BoeFO3sZe3blj2naX7QIx5vl4AmAzgUkIJNJUxy/EBxmpV2H9WUH71sCoHF2lrwKj0U+OKXu2vXyUbOPndxGJvFdvt6v0tDHKBJB1vjeBEc5Zl9/hIY4LmbOaJV5MlC0w6/EfmxQ5RSzCyBYQfUm7UvWZ2M2gI1HA9O8GfkWCKhehpwUXIrvV3XLtJ3/axEqrcs7GwCmunzGNSPLnI1rRxzl5xfTeY0b9MJPaDHWGimp/QUxcbFhooKbKRPDFufieXUXrm81Uv6bYPC1Rt+nYmDIMcHHJWrWu+atWep27E1ZXqfTsSOe3xM3EM2XVPFrok7exDUOhY4wjAbgoKSF3CvTh2hEYOmkWPywHdfdlPcEoBxJSoTUw2LWPxb9xpcNf47T0rD0p9hqlLMP+/Vyp+0h5rEmo="
+  file:
+  - dastard_linux_amd64
+  on:
+    # What to repository to build
+    repo: usnistgov/dastard
+    # Only build binaries for tagged commits
+    tags: true
+    condition: $LATEST = true

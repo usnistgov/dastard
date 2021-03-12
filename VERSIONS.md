@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.2.9** Started December, 2020
+**0.2.9** March 11, 2021
 * Fix Lancero source: fill in channel groups as 1 group per column.
 * Use new `goczmq` API for setting socket options (issue 230).
 * Keep separate counts of the data rate _from_ the hardware, and data _processed_ (after dropped packets are
@@ -9,6 +9,7 @@
   it generates. So if int32, use the highest 16 bits (issue 227).
 * Allow Abaco sources to change the time after which the phase unwrapping resets (issue 228).
 * Fix heartbeat ("ALIVE") message to have `Running=false` after sources stop (issue 232).
+* Have Travis Continuous Integration system deploy a compiled binary to github (issue 236).
 
 **0.2.8** October 23, 2020
 * Remove idea of rows/columns from Dastard (used only in `LanceroSource`). Use chan groups otherwise (issue 214).
