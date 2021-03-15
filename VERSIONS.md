@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.2.10** Started March  2021
+* Packet data can appear as UDP instead of in shared memory buffer.
+
 **0.2.9** March 11, 2021
 * Fix Lancero source: fill in channel groups as 1 group per column.
 * Use new `goczmq` API for setting socket options (issue 230).
