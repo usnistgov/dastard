@@ -418,8 +418,11 @@ func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
 
 //------------------------------------------------------------------------------------------------
 
-// AbacoSource represents all AbacoRing ring buffers that can potentially supply data, as well
-// as all AbacoGroups that are discovered in the SampleData phase.
+// AbacoSource represents all AbacoRing ring buffers and AbacoUDPReceiver objects
+// that can potentially supply data, as well as all AbacoGroups that are discovered in the
+// SampleData phase.
+// We currently expect the use of EITHER ring buffers or UDP receivers but not both. We won't
+// enforce this as a requirement unless it proves important.
 type AbacoSource struct {
 	// These items have to do with shared memory ring buffers
 	Nrings int // number of available ring buffers
@@ -433,6 +436,7 @@ type AbacoSource struct {
 	groups      map[GroupIndex]*AbacoGroup
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
+
 	// PhaseUnwrapper parameters must be stored for use when each AbacoGroup is created.
 	unwrapEnable    bool // whether to activate unwrapping
 	unwrapResetSamp int  // unwrap after this many samples (or never if ≤0)
@@ -474,6 +478,7 @@ func (as *AbacoSource) Delete() {
 	for _, dev := range as.arings {
 		dev.ring.Close()
 	}
+	as.closeUDPServers()
 }
 
 // AbacoSourceConfig holds the arguments needed to call AbacoSource.Configure by RPC.
@@ -529,11 +534,16 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 		as.active = append(as.active, dev)
 	}
 
-	// TODO: Here do something with the list of requested UDP receivers
-	// for _, r := range config.HostPortUDP {
-	// 	// as.udpReceivers = append(as.udpReceivers, ??)
-	// }
-	return
+	// Bind servers at each host:port pair in the list of requested UDP receivers
+	for _, hostport := range config.HostPortUDP {
+		device, err := NewAbacoUDPReceiver(hostport)
+		if err != nil {
+			fmt.Printf("Could not bind server at udp://%s/\n", hostport)
+			return err
+		}
+		as.udpReceivers = append(as.udpReceivers, device)
+	}
+	return nil
 }
 
 // distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
@@ -829,6 +839,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 						block.err = err
 						as.nextBlock <- block
 					}
+					as.closeUDPServers()
 					close(as.nextBlock)
 					return
 				}
@@ -908,4 +919,12 @@ func (as *AbacoSource) closeRings() error {
 		dev.ring.Close()
 	}
 	return nil
+}
+
+// closeUDPServers closes all active UDP servers.
+func (as *AbacoSource) closeUDPServers() {
+	for _, device := range as.udpReceivers {
+		device.conn.Close()
+	}
+	as.udpReceivers = make([]*AbacoUDPReceiver, 0)
 }
