@@ -276,7 +276,7 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 //------------------------------------------------------------------------------------------------
 
 // PacketProducer is the interface for data sources that produce packets.
-// Implementations might wrap ring buffers or UDP servers.
+// Implementations wrap ring buffers and UDP servers.
 type PacketProducer interface {
 	ReadAllPackets() ([]*packets.Packet, error)
 	samplePackets(d time.Duration) ([]*packets.Packet, error)
@@ -410,6 +410,7 @@ func enumerateAbacoRings() (rings []int, err error) {
 type AbacoUDPReceiver struct {
 	host string       // in the form: "127.0.0.1:56789"
 	conn *net.UDPConn // active UDP connection
+	data chan *packets.Packet
 }
 
 // NewAbacoUDPReceiver creates a new AbacoUDPReceiver and binds as a server to the requested host:port
@@ -424,7 +425,7 @@ func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
 	if err != nil {
 		return nil, err
 	}
-	conn.SetReadBuffer(100000000)
+	conn.SetReadBuffer(0) // So old data doesn't stack up.
 	dev.conn = conn
 	return dev, nil
 }
@@ -432,42 +433,52 @@ func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
 // start starts the UDP device by...?
 // TODO: consider whether the newest data a *non-full* ring can be used here?
 func (device *AbacoUDPReceiver) start() (err error) {
+	device.data = make(chan *packets.Packet, 20)
+	go func() {
+		defer close(device.data)
+		buffer := make([]byte, 16384)
+		for {
+			n, addr, err := device.conn.ReadFrom(buffer)
+			// The number of bytes read and the source address are ignored for now.
+			if err != nil {
+				fmt.Printf("Error! Read %d bytes from %s with err=%v\n", n, addr, err)
+				return
+			}
+			p, err := packets.ReadPacketPlusPad(bytes.NewReader(buffer), n)
+			if err != nil {
+				fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
+				return
+			}
+			device.data <- p
+		}
+	}()
 	return device.discardStale()
 }
 
-// discardStale discards all data currently sitting in the ring.
-// TODO: consider whether the newest data a *non-full* ring can be used here?
+// discardStale discards all data currently ready for reading at the UDP socket.
 func (device *AbacoUDPReceiver) discardStale() error {
-	// // Read and discard any packets now waiting, because they are potentially old.
-	// // Although it slows things down, it's best to discard all data on the socket,
-	// // because we have no idea how old the data are.
-	// if _, err = device.ReadAllPackets(); err != nil {
-	// 	return nil, err
-	// }
-	return nil
+	device.conn.SetReadBuffer(0)
+	_, err := device.ReadAllPackets()
+	device.conn.SetReadBuffer(100000000)
+	return err
 }
 
 // ReadAllPackets returns an array of *packet.Packet, as read from the device's network connection.
+// It is a non-blocking wrapper around the UDP connection read (a blocking operation).
 func (device *AbacoUDPReceiver) ReadAllPackets() ([]*packets.Packet, error) {
-	buffer := make([]byte, 16384)
 	allPackets := make([]*packets.Packet, 0)
 	for {
-		n, addr, err := device.conn.ReadFrom(buffer)
-		fmt.Printf("Read %d bytes from %s with err=%v\n", n, addr, err)
-		// The middle value, the source address, is ignored for now.
-		if err != nil {
-			return allPackets, err
+		select {
+		case p, ok := <-device.data:
+			if !ok {
+				fmt.Printf("device.data closed after %d packets\n", len(allPackets))
+				return allPackets, nil
+			}
+			allPackets = append(allPackets, p)
+		default:
+			return allPackets, nil
 		}
-		p, err := packets.ReadPacketPlusPad(bytes.NewReader(buffer), n)
-		fmt.Printf("  err %v, packet %v\n", err, p)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return allPackets, err
-		}
-		allPackets = append(allPackets, p)
 	}
-	return allPackets, nil
 }
 
 // samplePackets samples the data from a single AbacoUDPReceiver. It scans enough packets to
@@ -488,7 +499,7 @@ func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allP
 			return
 
 		default:
-			time.Sleep(5 * time.Millisecond)
+			time.Sleep(25 * time.Millisecond)
 			p, err := device.ReadAllPackets()
 			if err != nil {
 				fmt.Printf("Oh no! error in ReadAllPackets: %v\n", err)
@@ -501,14 +512,9 @@ func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allP
 	return allPackets, nil
 }
 
-// stop closes the ring buffer
+// stop closes the UDP connection
 func (device *AbacoUDPReceiver) stop() error {
-	device.conn.Close()
-	f, err := device.conn.File()
-	if err == nil {
-		f.Close()
-	}
-	return err
+	return device.conn.Close()
 }
 
 //------------------------------------------------------------------------------------------------
