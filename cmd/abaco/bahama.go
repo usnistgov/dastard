@@ -305,7 +305,7 @@ func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 }
 
 func udpwriter(sourcenum int, packetchan chan []byte) error {
-	hostname := fmt.Sprintf("localhost:%d", 5800+sourcenum)
+	hostname := fmt.Sprintf("localhost:%d", 4000+sourcenum)
 	addr, err := net.ResolveUDPAddr("udp", hostname)
 	if err != nil {
 		return err
