@@ -180,9 +180,25 @@ func TestAbacoSource(t *testing.T) {
 	source.arings[cardnum] = dev
 	source.Nrings++
 
-	deviceCodes := []int{cardnum}
 	var config AbacoSourceConfig
+
+	// Check that ActiveCards and HostPortUDP slices are unique-ified when source.Configure(&config) called.
+	config.ActiveCards = []int{4, 3, 3, 3, 3, 3, 4, 3, 3}
+	config.HostPortUDP = []string{"localhost:4444", "localhost:3333", "localhost:4444"}
+	err = source.Configure(&config)
+	if err == nil {
+		t.Fatalf("AbacoSource.Configure(%v) should fail but doesn't", config)
+	}
+	if len(config.ActiveCards) > 2 {
+		t.Errorf("AbacoSource.Configure() returns with repeats in ActiveCards=%v", config.ActiveCards)
+	}
+	if len(config.HostPortUDP) > 2 {
+		t.Errorf("AbacoSource.Configure() returns with repeats in HostPortUDP=%v", config.HostPortUDP)
+	}
+
+	deviceCodes := []int{cardnum}
 	config.ActiveCards = deviceCodes
+	config.HostPortUDP = []string{}
 	err = source.Configure(&config)
 	if err != nil {
 		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)

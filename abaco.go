@@ -592,6 +592,32 @@ type AbacoSourceConfig struct {
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
+	// Make sure entries in the ActiveCards slice are unique and sorted
+	cardseen := make(map[int]bool)
+	i := 0
+	for _, cnum := range config.ActiveCards {
+		if !cardseen[cnum] {
+			cardseen[cnum] = true
+			config.ActiveCards[i] = cnum
+			i++
+		}
+	}
+	config.ActiveCards = config.ActiveCards[:i]
+	sort.Ints(config.ActiveCards)
+
+	// Make sure entries in the HostPortUDP slice are unique and sorted
+	hpseen := make(map[string]bool)
+	i = 0
+	for _, hp := range config.HostPortUDP {
+		if !hpseen[hp] {
+			hpseen[hp] = true
+			config.HostPortUDP[i] = hp
+			i++
+		}
+	}
+	config.HostPortUDP = config.HostPortUDP[:i]
+	sort.Strings(config.HostPortUDP)
+
 	as.sourceStateLock.Lock()
 	defer as.sourceStateLock.Unlock()
 
@@ -609,28 +635,13 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	as.unwrapEnable = config.Unwrapping
 	as.unwrapResetSamp = config.UnwrapResetSamp
 
-	// used to be sure the same device isn't listed twice in config.ActiveCards
-	contains := func(s []*AbacoRing, e *AbacoRing) bool {
-		for _, a := range s {
-			if a == e {
-				return true
-			}
-		}
-		return false
-	}
-
 	// Activate the cards listed in the config request.
 	as.producers = make([]PacketProducer, 0)
 	as.activeRings = make([]*AbacoRing, 0)
 	for i, c := range config.ActiveCards {
 		device := as.arings[c]
 		if device == nil {
-			err = fmt.Errorf("ActiveCards[%d]: card=%v, device == nil", i, c)
-			break
-		}
-		if contains(as.activeRings, device) {
-			err = fmt.Errorf("attempt to use same Abaco device two times: ActiveCards[%d], c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
-			break
+			return fmt.Errorf("ActiveCards[%d]: card=%v, device == nil", i, c)
 		}
 		as.activeRings = append(as.activeRings, device)
 		as.producers = append(as.producers, device)
