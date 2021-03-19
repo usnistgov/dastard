@@ -101,6 +101,7 @@ func TestAbacoRing(t *testing.T) {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
 	timeout := 2000 * time.Millisecond
+	dev.start()
 	dev.samplePackets(timeout)
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
@@ -259,6 +260,10 @@ func TestAbacoSource(t *testing.T) {
 	source.RunDoneWait()
 
 	// Start a 2nd time
+	err = source.Configure(&config)
+	if err != nil {
+		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
+	}
 	if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
 		t.Fatal(err)
