@@ -417,22 +417,24 @@ type AbacoUDPReceiver struct {
 func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
 	dev = new(AbacoUDPReceiver)
 	dev.host = hostport
-	raddr, err := net.ResolveUDPAddr("udp", hostport)
-	if err != nil {
+	if _, err := net.ResolveUDPAddr("udp", hostport); err != nil {
 		return nil, err
 	}
-	conn, err := net.ListenUDP("udp", raddr)
-	if err != nil {
-		return nil, err
-	}
-	conn.SetReadBuffer(0) // So old data doesn't stack up.
-	dev.conn = conn
 	return dev, nil
 }
 
 // start starts the UDP device by...?
 // TODO: consider whether the newest data a *non-full* ring can be used here?
 func (device *AbacoUDPReceiver) start() (err error) {
+	raddr, err := net.ResolveUDPAddr("udp", device.host)
+	if err != nil {
+		return err
+	}
+	conn, err := net.ListenUDP("udp", raddr)
+	if err != nil {
+		return err
+	}
+	device.conn = conn
 	device.data = make(chan *packets.Packet, 20)
 	go func() {
 		defer close(device.data)
@@ -514,7 +516,9 @@ func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allP
 
 // stop closes the UDP connection
 func (device *AbacoUDPReceiver) stop() error {
-	return device.conn.Close()
+	err := device.conn.Close()
+	device.conn = nil
+	return err
 }
 
 //------------------------------------------------------------------------------------------------
