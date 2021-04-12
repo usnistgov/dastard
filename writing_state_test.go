@@ -47,6 +47,14 @@ func TestWriteControl(t *testing.T) {
 	if err := ds.WriteControl(config); err != nil {
 		t.Errorf("WriteControl request %s failed: %v", config.Request, err)
 	}
+	for _, request := range []string{"Pause", "Unpause", "Stop", "Start"} {
+		config.Request = request
+		if err := ds.WriteControl(config); err != nil {
+			t.Errorf("WriteControl request %s failed on a writing file: %v", request, err)
+		}
+	}
+
+	ds.HandleDataDrop(5, 10)
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {
 		config.Request = request
 		if err := ds.WriteControl(config); err != nil {
