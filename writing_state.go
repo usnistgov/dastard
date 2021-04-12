@@ -96,7 +96,7 @@ func (ws *WritingState) Stop() error {
 			return fmt.Errorf("failed to flush externalTriggerFileBufferedWriter, err: %v", err)
 		}
 		if err := ws.externalTriggerFile.Close(); err != nil {
-			return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
+			return fmt.Errorf("failed to close externalTriggerFile, err: %v", err)
 		}
 		ws.externalTriggerFileBufferedWriter = nil
 		ws.externalTriggerFile = nil
