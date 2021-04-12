@@ -54,6 +54,7 @@ func TestWriteControl(t *testing.T) {
 		}
 	}
 
+	// The Stop step in the following tests that the bug given in issue #239 is fixed.
 	ds.HandleDataDrop(5, 10)
 	for _, request := range []string{"Pause", "Unpause", "Stop"} {
 		config.Request = request

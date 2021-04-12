@@ -106,7 +106,7 @@ func (ws *WritingState) Stop() error {
 			return fmt.Errorf("failed to flush externalTriggerFileBufferedWriter, err: %v", err)
 		}
 		if err := ws.dataDropFile.Close(); err != nil {
-			return fmt.Errorf("failed to close externalTriggerFileWriter, err: %v", err)
+			return fmt.Errorf("failed to close dataDropFile, err: %v", err)
 		}
 		ws.dataDropFileBufferedWriter = nil
 		ws.dataDropFile = nil
