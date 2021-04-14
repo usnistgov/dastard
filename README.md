@@ -18,18 +18,28 @@ sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
 sudo apt-get -y install golang-go
 
-# Install Dastard
-go get -v -u github.com/usnistgov/dastard
-cd ~/go/src/github.com/usnistgov/dastard/
-make
+# Install Dastard as a development copy
+DASTARD_DEV_PATH=$(go env GOPATH)/src/github.com/usnistgov
+mkdir -p $DASTARD_DEV_PATH
+cd $DASTARD_DEV_PATH
+git clone https://github.com/usnistgov/dastard
+cd dastard
+
+# Build, then try to run the local copy
+make all    # implies "make test build install"
+./dastard --version
 
 # Check whether the GOPATH is in your bash path. If not, update ~/.bashrc to make it so.
-# This will fix the current terminal and all that run ~/.bashrc in the future, but not
+# This will fix the current terminal AND all that run ~/.bashrc in the future, but not
 # any other existing terminals (until you do "source ~/.bashrc" in them).
 source update-path.sh
+
+# Now that PATH includes go's bin, try to run the installed copy
+dastard --version
 ```
 
-
+The following seem to be out-of-date and apply only to Ubuntu 16.04 LTS, but just in case they
+are useful to you, here are the old instructions.
  ```
 sudo add-apt-repository -y 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
 cd ~/Downloads
