@@ -444,6 +444,8 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	// request comes on device.sendmore.
 	go func() {
 		defer close(device.data)
+		defer func() {device.conn = nil}()
+
 		queue := make([]*packets.Packet, 0, 20000)
 		for {
 			select {
@@ -461,12 +463,14 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	// This goroutine reads the UDP socket and puts the resulting packets on channel singlepackets.
 	// They will be removed and queued by the previous goroutine.
 	go func() {
+		defer close(singlepackets)
 		buffer := make([]byte, 16384)
 		for {
-			n, addr, err := device.conn.ReadFrom(buffer)
-			// The number of bytes read and the source address are ignored for now.
+			n, _, err := device.conn.ReadFrom(buffer)
+			// The source address is ignored for now.
 			if err != nil {
-				fmt.Printf("Error! Read %d bytes from %s with err=%v\n", n, addr, err)
+				// No error printout. Error here is the normal way to detect closed connection.
+				// fmt.Printf("Error! Read %d bytes from %s with err=%v\n", n, addr, err)
 				return
 			}
 			p, err := packets.ReadPacketPlusPad(bytes.NewReader(buffer), n)
@@ -533,7 +537,6 @@ func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allP
 // stop closes the UDP connection
 func (device *AbacoUDPReceiver) stop() error {
 	err := device.conn.Close()
-	device.conn = nil
 	close(device.sendmore)
 	return err
 }
