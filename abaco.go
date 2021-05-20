@@ -444,7 +444,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	// request comes on device.sendmore.
 	go func() {
 		defer close(device.data)
-		defer func() {device.conn = nil}()
+		defer func() { device.conn = nil }()
 
 		queue := make([]*packets.Packet, 0, 20000)
 		for {
