@@ -408,9 +408,10 @@ func enumerateAbacoRings() (rings []int, err error) {
 
 // AbacoUDPReceiver represents a single Abaco device producing data by UDP packets to a single UDP port.
 type AbacoUDPReceiver struct {
-	host string       // in the form: "127.0.0.1:56789"
-	conn *net.UDPConn // active UDP connection
-	data chan *packets.Packet
+	host     string       // in the form: "127.0.0.1:56789"
+	conn     *net.UDPConn // active UDP connection
+	data     chan []*packets.Packet
+	sendmore chan bool
 }
 
 // NewAbacoUDPReceiver creates a new AbacoUDPReceiver and binds as a server to the requested host:port
@@ -435,9 +436,31 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		return err
 	}
 	device.conn = conn
-	device.data = make(chan *packets.Packet, 20)
+	device.sendmore = make(chan bool)
+	device.data = make(chan []*packets.Packet)
+	singlepackets := make(chan *packets.Packet)
+	// This goroutine handles packets sent one at a time on singlepackets by the other goroutine.
+	// It queues them into a slice of *packets.Packet pointers and sends the whole slice when a
+	// request comes on device.sendmore.
 	go func() {
 		defer close(device.data)
+		queue := make([]*packets.Packet, 0, 20000)
+		for {
+			select {
+			case _, ok := <-device.sendmore:
+				device.data <- queue
+				if !ok {
+					return
+				}
+				queue = make([]*packets.Packet, 0, 20000)
+			case p := <-singlepackets:
+				queue = append(queue, p)
+			}
+		}
+	}()
+	// This goroutine reads the UDP socket and puts the resulting packets on channel singlepackets.
+	// They will be removed and queued by the previous goroutine.
+	go func() {
 		buffer := make([]byte, 16384)
 		for {
 			n, addr, err := device.conn.ReadFrom(buffer)
@@ -451,7 +474,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 				fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
 				return
 			}
-			device.data <- p
+			singlepackets <- p
 		}
 	}()
 	return device.discardStale()
@@ -468,19 +491,12 @@ func (device *AbacoUDPReceiver) discardStale() error {
 // ReadAllPackets returns an array of *packet.Packet, as read from the device's network connection.
 // It is a non-blocking wrapper around the UDP connection read (a blocking operation).
 func (device *AbacoUDPReceiver) ReadAllPackets() ([]*packets.Packet, error) {
-	allPackets := make([]*packets.Packet, 0)
-	for {
-		select {
-		case p, ok := <-device.data:
-			if !ok {
-				fmt.Printf("device.data closed after %d packets\n", len(allPackets))
-				return allPackets, nil
-			}
-			allPackets = append(allPackets, p)
-		default:
-			return allPackets, nil
-		}
+	device.sendmore <- true
+	allPackets, ok := <-device.data
+	if !ok {
+		fmt.Printf("device.data closed after %d packets\n", len(allPackets))
 	}
+	return allPackets, nil
 }
 
 // samplePackets samples the data from a single AbacoUDPReceiver. It scans enough packets to
@@ -518,6 +534,7 @@ func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allP
 func (device *AbacoUDPReceiver) stop() error {
 	err := device.conn.Close()
 	device.conn = nil
+	close(device.sendmore)
 	return err
 }
 
