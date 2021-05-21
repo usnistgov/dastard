@@ -465,8 +465,10 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	go func() {
 		defer close(singlepackets)
 		buffer := make([]byte, 16384)
+		outofband := make([]byte, 16384)
 		for {
-			n, _, err := device.conn.ReadFrom(buffer)
+			// n, _, err := device.conn.ReadFrom(buffer)
+			n, _, _, _, err := device.conn.ReadMsgUDP(buffer, outofband)
 			// The source address is ignored for now.
 			if err != nil {
 				// No error printout. Error here is the normal way to detect closed connection.
