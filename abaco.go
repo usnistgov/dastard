@@ -425,7 +425,6 @@ func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
 }
 
 // start starts the UDP device by...?
-// TODO: consider whether the newest data a *non-full* ring can be used here?
 func (device *AbacoUDPReceiver) start() (err error) {
 	raddr, err := net.ResolveUDPAddr("udp", device.host)
 	if err != nil {
@@ -440,12 +439,13 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		New: func() interface{} { return make([]byte, UDPPacketSize) },
 	}
 	device.conn = conn
+
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
 	singlepackets := make(chan []byte, 20)
-	// This goroutine handles packets sent one at a time on singlepackets by the other goroutine.
-	// It queues them into a slice of *packets.Packet pointers and sends the whole slice when a
-	// request comes on device.sendmore.
+	// This goroutine handles UDP message sent one at a time on singlepackets by the other goroutine.
+	// It converts them into packet.Packet objects, queues them into a slice of *packets.Packet
+	// pointers and sends the whole slice when a request comes on device.sendmore.
 	go func() {
 		defer close(device.data)
 		defer func() { device.conn = nil }()
@@ -480,9 +480,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		defer close(singlepackets)
 		for {
 			message := bufferPool.Get().([]byte)
-			_, _, err := device.conn.ReadFrom(message)
-			// The source address is ignored for now.
-			if err != nil {
+			if _, _, err := device.conn.ReadFrom(message); err != nil {
 				// Don't report errors. Getting an error here is the normal way to detect closed connection.
 				// fmt.Printf("Error! Read %d bytes from %s with err=%v\n", n, addr, err)
 				bufferPool.Put(message)
@@ -491,15 +489,16 @@ func (device *AbacoUDPReceiver) start() (err error) {
 			singlepackets <- message
 		}
 	}()
-	return device.discardStale()
+	return nil
 }
 
 // discardStale discards all data currently ready for reading at the UDP socket.
+// At least, it is supposed to. We are not sure it actually works.
 func (device *AbacoUDPReceiver) discardStale() error {
 	device.conn.SetReadBuffer(0)
-	_, err := device.ReadAllPackets()
 	device.conn.SetReadBuffer(100000000)
-	return err
+	fmt.Println("Set read buffer 100 MB")
+	return nil
 }
 
 // ReadAllPackets returns an array of *packet.Packet, as read from the device's network connection.
