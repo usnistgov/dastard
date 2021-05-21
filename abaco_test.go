@@ -164,6 +164,29 @@ func TestAbacoRing(t *testing.T) {
 	}
 }
 
+func TestAbacoUDP(t *testing.T) {
+	if _, err := NewAbacoUDPReceiver("nonexistenthost.remote.internet:4999"); err == nil {
+		t.Errorf("NewAbacoUDPReceiver(\"nonexistenthost.remote.internet:4999\") succeeded, want failure")
+	}
+	device, err := NewAbacoUDPReceiver("localhost:4999")
+	if err != nil {
+		t.Errorf("NewAbacoUDPReceiver(\"localhost:4999\") failed: %v", err)
+	}
+	err = device.start()
+	if err != nil {
+		t.Errorf("AbacoUDP.start() failed: %v", err)
+	}
+	err = device.discardStale()
+	if err != nil {
+		t.Errorf("AbacoUDP.discardStale() failed: %v", err)
+	}
+	go func() { <-device.data }()
+	err = device.stop()
+	if err != nil {
+		t.Errorf("AbacoUDP.stop() failed: %v", err)
+	}
+}
+
 func TestAbacoSource(t *testing.T) {
 	source, err := NewAbacoSource()
 	if err != nil {
