@@ -435,10 +435,14 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	if err != nil {
 		return err
 	}
+	const UDPPacketSize = 8192
+	bufferPool := sync.Pool{
+		New: func() interface{} { return make([]byte, UDPPacketSize) },
+	}
 	device.conn = conn
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
-	singlepackets := make(chan *packets.Packet)
+	singlepackets := make(chan []byte, 20)
 	// This goroutine handles packets sent one at a time on singlepackets by the other goroutine.
 	// It queues them into a slice of *packets.Packet pointers and sends the whole slice when a
 	// request comes on device.sendmore.
@@ -446,7 +450,8 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		defer close(device.data)
 		defer func() { device.conn = nil }()
 
-		queue := make([]*packets.Packet, 0, 20000)
+		const initialQueueCapacity = 20000
+		queue := make([]*packets.Packet, 0, initialQueueCapacity)
 		for {
 			select {
 			case _, ok := <-device.sendmore:
@@ -454,8 +459,17 @@ func (device *AbacoUDPReceiver) start() (err error) {
 				if !ok {
 					return
 				}
-				queue = make([]*packets.Packet, 0, 20000)
-			case p := <-singlepackets:
+				queue = make([]*packets.Packet, 0, initialQueueCapacity)
+
+			case message := <-singlepackets:
+				p, err := packets.ReadPacket(bytes.NewReader(message))
+				bufferPool.Put(message)
+				if err != nil {
+					if err != io.EOF {
+						fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
+					}
+					return
+				}
 				queue = append(queue, p)
 			}
 		}
@@ -464,23 +478,17 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	// They will be removed and queued by the previous goroutine.
 	go func() {
 		defer close(singlepackets)
-		buffer := make([]byte, 16384)
-		outofband := make([]byte, 16384)
 		for {
-			// n, _, err := device.conn.ReadFrom(buffer)
-			n, _, _, _, err := device.conn.ReadMsgUDP(buffer, outofband)
+			message := bufferPool.Get().([]byte)
+			_, _, err := device.conn.ReadFrom(message)
 			// The source address is ignored for now.
 			if err != nil {
-				// No error printout. Error here is the normal way to detect closed connection.
+				// Don't report errors. Getting an error here is the normal way to detect closed connection.
 				// fmt.Printf("Error! Read %d bytes from %s with err=%v\n", n, addr, err)
+				bufferPool.Put(message)
 				return
 			}
-			p, err := packets.ReadPacketPlusPad(bytes.NewReader(buffer), n)
-			if err != nil {
-				fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
-				return
-			}
-			singlepackets <- p
+			singlepackets <- message
 		}
 	}()
 	return device.discardStale()
