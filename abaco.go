@@ -496,8 +496,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 // At least, it is supposed to. We are not sure it actually works.
 func (device *AbacoUDPReceiver) discardStale() error {
 	device.conn.SetReadBuffer(0)
-	device.conn.SetReadBuffer(100000000)
-	fmt.Println("Set read buffer 100 MB")
+	device.conn.SetReadBuffer(67108864)
 	return nil
 }
 
