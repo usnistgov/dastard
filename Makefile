@@ -11,7 +11,6 @@ all: test build install
 build: $(BINARY_NAME)
 
 $(BINARY_NAME): *.go cmd/dastard/dastard.go getbytes/*.go lancero/*.go ljh/*.go off/*.go packets/*.go ringbuffer/*.go
-	$(GOFMT)
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
 # make test needs to install deps, or Travis will fail

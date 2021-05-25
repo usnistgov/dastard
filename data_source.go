@@ -398,6 +398,7 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 		ds.writingState.dataDropsObserved++
 		fmt.Printf("DATA DROP. firstFramenum %v, droppedFrames %v\n", firstFramenum, droppedFrames)
 		if ds.writingState.IsActive() {
+			// Set up the log file if not already done
 			if ds.writingState.dataDropFileBufferedWriter == nil {
 				// create file
 				var err error
@@ -408,12 +409,14 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 				}
 				ds.writingState.dataDropFileBufferedWriter = bufio.NewWriter(ds.writingState.dataDropFile)
 				// write header
-				_, err = ds.writingState.dataDropFileBufferedWriter.WriteString("# firstFramenum after drop, number of dropped frames\n")
+				_, err = ds.writingState.dataDropFileBufferedWriter.WriteString("# first framenum after drop, number of dropped frames\n")
 				if err != nil {
 					return fmt.Errorf("cannot write header to dataDroFileBufferedWriter, err %v", err)
 				}
 			}
-			line := fmt.Sprintf("%v,%v", firstFramenum, droppedFrames)
+
+			// Log to the dataDropFile
+			line := fmt.Sprintf("%12d %8d\n", firstFramenum, droppedFrames)
 			_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
 			if err != nil {
 				return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)

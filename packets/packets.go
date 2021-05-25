@@ -421,9 +421,6 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 	if p.headerLength < MINLENGTH {
 		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
 	}
-	if p.payloadLength%8 != 0 {
-		return nil, fmt.Errorf("Header payload length is %d, expect multiple of 8", p.payloadLength)
-	}
 	p.packetLength = int(p.headerLength) + int(p.payloadLength)
 
 	magic := binary.BigEndian.Uint32(hdr[4:])

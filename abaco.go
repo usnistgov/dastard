@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"net"
 	"os"
 	"sort"
 	"sync"
@@ -15,6 +16,13 @@ import (
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
 )
+
+const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
+const abacoBitsToDrop = 4
+
+// That is, Abaco data is of the form bbbb bbbb bbbb bbbb with 0 integer bits
+// and 16 fractional bits. In the unwrapping process, we drop 4, making it 4/12, or
+// iiii.bbbb bbbb bbbb. This gives room for up to ±8ϕ0 (actually, -8ϕ0 and +8ϕ0 both map to 0x8000).
 
 // gindex converts a packet to the GroupIndex whose data it contains
 func gIndex(p *packets.Packet) GroupIndex {
@@ -267,6 +275,18 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 
 //------------------------------------------------------------------------------------------------
 
+// PacketProducer is the interface for data sources that produce packets.
+// Implementations wrap ring buffers and UDP servers.
+type PacketProducer interface {
+	ReadAllPackets() ([]*packets.Packet, error)
+	samplePackets(d time.Duration) ([]*packets.Packet, error)
+	start() error
+	discardStale() error
+	stop() error
+}
+
+//------------------------------------------------------------------------------------------------
+
 // AbacoRing represents a single shared-memory ring buffer that stores an Abaco card's data.
 // Beware of a possible future: multiple cards could pack data into the same ring.
 type AbacoRing struct {
@@ -276,13 +296,6 @@ type AbacoRing struct {
 }
 
 const maxAbacoRings = 4 // Don't allow more than this many ring buffers.
-
-const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
-const abacoBitsToDrop = 4
-
-// That is, Abaco data is of the form bbbb bbbb bbbb bbbb with 0 integer bits
-// and 16 fractional bits. In the unwrapping process, we drop 4, making it 4/12, or
-// iiii.bbbb bbbb bbbb. This gives room for up to ±8ϕ0 (actually, -8ϕ0 and +8ϕ0 both map to 0x8000).
 
 // NewAbacoRing creates a new AbacoRing and opens the underlying shared memory for reading.
 func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {
@@ -300,6 +313,25 @@ func NewAbacoRing(ringnum int) (dev *AbacoRing, err error) {
 		return nil, err
 	}
 	return dev, nil
+}
+
+// start starts the ring buffer by opening it and discarding whatever is in it.
+func (device *AbacoRing) start() (err error) {
+	if err = device.ring.Open(); err != nil {
+		return
+	}
+	psize, err := device.ring.PacketSize()
+	if err != nil {
+		return
+	}
+	device.packetSize = int(psize)
+	return device.discardStale()
+}
+
+// discardStale discards all data currently sitting in the ring.
+// TODO: consider whether the newest data a *non-full* ring can be used here?
+func (device *AbacoRing) discardStale() error {
+	return device.ring.DiscardStride(uint64(device.packetSize))
 }
 
 // ReadAllPackets returns an array of *packet.Packet, as read from the device's RingBuffer.
@@ -324,31 +356,12 @@ func (device *AbacoRing) ReadAllPackets() ([]*packets.Packet, error) {
 
 // samplePackets samples the data from a single AbacoRing. It scans enough packets to
 // learn the number of channels, data rate, etc.
-// Although it slows things down, it's best to discard all data in the ring when
-// we open it, because we have no idea how old the data are (in particular, once full, a
-// ring cannot take in new data to replace the old, so a full ring's data are arbitrarily old).
-// TODO: consider whether the newest data a *non-full* ring can be used here?
-func (device *AbacoRing) samplePackets() (allPackets []*packets.Packet, err error) {
-	// Open the ring buffer and discard whatever is in it.
-	if err = device.ring.Open(); err != nil {
-		return
-	}
-	psize, err := device.ring.PacketSize()
-	if err != nil {
-		return
-	}
-	device.packetSize = int(psize)
-	if err = device.ring.DiscardStride(uint64(device.packetSize)); err != nil {
-		return
-	}
-
-	// Now get the data we actually want: fresh data. Run for at least
-	// a minimum time or a minimum number of packets.
+func (device *AbacoRing) samplePackets(maxSampleTime time.Duration) (allPackets []*packets.Packet, err error) {
+	// Run for at least a minimum time or a minimum number of packets.
 	// The hard requirement is for at least 2 packets per channel group, so we can count samples taken
 	// between 2 timestamps and thus the sample rate. More packets is better, because we can estimate
 	// sample rate over a longer baseline, we are less likely to overlook a channel group.
 	const minPacketsToRead = 100 // Is this a good minimum? If we start missing channel groups, increase this.
-	maxSampleTime := time.Duration(2000 * time.Millisecond)
 	timeOut := time.NewTimer(maxSampleTime)
 
 	packetsRead := 0
@@ -372,8 +385,13 @@ func (device *AbacoRing) samplePackets() (allPackets []*packets.Packet, err erro
 	return allPackets, nil
 }
 
+// stop closes the ring buffer
+func (device *AbacoRing) stop() error {
+	return device.ring.Close()
+}
+
 // enumerateAbacoRings returns a list of abaco ring buffer numbers that exist
-// in the devfs. If /dev/xdmaX_c2h_0_description exists, then X is added to the list.
+// in the shared memory system. If xdmaX_c2h_0_description exists, then X is added to the list.
 // Does not handle cards with suffix other than *_c2h_0.
 func enumerateAbacoRings() (rings []int, err error) {
 	for cnum := 0; cnum < maxAbacoRings; cnum++ {
@@ -388,20 +406,173 @@ func enumerateAbacoRings() (rings []int, err error) {
 
 //------------------------------------------------------------------------------------------------
 
-// AbacoSource represents all AbacoRing ring buffers that can potentially supply data, as well
-// as all AbacoGroups that are discovered in the SampleData phase.
+// AbacoUDPReceiver represents a single Abaco device producing data by UDP packets to a single UDP port.
+type AbacoUDPReceiver struct {
+	host     string       // in the form: "127.0.0.1:56789"
+	conn     *net.UDPConn // active UDP connection
+	data     chan []*packets.Packet
+	sendmore chan bool
+}
+
+// NewAbacoUDPReceiver creates a new AbacoUDPReceiver and binds as a server to the requested host:port
+func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
+	dev = new(AbacoUDPReceiver)
+	dev.host = hostport
+	if _, err := net.ResolveUDPAddr("udp", hostport); err != nil {
+		return nil, err
+	}
+	return dev, nil
+}
+
+// start starts the UDP device by...?
+func (device *AbacoUDPReceiver) start() (err error) {
+	raddr, err := net.ResolveUDPAddr("udp", device.host)
+	if err != nil {
+		return err
+	}
+	conn, err := net.ListenUDP("udp", raddr)
+	if err != nil {
+		return err
+	}
+	const UDPPacketSize = 8192
+	bufferPool := sync.Pool{
+		New: func() interface{} { return make([]byte, UDPPacketSize) },
+	}
+	device.conn = conn
+
+	device.sendmore = make(chan bool)
+	device.data = make(chan []*packets.Packet)
+	singlepackets := make(chan []byte, 20)
+	// This goroutine handles UDP message sent one at a time on singlepackets by the other goroutine.
+	// It converts them into packet.Packet objects, queues them into a slice of *packets.Packet
+	// pointers and sends the whole slice when a request comes on device.sendmore.
+	go func() {
+		defer close(device.data)
+		defer func() { device.conn = nil }()
+
+		const initialQueueCapacity = 2048
+		queue := make([]*packets.Packet, 0, initialQueueCapacity)
+		for {
+			select {
+			case _, ok := <-device.sendmore:
+				device.data <- queue
+				if !ok {
+					return
+				}
+				queue = make([]*packets.Packet, 0, initialQueueCapacity)
+
+			case message := <-singlepackets:
+				p, err := packets.ReadPacket(bytes.NewReader(message))
+				bufferPool.Put(message)
+				if err != nil {
+					if err != io.EOF {
+						fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
+					}
+					return
+				}
+				queue = append(queue, p)
+			}
+		}
+	}()
+	// This goroutine reads the UDP socket and puts the resulting packets on channel singlepackets.
+	// They will be removed and queued by the previous goroutine.
+	go func() {
+		defer close(singlepackets)
+		for {
+			message := bufferPool.Get().([]byte)
+			if _, _, err := device.conn.ReadFrom(message); err != nil {
+				// Getting an error here is the normal way to detect closed connection.
+				bufferPool.Put(message)
+				return
+			}
+			singlepackets <- message
+		}
+	}()
+	return nil
+}
+
+// discardStale discards all data currently ready for reading at the UDP socket.
+// At least, it is supposed to. We are not sure it actually works.
+func (device *AbacoUDPReceiver) discardStale() error {
+	device.conn.SetReadBuffer(0)
+	device.conn.SetReadBuffer(67108864)
+	return nil
+}
+
+// ReadAllPackets returns an array of *packet.Packet, as read from the device's network connection.
+// It is a non-blocking wrapper around the UDP connection read (a blocking operation).
+func (device *AbacoUDPReceiver) ReadAllPackets() ([]*packets.Packet, error) {
+	device.sendmore <- true
+	allPackets, ok := <-device.data
+	if !ok {
+		fmt.Printf("device.data closed after %d packets\n", len(allPackets))
+	}
+	return allPackets, nil
+}
+
+// samplePackets samples the data from a single AbacoUDPReceiver. It scans enough packets to
+// learn the number of channels, data rate, etc.
+func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allPackets []*packets.Packet, err error) {
+	// Run for at least a minimum time or a minimum number of packets.
+	// The hard requirement is for at least 2 packets per channel group, so we can count samples taken
+	// between 2 timestamps and thus the sample rate. More packets is better, because we can estimate
+	// sample rate over a longer baseline, we are less likely to overlook a channel group.
+	const minPacketsToRead = 100 // Is this a good minimum? If we start missing channel groups, increase this.
+	timeOut := time.NewTimer(maxSampleTime)
+
+	packetsRead := 0
+	for packetsRead < minPacketsToRead {
+		select {
+		case <-timeOut.C:
+			fmt.Printf("AbacoUDPReceiver.samplePackets() timer expired after only %d packets read\n", packetsRead)
+			return
+
+		default:
+			time.Sleep(25 * time.Millisecond)
+			p, err := device.ReadAllPackets()
+			if err != nil {
+				fmt.Printf("Oh no! error in ReadAllPackets: %v\n", err)
+				return allPackets, err
+			}
+			allPackets = append(allPackets, p...)
+			packetsRead = len(allPackets)
+		}
+	}
+	return allPackets, nil
+}
+
+// stop closes the UDP connection
+func (device *AbacoUDPReceiver) stop() error {
+	err := device.conn.Close()
+	close(device.sendmore)
+	return err
+}
+
+//------------------------------------------------------------------------------------------------
+
+// AbacoSource represents all AbacoRing ring buffers and AbacoUDPReceiver objects
+// that can potentially supply data, as well as all AbacoGroups that are discovered in the
+// SampleData phase.
+// We currently expect the use of EITHER ring buffers or UDP receivers but not both. We won't
+// enforce this as a requirement unless it proves important.
 type AbacoSource struct {
-	Nrings int // number of available ring buffers
-	arings map[int]*AbacoRing
-	active []*AbacoRing
+	// These items have to do with shared memory ring buffers
+	Nrings      int // number of available ring buffers
+	arings      map[int]*AbacoRing
+	activeRings []*AbacoRing
 
-	groups map[GroupIndex]*AbacoGroup
+	// These items have to do with UDP data sources
+	udpReceivers []*AbacoUDPReceiver
 
+	// Below here are independent of ring buffers vs UDP data sources.
+	producers   []PacketProducer
+	groups      map[GroupIndex]*AbacoGroup
 	readPeriod  time.Duration
 	buffersChan chan AbacoBuffersType
+
 	// PhaseUnwrapper parameters must be stored for use when each AbacoGroup is created.
 	unwrapEnable    bool // whether to activate unwrapping
-	unwrapResetSamp int  // unwrap after this many samples (or never if ≤0)
+	unwrapResetSamp int  // unwrap resets after this many samples (or never if ≤0)
 	AnySource
 }
 
@@ -410,9 +581,12 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source := new(AbacoSource)
 	source.name = "Abaco"
 	source.arings = make(map[int]*AbacoRing)
+	source.udpReceivers = make([]*AbacoUDPReceiver, 0)
+	source.producers = make([]PacketProducer, 0)
 	source.groups = make(map[GroupIndex]*AbacoGroup)
 	source.channelsPerPixel = 1
 
+	// Probe for ring buffers that exist, and set up possible receivers.
 	deviceCodes, err := enumerateAbacoRings()
 	if err != nil {
 		return source, err
@@ -435,26 +609,48 @@ func NewAbacoSource() (*AbacoSource, error) {
 
 // Delete closes the ring buffers for all AbacoRings.
 func (as *AbacoSource) Delete() {
-	for _, dev := range as.arings {
-		dev.ring.Close()
-	}
+	as.closeDevices()
 }
 
 // AbacoSourceConfig holds the arguments needed to call AbacoSource.Configure by RPC.
 type AbacoSourceConfig struct {
 	ActiveCards     []int
 	AvailableCards  []int
-	Unwrapping      bool // whether to activate unwrapping
-	UnwrapResetSamp int  // unwrap after this many samples (or never if ≤0)
+	HostPortUDP     []string // host:port pairs to listen for UDP packets
+	Unwrapping      bool     // whether to activate unwrapping
+	UnwrapResetSamp int      // unwrap resets after this many samples (or never if ≤0)
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
+	// Make sure entries in the ActiveCards slice are unique and sorted
+	cardseen := make(map[int]bool)
+	i := 0
+	for _, cnum := range config.ActiveCards {
+		if !cardseen[cnum] {
+			cardseen[cnum] = true
+			config.ActiveCards[i] = cnum
+			i++
+		}
+	}
+	config.ActiveCards = config.ActiveCards[:i]
+	sort.Ints(config.ActiveCards)
+
+	// Make sure entries in the HostPortUDP slice are unique and sorted
+	hpseen := make(map[string]bool)
+	i = 0
+	for _, hp := range config.HostPortUDP {
+		if !hpseen[hp] {
+			hpseen[hp] = true
+			config.HostPortUDP[i] = hp
+			i++
+		}
+	}
+	config.HostPortUDP = config.HostPortUDP[:i]
+	sort.Strings(config.HostPortUDP)
+
 	as.sourceStateLock.Lock()
 	defer as.sourceStateLock.Unlock()
-
-	as.unwrapEnable = config.Unwrapping
-	as.unwrapResetSamp = config.UnwrapResetSamp
 
 	// Update the slice AvailableCards.
 	config.AvailableCards = make([]int, 0)
@@ -467,31 +663,33 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 		return fmt.Errorf("cannot Configure an AbacoSource if it's not Inactive")
 	}
 
-	// used to be sure the same device isn't listed twice in config.ActiveCards
-	contains := func(s []*AbacoRing, e *AbacoRing) bool {
-		for _, a := range s {
-			if a == e {
-				return true
-			}
-		}
-		return false
-	}
+	as.unwrapEnable = config.Unwrapping
+	as.unwrapResetSamp = config.UnwrapResetSamp
 
 	// Activate the cards listed in the config request.
-	as.active = make([]*AbacoRing, 0)
+	as.producers = make([]PacketProducer, 0)
+	as.activeRings = make([]*AbacoRing, 0)
 	for i, c := range config.ActiveCards {
-		dev := as.arings[c]
-		if dev == nil {
-			err = fmt.Errorf("ActiveCards[%d]: card=%v, device == nil", i, c)
-			break
+		device := as.arings[c]
+		if device == nil {
+			return fmt.Errorf("ActiveCards[%d]: card=%v, device == nil", i, c)
 		}
-		if contains(as.active, dev) {
-			err = fmt.Errorf("attempt to use same Abaco device two times: ActiveCards[%d], c=%v, config.ActiveCards=%v", i, c, config.ActiveCards)
-			break
-		}
-		as.active = append(as.active, dev)
+		as.activeRings = append(as.activeRings, device)
+		as.producers = append(as.producers, device)
 	}
-	return
+
+	// Bind servers at each host:port pair in the list of requested UDP receivers
+	as.udpReceivers = make([]*AbacoUDPReceiver, 0)
+	for _, hostport := range config.HostPortUDP {
+		device, err := NewAbacoUDPReceiver(hostport)
+		if err != nil {
+			fmt.Printf("Could not bind server at udp://%s/, %v\n", hostport, err)
+			return err
+		}
+		as.udpReceivers = append(as.udpReceivers, device)
+		as.producers = append(as.producers, device)
+	}
+	return nil
 }
 
 // distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
@@ -504,8 +702,8 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 
 // Sample determines key data facts by sampling some initial data.
 func (as *AbacoSource) Sample() error {
-	if len(as.active) <= 0 {
-		return fmt.Errorf("No Abaco ring buffers are active")
+	if len(as.producers) <= 0 {
+		return fmt.Errorf("No Abaco ring buffers or UDP receivers are active")
 	}
 
 	// Launch device.samplePackets as goroutines on each device, in parallel, to save time.
@@ -514,17 +712,19 @@ func (as *AbacoSource) Sample() error {
 		err        error
 	}
 	sampleResults := make(chan SampleResult)
-	for _, ring := range as.active {
-		go func(r *AbacoRing) {
-			p, err := r.samplePackets()
+	timeout := 2000 * time.Millisecond
+	for _, pp := range as.producers {
+		go func(pp PacketProducer) {
+			pp.start()
+			p, err := pp.samplePackets(timeout)
 			sampleResults <- SampleResult{allpackets: p, err: err}
-		}(ring)
+		}(pp)
 	}
 
 	// Now sort the packets received into the right AbacoGroups
 	as.nchan = 0
 	as.groups = make(map[GroupIndex]*AbacoGroup)
-	for _ = range as.active {
+	for _ = range as.producers {
 		results := <-sampleResults
 		now := time.Now()
 		if results.err != nil {
@@ -578,7 +778,6 @@ func (as *AbacoSource) Sample() error {
 			// TODO: what if multiple groups have unequal rates??
 		}
 	}
-
 	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
 
 	return nil
@@ -609,15 +808,10 @@ func (as *AbacoSource) PrepareChannels() error {
 }
 
 // StartRun tells the hardware to switch into data streaming mode.
-// For Abaco µMUX systems, we need to consume any initial data that constitutes
-// a fraction of a frame. Then launch a goroutine to consume data.
+// Discard existing data, then launch a goroutine to consume data.
 func (as *AbacoSource) StartRun() error {
-	// There's no data streaming mode on Abaco, so no need to start it?
-	// Start by emptying all data from each device's ring buffer.
-	for _, dev := range as.active {
-		if err := dev.ring.DiscardStride(uint64(dev.packetSize)); err != nil {
-			panic("AbacoRing.ring.DiscardStride failed")
-		}
+	for _, pp := range as.producers {
+		pp.discardStale()
 	}
 	as.buffersChan = make(chan AbacoBuffersType, 100)
 	as.readPeriod = 50 * time.Millisecond
@@ -662,15 +856,16 @@ awaitmoredata:
 			var lastSampleTime time.Time
 			var droppedFrames int
 			var droppedBytes int
-			for _, ring := range as.active {
-				allPackets, err := ring.ReadAllPackets()
+			for _, pp := range as.producers {
+				allPackets, err := pp.ReadAllPackets()
 				lastSampleTime = time.Now()
 				if err != nil {
-					fmt.Printf("AbacoRing.ReadAllPackets failed with error: %v\n", err)
-					panic("AbacoRing.ReadAllPackets failed")
+					fmt.Printf("PacketProducer.ReadAllPackets failed with error: %v\n", err)
+					panic("PacketProducer.ReadAllPackets failed")
 				}
 				as.distributePackets(allPackets, lastSampleTime)
 			}
+
 			// var t1, t2 time.Time
 			// t1, t2 = t2, time.Now()
 			// fmt.Printf("Time required to distributePackets: %v\n", t2.Sub(t1))
@@ -776,7 +971,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 			case buffersMsg, ok := <-as.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
-					if err := as.closeRings(); err != nil {
+					if err := as.closeDevices(); err != nil {
 						block := new(dataBlock)
 						block.err = err
 						as.nextBlock <- block
@@ -815,8 +1010,6 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	// That doesn't exist yet in Abaco.
 
 	// TODO: we should loop over devices here, matching devices to channels.
-	// dev := as.active[0]
-
 	var wg sync.WaitGroup
 	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
 		wg.Add(1)
@@ -853,11 +1046,11 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	return block
 }
 
-// closeRings ends closes the ring buffers of all active AbacoRing objects.
-func (as *AbacoSource) closeRings() error {
-	// loop over as.active and do any needed stopping functions.
-	for _, dev := range as.active {
-		dev.ring.Close()
+// closeDevices ends closes the ring buffers of all active AbacoRing objects and all UDP servers.
+func (as *AbacoSource) closeDevices() error {
+	for _, pp := range as.producers {
+		pp.stop()
 	}
+	as.producers = as.producers[:0]
 	return nil
 }

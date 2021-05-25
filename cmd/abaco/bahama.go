@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -34,10 +35,11 @@ func clearRings(nclear int) error {
 type BahamaControl struct {
 	Nchan      int
 	Ngroups    int
-	Nrings     int
+	Nsources   int
 	Chan0      int // channel number of first channel
 	chanGaps   int // how many channel numbers to skip between groups/rings
 	ringsize   int // Bytes per ring
+	udp        bool
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
@@ -52,13 +54,21 @@ type BahamaControl struct {
 func (control *BahamaControl) Report() {
 	fmt.Println("Samples per second:       ", control.samplerate)
 	fmt.Printf("Drop packets randomly:     %.2f%%\n", 100.0*control.dropfrac)
-	fmt.Println("Number of ring buffers:   ", control.Nrings)
-	fmt.Println("Size of each ring:        ", control.ringsize)
-	fmt.Println("Channels per ring:        ", control.Nchan)
-	fmt.Println("Channel groups per ring:  ", control.Ngroups)
+	if control.udp {
+		fmt.Println("Generating UDP packets.")
+		fmt.Println("Number of UDP sources:    ", control.Nsources)
+		fmt.Println("Channels per UDP source:  ", control.Nchan)
+		fmt.Println("Channel groups per UDP:   ", control.Ngroups)
+	} else {
+		fmt.Println("Putting packets into ring buffers.")
+		fmt.Println("Number of ring buffers:   ", control.Nsources)
+		fmt.Println("Size of each ring:        ", control.ringsize)
+		fmt.Println("Channels per ring:        ", control.Nchan)
+		fmt.Println("Channel groups per ring:  ", control.Ngroups)
+	}
 	fmt.Println("Channel # of 1st chan:    ", control.Chan0)
-	if control.Ngroups > 1 || control.Nrings > 1 {
-		fmt.Println("Skip # btwn groups/rings: ", control.chanGaps)
+	if control.Ngroups > 1 || control.Nsources > 1 {
+		fmt.Println("Skip # btwn groups/sources: ", control.chanGaps)
 	}
 	if control.Ngroups > 1 {
 		if control.stagger {
@@ -261,7 +271,6 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 }
 
 func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
-
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
@@ -295,6 +304,31 @@ func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 	return nil
 }
 
+func udpwriter(sourcenum int, packetchan chan []byte) error {
+	hostname := fmt.Sprintf("localhost:%d", 4000+sourcenum)
+	addr, err := net.ResolveUDPAddr("udp", hostname)
+	if err != nil {
+		return err
+	}
+
+	conn, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer conn.Close() // so it won't exist after
+		for {
+			b, ok := <-packetchan
+			if !ok {
+				return
+			}
+			conn.Write(b)
+		}
+	}()
+	return nil
+}
+
 func coerceInt(f *int, minval, maxval int) {
 	if *f < minval {
 		*f = minval
@@ -315,11 +349,12 @@ func coerceFloat(f *float64, minval, maxval float64) {
 
 func main() {
 	maxRings := 4
-	nchan := flag.Int("nchan", 4, "Number of channels per ring, 4-512 allowed")
-	nring := flag.Int("nring", 1, "Number of ring buffers, 1-4 allowed")
-	chan0 := flag.Int("firstchan", 0, "Channel number of the first channel")
-	changaps := flag.Int("gaps", 0, "How many channel numbers to skip between groups (relevant only if ngroups>1 or nring>1)")
-	ngroups := flag.Int("ngroups", 1, "Number of channel groups per ring, 1-Nchan/4 allowed")
+	nchan := flag.Int("nchan", 4, "Number of channels per source, 4-512 allowed")
+	udp := flag.Bool("udp", false, "Make UDP packets instead of shared memory ring buffers (default false)")
+	nsource := flag.Int("nsource", 1, "Number of sources (UDP clients or ring buffers), 1-4 allowed")
+	chan0 := flag.Int("firstchan", 0, "Channel number of the first channel (default 0)")
+	changaps := flag.Int("gaps", 0, "How many channel numbers to skip between groups (relevant only if ngroups>1 or nsource>1)")
+	ngroups := flag.Int("ngroups", 1, "Number of channel groups per source, (1-Nchan/4) allowed")
 	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 1000-500000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
@@ -332,17 +367,25 @@ func main() {
 		fmt.Println("BAHAMA, the Basic Abaco Hardware Artificial Message Assembler")
 		fmt.Println("Usage:")
 		flag.PrintDefaults()
-		fmt.Println("If none of noise, saw, or pulse are given, saw will be used.")
+		fmt.Println("If none of {noise, saw, sine, pulse} are given, saw will be used.")
 	}
 	flag.Parse()
 
 	clearRings(maxRings)
 	coerceInt(nchan, 4, 512)
-	coerceInt(nring, 1, 4)
+	coerceInt(nsource, 1, 4)
 	coerceInt(ngroups, 1, *nchan/4)
 	coerceInt(changaps, 0, math.MaxInt64)
 	coerceFloat(samplerate, 1000, 500000)
 	coerceFloat(droppct, 0, 100)
+
+	// Make sure there is some nonzero output
+	if *noiselevel <= 0 {
+		*noiselevel = 0.0
+		if !(*usesawtooth || *usesine || *usepulses) {
+			*usesawtooth = true
+		}
+	}
 
 	// Compute the size of each ring buffer. Let it be big enough to hold 0.5 seconds of data
 	// or 500 packets, and be a multiple of packetAlign.
@@ -353,8 +396,12 @@ func main() {
 	if ringsize < 500*packetAlign {
 		ringsize = 500 * packetAlign
 	}
+	if *udp {
+		ringsize = 0
+	}
 
-	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups, Nrings: *nring,
+	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
+		Nsources: *nsource, udp: *udp,
 		Chan0: *chan0, chanGaps: *changaps, ringsize: ringsize,
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses,
@@ -366,11 +413,18 @@ func main() {
 	cancel := make(chan os.Signal)
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	ch0 := control.Chan0
-	for cardnum := 0; cardnum < *nring; cardnum++ {
+	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
-		if err := ringwriter(cardnum, packetchan, ringsize); err != nil {
-			fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
-			continue
+		if control.udp {
+			if err := udpwriter(cardnum, packetchan); err != nil {
+				fmt.Printf("udpwriter(%d,...) failed: %v\n", cardnum, err)
+				continue
+			}
+		} else {
+			if err := ringwriter(cardnum, packetchan, ringsize); err != nil {
+				fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
+				continue
+			}
 		}
 
 		stage1pchans := make([]chan []byte, control.Ngroups)

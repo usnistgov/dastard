@@ -100,7 +100,9 @@ func TestAbacoRing(t *testing.T) {
 	if err = ring.Create(128 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
-	dev.samplePackets()
+	timeout := 2000 * time.Millisecond
+	dev.start()
+	dev.samplePackets(timeout)
 
 	p := packets.NewPacket(10, 20, 0x100, 0)
 	const Nchan = 8
@@ -162,6 +164,29 @@ func TestAbacoRing(t *testing.T) {
 	}
 }
 
+func TestAbacoUDP(t *testing.T) {
+	if _, err := NewAbacoUDPReceiver("nonexistenthost.remote.internet:4999"); err == nil {
+		t.Errorf("NewAbacoUDPReceiver(\"nonexistenthost.remote.internet:4999\") succeeded, want failure")
+	}
+	device, err := NewAbacoUDPReceiver("localhost:4999")
+	if err != nil {
+		t.Errorf("NewAbacoUDPReceiver(\"localhost:4999\") failed: %v", err)
+	}
+	err = device.start()
+	if err != nil {
+		t.Errorf("AbacoUDP.start() failed: %v", err)
+	}
+	err = device.discardStale()
+	if err != nil {
+		t.Errorf("AbacoUDP.discardStale() failed: %v", err)
+	}
+	go func() { <-device.data }()
+	err = device.stop()
+	if err != nil {
+		t.Errorf("AbacoUDP.stop() failed: %v", err)
+	}
+}
+
 func TestAbacoSource(t *testing.T) {
 	source, err := NewAbacoSource()
 	if err != nil {
@@ -178,9 +203,25 @@ func TestAbacoSource(t *testing.T) {
 	source.arings[cardnum] = dev
 	source.Nrings++
 
-	deviceCodes := []int{cardnum}
 	var config AbacoSourceConfig
+
+	// Check that ActiveCards and HostPortUDP slices are unique-ified when source.Configure(&config) called.
+	config.ActiveCards = []int{4, 3, 3, 3, 3, 3, 4, 3, 3}
+	config.HostPortUDP = []string{"localhost:4444", "localhost:3333", "localhost:4444"}
+	err = source.Configure(&config)
+	if err == nil {
+		t.Fatalf("AbacoSource.Configure(%v) should fail but doesn't", config)
+	}
+	if len(config.ActiveCards) > 2 {
+		t.Errorf("AbacoSource.Configure() returns with repeats in ActiveCards=%v", config.ActiveCards)
+	}
+	if len(config.HostPortUDP) > 2 {
+		t.Errorf("AbacoSource.Configure() returns with repeats in HostPortUDP=%v", config.HostPortUDP)
+	}
+
+	deviceCodes := []int{cardnum}
 	config.ActiveCards = deviceCodes
+	config.HostPortUDP = []string{}
 	err = source.Configure(&config)
 	if err != nil {
 		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
@@ -258,6 +299,10 @@ func TestAbacoSource(t *testing.T) {
 	source.RunDoneWait()
 
 	// Start a 2nd time
+	err = source.Configure(&config)
+	if err != nil {
+		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
+	}
 	if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
 		t.Fatal(err)

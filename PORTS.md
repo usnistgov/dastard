@@ -1,12 +1,12 @@
 # DASTARD TCP PORTS
 
-(Last revision: 2 September 2020.)
+(Last revision: 17 March 2021.)
 
 DASTARD uses a series of TCP ports for communications with its GUI control
 clients (such as [DASTARD-Commander](https://github.com/usnistgov/dastard-commander)) and to publish triggered pulse data for plotting
-([Microscope](https://github.com/usnistgov/microscope)).
+([Microscope](https://github.com/usnistgov/microscope)). See also the [UDP ports](#DASTARD-UDP-PORTS)
 
-These ports are numbered sequencially from a *base port* number. By default,
+These ports are numbered sequentially from a *base port* number. By default,
 this number is **BASE=5500**. We might allow this number to be set at the
 DASTARD command-line, but for now it's a constant.  The TCP ports are:
 
@@ -48,4 +48,11 @@ Each message on these ports consists of a single pulse record. The first 2 bytes
 
 ### Pulse summaries (BASE+4)
 
-Each message on these ports consists _summaries_ of a single pulse record. The first 2 bytes are an int16 channel number, so that programs can subscribe to specific channels. The message format is found in file BINARY_FORMATS.md
+Each message on these ports contains _summaries_ of a single pulse record. The first 2 bytes are an int16 channel number, so that programs can subscribe to specific channels. The message format is found in file BINARY_FORMATS.md
+
+# DASTARD UDP PORTS
+
+DASTARD can receive data packets placed onto UDP. Currently, it makes assumptions about the source of the data based on the port to which the datagrams are sent:
+
+* UDP ports 4000-4299 for µMUX systems
+* UDP ports 4400-4699 for TDM systems (still under development)

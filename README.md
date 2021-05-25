@@ -18,18 +18,28 @@ sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
 sudo apt-get -y install golang-go
 
-# Install Dastard
-go get -v -u github.com/usnistgov/dastard
-cd ~/go/src/github.com/usnistgov/dastard/
-make
+# Install Dastard as a development copy
+DASTARD_DEV_PATH=$(go env GOPATH)/src/github.com/usnistgov
+mkdir -p $DASTARD_DEV_PATH
+cd $DASTARD_DEV_PATH
+git clone https://github.com/usnistgov/dastard
+cd dastard
+
+# Build, then try to run the local copy
+make all    # implies "make test build install"
+./dastard --version
 
 # Check whether the GOPATH is in your bash path. If not, update ~/.bashrc to make it so.
-# This will fix the current terminal and all that run ~/.bashrc in the future, but not
+# This will fix the current terminal AND all that run ~/.bashrc in the future, but not
 # any other existing terminals (until you do "source ~/.bashrc" in them).
 source update-path.sh
+
+# Now that PATH includes go's bin, try to run the installed copy
+dastard --version
 ```
 
-
+The following seem to be out-of-date and apply only to Ubuntu 16.04 LTS, but just in case they
+are useful to you, here are the old instructions.
  ```
 sudo add-apt-repository -y 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
 cd ~/Downloads
@@ -42,7 +52,7 @@ sudo apt-get install -y libsodium-dev libczmq-dev git
 Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming
 that MacPorts is already installed, it's simple:
 
-### MacOS Dependencies
+### MacOS dependencies
 
 #### Homebrew
 `brew install go pkg-config czmq libsodium`
@@ -52,11 +62,25 @@ that MacPorts is already installed, it's simple:
 
 
 
-## Also Install These
+### Also install these
 
 * Install microscope https://github.com/usnistgov/microscope
 * Install dastard_commander https://github.com/usnistgov/dastardcommander
 
+
+### And boost your UDP receive buffer
+
+This only applies to users who will need µMUX, or any data source that eventually sends UDP packets to Dastard. The size of the standard Linux receive buffer for network sockets is only 208 kB, which is not nearly sufficient and leads to dropped packets. We recommend increasing the buffer size to 64 MB. In Linux, that buffer size parameter is called `net.core.rmem_max`. In Mac OS X it seems to be called `net.inet.udp.recvspace`. For one-time testing, this means you increase the buffer with:
+
+```bash
+sudo sysctl -w net.core.rmem_max=67108864
+```
+
+If that works as intended, you can make the configuration permanent (persist after rebooting) by adding the following line to `/etc/sysctl.conf`
+
+`net.core.rmem_max=67108864`
+
+That's only for Linux machines. OS X doesn't seem to have such a file, but might instead require a startup script, possibly in `/Library/StartupItems/`.
 
 ## Purpose
 
@@ -64,9 +88,10 @@ DASTARD is the Data Acquisition System for Triggering, Analyzing, and Recording 
 
 Assuming that the TDM readout system is properly configured first (beyond the scope of this project), one can use Dastard to:
 1. read the high-rate data stream;
-1. search it for x-ray pulse triggers; generate "triggered records" of a fixed length;
+1. search it for x-ray pulse triggers;
+1. generate "triggered records" of a fixed length;
 1. store these records to disk in the LJH data format;
-1. "publish" the full records to a socket for other programs to plot or use as they see fit;
+1. "publish" the full records to a socket for other programs to plot or use as they see fit; and
 1. compute important derived quantities from these records.
 
 ### Goals, or, why did we need Dastard?
