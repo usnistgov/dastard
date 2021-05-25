@@ -25,7 +25,6 @@ type RoachSource struct {
 	Ndevices   int
 	active     []*RoachDevice
 	readPeriod time.Duration
-	// buffersChan chan AbacoBuffersType
 	AnySource
 }
 
@@ -358,14 +357,13 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 	return nil
 }
 
-// PrepareChannels configures an AbacoSource by initializing all data structures that
+// PrepareChannels configures a RoachSource by initializing all data structures that
 // have to do with channels and their naming/numbering.
 func (rs *RoachSource) PrepareChannels() error {
 	rs.channelsPerPixel = 1
 
-	// Fill the channel names and numbers slices
-	// For rowColCodes, treat each channel group as a "column" and number chan within it
-	// as rows 0...g.nchan-1.
+	// Fill the channel names and numbers slices, treating source as a single channel group.
+	// Number channels starting at zero.
 	rs.chanNames = make([]string, 0, rs.nchan)
 	rs.chanNumbers = make([]int, 0, rs.nchan)
 	rs.rowColCodes = make([]RowColCode, 0, rs.nchan)
