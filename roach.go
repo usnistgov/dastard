@@ -357,3 +357,28 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 	}
 	return nil
 }
+
+// PrepareChannels configures an AbacoSource by initializing all data structures that
+// have to do with channels and their naming/numbering.
+func (rs *RoachSource) PrepareChannels() error {
+	rs.channelsPerPixel = 1
+
+	// Fill the channel names and numbers slices
+	// For rowColCodes, treat each channel group as a "column" and number chan within it
+	// as rows 0...g.nchan-1.
+	rs.chanNames = make([]string, 0, rs.nchan)
+	rs.chanNumbers = make([]int, 0, rs.nchan)
+	rs.rowColCodes = make([]RowColCode, 0, rs.nchan)
+	ncol := rs.nchan
+	nrow := 1
+	col := 0
+	for row := 0; row < rs.nchan; row++ {
+		channum := row
+		name := fmt.Sprintf("chan%d", channum)
+		rs.chanNames = append(rs.chanNames, name)
+		rs.chanNumbers = append(rs.chanNumbers, channum)
+		rs.rowColCodes = append(rs.rowColCodes, rcCode(row, col, nrow, ncol))
+	}
+
+	return nil
+}
