@@ -450,7 +450,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		defer close(device.data)
 		defer func() { device.conn = nil }()
 
-		const initialQueueCapacity = 20000
+		const initialQueueCapacity = 2048
 		queue := make([]*packets.Packet, 0, initialQueueCapacity)
 		for {
 			select {
@@ -481,8 +481,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		for {
 			message := bufferPool.Get().([]byte)
 			if _, _, err := device.conn.ReadFrom(message); err != nil {
-				// Don't report errors. Getting an error here is the normal way to detect closed connection.
-				// fmt.Printf("Error! Read %d bytes from %s with err=%v\n", n, addr, err)
+				// Getting an error here is the normal way to detect closed connection.
 				bufferPool.Put(message)
 				return
 			}
@@ -573,7 +572,7 @@ type AbacoSource struct {
 
 	// PhaseUnwrapper parameters must be stored for use when each AbacoGroup is created.
 	unwrapEnable    bool // whether to activate unwrapping
-	unwrapResetSamp int  // unwrap after this many samples (or never if ≤0)
+	unwrapResetSamp int  // unwrap resets after this many samples (or never if ≤0)
 	AnySource
 }
 
@@ -619,7 +618,7 @@ type AbacoSourceConfig struct {
 	AvailableCards  []int
 	HostPortUDP     []string // host:port pairs to listen for UDP packets
 	Unwrapping      bool     // whether to activate unwrapping
-	UnwrapResetSamp int      // unwrap after this many samples (or never if ≤0)
+	UnwrapResetSamp int      // unwrap resets after this many samples (or never if ≤0)
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
