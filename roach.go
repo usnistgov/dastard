@@ -367,8 +367,9 @@ func (rs *RoachSource) PrepareChannels() error {
 	rs.chanNames = make([]string, 0, rs.nchan)
 	rs.chanNumbers = make([]int, 0, rs.nchan)
 	rs.rowColCodes = make([]RowColCode, 0, rs.nchan)
-	ncol := rs.nchan
-	nrow := 1
+	rs.groupKeysSorted = make([]GroupIndex, 0)
+	ncol := 1
+	nrow := rs.nchan
 	col := 0
 	for row := 0; row < rs.nchan; row++ {
 		channum := row
@@ -377,6 +378,7 @@ func (rs *RoachSource) PrepareChannels() error {
 		rs.chanNumbers = append(rs.chanNumbers, channum)
 		rs.rowColCodes = append(rs.rowColCodes, rcCode(row, col, nrow, ncol))
 	}
+	rs.groupKeysSorted = append(rs.groupKeysSorted, GroupIndex{Firstchan: 0, Nchan: nrow})
 
 	return nil
 }
