@@ -772,10 +772,14 @@ func (as *AbacoSource) Sample() error {
 		if as.sampleRate == 0 {
 			as.sampleRate = group.sampleRate
 		}
-		if as.sampleRate != group.sampleRate {
-			fmt.Printf("Oh crap! Two groups have different sample rates: %f, %f", as.sampleRate, group.sampleRate)
+		// For now (Aug 2021), let's declare 2 groups to have approximately equal
+		// sample rates if they agree to 1 part per billion. This means we don't test
+		// floating point numbers for exact equality.
+		diff := math.Abs(as.sampleRate - group.sampleRate)
+		if diff/as.sampleRate > 1e-9 {
+			fmt.Printf("Oh crap! Two groups have different sample rates: %f, %f, |diff|=%f", as.sampleRate, group.sampleRate, diff)
 			panic("Oh crap! Two groups have different sample rates.")
-			// TODO: what if multiple groups have unequal rates??
+			// TODO: what if multiple groups have truly unequal rates??
 		}
 	}
 	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
