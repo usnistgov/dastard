@@ -52,8 +52,9 @@ func NewAbacoGroup(index GroupIndex, unwrapEnable bool, unwrapReset int) *AbacoG
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
+	var bias int16
 	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, unwrapEnable, unwrapReset)
+		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, bias, unwrapEnable, unwrapReset)
 	}
 	return g
 }

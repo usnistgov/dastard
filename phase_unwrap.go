@@ -8,7 +8,8 @@ type PhaseUnwrapper struct {
 	offset        int16
 	fractionBits  uint // Before unwrapping, this many low bits are fractional ϕ0
 	lowBitsToDrop uint // Drop this many least significant bits in each value
-	onePi         int16
+	upperLimit    int16
+	lowerLimit    int16
 	twoPi         int16
 	highCount     int
 	lowCount      int
@@ -17,9 +18,8 @@ type PhaseUnwrapper struct {
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
-func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, resetAfter int) *PhaseUnwrapper {
+func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, bias int16, enable bool, resetAfter int) *PhaseUnwrapper {
 	u := new(PhaseUnwrapper)
-	// as read from the Roach
 	// data bytes representing a 2s complement integer
 	// where 2^fractionBits = ϕ0 of phase.
 	// so int(data[i])/2^fractionBits is a number from -0.5 to 0.5 ϕ0
@@ -31,9 +31,16 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, resetAfter
 	u.fractionBits = fractionBits
 	u.lowBitsToDrop = lowBitsToDrop
 	u.twoPi = int16(1) << (fractionBits - lowBitsToDrop)
-	u.onePi = u.twoPi >> 1
+	onePi := int16(1) << (fractionBits - lowBitsToDrop - 1)
+	bias = (bias >> lowBitsToDrop) % u.twoPi
+	u.upperLimit = bias + onePi
+	u.lowerLimit = bias - onePi
+
 	u.resetAfter = resetAfter
 	u.enable = enable
+	if lowBitsToDrop == 0 && enable {
+		panic("NewPhaseUnwrapper is enabled but with lowBitsToDrop=0, must be >0.")
+	}
 	if resetAfter <= 0 && enable {
 		panic(fmt.Sprintf("NewPhaseUnwrapper is enabled but with resetAfter=%d, expect positive", resetAfter))
 	}
@@ -61,9 +68,9 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		u.lastVal = v
 
 		// Short-term unwrapping
-		if delta > u.onePi {
+		if delta > u.upperLimit {
 			u.offset -= u.twoPi
-		} else if delta < -u.onePi {
+		} else if delta < u.lowerLimit {
 			u.offset += u.twoPi
 		}
 
