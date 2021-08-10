@@ -4,21 +4,21 @@ import "fmt"
 
 // PhaseUnwrapper makes phase values continous by adding integers as needed
 type PhaseUnwrapper struct {
-	lastVal       int16
-	offset        int16
+	lastVal       uint16
+	offset        uint16
 	fractionBits  uint // Before unwrapping, this many low bits are fractional ϕ0
 	lowBitsToDrop uint // Drop this many least significant bits in each value
-	upperLimit    int16
-	lowerLimit    int16
-	twoPi         int16
-	highCount     int
-	lowCount      int
-	resetAfter    int  // jump back to near 0 after this many
+	upperStepLim  int16
+	lowerStepLim  int16
+	twoPi         uint16
+	resetCount    int
+	resetAfter    int // jump back to near 0 after this many
+	resetOffset   uint16
 	enable        bool // are we even unwrapping at all?
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
-func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, bias int16, enable bool, resetAfter int) *PhaseUnwrapper {
+func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int) *PhaseUnwrapper {
 	u := new(PhaseUnwrapper)
 	// data bytes representing a 2s complement integer
 	// where 2^fractionBits = ϕ0 of phase.
@@ -30,11 +30,18 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, bias int16, enable bool
 	// or 32 for int16 or int32, but leave that parameter here...for now.
 	u.fractionBits = fractionBits
 	u.lowBitsToDrop = lowBitsToDrop
-	u.twoPi = int16(1) << (fractionBits - lowBitsToDrop)
+	u.twoPi = uint16(1) << (fractionBits - lowBitsToDrop)
 	onePi := int16(1) << (fractionBits - lowBitsToDrop - 1)
-	bias = (bias >> lowBitsToDrop) % u.twoPi
-	u.upperLimit = bias + onePi
-	u.lowerLimit = bias - onePi
+	bias := int16(biasLevel>>lowBitsToDrop) % int16(u.twoPi)
+	u.upperStepLim = bias + onePi
+	u.lowerStepLim = bias - onePi
+
+	if pulseSign > 0 {
+		u.resetOffset = u.twoPi
+	} else {
+		u.resetOffset = uint16(-2 * int(u.twoPi))
+	}
+	u.offset = u.resetOffset
 
 	u.resetAfter = resetAfter
 	u.enable = enable
@@ -53,8 +60,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 
 	// When unwrapping is disabled, simply drop the low bits.
 	if !u.enable {
-		u.lowCount = 0
-		u.highCount = 0
+		u.resetCount = 0
 		for i, rawVal := range *data {
 			(*data)[i] = rawVal >> drop
 		}
@@ -63,43 +69,31 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 
 	// Enter this loop only if unwrapping is enabled
 	for i, rawVal := range *data {
-		v := int16(rawVal) >> drop
-		delta := v - u.lastVal
+		v := uint16(rawVal) >> drop
+		thisstep := int16(v - u.lastVal)
 		u.lastVal = v
 
 		// Short-term unwrapping
-		if delta > u.upperLimit {
+		if thisstep > u.upperStepLim {
 			u.offset -= u.twoPi
-		} else if delta < u.lowerLimit {
+		} else if thisstep < u.lowerStepLim {
 			u.offset += u.twoPi
 		}
 
-		// Long-term unwrapping = keeping baseline at same ϕ0.
-		// So if the offset is nonzero for a long time, set it to zero.
-		// This will cause a one-time jump by an integer number of wraps.
-		switch {
-		case u.offset >= u.twoPi:
-			u.highCount++
-			u.lowCount = 0
-			if u.highCount > u.resetAfter {
-				u.offset = 0
-				u.highCount = 0
-			}
-			(*data)[i] = RawType(v + u.offset)
-
-		case u.offset <= -u.twoPi:
-			u.lowCount++
-			u.highCount = 0
-			if u.lowCount > u.resetAfter {
-				u.offset = 0
-				u.lowCount = 0
-			}
-			(*data)[i] = RawType(v + u.offset)
-
-		default:
-			u.lowCount = 0
-			u.highCount = 0
+		// Long-term unwrapping means keeping baseline at same ϕ0.
+		// So if the offset is unequal to the resetOffset for a long time, set it to resetOffset.
+		// This will cause a one-time jump by an integer number of ϕ0 units (an integer
+		// multiple of 2π in phase angle).
+		if u.offset == u.resetOffset {
+			u.resetCount = 0
 			(*data)[i] = RawType(v)
+		} else {
+			u.resetCount++
+			if u.resetCount > u.resetAfter {
+				u.offset = u.resetOffset
+				u.resetCount = 0
+			}
+			(*data)[i] = RawType(v + u.offset)
 		}
 	}
 }

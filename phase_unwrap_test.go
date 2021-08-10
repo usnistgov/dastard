@@ -15,25 +15,26 @@ func assertPanic(t *testing.T, f func()) {
 
 func TestUnwrap(t *testing.T) {
 	const bits2drop = 2
-	var bias int16
+	var biaslevel int
+	const pulsesign = 1
 	enables := []bool{true, false}
 
 	shouldFail1 := func() {
-		NewPhaseUnwrapper(13, bits2drop, bias, true, -1)
+		NewPhaseUnwrapper(13, bits2drop, true, biaslevel, -1, pulsesign)
 	}
 	shouldFail2 := func() {
-		NewPhaseUnwrapper(13, 0, bias, true, -1)
+		NewPhaseUnwrapper(13, 0, true, biaslevel, -1, pulsesign)
 	}
 	assertPanic(t, shouldFail1)
 	assertPanic(t, shouldFail2)
 
-	NewPhaseUnwrapper(13, bits2drop, bias, false, -1)
-	NewPhaseUnwrapper(13, bits2drop, bias, true, 100)
+	NewPhaseUnwrapper(13, bits2drop, false, biaslevel, -1, pulsesign)
+	NewPhaseUnwrapper(13, bits2drop, true, biaslevel, 100, pulsesign)
 
 	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		for _, enable := range enables {
 			const resetAfter = 20000
-			pu := NewPhaseUnwrapper(fractionbits, bits2drop, bias, enable, resetAfter)
+			pu := NewPhaseUnwrapper(fractionbits, bits2drop, enable, biaslevel, resetAfter, pulsesign)
 			const ndata = 16
 			data := make([]RawType, ndata)
 			original := make([]RawType, ndata)
@@ -85,9 +86,9 @@ func TestUnwrap(t *testing.T) {
 	}
 
 	// Test biased unwrapping. Range that does NOT trigger an unwrap should be [-22768,42768]
-	biasX := int16(10000)
-	pu1 := NewPhaseUnwrapper(16, bits2drop, 0, true, 100)
-	pu2 := NewPhaseUnwrapper(16, bits2drop, biasX, true, 100)
+	biasX := 10000
+	pu1 := NewPhaseUnwrapper(16, bits2drop, true, 0, 100, pulsesign)
+	pu2 := NewPhaseUnwrapper(16, bits2drop, true, biasX, 100, pulsesign)
 	// In order, have big steps that overflow both, overflow just the unbiased, negative that overflows just
 	// the biased, and then negative that overflows both.
 	steps := []int{80, 40, -20, 0, 44000, 0, 40000, 0, -28000, 0, -40000}
@@ -125,10 +126,11 @@ func BenchmarkPhaseUnwrap(b *testing.B) {
 
 	const bits2drop = 2
 	const bias = 0
+	const pulsesign = +1
 	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		const enable = true
 		const resetAfter = 20000
-		pu := NewPhaseUnwrapper(fractionbits, bits2drop, bias, enable, resetAfter)
+		pu := NewPhaseUnwrapper(fractionbits, bits2drop, enable, bias, resetAfter, pulsesign)
 		for i := 0; i < b.N; i++ {
 			pu.UnwrapInPlace(&data)
 		}

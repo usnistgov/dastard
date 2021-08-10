@@ -46,21 +46,22 @@ type AbacoGroup struct {
 }
 
 // NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
-func NewAbacoGroup(index GroupIndex, unwrapEnable bool, unwrapReset, unwrapBias int) *AbacoGroup {
+func NewAbacoGroup(index GroupIndex, unwrapEnable, unwrapBias bool, unwrapReset, pulseSign int) *AbacoGroup {
 	g := new(AbacoGroup)
 	g.index = index
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
-	var bias int16
-	if unwrapBias > 0 {
-		bias = int16(math.Round(+0.38 * float64(65536>>abacoBitsToDrop)))
-	}
-	if unwrapBias < 0 {
-		bias = int16(math.Round(-0.38 * float64(65536>>abacoBitsToDrop)))
+	var bias int
+	if unwrapBias {
+		if pulseSign > 0 {
+			bias = int(math.Round(+0.38 * float64(65536>>abacoBitsToDrop)))
+		} else {
+			bias = int(math.Round(-0.38 * float64(65536>>abacoBitsToDrop)))
+		}
 	}
 	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, bias, unwrapEnable, unwrapReset)
+		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, unwrapEnable, bias, unwrapReset, pulseSign)
 	}
 	return g
 }
@@ -580,7 +581,8 @@ type AbacoSource struct {
 	// PhaseUnwrapper parameters must be stored for use when each AbacoGroup is created.
 	unwrapEnable    bool // whether to activate unwrapping
 	unwrapResetSamp int  // unwrap resets after this many samples (or never if ≤0)
-	unwrapBias      int  // one of (+1,-1,0) to signify ±biased unwrapping, or unbiased
+	pulseSign       int  // one of (+1,-1) to say expected pulse direction
+	biasUnwrapping  bool // whether to activate biased unwrapping
 	AnySource
 }
 
@@ -627,7 +629,8 @@ type AbacoSourceConfig struct {
 	HostPortUDP     []string // host:port pairs to listen for UDP packets
 	Unwrapping      bool     // whether to activate unwrapping
 	UnwrapResetSamp int      // unwrap resets after this many samples (or never if ≤0)
-	Bias            int      // should be one of (-1,0,+1) for biased unwrapping
+	PulseSign       int      // should be one of (-1,+1) to choose the reset point
+	Bias            bool     // whether to use biased unwrapping
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
@@ -674,13 +677,8 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 
 	as.unwrapEnable = config.Unwrapping
 	as.unwrapResetSamp = config.UnwrapResetSamp
-	bias := config.Bias
-	if bias > 1 {
-		bias = 1
-	} else if bias < -1 {
-		bias = -1
-	}
-	as.unwrapBias = bias
+	as.biasUnwrapping = config.Bias
+	as.pulseSign = config.PulseSign
 
 	// Activate the cards listed in the config request.
 	as.producers = make([]PacketProducer, 0)
@@ -750,7 +748,7 @@ func (as *AbacoSource) Sample() error {
 		for _, p := range results.allpackets {
 			cidx := gIndex(p)
 			if _, ok := as.groups[cidx]; !ok {
-				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapEnable, as.unwrapResetSamp, as.unwrapBias)
+				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapEnable, as.biasUnwrapping, as.unwrapResetSamp, as.pulseSign)
 				as.nchan += cidx.Nchan
 			}
 		}
