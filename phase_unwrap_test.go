@@ -34,32 +34,38 @@ func TestUnwrap(t *testing.T) {
 	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		for _, enable := range enables {
 			const resetAfter = 20000
+			resetValue := RawType(0)
+			if enable {
+				resetValue = RawType(1) << (fractionbits - bits2drop)
+			}
 			pu := NewPhaseUnwrapper(fractionbits, bits2drop, enable, biaslevel, resetAfter, pulsesign)
 			const ndata = 16
 			data := make([]RawType, ndata)
-			original := make([]RawType, ndata)
+			target := make([]RawType, ndata)
 
 			// Test unwrap when no change is expected
 			pu.UnwrapInPlace(&data)
 			for i := 0; i < ndata; i++ {
-				if data[i] != 0 {
-					t.Errorf("data[%d] = %d, want 0", i, data[i])
+				if data[i] != resetValue {
+					t.Errorf("data[%d] = %d, want %d", i, data[i], resetValue)
 				}
 			}
 			// Test basic unwrap
-			data[6] = RawType(1) << fractionbits // this is a jump of 2π
-			data[7] = data[6]
-			data[8] = data[7]
-			data[9] = data[8]
+			twopi := RawType(1) << fractionbits // this is a jump of 2π
 			for i := 0; i < ndata; i++ {
-				original[i] = data[i] >> bits2drop
+				data[i] = 100
+				if i > 5 && i < 10 {
+					data[i] += twopi
+				}
+				if enable {
+					target[i] = (100 >> bits2drop) + resetValue
+				} else {
+					target[i] = (data[i] >> bits2drop)
+				}
 			}
 			pu.UnwrapInPlace(&data)
 
-			for i, want := range original {
-				if enable {
-					want = 0
-				}
+			for i, want := range target {
 				if data[i] != want {
 					t.Errorf("unwrap: %t, data[%d] = %d, want %d", enable, i, data[i], want)
 				}
@@ -70,13 +76,14 @@ func TestUnwrap(t *testing.T) {
 			mod := step * 4
 			for i := 0; i < ndata; i++ {
 				data[i] = RawType((i * step) % mod)
-				original[i] = data[i] >> bits2drop
+				if enable {
+					target[i] = RawType(i*(step>>bits2drop)) + resetValue
+				} else {
+					target[i] = data[i] >> bits2drop
+				}
 			}
 			pu.UnwrapInPlace(&data)
-			for i, want := range original {
-				if enable {
-					want = RawType(i * (step >> bits2drop))
-				}
+			for i, want := range target {
 				if data[i] != want {
 					t.Errorf("unwrap: %t, (%d,%d) data[%d] = %d, want %d", enable, fractionbits,
 						bits2drop, i, data[i], want)
@@ -97,6 +104,8 @@ func TestUnwrap(t *testing.T) {
 
 	input1 := make([]RawType, 1+len(steps))
 	input2 := make([]RawType, 1+len(steps))
+	input1[0] = 20000
+	input2[0] = 20000
 	for i, val := range steps {
 		input1[i+1] = input1[i] + RawType(val)
 		input2[i+1] = input2[i] + RawType(val)

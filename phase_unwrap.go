@@ -86,14 +86,13 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		// multiple of 2π in phase angle).
 		if u.offset == u.resetOffset {
 			u.resetCount = 0
-			(*data)[i] = RawType(v)
 		} else {
 			u.resetCount++
 			if u.resetCount > u.resetAfter {
 				u.offset = u.resetOffset
 				u.resetCount = 0
 			}
-			(*data)[i] = RawType(v + u.offset)
 		}
+		(*data)[i] = RawType(v + u.offset)
 	}
 }
