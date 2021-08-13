@@ -54,10 +54,12 @@ func NewAbacoGroup(index GroupIndex, unwrapEnable, unwrapBias bool, unwrapReset,
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
 	var bias int
 	if unwrapBias {
-		if pulseSign > 0 {
-			bias = int(math.Round(+0.38 * float64(65536>>abacoBitsToDrop)))
-		} else {
-			bias = int(math.Round(-0.38 * float64(65536>>abacoBitsToDrop)))
+		// Assume 2^16 equals exactly one ϕ0, then bias based on the assumption of critically
+		// damped pulses. In that case, the largest falling and rising slopes are in the ratio
+		// -0.12 to +0.88. Hence, a bias of ±0.38*ϕ0 (sign given by the pulseSign).
+		bias = int(math.Round(+0.38 * 65536))
+		if pulseSign < 0 {
+			bias = -bias
 		}
 	}
 	for i := range g.unwrap {
