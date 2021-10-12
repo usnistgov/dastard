@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.2.11** Started August 2021
+**0.2.11** October 12, 2021
 * Fix test for exact Float64 equality on data rate from different chan groups (issue 248).
 * Work on biased phase unwrapping (issue 250).
 
