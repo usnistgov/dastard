@@ -1,6 +1,10 @@
 ## DASTARD Versions
 
-**0.2.10** Started March  2021
+**0.2.11** October 12, 2021
+* Fix test for exact Float64 equality on data rate from different chan groups (issue 248).
+* Work on biased phase unwrapping (issue 250).
+
+**0.2.10** May 27, 2021
 * Packet data can appear as UDP instead of in shared memory buffer.
 * Fix bug in closing the file that logs data drops (issue 239).
 * Improve logging of info when packets are dropped (issue 241).

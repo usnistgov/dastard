@@ -108,10 +108,12 @@ func (dev *RoachDevice) samplePacket() error {
 	dev.nextS = FrameIndex(header.Nsamp) + FrameIndex(header.Sampnum)
 	dev.nchan = int(header.Nchan)
 	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
+	biaslevel := 0
+	pulseSign := +1
 	for i := range dev.unwrap {
 		const enable = true
 		const resetAfter = 20000
-		dev.unwrap[i] = NewPhaseUnwrapper(roachFractionBits, roachBitsToDrop, enable, resetAfter)
+		dev.unwrap[i] = NewPhaseUnwrapper(roachFractionBits, roachBitsToDrop, enable, biaslevel, resetAfter, pulseSign)
 	}
 	return err
 }

@@ -12,6 +12,9 @@ lib*.a
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Delve debugger output
+__debug_bin
+
 # Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
 .glide/
 
