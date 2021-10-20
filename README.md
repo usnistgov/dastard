@@ -6,7 +6,7 @@ A data acquisition framework for NIST transition-edge sensor (TES) microcalorime
 ## Installation
 Requires Go version 1.13 or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.13 and 1.15 (as of August 2020, Go version 1.15 is the most recent).
 
-### Ubuntu 18.04 and 16.04
+### Ubuntu 20, 18.04 and 16.04
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
 simple command as sudo first; otherwise, the password entering step will screw up your multi-line paste.
 ```
