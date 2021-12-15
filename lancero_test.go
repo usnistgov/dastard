@@ -8,219 +8,219 @@ import (
 )
 
 // TestChannelOrder checks the map from channel to readout numbering
-func TestChannelOrder(t *testing.T) {
-	ls, err := NewLanceroSource()
-	if err != nil {
-		t.Error("NewLanceroSource failed:", err)
-	}
-	d0 := LanceroDevice{devnum: 0, nrows: 4, ncols: 4, cardDelay: 1}
-	d1 := LanceroDevice{devnum: 1, nrows: 3, ncols: 3, cardDelay: 1}
-	ls.devices[0] = &d0
-	ls.devices[1] = &d1
-	config := LanceroSourceConfig{FiberMask: 0xbeef, ActiveCards: []int{0, 1, 2},
-		CardDelay: []int{1, 1, 1}}
-	ls.Configure(&config)
-	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
-	ls.devices[0].nrows = 4
-	ls.devices[1].nrows = 3
+// func TestChannelOrder(t *testing.T) {
+// 	ls, err := NewLanceroSource()
+// 	if err != nil {
+// 		t.Error("NewLanceroSource failed:", err)
+// 	}
+// 	d0 := LanceroDevice{devnum: 0, nrows: 4, ncols: 4, cardDelay: 1}
+// 	d1 := LanceroDevice{devnum: 1, nrows: 3, ncols: 3, cardDelay: 1}
+// 	ls.devices[0] = &d0
+// 	ls.devices[1] = &d1
+// 	config := LanceroSourceConfig{FiberMask: 0xbeef, ActiveCards: []int{0, 1, 2},
+// 		CardDelay: []int{1, 1, 1}}
+// 	ls.Configure(&config)
+// 	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
+// 	ls.devices[0].nrows = 4
+// 	ls.devices[1].nrows = 3
 
-	if len(ls.active) > 2 {
-		t.Errorf("ls.active contains %d cards, want 2", len(ls.active))
-	}
-	ls.updateChanOrderMap()
-	expect := []int{
-		0, 1, 8, 9, 16, 17, 24, 25,
-		2, 3, 10, 11, 18, 19, 26, 27,
-		4, 5, 12, 13, 20, 21, 28, 29,
-		6, 7, 14, 15, 22, 23, 30, 31,
-		32, 33, 38, 39, 44, 45,
-		34, 35, 40, 41, 46, 47,
-		36, 37, 42, 43, 48, 49,
-	}
-	for i, v := range ls.chan2readoutOrder {
-		if v != expect[i] {
-			t.Errorf("chan2readoutOrder[%d]=%d, want %d", i, v, expect[i])
-		}
-	}
+// 	if len(ls.active) > 2 {
+// 		t.Errorf("ls.active contains %d cards, want 2", len(ls.active))
+// 	}
+// 	ls.updateChanOrderMap()
+// 	expect := []int{
+// 		0, 1, 8, 9, 16, 17, 24, 25,
+// 		2, 3, 10, 11, 18, 19, 26, 27,
+// 		4, 5, 12, 13, 20, 21, 28, 29,
+// 		6, 7, 14, 15, 22, 23, 30, 31,
+// 		32, 33, 38, 39, 44, 45,
+// 		34, 35, 40, 41, 46, 47,
+// 		36, 37, 42, 43, 48, 49,
+// 	}
+// 	for i, v := range ls.chan2readoutOrder {
+// 		if v != expect[i] {
+// 			t.Errorf("chan2readoutOrder[%d]=%d, want %d", i, v, expect[i])
+// 		}
+// 	}
 
-	config.ActiveCards = []int{0}
-	ls.Configure(&config)
-	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
-	ls.devices[0].nrows = 4
-	ls.devices[1].nrows = 3
-	ls.updateChanOrderMap()
-	for i, v := range ls.chan2readoutOrder {
-		if v != expect[i] {
-			t.Errorf("chan2readoutOrder[%d]=%d, want %d", i, v, expect[i])
-		}
-	}
+// 	config.ActiveCards = []int{0}
+// 	ls.Configure(&config)
+// 	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
+// 	ls.devices[0].nrows = 4
+// 	ls.devices[1].nrows = 3
+// 	ls.updateChanOrderMap()
+// 	for i, v := range ls.chan2readoutOrder {
+// 		if v != expect[i] {
+// 			t.Errorf("chan2readoutOrder[%d]=%d, want %d", i, v, expect[i])
+// 		}
+// 	}
 
-	config.ActiveCards = []int{1}
-	ls.Configure(&config)
-	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
-	ls.devices[0].nrows = 4
-	ls.devices[1].nrows = 3
-	ls.updateChanOrderMap()
-	for i, v := range ls.chan2readoutOrder {
-		if v != expect[i+32]-32 {
-			t.Errorf("chan2readoutOrder[%d]=%d, want %d", i, v, expect[i+32]-32)
-		}
-	}
+// 	config.ActiveCards = []int{1}
+// 	ls.Configure(&config)
+// 	// Configure reads nrows from cringeGlobals.json, to test chan2readoutOrder we need to set nrows back to the original values
+// 	ls.devices[0].nrows = 4
+// 	ls.devices[1].nrows = 3
+// 	ls.updateChanOrderMap()
+// 	for i, v := range ls.chan2readoutOrder {
+// 		if v != expect[i+32]-32 {
+// 			t.Errorf("chan2readoutOrder[%d]=%d, want %d", i, v, expect[i+32]-32)
+// 		}
+// 	}
 
-	// test roundint
-	fs := []float64{-1.4, -.6, -.4, 0, .4, .5, .6, 1.4}
-	es := []int{-1, -1, 0, 0, 0, 1, 1, 1}
-	for i, f := range fs {
-		if es[i] != roundint(f) {
-			t.Errorf("roundint(%f)=%d, want %d", f, roundint(f), es[i])
-		}
-	}
-}
+// 	// test roundint
+// 	fs := []float64{-1.4, -.6, -.4, 0, .4, .5, .6, 1.4}
+// 	es := []int{-1, -1, 0, 0, 0, 1, 1, 1}
+// 	for i, f := range fs {
+// 		if es[i] != roundint(f) {
+// 			t.Errorf("roundint(%f)=%d, want %d", f, roundint(f), es[i])
+// 		}
+// 	}
+// }
 
-func TestPrepareChannels(t *testing.T) {
-	ls, err := NewLanceroSource()
-	if err != nil {
-		t.Error("NewLanceroSource failed:", err)
-	}
-	d0 := LanceroDevice{devnum: 0, nrows: 4, ncols: 4, cardDelay: 1}
-	d1 := LanceroDevice{devnum: 1, nrows: 3, ncols: 3, cardDelay: 1}
-	ls.devices[0] = &d0
-	ls.devices[1] = &d1
-	ls.active = make([]*LanceroDevice, 2)
-	for i, device := range ls.devices {
-		ls.active[i] = device
-		ls.nchan += device.ncols * device.nrows * 2
-	}
+// func TestPrepareChannels(t *testing.T) {
+// 	ls, err := NewLanceroSource()
+// 	if err != nil {
+// 		t.Error("NewLanceroSource failed:", err)
+// 	}
+// 	d0 := LanceroDevice{devnum: 0, nrows: 4, ncols: 4, cardDelay: 1}
+// 	d1 := LanceroDevice{devnum: 1, nrows: 3, ncols: 3, cardDelay: 1}
+// 	ls.devices[0] = &d0
+// 	ls.devices[1] = &d1
+// 	ls.active = make([]*LanceroDevice, 2)
+// 	for i, device := range ls.devices {
+// 		ls.active[i] = device
+// 		ls.nchan += device.ncols * device.nrows * 2
+// 	}
 
-	// Test normal chan numbering
-	expect := make([]int, 0, 200)
-	ls.PrepareChannels()
-	for i := 0; i < ls.nchan/2; i++ {
-		expect = append(expect, i)
-		expect = append(expect, i)
-	}
-	for i := 0; i < len(expect); i++ {
-		if ls.chanNumbers[i] != expect[i] {
-			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
-		}
-	}
+// 	// Test normal chan numbering
+// 	expect := make([]int, 0, 200)
+// 	ls.PrepareChannels()
+// 	for i := 0; i < ls.nchan/2; i++ {
+// 		expect = append(expect, i)
+// 		expect = append(expect, i)
+// 	}
+// 	for i := 0; i < len(expect); i++ {
+// 		if ls.chanNumbers[i] != expect[i] {
+// 			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+// 		}
+// 	}
 
-	// Test chan numbering with FirstRow > 1
-	ls.firstRowChanNum = 10
-	ls.PrepareChannels()
-	for i := 0; i < len(expect); i++ {
-		expect[i] += ls.firstRowChanNum
-		if ls.chanNumbers[i] != expect[i] {
-			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
-		}
-	}
+// 	// Test chan numbering with FirstRow > 1
+// 	ls.firstRowChanNum = 10
+// 	ls.PrepareChannels()
+// 	for i := 0; i < len(expect); i++ {
+// 		expect[i] += ls.firstRowChanNum
+// 		if ls.chanNumbers[i] != expect[i] {
+// 			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+// 		}
+// 	}
 
-	// Test chan numbering with chanSepCards > 1
-	ls.firstRowChanNum = 1
-	ls.chanSepCards = 1000
-	ls.PrepareChannels()
-	expect = expect[:0] // truncate
-	for i := 0; i < ls.nchan/2; i++ {
-		expect = append(expect, i)
-		expect = append(expect, i)
-	}
-	for i := 2 * d0.nrows * d0.ncols; i < ls.nchan; i++ {
-		expect[i] += ls.chanSepCards - d0.nrows*d0.ncols
-	}
-	for i := 0; i < len(expect); i++ {
-		expect[i] += ls.firstRowChanNum
-		if ls.chanNumbers[i] != expect[i] {
-			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
-		}
-	}
+// 	// Test chan numbering with chanSepCards > 1
+// 	ls.firstRowChanNum = 1
+// 	ls.chanSepCards = 1000
+// 	ls.PrepareChannels()
+// 	expect = expect[:0] // truncate
+// 	for i := 0; i < ls.nchan/2; i++ {
+// 		expect = append(expect, i)
+// 		expect = append(expect, i)
+// 	}
+// 	for i := 2 * d0.nrows * d0.ncols; i < ls.nchan; i++ {
+// 		expect[i] += ls.chanSepCards - d0.nrows*d0.ncols
+// 	}
+// 	for i := 0; i < len(expect); i++ {
+// 		expect[i] += ls.firstRowChanNum
+// 		if ls.chanNumbers[i] != expect[i] {
+// 			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+// 		}
+// 	}
 
-	// Test chan numbering with chanSepCols > 1
-	ls.firstRowChanNum = 1
-	ls.chanSepCards = 0
-	ls.chanSepColumns = 100
-	ls.PrepareChannels()
-	expect = expect[:0] // truncate
-	for c := 0; c < d0.ncols; c++ {
-		for r := 0; r < d0.ncols; r++ {
-			expect = append(expect, r+c*ls.chanSepColumns)
-			expect = append(expect, r+c*ls.chanSepColumns)
-		}
-	}
-	for c := d0.ncols; c < d0.ncols+d1.ncols; c++ {
-		for r := 0; r < d1.ncols; r++ {
-			expect = append(expect, r+c*ls.chanSepColumns)
-			expect = append(expect, r+c*ls.chanSepColumns)
-		}
-	}
-	for i := 0; i < len(expect); i++ {
-		expect[i] += ls.firstRowChanNum
-		if ls.chanNumbers[i] != expect[i] {
-			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
-		}
-	}
+// 	// Test chan numbering with chanSepCols > 1
+// 	ls.firstRowChanNum = 1
+// 	ls.chanSepCards = 0
+// 	ls.chanSepColumns = 100
+// 	ls.PrepareChannels()
+// 	expect = expect[:0] // truncate
+// 	for c := 0; c < d0.ncols; c++ {
+// 		for r := 0; r < d0.ncols; r++ {
+// 			expect = append(expect, r+c*ls.chanSepColumns)
+// 			expect = append(expect, r+c*ls.chanSepColumns)
+// 		}
+// 	}
+// 	for c := d0.ncols; c < d0.ncols+d1.ncols; c++ {
+// 		for r := 0; r < d1.ncols; r++ {
+// 			expect = append(expect, r+c*ls.chanSepColumns)
+// 			expect = append(expect, r+c*ls.chanSepColumns)
+// 		}
+// 	}
+// 	for i := 0; i < len(expect); i++ {
+// 		expect[i] += ls.firstRowChanNum
+// 		if ls.chanNumbers[i] != expect[i] {
+// 			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+// 		}
+// 	}
 
-	// Test chan numbering with chanSepCols > 1, chanSepColumns > 1
-	ls.firstRowChanNum = 1
-	ls.chanSepCards = 1000
-	ls.chanSepColumns = 100
-	ls.PrepareChannels()
-	expect = expect[:0] // truncate
-	for c := 0; c < d0.ncols; c++ {
-		for r := 0; r < d0.ncols; r++ {
-			expect = append(expect, r+c*ls.chanSepColumns)
-			expect = append(expect, r+c*ls.chanSepColumns)
-		}
-	}
-	for c := 0; c < d1.ncols; c++ {
-		for r := 0; r < d1.ncols; r++ {
-			expect = append(expect, r+c*ls.chanSepColumns+ls.chanSepCards)
-			expect = append(expect, r+c*ls.chanSepColumns+ls.chanSepCards)
-		}
-	}
-	for i := 0; i < len(expect); i++ {
-		expect[i] += ls.firstRowChanNum
-		if ls.chanNumbers[i] != expect[i] {
-			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
-		}
-	}
+// 	// Test chan numbering with chanSepCols > 1, chanSepColumns > 1
+// 	ls.firstRowChanNum = 1
+// 	ls.chanSepCards = 1000
+// 	ls.chanSepColumns = 100
+// 	ls.PrepareChannels()
+// 	expect = expect[:0] // truncate
+// 	for c := 0; c < d0.ncols; c++ {
+// 		for r := 0; r < d0.ncols; r++ {
+// 			expect = append(expect, r+c*ls.chanSepColumns)
+// 			expect = append(expect, r+c*ls.chanSepColumns)
+// 		}
+// 	}
+// 	for c := 0; c < d1.ncols; c++ {
+// 		for r := 0; r < d1.ncols; r++ {
+// 			expect = append(expect, r+c*ls.chanSepColumns+ls.chanSepCards)
+// 			expect = append(expect, r+c*ls.chanSepColumns+ls.chanSepCards)
+// 		}
+// 	}
+// 	for i := 0; i < len(expect); i++ {
+// 		expect[i] += ls.firstRowChanNum
+// 		if ls.chanNumbers[i] != expect[i] {
+// 			t.Errorf("channel number for index %d is %d, want %d", i, ls.chanNumbers[i], expect[i])
+// 		}
+// 	}
 
-	// Make sure PrepareChannels also correctly checking chanSepCards/Columns
-	type Checks struct {
-		sepCards, sepColumns int
-		expect               bool
-	}
-	checks := []Checks{
-		Checks{0, 0, true},
-		Checks{0, 2, false},
-		Checks{0, 3, false},
-		Checks{0, 4, true},
-		Checks{100, 0, true},
-		Checks{16, 0, true},
-		Checks{15, 0, false},
-		Checks{16, 4, true},
-		Checks{19, 4, true},
-		Checks{19, 5, false},
-		Checks{20, 5, true},
-		Checks{-1, 0, false},
-		Checks{0, -1, false},
-	}
-	for _, chk := range checks {
-		ls.chanSepCards = chk.sepCards
-		ls.chanSepColumns = chk.sepColumns
-		err := ls.PrepareChannels()
-		succeed := err == nil
-		if succeed != chk.expect {
-			if chk.expect {
-				t.Errorf("LanceroSource.PrepareChannels() should succeed with sepCards=%d, sepColumns=%d, but returned %v",
-					chk.sepCards, chk.sepColumns, err)
-			} else {
-				t.Errorf("LanceroSource.PrepareChannels() should fail with sepCards=%d, sepColumns=%d, but didn't",
-					chk.sepCards, chk.sepColumns)
-			}
-		}
+// 	// Make sure PrepareChannels also correctly checking chanSepCards/Columns
+// 	type Checks struct {
+// 		sepCards, sepColumns int
+// 		expect               bool
+// 	}
+// 	checks := []Checks{
+// 		{0, 0, true},
+// 		{0, 2, false},
+// 		{0, 3, false},
+// 		{0, 4, true},
+// 		{100, 0, true},
+// 		{16, 0, true},
+// 		{15, 0, false},
+// 		{16, 4, true},
+// 		{19, 4, true},
+// 		{19, 5, false},
+// 		{20, 5, true},
+// 		{-1, 0, false},
+// 		{0, -1, false},
+// 	}
+// 	for _, chk := range checks {
+// 		ls.chanSepCards = chk.sepCards
+// 		ls.chanSepColumns = chk.sepColumns
+// 		err := ls.PrepareChannels()
+// 		succeed := err == nil
+// 		if succeed != chk.expect {
+// 			if chk.expect {
+// 				t.Errorf("LanceroSource.PrepareChannels() should succeed with sepCards=%d, sepColumns=%d, but returned %v",
+// 					chk.sepCards, chk.sepColumns, err)
+// 			} else {
+// 				t.Errorf("LanceroSource.PrepareChannels() should fail with sepCards=%d, sepColumns=%d, but didn't",
+// 					chk.sepCards, chk.sepColumns)
+// 			}
+// 		}
 
-	}
-}
+// 	}
+// }
 
 func TestNoHardwareSource(t *testing.T) {
 	var ncolsSet, nrowsSet, linePeriodSet, nLancero int

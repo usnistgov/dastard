@@ -416,6 +416,17 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 	return err
 }
 
+func (s *SourceControl) GetWritingState(config *WritingState, reply *bool) error {
+	f := func() {
+		ws := s.ActiveSource.ComputeWritingState()
+		*config = ws
+		s.queuedResults <- nil
+	}
+	err := s.runLaterIfActive(f)
+	*reply = err == nil
+	return err
+}
+
 // StateLabelConfig is the argument type of SetExperimentStateLabel
 type StateLabelConfig struct {
 	Label        string

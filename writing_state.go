@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -29,21 +28,16 @@ type WritingState struct {
 	dataDropTicker                    *time.Ticker
 	dataDropFile                      *os.File
 	dataDropHaveSentAMessage          bool
-	sync.Mutex
 }
 
 // IsActive will return ws.Active, with propert locking
 func (ws *WritingState) IsActive() bool {
-	ws.Lock()
-	defer ws.Unlock()
 	return ws.Active
 }
 
 // ComputeState will return a property-by-property copy of the WritingState.
 // It will not copy the "active" features like open files, tickers, etc.
 func (ws *WritingState) ComputeState() WritingState {
-	ws.Lock()
-	defer ws.Unlock()
 	var copyState WritingState
 	copyState.Active = ws.Active
 	copyState.Paused = ws.Paused
@@ -59,8 +53,6 @@ func (ws *WritingState) ComputeState() WritingState {
 
 // Start will set the WritingState to begin writing
 func (ws *WritingState) Start(filenamePattern, path string) error {
-	ws.Lock()
-	defer ws.Unlock()
 	ws.Active = true
 	ws.Paused = false
 	ws.BasePath = path
@@ -73,8 +65,6 @@ func (ws *WritingState) Start(filenamePattern, path string) error {
 
 // Stop will set the WritingState to be completely stopped
 func (ws *WritingState) Stop() error {
-	ws.Lock()
-	defer ws.Unlock()
 	ws.Active = false
 	ws.Paused = false
 	ws.FilenamePattern = ""
@@ -121,8 +111,6 @@ func (ws *WritingState) Stop() error {
 // The file is created upon the first call to this function for a given file writing.
 // This exported version locks the WritingState object.
 func (ws *WritingState) SetExperimentStateLabel(timestamp time.Time, stateLabel string) error {
-	ws.Lock()
-	defer ws.Unlock()
 	if !ws.Active {
 		return fmt.Errorf("cannot set experiment state label when writing is not active")
 	}

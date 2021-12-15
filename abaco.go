@@ -740,7 +740,7 @@ func (as *AbacoSource) Sample() error {
 	// Now sort the packets received into the right AbacoGroups
 	as.nchan = 0
 	as.groups = make(map[GroupIndex]*AbacoGroup)
-	for _ = range as.producers {
+	for range as.producers {
 		results := <-sampleResults
 		now := time.Now()
 		if results.err != nil {
