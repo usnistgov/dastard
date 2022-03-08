@@ -26,12 +26,45 @@ DASTARD replaces an earlier pair of programs ([`ndfb_server`](https://bitbucket.
 
 The way the GUI(s) communicate with DASTARD is by having DASTARD operate a server for Remote Procedure Calls (RPCs). The specific protocol used is JSON-RPC, in which the function calls, argument lists, and results are represented as JSON objects. We are using [JSON-RPC version 1.0](https://www.jsonrpc.org/specification_v1). It is implemented by a Go package, [net/rpc/jsonrpc](https://pkg.go.dev/net/rpc/jsonrpc).
 
-The main DASTARD program (`dastard/dastard.go`) is simple. It performs one startup task then launches three parallel tasks. The startup task uses the viper configuration manager (http://github.com/spf13/viper) to read a configuration file `$HOME/.dastard/config.yaml` that restores much of the configuration from the last run of DASTARD. If a global configuration` /etc/dastard/config.yaml/` exists, that will be read before the user’s main configuration. The parallel tasks are:
+The main DASTARD program (`dastard/dastard.go`) is simple. It performs one startup task then launches three parallel tasks. The startup task uses the [viper configuration manager](http://github.com/spf13/viper) to read a configuration file `$HOME/.dastard/config.yaml` that restores much of the configuration from the last run of DASTARD. If a global configuration` /etc/dastard/config.yaml/` exists, it will be read before the user’s main configuration. The parallel tasks are:
 
 1. Start and keep open a [`log.Logger`](https://pkg.go.dev/log#Logger) in `dastard.problemLogger` that writes to a rotating set of files in `$HOME/.dastard/logs/`
 2. Launch `RunClientUpdater()` in a goroutine. It is used to publish status updates on a ZMQ Publisher socket. The GUI client Dastard-commander and any other control/monitoring clients learn the state of DASTARD by ZMQ-subscribing to this socket.
 3. Call `RunRPCServer()`. When it returns notify the `RunClientUpdater` goroutine to terminate,
 then end the program.
+
+### The JSON-RPC server
+
+Within `RunRPCServer` a new `SourceControl` object is created. It's in charge of configuring and running the various supported data sources (e.g., an Abaco). It contains one each of a `LanceroSource`, `AbacoSource`, `RoachSource`, `SimPulseSource`, and `TriangleSource`. These 5 specific types match the `DataSource` interface and therefore offer a ton of identical methods like `Sample()`, `PrepareRun()`, `StartRun()`, and `Stop()`. Each of these 5 sources also has configuration/control options specific to that type of data source. Each has a stored state that is read (by viper) initially. A "new Dastard is running" message is sent to all active clients (by pushing the message to `sourceControl.clientUpdates` channel, which the `RunClientUpdater` goroutine is receiving from). The previous info about the data-writing state and the TES map (location) file are loaded by viper. Also a new `MapServer` object is created to load and send TES position data.
+
+After these setup tasks are completed, 2 goroutines are launched:
+1. A heartbeat service. Using a read-channel, this accumulates info about the time active and the number of bytes sent and the number read from hardware (the latter might be less, in the case of dropped data being replaced by dummy filler data). Using a `time.Tick` timer, the service wakes up every 2 seconds and sends the accumulated information as part of an "ALIVE" message to any active clients.
+2. An RPC connection handler. Creates a listener on tcp port 5500 (see `global_config.go` for where this is set) with `net.Listen("tcp", 5500)` and then waits for connections with `listener.Accept()`. When received, a new goroutine is launched where codec is created by `jsonrpc.NewServerCodec(...)` and we attempt to handle all RPC requests by calling `server.ServeRequest(codec)` repeatedly until it errors. These requests are configured (before the listen step) to be forwarded to the `sourceControl` or `mapServer` objects, as appropriate.
+
+The RPC server supports the notion of an _active source_. At any one time, one or none of these sources may be active. Some RPC requests are handled immediately. Others are queued up to be acted upon at the appropriate phase in the data handling cycle, to prevent race conditions. The following can be handled immediately:
+- `Start()`: argument says which of the 5 source types to activate. (Fails if any source is active.)
+- `Stop()`: signals the active source to stop. (Fails if none is active.)
+- `ConfigureMixFraction()`: configure the TDM mix if the Lancero source is active (errors otherwise).
+- `ReadComment()`: reads the `comment.txt` file. Errors if no source is active, writing is not on, or the comment file cannot be read.
+- `SendAllStatus()`: broadcast the maximal Dastard state information to any active clients (such as Dastard-commander).
+
+The following can be handled immediately, but only if the corresponding source is not running:
+- `ConfigureLanceroSource()`
+- `ConfigureAbacoSource()`
+- `ConfigureRoachSource()`
+- `ConfigureTriangleSource()`
+- `ConfigureSimPulseSource()`
+
+Most RPC commands only make sense when a source is active (often because they require the exact number of channels to be known). An active source is delicate, so they have to be saved for just the right moment. They are queued by calling `runLaterIfActive(f)` where the argument `f` is a zero-argument, void-returning closure. The run-later function returns an error if no source is running. If some source _is_ running, the closure goes into channel `SourceControl.queuedRequests`. When a reply comes back on channel `SourceControl.queuedResults`, the run-later function returns that reply. Requests that run delayed include:
+- `ConfigureTriggers`
+- `ConfigureProjectorsBasis`
+- `ConfigurePulseLengths`
+- `WriteControl()`: starts/stops/pauses/unpauses data writing.
+- `SetExperimentStateLabel()`
+- `WriteComment()`
+- `CoupleErrToFB()`
+- `CoupleFBToErr()`
+
 
 ## Data sources for DASTARD
 ### TDM/Lancero data source
