@@ -11,7 +11,7 @@ Date: March 2022
 ## Responsibilities of DASTARD
 
 DASTARD handles many responsibilities in the acquisition and analysis of microcalorimeter timestream data.
-1. DASTARD reads data from a data source such as an Abaco card for μMUX systems (see other examples in [Data sources](#Datasources)). In some advanced cases that we haven’t really tested, it might even read more than one source of the same type, such as multiple Abaco cards.
+1. DASTARD reads data from a data source such as an Abaco card for μMUX systems (see other examples in [Data sources](#data-sources-for-dastard)). In some advanced cases that we haven’t really tested, it might even read more than one source of the same type, such as multiple Abaco cards.
 2. DASTARD appropriately handles unwanted gaps in the data.
 3. DASTARD de-multiplexes that raw data source into a set of data streams, one stream per detector.
 4. DASTARD applies triggering conditions to each data stream to determine when photon pulses appear in the stream. When a pulse is found, it creates a triggered record of prescribed length (before and after the trigger sample) from a continuous segment of the stream.
@@ -22,13 +22,13 @@ This memo is meant to summarize some internal implementation details of how DAST
 
 ## DASTARD as an RPC server
 
-DASTARD replaces an earlier pair of programs (`ndfb_server` and `matter`) that were written in C++. Each contains both the code to perform any underlying DAQ activities and a GUI to permit users to control the programs. One key design decision for DASTARD was to split the DAQ work and the GUI front-end into two separate programs.1 By splitting the DAQ work from the control GUI, we were able to write each in a language best suited to the job. GUIs are really complicated, and writing a Qt5 GUI in Python is considerably easier than writing it in C++ (though it is still far from easy).
+DASTARD replaces an earlier pair of programs ([`ndfb_server`](https://bitbucket.org/nist_microcal/nasa_daq/src/master/) and [`matter`](https://bitbucket.org/nist_microcal/nasa_daq/src/master/)) that were written in C++. Each contains both the code to perform any underlying DAQ activities and a GUI to permit users to control the programs. One key design decision for DASTARD was to split the DAQ work and the GUI front-end into two separate programs.1 By splitting the DAQ work from the control GUI, we were able to write each in a language best suited to the job. GUIs are really complicated, and writing a Qt5 GUI in Python is considerably easier than writing it in C++ (though it is still far from easy).
 
-The way the GUI(s) communicate with DASTARD is by having DASTARD operate a server for Remote Procedure Calls (RPCs). The specific protocol used is JSON-RPC, in which the function calls, argument lists, and results are represented as JSON objects.
+The way the GUI(s) communicate with DASTARD is by having DASTARD operate a server for Remote Procedure Calls (RPCs). The specific protocol used is JSON-RPC, in which the function calls, argument lists, and results are represented as JSON objects. We are using [JSON-RPC version 1.0](https://www.jsonrpc.org/specification_v1). It is implemented by a Go package, [net/rpc/jsonrpc](https://pkg.go.dev/net/rpc/jsonrpc).
 
-The main DASTARD program (dastard/dastard.go) is simple. It performs one startup task then launches three parallel tasks. The startup task uses the viper configuration manager (http://github.com/spf13/viper) to read a configuration file `$HOME/.dastard/config.yaml` that restores much of the configuration from the last run of DASTARD. If a global configuration` /etc/dastard/config.yaml/` exists, that will be read before the user’s main configuration. The parallel tasks are:
+The main DASTARD program (`dastard/dastard.go`) is simple. It performs one startup task then launches three parallel tasks. The startup task uses the viper configuration manager (http://github.com/spf13/viper) to read a configuration file `$HOME/.dastard/config.yaml` that restores much of the configuration from the last run of DASTARD. If a global configuration` /etc/dastard/config.yaml/` exists, that will be read before the user’s main configuration. The parallel tasks are:
 
-1. Start and keep open a log.Logger in dastard.problemLogger that writes to a rotating set of files in $HOME/.dastard/logs/
+1. Start and keep open a [`log.Logger`](https://pkg.go.dev/log#Logger) in `dastard.problemLogger` that writes to a rotating set of files in `$HOME/.dastard/logs/`
 2. Launch `RunClientUpdater()` in a goroutine. It is used to publish status updates on a ZMQ Publisher socket. The GUI client Dastard-commander and any other control/monitoring clients learn the state of DASTARD by ZMQ-subscribing to this socket.
 3. Call `RunRPCServer()`. When it returns notify the `RunClientUpdater` goroutine to terminate,
 then end the program.
