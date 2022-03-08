@@ -55,7 +55,7 @@ The following can be handled immediately, but only if the corresponding source i
 - `ConfigureTriangleSource()`
 - `ConfigureSimPulseSource()`
 
-Most RPC commands only make sense when a source is active (often because they require the exact number of channels to be known). An active source is delicate, so they have to be saved for just the right moment. They are queued by calling `runLaterIfActive(f)` where the argument `f` is a zero-argument, void-returning closure. The run-later function returns an error if no source is running. If some source _is_ running, the closure goes into channel `SourceControl.queuedRequests`. When a reply comes back on channel `SourceControl.queuedResults`, the run-later function returns that reply. Requests that run delayed include:
+Most RPC commands only make sense when a source is active (often because they require the exact number of channels to be known). An active source is delicate, so requests to change its state have to be saved for just the right moment if we are to avert any race conditions. Requests are queued by calling `runLaterIfActive(f)` where the argument `f` is a zero-argument, void-returning closure. The run-later function returns an error if no source is running. If some source _is_ running, the closure goes into channel `SourceControl.queuedRequests`. When a reply comes back on channel `SourceControl.queuedResults`, the run-later function returns that reply. Requests that run delayed include:
 - `ConfigureTriggers`
 - `ConfigureProjectorsBasis`
 - `ConfigurePulseLengths`
@@ -65,12 +65,25 @@ Most RPC commands only make sense when a source is active (often because they re
 - `CoupleErrToFB()`
 - `CoupleFBToErr()`
 
-
 ## Data sources for DASTARD
+
+All concrete data sources in DASTARD (such as `AbacoSource`) implement the `DataSource` interface, partly by composing their source-specific data and methods with an `AnySource` object. That object implements the parts of the interface that are not source-specific. The life-cycle of a data acquisition period looks like this.
+
+When the RPC server gets a START request, it calls `Start(ds,...)` where the first argument is the specific source of interest, for which all critical configuration has already been set. The function is found in `data_source.go`. It calls, in order:
+1. `ds.SetStateStarting()`: sets `AnySource.sourceState=Starting` but with a Mutex to serialize access to the state (also `GetState()` and `SetStateInactive()` use the same Mutex).
+1. `ds.Sample()`: runs a source-specific step that reads a certain amount of data from the source to determine key facts such as the number of channels available and the data sampling rate.
+1. `ds.PrepareChannels()`: now that the number of channels and channel names and numbers are known/knowable, store the info in the `AnySource`. There is an `AnySource.PrepareChannels`, but it's overridden by source-specific `AbacoSource.PrepareChannels` or `LanceroSource.PrepareChannels`, because these two sources have more complicated channel numbering possibilities.
+1. `ds.PrepareRun()`
+1. `ds.RunDoneActivate()`
+1. `ds.StartRun()`
+1. `go coreLoop(ds,...)`
+
+
 ### TDM/Lancero data source
 ### Abaco data source
 ### ROACH2 data source
 ### Test data sources
+
 ## Data flow in DASTARD
 ### Triggering in DASTARD
 ### Writing files in DASTARD
