@@ -20,14 +20,16 @@ type DataStreamProcessor struct {
 	LastTrigger          FrameIndex
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
-	projectors           *mat.Dense
-	modelDescription     string
-	// realtime analysis is disable if projectors .IsEmpty
-	// otherwise projectors must be size (nbases,NSamples)
+
+	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
+	// Otherwise projectors must be of size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
+	// If not projectors.IsEmpty(), basis must be of size
+	// (NSamples, nbases) such that basis*modelCoefs = modeled_data ≈ data
+    projectors           *mat.Dense
+	modelDescription     string
 	basis *mat.Dense
-	// if not projectors.IsEmpty basis must be size
-	// (NSamples, nbases) such that basis*modelCoefs = modeled_data
+
 	DecimateState
 	TriggerState
 	DataPublisher
@@ -154,10 +156,10 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 		}
 
 		if segment.signed {
+            // Trick for rounding to int16: don't let any numbers be negative,
+            // because float->int is a truncation operation. If we removed the
+            // +65536 in this loop, then 0 would become an unwanted "rounding attractor".
 			for i := 0; i < Nout; i++ {
-				// Trick for rounding to int16: don't let any numbers be negative
-				// because float->int is a truncation operation. If we remove the
-				// +65536 below, then 0 will be a "rounding attractor".
 				data[i] = RawType(int16(cdata[i]/float64(level) + 65536 + 0.5))
 			}
 
