@@ -73,13 +73,33 @@ When the RPC server gets a START request, it calls `Start(ds,...)` where the fir
 1. `ds.SetStateStarting()`: sets `AnySource.sourceState=Starting` but with a Mutex to serialize access to the state (also `GetState()` and `SetStateInactive()` use the same Mutex).
 1. `ds.Sample()`: runs a source-specific step that reads a certain amount of data from the source to determine key facts such as the number of channels available and the data sampling rate.
 1. `ds.PrepareChannels()`: now that the number of channels and channel names and numbers are known/knowable, store the info in the `AnySource`. There is an `AnySource.PrepareChannels`, but it's overridden by source-specific `AbacoSource.PrepareChannels` or `LanceroSource.PrepareChannels`, because these two sources have more complicated channel numbering possibilities.
-1. `ds.PrepareRun()`
-1. `ds.RunDoneActivate()`
-1. `ds.StartRun()`
+1. `ds.PrepareRun()`: initialize run-related features, including channel `ds.abortSelf` for knowing when to stop; channel `ds.nextBlock` for passing data chunks from the source to the downstream processors; a `TriggerBroker`; tickers to regularly track the amount of data written, write out external triggers, and monitor data drops (1, 1, and 10 seconds period). Also start one `DataStreamProcessor` per channel (`process_data.go`), assigning the viper-stored trigger state as a starting value.
+1. `ds.RunDoneActivate()`: sets `AnySource.sourceState=Active` and increments a WaitGroup, again using the Mutex to serialize access.
+1. `ds.StartRun()`: calls a source-specific `StartRun()` method. It will initiate data acquisition (some sources require a kind of "now go" command, which should be issued here).
 1. `go coreLoop(ds,...)`
 
+The `coreLoop` (in `data_source.go`) starts with a `defer ds.RunDoneDeactivate` which will set `AnySource.sourceState=Inactive` and decrements the WaitGroup, again using the Mutex to serialize access. It then calls `ds.getNextBlock()` find the channel on which it needs to wait for new data blocks to appear. Then it launches an infinite loop with select to wait on two distinct channels. One channel is the queued RPC requests (the closure that need to wait for an appropriate place in the data handling); if one exists, we call the closure. The other channel we wait on is the one returned by `getNextBlock`. If that channel was closed _or_ includes a non-nil `block.err`, then source has to be stopped. If a data block arrives with a nil `err` component, then we call `ds.processSegments(block)`. When that's done, we call `ds.getNextBlock()` again and repeat the loop at the select statement. (In some sources this is extraneous, but for Lancero sources this call is necessary to prime the source again for reading again.)
+
+When the RPC server gets a STOP request, it calls `AnySource.Stop()`. With proper Mutex locking, it checks for status `Active`. (Status `Inactive` and `Stopping` are ignored and STOP has no effect. Status `Starting` causes a panic.) If `Active`, set to `Stopping`. Close the `ds.abortSelf` channel to signal the `coreLoop` that it's time to stop then wait on the WaitGroup to tell us that the data acquisition has actually stopped. The closed abortSelf channel should be handled by the source and eventually result in a `ds.getNextBlock()` returning a closed channel.
+
+Once the stopping is complete, then the `SourceControl` object is back in the inactive state and ready to be started again.
+
+The source-specific `getNextBlock()` method is the one responsible for getting data. It starts any necessary DAQ steps on the hardware and returns a channel where the data will be sent when ready. Specific sources make this more concrete.
 
 ### TDM/Lancero data source
+
+A `LanceroSource` reads out one or more `LanceroDevice` objects. Each `LanceroDevice` corresponds to a set of device-special files like `/dev/lancero_user0`. (The use of 2+ devices has not yet been tested, and it in fact causes DASTARD to panic in the main data loop. It's at least intended to be possible, however.)
+
+The `Sample()` method checks each device. It grabs some data and finds the frame bits in the unaligned stream. By analyzing these from the start of at least 2 successive frames, it figures out the number of columns and channels in that device's TDM data block (which had previously been an undifferentiated data stream).
+
+The `StartRun()` method has each Lancero device switch into data streaming mode (the Sample step switch streaming on but then back off). It again looks for frame bits: this time not to count columns andchannels, but just to discard bytes that are in the middle of a frame and to put the read pointer at the first byte of a frame. Then `launchLanceroReader()` happens. That function launches a goroutine that starts a 50 ms ticker. Then it loops forever, selecting on the `abortSelf` channel (which closes to indicate time to stop) and on the ticker.
+
+When the 50 ms ticker fires, we ask for an available buffer from the underlying card. If less than 3 frames are available, they are left in the card's buffer and saved for the next tick. We test the data to verify that the former numbers of channels and columns still hold (if not, releasing the buffer and apparently hoping for better results next time; it seems like this ought to cause the data source to stop itself?). The data are checked for drops (recognized by the buffer not being aligned with a frame, which admittedly will miss cases where the dropped length is a multiple of the frame length). If any are dropped, we log that, and skip ahead to the next full frame after the drop. Figure out how many frames are available, and demultiplex them into `datacopies`, of type `[][]RawType` (1st index is channel, in lancero order; 2nd index is sample number). Finally, we tell the driver to release the number of bytes we have demuxed and we put `datacopies` into the `LanceroSource.buffersChan` (along with info about the time elapsed, time of last valid read from the device, and whether a drop was detected). This appears on the channel returned by `getNextBlock()`.
+
+`LanceroSource.getNextBlock` is a bit confusing. It launches a goroutine with an apparently infinite loop. But in fact, the loop returns after the first message arrives on the `buffersChan` channel. Until then, it loops to handle any requests to change the error-feedback mix, and to panic if 10 seconds elapse without the expected message. When the expected message arrives, it's checked for being empty or for the message actually being a closed channel (in those cases, it stops the Lancero device and reports out an error). If the message has nonzero valid data, it's converted to a _data block_ by `LanceroSource.distributeData` and put onto the channel `LanceroSource.nextBlock`. That channel has already been returned by the `getNextBlock` method.
+
+The `LanceroSource.distributeData(msg)` function packages each deMUXed data slice into a `DataSegment` object, which also adds the frame period, the first sample's frame serial number and sample time and a few other housekeeping items. The collection of all such segments from all channels is called a `dataBlock`. The block includes external trigger information, which is extracted here.
+
 ### Abaco data source
 ### ROACH2 data source
 ### Test data sources
