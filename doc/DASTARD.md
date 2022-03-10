@@ -115,7 +115,13 @@ The `StartRun()` method tells each producer to dump its existing stored data and
 The `getNextBlock()` is similar to that of Lancero sources, but simpler because there are (as yet) no configurations that can change while the Abaco source is running (akin to the mix settings of Lancero). The method simply launches a goroutine that selects between a timeout that panics (after 100 of the 50 ms data-read ticks have happened) and the expected arrival of a message on the `as.buffersChan` channel. That method checks for the channel being closed, errors, or empty data payloads and in any of these cases closes the `as.NextBlock` channel and returns. Otherwise, it creates a data block from the message in `as.distributeData()` and puts that block on `as.NextBlock` (again closing `as.NextBlock` on error). That channel is, of course, what `getNextBlock()` returns after launching the goroutine.
 
 ### ROACH2 data source
+
+TODO: Explain this source.
+
 ### Test data sources
+
+TODO: Explain the `TriangleSource` and the `SimPulseSource`. They both allow DASTARD to generate fake data for testing and exploration purposes, even when no Lancero, Abaco, or ROACH2 hardware is available.
+
 
 ## Data flow in DASTARD
 
@@ -137,9 +143,24 @@ In `DataStreamProcessor.processSegment(seg)`, the steps are:
 1. `dsp.TriggerData()` to compute primary and secondary triggers. (Primary = due to the data in this stream. Secondary = due to trigger coupling of some kind and a primary trigger happening in this processor's "source" channel.)
 1. `dsp.AnalyzeData()` to analyze any primary triggered records. Computes pretrigger mean and pretrigger delta (?), pulse average and pulse RMS for each record, and (if projectors exist) the record's model coefficients (projections) and residual RMS.
 
-These functions are all in `process_data.go` except for the trigger step, in `triggering.go`.
-
-
-
 ### Triggering in DASTARD
+
+The above functions are all in `process_data.go` except for the trigger step. Triggering is so complicated, it lives separately in `triggering.go` with the complex `TriggerState` object and some relevant methods. The `dsp.TriggerData()` step does the following in sequence:
+1. If `dsp.EdgeMulti`, then any other triggers will be ignored (they don't work well together). The rest of this list will be skipped.
+1. Compute edge triggers and append them to the (empty) list of triggered records.
+1. Compute level triggers and append them to the list of triggered records.
+1. Compute auto triggers and append them to the list of triggered records.
+1. (Noise triggers would go here, but they are not currently implemented.)
+1. Create a `TriggerList` object containing all information about the full collection of triggered records.
+1. Send that list to the central `TriggerBroker` and wait for it to send back the list of secondary triggers for this channel.
+1. Trim the data stream with `dsp.stream.TrimKeepingN`. That is, stop remembering data in the stream older than necessary for future trigger computations (generally this means keep only 1 record worth of old data for regular triggers, or 2 for edge-multi triggers).
+
+For edge-multi-triggers, `dsp.edgeMultiTriggerComputeAppend(records)` is called and the rest of the list is skipped. The records are used to make a `TriggerList`, send it the the broker, and wait on its answer to learn the secondary triggers (the final 3 steps in the regular list).
+
+TODO: Fuller description of EMTs.
+
+TODO: Want to separate the broker and have a more structured concurrency. That will mean a redesign of the above description.
+
 ### Writing files in DASTARD
+
+TODO: Complete this.
