@@ -102,7 +102,7 @@ The `LanceroSource.distributeData(msg)` function packages each deMUXed data slic
 
 ### Abaco data source
 
-An `AbacoSource` (`abaco.go`) reads out one or more Abaco devices. The devices can be programmed to put data into a large user-space ring buffer or to produce UDP packets for DASTARD to read. The ring buffer type is older, and the UDP type is the newer version intended for long-term use. Either device produces data in a packet format.
+An `AbacoSource` (`abaco.go`) reads out one or more Abaco devices. The devices can be programmed to put data into a large user-space ring buffer or to produce UDP packets for DASTARD to read. The ring buffer type is older, and the UDP type is the newer version intended for long-term use. Either device produces data in a packet format (defined and processed in `packets/packets.go`).
 
 The `AbacoSource` owns slices of both `AbacoRing` and `AbacoUDPReceiver`. Both types implement the `PacketProducer` interface. The slice of rings is filled at creation time in `NewAbacoSource()` by checking for the existence of shared memory regions named `xdma*_c2h_0_description`. The UDP receivers, by contrast, are not created until the source is configured in `AbacoSource.Configure()`, because the user has to choose them from among the near-infinite space of host:port choices. After the configure call, the source maintains a slice `producers` that can potentially have one or more sources of one or both types.
 
@@ -116,7 +116,13 @@ The `getNextBlock()` is similar to that of Lancero sources, but simpler because 
 
 ### ROACH2 data source
 
-TODO: Explain this source.
+A `RoachSource` (`roach.go`) reads out one or more ROACH-2 software-defined radio systems. Each device is monitored by a `RoachDevice` and sends its data as UDP packets. The packets are in a completely different form from the Abaco packets, defined here in `type packetHeader` and parsed by `parsePacket(packet []byte)`. The source has its devices bundle 100 ms of data and processes that amount in a bunch.
+
+The `Sample()` method creates a device for each host:port pair that the user specifies. Unlike Abaco data, the ROACH data does not include the information needed to determine the data sample rate, so the user also has to specify that. Only the number of channels is learned by sampling the data packets. A slice of `PhaseUnwrapper` objects is created (one per channel in the device).
+
+The `StartRun()` method launches a long-lived goroutine which in turn launches one `RoachDevice.readPackets` for each active device. Then it loops forever with a select that watches for the `abortSelf` channel to close (closing the `rs.nextBlock` channel then ending the goroutine). Otherwise, data are received from a local `nextBlock` channel from one of the active devices, whereupon the total bytes handled are updated and sent as an occasional heartbeat and then the block is forwarded to `rs.nextBlock` for handling just as in any other source.
+
+We won't describe the processing in any more detail because it's rather similar in concept to the `AbacoSource`, and because the Lancero and Abaco sources are much more widely used in current (2022) environment.
 
 ### Test data sources
 
