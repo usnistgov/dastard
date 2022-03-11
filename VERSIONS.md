@@ -1,7 +1,7 @@
 ## DASTARD Versions
 
 **0.2.12** March 2022
-* `doc/` directory with `DASTARD.md` to explain the internal design of the code.
+* `doc/` directory with `DASTARD.md` to explain the internal design of the code (issue 261).
 
 **0.2.11** October 12, 2021
 * Fix test for exact Float64 equality on data rate from different chan groups (issue 248).
