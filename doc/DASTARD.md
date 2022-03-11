@@ -165,7 +165,7 @@ TODO: Want to separate the broker and have a more structured concurrency. That w
 
 ### Writing files in DASTARD
 
-Each `DataStreamProcessor` contains (is composed with) a `DataPublisher` (`publish_data.go`). Its job is to publish data records on certain ZMQ PUBlisher channels and to write them to disk. It has two output channels, each for sending `*DataRecord` values. One is for full records, the other for summaries. When `PublishData(rec *[]DataRecord)` is called:
+Each `DataStreamProcessor` contains (is composed with) a `DataPublisher` (`publish_data.go`). Its job is to publish data records on certain ZMQ PUBlisher channels and to write them to disk. When `PublishData(rec *[]DataRecord)` is called:
 1. The records are sent on the full record channel `PubRecordsChan` (if it's non-nil).
 1. The records are sent on the record summary channel `PubSummariesChan` (if it's non-nil).
 1. If writing is paused, or if no output writing types are active, return.
@@ -174,4 +174,12 @@ Each `DataStreamProcessor` contains (is composed with) a `DataPublisher` (`publi
 1. If OFF writing is active, then `OFF.WriteRecord(rec)` is called on each (first writing the header if this is the first record written to that output file).
 1. Update the count of records written.
 
-The full record channel...
+A single full record channel `PubRecordsChan` is shared by all processors, so records from all data streams go on this same channel. It is set up for use by `startSocket()` (`publish_data.go`), which opens a ZMQ PUB socket on port `Ports.Trigs` (set to be the base port+2=5502 in `global_config.go`), sets the send high-water mark to 10 and launches a goroutine. That routine loops until `PubRecordsChan` is closed (at which point it closes the ZMQ socket and returns). If data records arrive, it converts each to a message with the `messageRecords` function (returns `[][]byte`, a 2-slice with the message header and the raw pulse record as the two elements). This two-part ZMQ message is then sent over the ZMQ socket, repeating until all records found on the channel have been processed and sent.
+
+The `PubSummariesChan` is similarly unique and shared by all processors. It is set up and operates just like the records channel except that:
+- It sends out data on a different ZMQ PUB socket on port `Ports.Summaries` (base+3=5503).
+- It converts a record to a message with the `messageSummaries` function, which returns a 2-part message with a different header, and with the second part being the linear projection coefficients (the values that would be stored in OFF files).
+
+The published data messages are described in detail in `BINARY_FORMATS.md` in this directory.
+
+The actual writing to file(s) is straightforward and serialized, so we won't describe it further. Code appears in `ljh/ljh.go` (LJH 2.2 and 3.0 files) and `off/off.go` (OFF files).

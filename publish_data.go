@@ -198,12 +198,12 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.HasPubSummaries() {
 		dp.PubSummariesChan <- records
 	}
-    if dp.WritingPaused {
-        return nil
-    }
-    if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
-        return nil
-    }
+	if dp.WritingPaused {
+		return nil
+	}
+	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
+		return nil
+	}
 	if dp.HasLJH22() {
 		for _, record := range records {
 			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
