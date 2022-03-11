@@ -112,14 +112,12 @@ type TriggerBroker struct {
 	SecondaryTrigs  []chan []FrameIndex
 	latestPrimaries [][]FrameIndex
 	triggerCounters []TriggerCounter
-	abort           chan struct{} // This can signal the Run() goroutine to stop
 	sync.RWMutex
 }
 
 // NewTriggerBroker creates a new TriggerBroker object for nchan channels to share group triggers.
 func NewTriggerBroker(nchan int) *TriggerBroker {
 	broker := new(TriggerBroker)
-	broker.abort = make(chan struct{})
 	broker.nchannels = nchan
 	broker.sources = make([]map[int]bool, nchan)
 	for i := 0; i < nchan; i++ {
@@ -194,76 +192,71 @@ func (p FrameIdxSlice) Len() int           { return len(p) }
 func (p FrameIdxSlice) Less(i, j int) bool { return p[i] < p[j] }
 func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-// Run runs in a goroutine to broker trigger frame #s from sources to receivers.
+// Run one pass of brokering trigger frame #s from sources to receivers.
 // It runs in the pattern: get a message from each channel (about their triggered
 // frame numbers), then send a message to each channel (about their secondary triggers).
 // should be called in a goroutine
-func (broker *TriggerBroker) Run() {
-	for {
-		// get data from all PrimaryTrigs channels
-		for i := 0; i < broker.nchannels; i++ {
-			select {
-			case <-broker.abort:
-				return
-			case tlist := <-broker.PrimaryTrigs:
-				broker.latestPrimaries[tlist.channelIndex] = tlist.frames
-				err := broker.triggerCounters[tlist.channelIndex].observeTriggerList(&tlist)
-				if err != nil {
-					log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
-						spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[tlist.channelIndex]))
-				}
-			}
-		}
+func (broker *TriggerBroker) Distribute() error {
+	timeout := time.NewTimer(time.Second)
 
-		// send reponse to all SecondaryTrigs channels
-		broker.RLock()
-		for idx, rxchan := range broker.SecondaryTrigs {
-			sources := broker.Connections(idx)
-			var trigs []FrameIndex
-			if len(sources) > 0 {
-				for source := range sources {
-					trigs = append(trigs, broker.latestPrimaries[source]...)
-				}
-				sort.Sort(FrameIdxSlice(trigs))
-			}
-			rxchan <- trigs
-		}
-		broker.RUnlock()
-
-		// generate combined trigger rate message
-		var hiTime time.Time
-		var duration time.Duration
-		nMessages := len(broker.triggerCounters[0].messages)
-		for j := 1; j < broker.nchannels; j++ {
-			if len(broker.triggerCounters[j].messages) != nMessages {
-				msg := fmt.Sprintf("triggerCounter[%d] has %d messages, want %d", j, len(broker.triggerCounters[j].messages), nMessages)
-				panic(msg)
+	// get data from all PrimaryTrigs channels
+	for i := 0; i < broker.nchannels; i++ {
+		select {
+		case <-timeout.C:
+			return fmt.Errorf("TriggerBroker.Distribute() timed out")
+		case tlist := <-broker.PrimaryTrigs:
+			broker.latestPrimaries[tlist.channelIndex] = tlist.frames
+			err := broker.triggerCounters[tlist.channelIndex].observeTriggerList(&tlist)
+			if err != nil {
+				log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
+					spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[tlist.channelIndex]))
 			}
 		}
-		for i := 0; i < nMessages; i++ {
-			// It's a data race if we don't make a new slice for each message:
-			countsSeen := make([]int, broker.nchannels)
-			for j := 0; j < broker.nchannels; j++ {
-				message := broker.triggerCounters[j].messages[i]
-				if j == 0 { // first channel
-					hiTime = message.hiTime
-					duration = message.duration
-				}
-				if message.hiTime.Nanosecond() != hiTime.Nanosecond() || message.duration.Nanoseconds() != duration.Nanoseconds() {
-					panic("trigger messages not in sync")
-				}
-				countsSeen[j] = message.countsSeen
-			}
-			clientMessageChan <- ClientUpdate{tag: "TRIGGERRATE", state: TriggerRateMessage{HiTime: hiTime, Duration: duration, CountsSeen: countsSeen}}
-		}
-		for j := 0; j < broker.nchannels; j++ {
-			broker.triggerCounters[j].messages = make([]triggerCounterMessage, 0) // release all memory
-		}
-
 	}
-}
 
-// Stop causes the Run() goroutine to end at the next appropriate moment.
-func (broker *TriggerBroker) Stop() {
-	closeIfOpen(broker.abort)
+	// send reponse to all SecondaryTrigs channels
+	broker.RLock()
+	for idx, rxchan := range broker.SecondaryTrigs {
+		sources := broker.Connections(idx)
+		var trigs []FrameIndex
+		if len(sources) > 0 {
+			for source := range sources {
+				trigs = append(trigs, broker.latestPrimaries[source]...)
+			}
+			sort.Sort(FrameIdxSlice(trigs))
+		}
+		rxchan <- trigs
+	}
+	broker.RUnlock()
+
+	// generate combined trigger rate message
+	var hiTime time.Time
+	var duration time.Duration
+	nMessages := len(broker.triggerCounters[0].messages)
+	for j := 1; j < broker.nchannels; j++ {
+		if len(broker.triggerCounters[j].messages) != nMessages {
+			msg := fmt.Sprintf("triggerCounter[%d] has %d messages, want %d", j, len(broker.triggerCounters[j].messages), nMessages)
+			panic(msg)
+		}
+	}
+	for i := 0; i < nMessages; i++ {
+		// It's a data race if we don't make a new slice for each message:
+		countsSeen := make([]int, broker.nchannels)
+		for j := 0; j < broker.nchannels; j++ {
+			message := broker.triggerCounters[j].messages[i]
+			if j == 0 { // first channel
+				hiTime = message.hiTime
+				duration = message.duration
+			}
+			if message.hiTime.Nanosecond() != hiTime.Nanosecond() || message.duration.Nanoseconds() != duration.Nanoseconds() {
+				panic("trigger messages not in sync")
+			}
+			countsSeen[j] = message.countsSeen
+		}
+		clientMessageChan <- ClientUpdate{tag: "TRIGGERRATE", state: TriggerRateMessage{HiTime: hiTime, Duration: duration, CountsSeen: countsSeen}}
+	}
+	for j := 0; j < broker.nchannels; j++ {
+		broker.triggerCounters[j].messages = make([]triggerCounterMessage, 0) // release all memory
+	}
+	return nil
 }

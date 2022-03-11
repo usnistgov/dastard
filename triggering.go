@@ -567,7 +567,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 
 // TriggerData analyzes a DataSegment to find and generate triggered records.
 // All edge triggers are found, then level triggers, then auto and noise triggers.
-func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondaries []*DataRecord) {
+func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	if dsp.EdgeMulti {
 		// EdgeMulti does not play nice with other triggers!!
 		records = dsp.edgeMultiTriggerComputeAppend(records)
@@ -584,12 +584,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 
 		// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
 		dsp.Broker.PrimaryTrigs <- trigList
-		secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.channelIndex]
-		segment := &dsp.stream.DataSegment
-		for _, st := range secondaryTrigList {
-			secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
-		}
-		return records, secondaries
+		return records
 	}
 
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
@@ -612,10 +607,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 		dsp.LastTrigger = records[len(records)-1].trigFrame
 	}
 
-	// Step 2: send the primary trigger list to the group trigger broker and await its
-	// answer about when the secondary triggers are.
+	// Step 2: send the primary trigger list to the group trigger broker.
 
-	// Step 2a: prepare the primary trigger list from the DataRecord list
+	// Step 2a: prepare the primary trigger list from the DataRecord list.
 	trigList := triggerList{channelIndex: dsp.channelIndex}
 	trigList.frames = make([]FrameIndex, len(records))
 	for i, r := range records {
@@ -627,19 +621,22 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
 		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
-	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
+	// Step 2b: send the primary list to the group trigger broker.
 	dsp.Broker.PrimaryTrigs <- trigList
+	return records
+}
+
+func (dsp *DataStreamProcessor) TriggerDataSecondary() (secRecords []*DataRecord) {
 	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.channelIndex]
 	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
-		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
+		secRecords = append(secRecords, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
 	}
 
-	// leave one full possible trigger in the stream
-	// trigger algorithms should not inspect the last NSamples samples
-	// fmt.Printf("Trimmed. %7d samples remain (requested %7d)\n", dsp.stream.TrimKeepingN(dsp.NSamples), dsp.NSamples)
+	// Leave one full possible trigger in the stream, because trigger algorithms
+	// should not inspect the last NSamples samples
 	dsp.stream.TrimKeepingN(dsp.NSamples)
-	return records, secondaries
+	return secRecords
 }
 
 // RecordSlice attaches the methods of sort.Interface to slices of *DataRecords, sorting in increasing order.

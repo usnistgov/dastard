@@ -142,9 +142,6 @@ func TestBrokerConnections(t *testing.T) {
 func TestBrokering(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
-	abort := make(chan struct{})
-	go broker.Run()
-	defer broker.Stop()
 	broker.AddConnection(0, 3)
 	broker.AddConnection(2, 3)
 
@@ -153,6 +150,7 @@ func TestBrokering(t *testing.T) {
 			trigs := triggerList{channelIndex: i, frames: []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
 			broker.PrimaryTrigs <- trigs
 		}
+		broker.Distribute()
 		t0 := <-broker.SecondaryTrigs[0]
 		t1 := <-broker.SecondaryTrigs[1]
 		t2 := <-broker.SecondaryTrigs[2]
@@ -171,9 +169,6 @@ func TestBrokering(t *testing.T) {
 				t.Errorf("TriggerBroker chan %d secondary trig[%d]=%d, want %d", 3, i, t2[i], expected[i])
 			}
 		}
-		if iter == 2 {
-			close(abort)
-		}
 	}
 }
 
@@ -183,8 +178,6 @@ func TestLongRecords(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	var tests = []struct {
 		npre   int
 		nsamp  int
@@ -219,14 +212,18 @@ func TestLongRecords(t *testing.T) {
 		sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 		for i := 0; i <= dsp.NSamples; i += test.nchunk {
-			primaries, secondaries := dsp.TriggerData()
+			primaries := dsp.TriggerData()
+			broker.Distribute()
+			secondaries := dsp.TriggerDataSecondary()
 			if (len(primaries) != 0) || (len(secondaries) != 0) {
 				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
 			}
 			dsp.stream.AppendSegment(segment)
 			segment.firstFramenum += FrameIndex(test.nchunk)
 		}
-		primaries, secondaries := dsp.TriggerData()
+		primaries := dsp.TriggerData()
+		broker.Distribute()
+		secondaries := dsp.TriggerDataSecondary()
 		if len(primaries) != len(expectedFrames) {
 			t.Errorf("%s trigger (test=%v) found %d triggers, want %d", trigname, test, len(primaries), len(expectedFrames))
 		}
@@ -246,8 +243,6 @@ func TestSingles(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -358,11 +353,14 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	segment.signed = dsp.stream.signed // dsp.stream.signed is later set equal to segment.signed
 	dsp.stream.samplesSeen = 0
+	broker := NewTriggerBroker(1)
 	var primaries, secondaries []*DataRecord
 	for i := 0; i < nRepeat; i++ {
 		dsp.stream.AppendSegment(segment)
 		segment.firstFramenum += FrameIndex(len(raw))
-		p, s := dsp.TriggerData()
+		p := dsp.TriggerData()
+		broker.Distribute()
+		s := dsp.TriggerDataSecondary()
 		primaries = append(primaries, p...)
 		secondaries = append(secondaries, s...)
 	}
@@ -413,8 +411,6 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -473,8 +469,6 @@ func TestEdgeMulti(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -656,8 +650,6 @@ func TestEdgeVetosLevel(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -688,7 +680,7 @@ func TestEdgeVetosLevel(t *testing.T) {
 
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
 		dsp.stream.AppendSegment(segment)
-		primaries, _ := dsp.TriggerData()
+		primaries := dsp.TriggerData()
 		if len(primaries) != want {
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
@@ -698,8 +690,6 @@ func TestEdgeVetosLevel(t *testing.T) {
 func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -715,7 +705,9 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	dsp.stream.AppendSegment(segment)
 	b.ResetTimer()
-	primaries, _ := dsp.TriggerData()
+	primaries := dsp.TriggerData()
+	broker.Distribute()
+	dsp.TriggerDataSecondary()
 	if len(primaries) != b.N {
 		fmt.Println("wrong number", len(primaries), b.N)
 	}
@@ -724,8 +716,6 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -759,8 +749,6 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)

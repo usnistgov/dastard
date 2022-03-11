@@ -101,7 +101,6 @@ func (ds *AnySource) RunDoneDeactivate() {
 // RunDoneWait returns when the source run is done, i.e., the source is stopped
 func (ds *AnySource) RunDoneWait() {
 	ds.runDone.Wait()
-	ds.broker.Stop()
 }
 
 // ShouldAutoRestart true if source should be auto-restarted after an error
@@ -338,13 +337,29 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 			len(block.segments), len(ds.processors)))
 	}
 
-	// Each processor (channel) handles its segment in parallel.
+	// We break processing data segments into 2 halves. Each half can proceed in parallel
+	// across all data streams, but we have to synchronize in the middle in order for
+	// secondary triggers to be computed and distributed.
+
+	// Each processor (channel) ingests and triggers on its segment in parallel.
 	for i, dsp := range ds.processors {
 		segment := block.segments[i]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
-			dsp.processSegment(&segment)
+			dsp.processSegment1(&segment)
+		}(dsp)
+	}
+	wg.Wait()
+
+	ds.broker.Distribute()
+
+	// Each processor (channel) analyzes its segment in parallel.
+	for _, dsp := range ds.processors {
+		wg.Add(1)
+		go func(dsp *DataStreamProcessor) {
+			defer wg.Done()
+			dsp.processSegment2()
 		}(dsp)
 	}
 	wg.Wait()
@@ -761,9 +776,8 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	ds.abortSelf = make(chan struct{})
 	ds.nextBlock = make(chan *dataBlock)
 
-	// Start a TriggerBroker to handle secondary triggering
+	// Create a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
-	go ds.broker.Run()
 
 	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
 	ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
