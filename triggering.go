@@ -642,7 +642,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	return records, secondaries
 }
 
-// RecordSlice attaches the methods of sort.Interface to slices of DataRecords, sorting in increasing order.
+// RecordSlice attaches the methods of sort.Interface to slices of *DataRecords, sorting in increasing order.
 type RecordSlice []*DataRecord
 
 func (p RecordSlice) Len() int           { return len(p) }

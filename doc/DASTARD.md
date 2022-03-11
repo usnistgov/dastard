@@ -140,8 +140,9 @@ The `DataStreamProcessor` contains tons of information: a channel's name and num
 In `DataStreamProcessor.processSegment(seg)`, the steps are:
 1. `dsp.DecimateData(seg)` to downsample the segment by an integer factor (either by averaging or dropping samples).
 1. `dsp.stream.AppendSegment(seg)` to append the new data to the processor's stream.
-1. `dsp.TriggerData()` to compute primary and secondary triggers. (Primary = due to the data in this stream. Secondary = due to trigger coupling of some kind and a primary trigger happening in this processor's "source" channel.)
-1. `dsp.AnalyzeData()` to analyze any primary triggered records. Computes pretrigger mean and pretrigger delta (?), pulse average and pulse RMS for each record, and (if projectors exist) the record's model coefficients (projections) and residual RMS.
+1. `dsp.TriggerData()` to compute primary and secondary triggers. (Primary = due to the data in this stream. Secondary = due to trigger coupling of some kind and a primary trigger happening in this processor's "source" channel.) See details in next section.
+1. `dsp.AnalyzeData()` to analyze any primary triggered records. Computes pretrigger mean and pretrigger delta (?), pulse average and pulse RMS for each record, and (if projectors exist) the record's model coefficients (projections) and residual RMS. Store these results in the `DataRecord` object (`data_source.go`).
+1. `dsp.DataPublisher.PublishData(rec)` first for the primary then the secondary triggers.
 
 ### Triggering in DASTARD
 
@@ -154,13 +155,23 @@ The above functions are all in `process_data.go` except for the trigger step. Tr
 1. Create a `TriggerList` object containing all information about the full collection of triggered records.
 1. Send that list to the central `TriggerBroker` and wait for it to send back the list of secondary triggers for this channel.
 1. Trim the data stream with `dsp.stream.TrimKeepingN`. That is, stop remembering data in the stream older than necessary for future trigger computations (generally this means keep only 1 record worth of old data for regular triggers, or 2 for edge-multi triggers).
+1. Return two slices of `*DataRecord` objects (primary, secondary triggers).  Each `DataRecord` contains a slice with the raw data, trigger time and frame index info, and placeholders for the analyzed quantities.
 
 For edge-multi-triggers, `dsp.edgeMultiTriggerComputeAppend(records)` is called and the rest of the list is skipped. The records are used to make a `TriggerList`, send it the the broker, and wait on its answer to learn the secondary triggers (the final 3 steps in the regular list).
 
-TODO: Fuller description of EMTs.
+TODO: Fuller description of EMTs. Hold off writing for now, because this will change soon.
 
-TODO: Want to separate the broker and have a more structured concurrency. That will mean a redesign of the above description.
+TODO: Want to separate the broker and have a more structured concurrency. That will mean a redesign and changing the description above. Generally, we'd separate triggering into 3 steps: compute _primary_ triggers, use the broker to compute the _secondary_ triggers, and finally back to each DSP to create the triggered records and trim the streams.
 
 ### Writing files in DASTARD
 
-TODO: Complete this.
+Each `DataStreamProcessor` contains (is composed with) a `DataPublisher` (`publish_data.go`). Its job is to publish data records on certain ZMQ PUBlisher channels and to write them to disk. It has two output channels, each for sending `*DataRecord` values. One is for full records, the other for summaries. When `PublishData(rec *[]DataRecord)` is called:
+1. The records are sent on the full record channel `PubRecordsChan` (if it's non-nil).
+1. The records are sent on the record summary channel `PubSummariesChan` (if it's non-nil).
+1. If writing is paused, or if no output writing types are active, return.
+1. If LJH 2.2 writing is active, then `LJH22.WriteRecord(rec)` is called on each (first writing the header if this is the first record written to that output file).
+1. If LJH 3 writing is active, then `LJH3.WriteRecord(rec)` is called on each (first writing the header if this is the first record written to that output file).
+1. If OFF writing is active, then `OFF.WriteRecord(rec)` is called on each (first writing the header if this is the first record written to that output file).
+1. Update the count of records written.
+
+The full record channel...
