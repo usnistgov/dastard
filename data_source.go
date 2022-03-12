@@ -769,7 +769,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
 	ds.writingState.dataDropTicker = time.NewTicker(time.Second * 10)
 
-	// Launch goroutines to drain the data produced by this source
+	// Create processors to drain the data produced by this source, one per channel.
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	vpa := ds.VoltsPerArb()
 

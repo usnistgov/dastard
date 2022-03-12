@@ -192,14 +192,19 @@ func (dp *DataPublisher) RemovePubSummaries() {
 
 // PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
 func (dp *DataPublisher) PublishData(records []*DataRecord) error {
-	var times []time.Duration
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
 	}
 	if dp.HasPubSummaries() {
 		dp.PubSummariesChan <- records
 	}
-	if dp.HasLJH22() && !dp.WritingPaused {
+	if dp.WritingPaused {
+		return nil
+	}
+	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
+		return nil
+	}
+	if dp.HasLJH22() {
 		for _, record := range records {
 			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
@@ -213,7 +218,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	if dp.HasLJH3() && !dp.WritingPaused {
+	if dp.HasLJH3() {
 		for _, record := range records {
 			if !dp.LJH3.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
@@ -227,7 +232,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	if dp.HasOFF() && !dp.WritingPaused {
+	if dp.HasOFF() {
 		for _, record := range records {
 			if !dp.OFF.HeaderWritten() { // MATTER doesn't create ljh files until at least one record exists, let us do the same
 				// if the file doesn't exists yet, create it and write header
@@ -248,16 +253,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			}
 		}
 	}
-	if (dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) && !dp.WritingPaused {
-		dp.numberWritten += len(records)
-	}
-	var sum time.Duration
-	for _, t := range times {
-		sum += t
-	}
-	if dp.HasLJH22() && (sum > 40*time.Millisecond || dp.LJH22.ChannelIndex == -1) {
-		fmt.Printf("ChannelIndex %v, times %v\n", dp.LJH22.ChannelIndex, times)
-	}
+	dp.numberWritten += len(records)
 	return nil
 }
 
