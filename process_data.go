@@ -119,19 +119,18 @@ func (dsp *DataStreamProcessor) processSegment1(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
 	dsp.primaries = dsp.TriggerData()
-	segment.processed = true
 }
 
-func (dsp *DataStreamProcessor) processSegment2() {
-	primaries := dsp.primaries
-	dsp.primaries = make([]*DataRecord, 0)
-	dsp.AnalyzeData(primaries)                                       // add analysis results to records in-place
-	if err := dsp.DataPublisher.PublishData(primaries); err != nil { // publish and save data, when enabled
+func (dsp *DataStreamProcessor) processSegment2(secondaryFrames []FrameIndex) {
+	primaryRecords := dsp.primaries
+	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place
+	if err := dsp.DataPublisher.PublishData(primaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
+	dsp.primaries = make([]*DataRecord, 0)
 
-	secondaries := dsp.TriggerDataSecondary()
-	if err := dsp.DataPublisher.PublishData(secondaries); err != nil { // publish and save data, when enabled
+	secondaryRecords := dsp.TriggerDataSecondary(secondaryFrames)
+	if err := dsp.DataPublisher.PublishData(secondaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
 }

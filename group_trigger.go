@@ -109,7 +109,6 @@ type TriggerBroker struct {
 	nchannels       int
 	sources         []map[int]bool
 	PrimaryTrigs    chan triggerList
-	SecondaryTrigs  []chan []FrameIndex
 	latestPrimaries [][]FrameIndex
 	triggerCounters []TriggerCounter
 	sync.RWMutex
@@ -124,10 +123,6 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 		broker.sources[i] = make(map[int]bool)
 	}
 	broker.PrimaryTrigs = make(chan triggerList, nchan)
-	broker.SecondaryTrigs = make([]chan []FrameIndex, nchan)
-	for i := 0; i < nchan; i++ {
-		broker.SecondaryTrigs[i] = make(chan []FrameIndex, 1)
-	}
 	broker.latestPrimaries = make([][]FrameIndex, nchan)
 	broker.triggerCounters = make([]TriggerCounter, nchan)
 	for i := 0; i < nchan; i++ {
@@ -174,8 +169,8 @@ func (broker *TriggerBroker) isConnected(source, receiver int) bool {
 	return ok
 }
 
-// Connections returns a set of all sources for the given receiver.
-func (broker *TriggerBroker) Connections(receiver int) map[int]bool {
+// SourcesForReceiver returns a set of all sources for the given receiver.
+func (broker *TriggerBroker) SourcesForReceiver(receiver int) map[int]bool {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return nil
 	}
@@ -196,36 +191,38 @@ func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 // It runs in the pattern: get a message from each channel (about their triggered
 // frame numbers), then send a message to each channel (about their secondary triggers).
 // should be called in a goroutine
-func (broker *TriggerBroker) Distribute() error {
+func (broker *TriggerBroker) Distribute() (map[int][]FrameIndex, error) {
 	timeout := time.NewTimer(time.Second)
 
 	// get data from all PrimaryTrigs channels
 	for i := 0; i < broker.nchannels; i++ {
 		select {
 		case <-timeout.C:
-			return fmt.Errorf("TriggerBroker.Distribute() timed out")
+			return nil, fmt.Errorf("TriggerBroker.Distribute() timed out")
 		case tlist := <-broker.PrimaryTrigs:
-			broker.latestPrimaries[tlist.channelIndex] = tlist.frames
-			err := broker.triggerCounters[tlist.channelIndex].observeTriggerList(&tlist)
+			idx := tlist.channelIndex
+			broker.latestPrimaries[idx] = tlist.frames
+			err := broker.triggerCounters[idx].observeTriggerList(&tlist)
 			if err != nil {
 				log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
-					spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[tlist.channelIndex]))
+					spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[idx]))
 			}
 		}
 	}
 
-	// send reponse to all SecondaryTrigs channels
+	secondaryMap := make(map[int][]FrameIndex)
 	broker.RLock()
-	for idx, rxchan := range broker.SecondaryTrigs {
-		sources := broker.Connections(idx)
-		var trigs []FrameIndex
+	// Loop over all receivers
+	for idx := 0; idx < broker.nchannels; idx++ {
+		sources := broker.SourcesForReceiver(idx)
 		if len(sources) > 0 {
+			var trigs []FrameIndex
 			for source := range sources {
 				trigs = append(trigs, broker.latestPrimaries[source]...)
 			}
 			sort.Sort(FrameIdxSlice(trigs))
+			secondaryMap[idx] = trigs
 		}
-		rxchan <- trigs
 	}
 	broker.RUnlock()
 
@@ -258,5 +255,5 @@ func (broker *TriggerBroker) Distribute() error {
 	for j := 0; j < broker.nchannels; j++ {
 		broker.triggerCounters[j].messages = make([]triggerCounterMessage, 0) // release all memory
 	}
-	return nil
+	return secondaryMap, nil
 }

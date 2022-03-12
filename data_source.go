@@ -331,7 +331,6 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 // Returns when all segments have been processed
 // It's a more synchronous version of each dsp launching its own goroutine
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
-	var wg sync.WaitGroup
 	if len(ds.processors) != len(block.segments) {
 		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)",
 			len(block.segments), len(ds.processors)))
@@ -342,8 +341,9 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	// secondary triggers to be computed and distributed.
 
 	// Each processor (channel) ingests and triggers on its segment in parallel.
-	for i, dsp := range ds.processors {
-		segment := block.segments[i]
+	var wg sync.WaitGroup
+	for idx, dsp := range ds.processors {
+		segment := block.segments[idx]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
@@ -352,15 +352,21 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	}
 	wg.Wait()
 
-	ds.broker.Distribute()
+	allSecondaries, err := ds.broker.Distribute()
+	if err != nil {
+		return err
+	}
 
 	// Each processor (channel) analyzes its segment in parallel.
-	for _, dsp := range ds.processors {
+	for idx, dsp := range ds.processors {
 		wg.Add(1)
-		go func(dsp *DataStreamProcessor) {
+		flist := allSecondaries[idx]
+		go func(dsp *DataStreamProcessor, flist []FrameIndex) {
 			defer wg.Done()
-			dsp.processSegment2()
-		}(dsp)
+			dsp.processSegment2(flist)
+			segment := block.segments[idx]
+			segment.processed = true
+		}(dsp, flist)
 	}
 	wg.Wait()
 

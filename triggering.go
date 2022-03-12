@@ -626,8 +626,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	return records
 }
 
-func (dsp *DataStreamProcessor) TriggerDataSecondary() (secRecords []*DataRecord) {
-	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.channelIndex]
+func (dsp *DataStreamProcessor) TriggerDataSecondary(secondaryTrigList []FrameIndex) (secRecords []*DataRecord) {
 	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
 		secRecords = append(secRecords, dsp.triggerAt(segment, int(st-segment.firstFramenum)))

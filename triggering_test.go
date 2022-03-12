@@ -57,11 +57,11 @@ func TestBrokerConnections(t *testing.T) {
 		t.Errorf("TriggerBroker.DeleteConnection(%d,0) should fail but didn't", N)
 	}
 
-	// Check the Connections method
+	// Check the SourcesForReceiver method
 	for i := -1; i < 1; i++ {
-		con := broker.Connections(i)
+		con := broker.SourcesForReceiver(i)
 		if len(con) > 0 {
-			t.Errorf("TriggerBroker.Connections(%d)) has length %d, want 0", i, len(con))
+			t.Errorf("TriggerBroker.SourcesForReceiver(%d)) has length %d, want 0", i, len(con))
 		}
 	}
 	broker.AddConnection(1, 0)
@@ -69,16 +69,16 @@ func TestBrokerConnections(t *testing.T) {
 	broker.AddConnection(3, 0)
 	broker.AddConnection(2, 0)
 	broker.AddConnection(3, 0)
-	con := broker.Connections(0)
-	if len(con) != 3 {
-		t.Errorf("TriggerBroker.Connections(0) has length %d, want 3", len(con))
+	sources := broker.SourcesForReceiver(0)
+	if len(sources) != 3 {
+		t.Errorf("TriggerBroker.SourcesForReceiver(0) has length %d, want 3", len(sources))
 	}
-	if con[0] {
-		t.Errorf("TriggerBroker.Connections(0)[0]==true, want false")
+	if sources[0] {
+		t.Errorf("TriggerBroker.SourcesForReceiver(0)[0]==true, want false")
 	}
 	for i := 1; i < 4; i++ {
-		if !con[i] {
-			t.Errorf("TriggerBroker.Connections(0)[%d]==false, want true", i)
+		if !sources[i] {
+			t.Errorf("TriggerBroker.SourcesForReceiver(0)[%d]==false, want true", i)
 		}
 	}
 
@@ -150,11 +150,11 @@ func TestBrokering(t *testing.T) {
 			trigs := triggerList{channelIndex: i, frames: []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
 			broker.PrimaryTrigs <- trigs
 		}
-		broker.Distribute()
-		t0 := <-broker.SecondaryTrigs[0]
-		t1 := <-broker.SecondaryTrigs[1]
-		t2 := <-broker.SecondaryTrigs[2]
-		t3 := <-broker.SecondaryTrigs[3]
+		secondaryMap, _ := broker.Distribute()
+		t0 := secondaryMap[0]
+		t1 := secondaryMap[1]
+		t2 := secondaryMap[2]
+		t3 := secondaryMap[3]
 		for i, tn := range [][]FrameIndex{t0, t1, t2} {
 			if len(tn) > 0 {
 				t.Errorf("TriggerBroker chan %d received %d secondary triggers, want 0", i, len(tn))
@@ -213,8 +213,8 @@ func TestLongRecords(t *testing.T) {
 		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 		for i := 0; i <= dsp.NSamples; i += test.nchunk {
 			primaries := dsp.TriggerData()
-			broker.Distribute()
-			secondaries := dsp.TriggerDataSecondary()
+			secondaryMap, _ := broker.Distribute()
+			secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 			if (len(primaries) != 0) || (len(secondaries) != 0) {
 				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
 			}
@@ -222,8 +222,8 @@ func TestLongRecords(t *testing.T) {
 			segment.firstFramenum += FrameIndex(test.nchunk)
 		}
 		primaries := dsp.TriggerData()
-		broker.Distribute()
-		secondaries := dsp.TriggerDataSecondary()
+		secondaryMap, _ := broker.Distribute()
+		secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 		if len(primaries) != len(expectedFrames) {
 			t.Errorf("%s trigger (test=%v) found %d triggers, want %d", trigname, test, len(primaries), len(expectedFrames))
 		}
@@ -353,14 +353,14 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	segment.signed = dsp.stream.signed // dsp.stream.signed is later set equal to segment.signed
 	dsp.stream.samplesSeen = 0
-	broker := NewTriggerBroker(1)
+	dsp.Broker = NewTriggerBroker(1)
 	var primaries, secondaries []*DataRecord
 	for i := 0; i < nRepeat; i++ {
 		dsp.stream.AppendSegment(segment)
 		segment.firstFramenum += FrameIndex(len(raw))
 		p := dsp.TriggerData()
-		broker.Distribute()
-		s := dsp.TriggerDataSecondary()
+		secondaryMap, _ := dsp.Broker.Distribute()
+		s := dsp.TriggerDataSecondary(secondaryMap[0])
 		primaries = append(primaries, p...)
 		secondaries = append(secondaries, s...)
 	}
@@ -706,8 +706,6 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	dsp.stream.AppendSegment(segment)
 	b.ResetTimer()
 	primaries := dsp.TriggerData()
-	broker.Distribute()
-	dsp.TriggerDataSecondary()
 	if len(primaries) != b.N {
 		fmt.Println("wrong number", len(primaries), b.N)
 	}
