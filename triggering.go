@@ -567,11 +567,13 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 
 // TriggerData analyzes a DataSegment to find and generate triggered records.
 // All edge triggers are found, then level triggers, then auto and noise triggers.
-func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
+// Returns (records, tl) where records are the complete DataRecord objects, while
+// tl is the triggerList object just saying when the triggers happened.
+func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, trigList triggerList) {
 	if dsp.EdgeMulti {
 		// EdgeMulti does not play nice with other triggers!!
 		records = dsp.edgeMultiTriggerComputeAppend(records)
-		trigList := triggerList{channelIndex: dsp.channelIndex}
+		trigList = triggerList{channelIndex: dsp.channelIndex}
 		trigList.frames = make([]FrameIndex, len(records))
 		for i, r := range records {
 			trigList.frames[i] = r.trigFrame
@@ -582,9 +584,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 		trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
 			FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
-		// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
-		dsp.Broker.PrimaryTrigs <- trigList
-		return records
+		return records, trigList
 	}
 
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
@@ -607,10 +607,8 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 		dsp.LastTrigger = records[len(records)-1].trigFrame
 	}
 
-	// Step 2: send the primary trigger list to the group trigger broker.
-
-	// Step 2a: prepare the primary trigger list from the DataRecord list.
-	trigList := triggerList{channelIndex: dsp.channelIndex}
+	// Step 2: prepare the primary trigger list from the DataRecord list.
+	trigList = triggerList{channelIndex: dsp.channelIndex}
 	trigList.frames = make([]FrameIndex, len(records))
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
@@ -621,9 +619,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
 		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
-	// Step 2b: send the primary list to the group trigger broker.
-	dsp.Broker.PrimaryTrigs <- trigList
-	return records
+	return records, trigList
 }
 
 func (dsp *DataStreamProcessor) TriggerDataSecondary(secondaryTrigList []FrameIndex) (secRecords []*DataRecord) {

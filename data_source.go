@@ -352,7 +352,11 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	}
 	wg.Wait()
 
-	allSecondaries, err := ds.broker.Distribute()
+	allchanTrigList := make(map[int]triggerList)
+	for idx, dsp := range ds.processors {
+		allchanTrigList[idx] = dsp.lastTrigList
+	}
+	allSecondaries, err := ds.broker.Distribute(allchanTrigList)
 	if err != nil {
 		return err
 	}

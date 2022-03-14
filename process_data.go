@@ -20,6 +20,7 @@ type DataStreamProcessor struct {
 	LastTrigger          FrameIndex
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
+	lastTrigList         triggerList
 
 	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
 	// Otherwise projectors must be of size (nbases,NSamples)
@@ -117,7 +118,8 @@ func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	primaryRecords := dsp.TriggerData()
+	primaryRecords, tlist := dsp.TriggerData()
+	dsp.lastTrigList = tlist
 	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place
 	if err := dsp.DataPublisher.PublishData(primaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)

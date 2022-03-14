@@ -146,11 +146,12 @@ func TestBrokering(t *testing.T) {
 	broker.AddConnection(2, 3)
 
 	for iter := 0; iter < 3; iter++ {
+		allTrigs := make(map[int]triggerList)
 		for i := 0; i < N; i++ {
 			trigs := triggerList{channelIndex: i, frames: []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
-			broker.PrimaryTrigs <- trigs
+			allTrigs[i] = trigs
 		}
-		secondaryMap, _ := broker.Distribute()
+		secondaryMap, _ := broker.Distribute(allTrigs)
 		t0 := secondaryMap[0]
 		t1 := secondaryMap[1]
 		t2 := secondaryMap[2]
@@ -212,8 +213,9 @@ func TestLongRecords(t *testing.T) {
 		sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 		for i := 0; i <= dsp.NSamples; i += test.nchunk {
-			primaries := dsp.TriggerData()
-			secondaryMap, _ := broker.Distribute()
+			primaries, primaryTrigList := dsp.TriggerData()
+			ptl0 := map[int]triggerList{0: primaryTrigList}
+			secondaryMap, _ := broker.Distribute(ptl0)
 			secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 			if (len(primaries) != 0) || (len(secondaries) != 0) {
 				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
@@ -221,8 +223,9 @@ func TestLongRecords(t *testing.T) {
 			dsp.stream.AppendSegment(segment)
 			segment.firstFramenum += FrameIndex(test.nchunk)
 		}
-		primaries := dsp.TriggerData()
-		secondaryMap, _ := broker.Distribute()
+		primaries, primaryTrigList := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: primaryTrigList}
+		secondaryMap, _ := broker.Distribute(ptl0)
 		secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 		if len(primaries) != len(expectedFrames) {
 			t.Errorf("%s trigger (test=%v) found %d triggers, want %d", trigname, test, len(primaries), len(expectedFrames))
@@ -358,8 +361,10 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	for i := 0; i < nRepeat; i++ {
 		dsp.stream.AppendSegment(segment)
 		segment.firstFramenum += FrameIndex(len(raw))
-		p := dsp.TriggerData()
-		secondaryMap, _ := dsp.Broker.Distribute()
+
+		p, primaryTrigList := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: primaryTrigList}
+		secondaryMap, _ := dsp.Broker.Distribute(ptl0)
 		s := dsp.TriggerDataSecondary(secondaryMap[0])
 		primaries = append(primaries, p...)
 		secondaries = append(secondaries, s...)
@@ -680,7 +685,7 @@ func TestEdgeVetosLevel(t *testing.T) {
 
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
 		dsp.stream.AppendSegment(segment)
-		primaries := dsp.TriggerData()
+		primaries, _ := dsp.TriggerData()
 		if len(primaries) != want {
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
@@ -705,7 +710,7 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	dsp.stream.AppendSegment(segment)
 	b.ResetTimer()
-	primaries := dsp.TriggerData()
+	primaries, _ := dsp.TriggerData()
 	if len(primaries) != b.N {
 		fmt.Println("wrong number", len(primaries), b.N)
 	}

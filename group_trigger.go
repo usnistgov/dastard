@@ -109,7 +109,6 @@ type TriggerBroker struct {
 	nchannels       int
 	nconnections    int
 	sources         []map[int]bool
-	PrimaryTrigs    chan triggerList
 	latestPrimaries [][]FrameIndex
 	triggerCounters []TriggerCounter
 	sync.RWMutex
@@ -123,7 +122,6 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 	for i := 0; i < nchan; i++ {
 		broker.sources[i] = make(map[int]bool)
 	}
-	broker.PrimaryTrigs = make(chan triggerList, nchan)
 	broker.latestPrimaries = make([][]FrameIndex, nchan)
 	broker.triggerCounters = make([]TriggerCounter, nchan)
 	for i := 0; i < nchan; i++ {
@@ -195,30 +193,22 @@ func (p FrameIdxSlice) Less(i, j int) bool { return p[i] < p[j] }
 func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // Run one pass of brokering trigger frame #s from sources to receivers.
-// It runs in the pattern: get a message from each channel (about their triggered
-// frame numbers), then send a message to each channel (about their secondary triggers).
-// should be called in a goroutine
-func (broker *TriggerBroker) Distribute() (map[int][]FrameIndex, error) {
-	timeout := time.NewTimer(time.Second)
+func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int][]FrameIndex, error) {
 
-	// get data from all PrimaryTrigs channels
-	for i := 0; i < broker.nchannels; i++ {
-		select {
-		case <-timeout.C:
-			return nil, fmt.Errorf("TriggerBroker.Distribute() timed out")
-		case tlist := <-broker.PrimaryTrigs:
-			idx := tlist.channelIndex
-			broker.latestPrimaries[idx] = tlist.frames
-			err := broker.triggerCounters[idx].observeTriggerList(&tlist)
-			if err != nil {
-				log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
-					spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[idx]))
-			}
+	// Store all primary trigger indices
+	nprimaries := 0
+	for idx, tlist := range primaries {
+		broker.latestPrimaries[idx] = tlist.frames
+		nprimaries += len(tlist.frames)
+		err := broker.triggerCounters[idx].observeTriggerList(&tlist)
+		if err != nil {
+			log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
+				spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[idx]))
 		}
 	}
 
 	secondaryMap := make(map[int][]FrameIndex)
-	if broker.nconnections == 0 {
+	if nprimaries == 0 || broker.nconnections == 0 {
 		return secondaryMap, nil
 	}
 
