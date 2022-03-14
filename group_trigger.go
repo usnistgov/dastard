@@ -228,6 +228,13 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 	}
 	broker.RUnlock()
 
+	broker.sendCombinedRateMessage()
+	return secondaryMap, nil
+}
+
+// sendCombinedRateMessage computes the trigger rate for each channel and sends a single message
+// about that to the global `clientMessageChan` (one message per data block analyzed).
+func (broker *TriggerBroker) sendCombinedRateMessage() {
 	// generate combined trigger rate message
 	var hiTime time.Time
 	var duration time.Duration
@@ -257,5 +264,4 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 	for j := 0; j < broker.nchannels; j++ {
 		broker.triggerCounters[j].messages = make([]triggerCounterMessage, 0) // release all memory
 	}
-	return secondaryMap, nil
 }
