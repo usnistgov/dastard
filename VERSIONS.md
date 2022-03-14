@@ -2,6 +2,7 @@
 
 **0.2.12** March 2022
 * Add `doc/` directory with `DASTARD.md` to explain the internal design of the code (issue 261).
+* Make Lancero driver's ring buffer be 256 MB instead of 32 MB (issue 258).
 * Refactor triggering so all-channel sync point is explicit (not hidden in `TriggerBroker`) (issue 255).
 
 **0.2.11** October 12, 2021
