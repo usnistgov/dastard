@@ -20,7 +20,6 @@ type DataStreamProcessor struct {
 	LastTrigger          FrameIndex
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
-	primaries            []*DataRecord // Save from call to `triggerSegment` to `analyzeSegment`
 
 	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
 	// Otherwise projectors must be of size (nbases,NSamples)
@@ -115,21 +114,19 @@ func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
 	dsp.edgeMultiSetInitialState()
 }
 
-func (dsp *DataStreamProcessor) processSegment1(segment *DataSegment) {
+func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	dsp.primaries = dsp.TriggerData()
-}
-
-func (dsp *DataStreamProcessor) processSegment2(secondaryFrames []FrameIndex) {
-	primaryRecords := dsp.primaries
+	primaryRecords := dsp.TriggerData()
 	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place
 	if err := dsp.DataPublisher.PublishData(primaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
-	dsp.primaries = make([]*DataRecord, 0)
+}
 
+func (dsp *DataStreamProcessor) processSecondaries(secondaryFrames []FrameIndex) {
 	secondaryRecords := dsp.TriggerDataSecondary(secondaryFrames)
+	dsp.AnalyzeData(secondaryRecords)                                       // add analysis results to records in-place
 	if err := dsp.DataPublisher.PublishData(secondaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}

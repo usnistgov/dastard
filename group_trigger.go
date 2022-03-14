@@ -107,6 +107,7 @@ func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
 // yet still share group triggering information.
 type TriggerBroker struct {
 	nchannels       int
+	nconnections    int
 	sources         []map[int]bool
 	PrimaryTrigs    chan triggerList
 	latestPrimaries [][]FrameIndex
@@ -140,6 +141,9 @@ func (broker *TriggerBroker) AddConnection(source, receiver int) error {
 			receiver, broker.nchannels)
 	}
 	broker.Lock()
+	if !broker.sources[receiver][source] {
+		broker.nconnections++
+	}
 	broker.sources[receiver][source] = true
 	broker.Unlock()
 	return nil
@@ -153,6 +157,9 @@ func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 			receiver, broker.nchannels)
 	}
 	broker.Lock()
+	if broker.sources[receiver][source] {
+		broker.nconnections--
+	}
 	delete(broker.sources[receiver], source)
 	broker.Unlock()
 	return nil
@@ -211,6 +218,10 @@ func (broker *TriggerBroker) Distribute() (map[int][]FrameIndex, error) {
 	}
 
 	secondaryMap := make(map[int][]FrameIndex)
+	if broker.nconnections == 0 {
+		return secondaryMap, nil
+	}
+
 	broker.RLock()
 	// Loop over all receivers
 	for idx := 0; idx < broker.nchannels; idx++ {

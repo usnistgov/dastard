@@ -340,14 +340,14 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	// across all data streams, but we have to synchronize in the middle in order for
 	// secondary triggers to be computed and distributed.
 
-	// Each processor (channel) ingests and triggers on its segment in parallel.
+	// Each processor (channel) ingests and analyzes/publishes its segment in parallel.
 	var wg sync.WaitGroup
 	for idx, dsp := range ds.processors {
 		segment := block.segments[idx]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
-			dsp.processSegment1(&segment)
+			dsp.processSegment(&segment)
 		}(dsp)
 	}
 	wg.Wait()
@@ -357,16 +357,20 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		return err
 	}
 
-	// Each processor (channel) analyzes its segment in parallel.
-	for idx, dsp := range ds.processors {
-		wg.Add(1)
-		flist := allSecondaries[idx]
-		go func(dsp *DataStreamProcessor, flist []FrameIndex) {
-			defer wg.Done()
-			dsp.processSegment2(flist)
-			segment := block.segments[idx]
-			segment.processed = true
-		}(dsp, flist)
+	// Each processor (channel) with secondary records analyzes them in parallel.
+	if len(allSecondaries) > 0 {
+		for idx, dsp := range ds.processors {
+			flist := allSecondaries[idx]
+			if len(flist) > 0 {
+				wg.Add(1)
+				go func(dsp *DataStreamProcessor, flist []FrameIndex) {
+					defer wg.Done()
+					dsp.processSecondaries(flist)
+					segment := block.segments[idx]
+					segment.processed = true
+				}(dsp, flist)
+			}
+		}
 	}
 	wg.Wait()
 
