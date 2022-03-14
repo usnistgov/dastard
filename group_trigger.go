@@ -192,7 +192,8 @@ func (p FrameIdxSlice) Len() int           { return len(p) }
 func (p FrameIdxSlice) Less(i, j int) bool { return p[i] < p[j] }
 func (p FrameIdxSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-// Run one pass of brokering trigger frame #s from sources to receivers.
+// Distribute runs one pass of brokering trigger frame #s from sources to receivers given
+// the map of primary triggers as a map[int]triggerList..
 func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int][]FrameIndex, error) {
 
 	// Store all primary trigger indices

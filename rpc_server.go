@@ -443,17 +443,16 @@ func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply 
 		err := s.runLaterIfActive(f)
 		*reply = (err == nil)
 		return err
-	} else {
-		f2 := func() {
-			err := s.runLaterIfActive(f)
-			if err != nil {
-				// panic here since this error could never be returned
-				panic(fmt.Sprintf("error with WaitForError==false in SetExperimentStateLabel. %s", spew.Sdump(err)))
-			}
-		}
-		go f2()
-		return nil
 	}
+	f2 := func() {
+		err := s.runLaterIfActive(f)
+		if err != nil {
+			// panic here since this error could never be returned
+			panic(fmt.Sprintf("error with WaitForError == false in SetExperimentStateLabel. %s", spew.Sdump(err)))
+		}
+	}
+	go f2()
+	return nil
 }
 
 // WriteComment writes the comment to comment.txt
