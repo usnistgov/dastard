@@ -624,15 +624,13 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	return records
 }
 
+// TriggerDataSecondary converts a slice of secondary trigger frame numbers into a slice
+// of records, the secondary trigger records.
 func (dsp *DataStreamProcessor) TriggerDataSecondary(secondaryTrigList []FrameIndex) (secRecords []*DataRecord) {
 	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
 		secRecords = append(secRecords, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
 	}
-
-	// Leave one full possible trigger in the stream, because trigger algorithms
-	// should not inspect the last NSamples samples
-	dsp.stream.TrimKeepingN(dsp.NSamples)
 	return secRecords
 }
 

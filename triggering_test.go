@@ -652,8 +652,8 @@ func TestEdgeMulti(t *testing.T) {
 	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti L: negative trigger level", []FrameIndex{100, 200, 301, 401, 460, 500})
 }
 
-// TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
-func TestEdgeVetosLevel(t *testing.T) {
+// TestEdgeVetoesLevel tests that an edge trigger vetoes a level trigger as needed.
+func TestEdgeVetoesLevel(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
@@ -670,6 +670,8 @@ func TestEdgeVetosLevel(t *testing.T) {
 	dsp.LevelRising = true
 	dsp.LevelLevel = 99
 
+	// Run several data segments to make sure that the edge trigger vetoes the
+	// level trigger when they happen too close in time.
 	levelChangeAt := []int{50, 199, 200, 201, 299, 300, 301, 399, 400, 401, 500}
 	edgeChangeAt := 300
 	const rawLength = 1000
@@ -688,7 +690,13 @@ func TestEdgeVetosLevel(t *testing.T) {
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
 		dsp.stream.AppendSegment(segment)
 		primaries := dsp.TriggerData()
+		dsp.TrimStream()
 		if len(primaries) != want {
+			fmt.Printf("Found %d records:\n", len(primaries))
+			for _, p := range dsp.lastTrigList.frames {
+				fmt.Printf("\t%v\n", p)
+			}
+
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
 	}

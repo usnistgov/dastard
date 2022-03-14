@@ -341,6 +341,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	// secondary triggers to be computed and distributed.
 
 	// Each processor (channel) ingests and analyzes/publishes its segment in parallel.
+	// Use a WaitGroup to make all finish before secondary triggers can be computed.
 	var wg sync.WaitGroup
 	for idx, dsp := range ds.processors {
 		segment := block.segments[idx]
@@ -352,6 +353,9 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	}
 	wg.Wait()
 
+	// Build a map to hold triggerList for each channel index, and then ask the TriggerBroker
+	// to compute the corresponding slice of secondary trigger FrameIndex values for each
+	// channel index.
 	allchanTrigList := make(map[int]triggerList)
 	for idx, dsp := range ds.processors {
 		allchanTrigList[idx] = dsp.lastTrigList
@@ -370,17 +374,22 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 				go func(dsp *DataStreamProcessor, flist []FrameIndex) {
 					defer wg.Done()
 					dsp.processSecondaries(flist)
-					segment := block.segments[idx]
-					segment.processed = true
 				}(dsp, flist)
 			}
 		}
 	}
 	wg.Wait()
 
+	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
+	// and once every 20 reads, flush the output files (but do the files out of phase, so it's not
+	// done for all files at once).
 	tStart := time.Now()
-	for i, dsp := range ds.processors {
-		if (i+ds.readCounter)%20 == 0 { // flush each dsp once per 20 reads, but not all at once
+	for idx, dsp := range ds.processors {
+		segment := block.segments[idx]
+		segment.processed = true
+		dsp.TrimStream()
+
+		if (idx+ds.readCounter)%20 == 0 {
 			dsp.Flush()
 		}
 	}
