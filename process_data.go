@@ -118,8 +118,7 @@ func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	primaryRecords, tlist := dsp.TriggerData()
-	dsp.lastTrigList = tlist
+	primaryRecords := dsp.TriggerData()
 	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place
 	if err := dsp.DataPublisher.PublishData(primaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)

@@ -567,13 +567,13 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 
 // TriggerData analyzes a DataSegment to find and generate triggered records.
 // All edge triggers are found, then level triggers, then auto and noise triggers.
-// Returns (records, tl) where records are the complete DataRecord objects, while
-// tl is the triggerList object just saying when the triggers happened.
-func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, trigList triggerList) {
+// Returns slice of complete DataRecord objects, while dsp.lastTrigList stores
+// a triggerList object just when the triggers happened.
+func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	if dsp.EdgeMulti {
 		// EdgeMulti does not play nice with other triggers!!
 		records = dsp.edgeMultiTriggerComputeAppend(records)
-		trigList = triggerList{channelIndex: dsp.channelIndex}
+		trigList := triggerList{channelIndex: dsp.channelIndex}
 		trigList.frames = make([]FrameIndex, len(records))
 		for i, r := range records {
 			trigList.frames[i] = r.trigFrame
@@ -584,7 +584,8 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, trigList t
 		trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
 			FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
-		return records, trigList
+		dsp.lastTrigList = trigList
+		return records
 	}
 
 	// Step 1: compute where the primary triggers are, one pass per trigger type.
@@ -608,7 +609,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, trigList t
 	}
 
 	// Step 2: prepare the primary trigger list from the DataRecord list.
-	trigList = triggerList{channelIndex: dsp.channelIndex}
+	trigList := triggerList{channelIndex: dsp.channelIndex}
 	trigList.frames = make([]FrameIndex, len(records))
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
@@ -619,7 +620,8 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, trigList t
 	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
 		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
-	return records, trigList
+	dsp.lastTrigList = trigList
+	return records
 }
 
 func (dsp *DataStreamProcessor) TriggerDataSecondary(secondaryTrigList []FrameIndex) (secRecords []*DataRecord) {

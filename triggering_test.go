@@ -213,8 +213,8 @@ func TestLongRecords(t *testing.T) {
 		sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 		for i := 0; i <= dsp.NSamples; i += test.nchunk {
-			primaries, primaryTrigList := dsp.TriggerData()
-			ptl0 := map[int]triggerList{0: primaryTrigList}
+			primaries := dsp.TriggerData()
+			ptl0 := map[int]triggerList{0: dsp.lastTrigList}
 			secondaryMap, _ := broker.Distribute(ptl0)
 			secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 			if (len(primaries) != 0) || (len(secondaries) != 0) {
@@ -223,8 +223,8 @@ func TestLongRecords(t *testing.T) {
 			dsp.stream.AppendSegment(segment)
 			segment.firstFramenum += FrameIndex(test.nchunk)
 		}
-		primaries, primaryTrigList := dsp.TriggerData()
-		ptl0 := map[int]triggerList{0: primaryTrigList}
+		primaries := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: dsp.lastTrigList}
 		secondaryMap, _ := broker.Distribute(ptl0)
 		secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 		if len(primaries) != len(expectedFrames) {
@@ -362,8 +362,8 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 		dsp.stream.AppendSegment(segment)
 		segment.firstFramenum += FrameIndex(len(raw))
 
-		p, primaryTrigList := dsp.TriggerData()
-		ptl0 := map[int]triggerList{0: primaryTrigList}
+		p := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: dsp.lastTrigList}
 		secondaryMap, _ := dsp.Broker.Distribute(ptl0)
 		s := dsp.TriggerDataSecondary(secondaryMap[0])
 		primaries = append(primaries, p...)
@@ -685,7 +685,7 @@ func TestEdgeVetosLevel(t *testing.T) {
 
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
 		dsp.stream.AppendSegment(segment)
-		primaries, _ := dsp.TriggerData()
+		primaries := dsp.TriggerData()
 		if len(primaries) != want {
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
@@ -710,7 +710,7 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	dsp.stream.AppendSegment(segment)
 	b.ResetTimer()
-	primaries, _ := dsp.TriggerData()
+	primaries := dsp.TriggerData()
 	if len(primaries) != b.N {
 		fmt.Println("wrong number", len(primaries), b.N)
 	}
