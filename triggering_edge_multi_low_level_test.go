@@ -25,7 +25,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 	s := EMTState{
 		threshold: 1, mode: EMTRecordsFullLengthIsolated,
 		nmonotone: 1, npre: 1, nsamp: 2}
-	recordSpecs := s.edgeMultiComputeAppendRecordSpecs(raw[:], 0)
+	recordSpecs := s.edgeMultiComputeRecordSpecs(raw[:], 0)
 	expectRecordSpecs := [2]RecordSpec{{firstRisingFrameIndex: 8, npre: 1, nsamp: 2},
 		{firstRisingFrameIndex: 12, npre: 1, nsamp: 2}}
 	assert.Equal(t, expectRecordSpecs[:], recordSpecs, "edgeMultiComputeAppendRecordSpecs usage 1")
@@ -39,7 +39,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecs_A := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 8, npre: 2, nsamp: 4}}
-	recordSpecs_A1 := s_A.edgeMultiComputeAppendRecordSpecs(raw_A[:], 0)
+	recordSpecs_A1 := s_A.edgeMultiComputeRecordSpecs(raw_A[:], 0)
 	assert.Equal(t, expectRecordSpecs_A[:], recordSpecs_A1, "edgeMultiComputeAppendRecordSpecs usage _A")
 
 	// two trigger, too close so only first should recordize
@@ -48,7 +48,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 		threshold: 1, mode: EMTRecordsFullLengthIsolated,
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecs_B := [1]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4}}
-	recordSpecs_B1 := s_B.edgeMultiComputeAppendRecordSpecs(raw_B[:], 0)
+	recordSpecs_B1 := s_B.edgeMultiComputeRecordSpecs(raw_B[:], 0)
 	assert.Equal(t, expectRecordSpecs_B[:], recordSpecs_B1, "edgeMultiComputeAppendRecordSpecs usage _B1")
 
 	// two records, both should yield full length records
@@ -58,7 +58,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecsC := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 7, npre: 2, nsamp: 4}}
-	recordSpecsC1 := sC.edgeMultiComputeAppendRecordSpecs(rawC[:], 0)
+	recordSpecsC1 := sC.edgeMultiComputeRecordSpecs(rawC[:], 0)
 	assert.Equal(t, expectRecordSpecsC[:], recordSpecsC1, "edgeMultiComputeAppendRecordSpecs usage C1")
 
 	// two records, both should yield full length records
@@ -68,7 +68,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecs_D := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 7, npre: 2, nsamp: 4}}
-	recordSpecs_D1 := s_D.edgeMultiComputeAppendRecordSpecs(raw_D[:], 0)
+	recordSpecs_D1 := s_D.edgeMultiComputeRecordSpecs(raw_D[:], 0)
 	assert.Equal(t, expectRecordSpecs_D[:], recordSpecs_D1, "edgeMultiComputeAppendRecordSpecs usage _D1")
 
 	// two records, first full length, 2nd truncated in pretrigger
@@ -78,7 +78,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecs_E := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 7, npre: 1, nsamp: 3}}
-	recordSpecs_E1 := s_E.edgeMultiComputeAppendRecordSpecs(raw_E[:], 0)
+	recordSpecs_E1 := s_E.edgeMultiComputeRecordSpecs(raw_E[:], 0)
 	assert.Equal(t, expectRecordSpecs_E[:], recordSpecs_E1, "edgeMultiComputeAppendRecordSpecs usage _E1")
 
 	// a record right at the boundary
@@ -88,11 +88,11 @@ func TestEdgeMultiParts1(t *testing.T) {
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecs_F := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 7, npre: 1, nsamp: 3}}
-	recordSpecs_F1 := s_F.edgeMultiComputeAppendRecordSpecs(raw_F[0:8], 0)
+	recordSpecs_F1 := s_F.edgeMultiComputeRecordSpecs(raw_F[0:8], 0)
 	assert.Equal(t, expectRecordSpecs_F[:0], recordSpecs_F1, "no triggers first go _F2")
 	assert.Equal(t, FrameIndex(7), s_F.nextFrameIndexToInspect, "edgeMultiComputeAppendRecordSpecs usage _F2")
 	n0_F := len(raw_F) - s_F.NToKeepOnTrim()
-	recordSpecs_F2 := s_F.edgeMultiComputeAppendRecordSpecs(raw_F[n0_F:], FrameIndex(n0_F))
+	recordSpecs_F2 := s_F.edgeMultiComputeRecordSpecs(raw_F[n0_F:], FrameIndex(n0_F))
 	assert.Equal(t, expectRecordSpecs_F[:], recordSpecs_F2, "both triggers 2nd go _F2")
 
 	// two records, boundary such that first trigger in firt go, 2nd in 2nd go
@@ -102,11 +102,11 @@ func TestEdgeMultiParts1(t *testing.T) {
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecs_G := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 7, npre: 1, nsamp: 3}}
-	recordSpecs_G1 := s_G.edgeMultiComputeAppendRecordSpecs(raw_G[0:10], 0)
+	recordSpecs_G1 := s_G.edgeMultiComputeRecordSpecs(raw_G[0:10], 0)
 	assert.Equal(t, expectRecordSpecs_G[:1], recordSpecs_G1, "first record appears edgeMultiComputeAppendRecordSpecs usage _G2")
 	assert.Equal(t, FrameIndex(10), s_G.nextFrameIndexToInspect, "edgeMultiComputeAppendRecordSpecs usage _G2")
 	n0_G := len(raw_G) - s_G.NToKeepOnTrim()
-	recordSpecs_G2 := s_G.edgeMultiComputeAppendRecordSpecs(raw_G[n0_G:], FrameIndex(n0_G))
+	recordSpecs_G2 := s_G.edgeMultiComputeRecordSpecs(raw_G[n0_G:], FrameIndex(n0_G))
 	assert.Equal(t, expectRecordSpecs_G[1:], recordSpecs_G2, "2nd record appears")
 
 	// two records far enough apart to trigger both, negative going
@@ -116,7 +116,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 		nmonotone: 1, npre: 2, nsamp: 4}
 	expectRecordSpecs_H := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 8, npre: 2, nsamp: 4}}
-	recordSpecs_H1 := s_H.edgeMultiComputeAppendRecordSpecs(raw_H[:], 0)
+	recordSpecs_H1 := s_H.edgeMultiComputeRecordSpecs(raw_H[:], 0)
 	assert.Equal(t, expectRecordSpecs_H[:], recordSpecs_H1, "edgeMultiComputeAppendRecordSpecs usage _H")
 
 	// contaminated records, trigger every 2 samples
@@ -129,7 +129,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 		{firstRisingFrameIndex: 6, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 8, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 10, npre: 2, nsamp: 4},
 		{firstRisingFrameIndex: 12, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 14, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 16, npre: 2, nsamp: 4},
 	}
-	recordSpecs_I1 := s_I.edgeMultiComputeAppendRecordSpecs(raw_I[:], 0)
+	recordSpecs_I1 := s_I.edgeMultiComputeRecordSpecs(raw_I[:], 0)
 	assert.Equal(t, expectRecordSpecs_I[:], recordSpecs_I1, "edgeMultiComputeAppendRecordSpecs usage _I")
 
 }
