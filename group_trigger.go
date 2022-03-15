@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -111,7 +110,6 @@ type TriggerBroker struct {
 	sources         []map[int]bool
 	latestPrimaries [][]FrameIndex
 	triggerCounters []TriggerCounter
-	sync.RWMutex
 }
 
 // NewTriggerBroker creates a new TriggerBroker object for nchan channels to share group triggers.
@@ -138,12 +136,10 @@ func (broker *TriggerBroker) AddConnection(source, receiver int) error {
 		return fmt.Errorf("Could not add channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)
 	}
-	broker.Lock()
 	if !broker.sources[receiver][source] {
 		broker.nconnections++
 	}
 	broker.sources[receiver][source] = true
-	broker.Unlock()
 	return nil
 }
 
@@ -154,12 +150,10 @@ func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 		return fmt.Errorf("Could not remove channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)
 	}
-	broker.Lock()
 	if broker.sources[receiver][source] {
 		broker.nconnections--
 	}
 	delete(broker.sources[receiver], source)
-	broker.Unlock()
 	return nil
 }
 
@@ -168,9 +162,7 @@ func (broker *TriggerBroker) isConnected(source, receiver int) bool {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return false
 	}
-	broker.RLock()
 	_, ok := broker.sources[receiver][source]
-	broker.RUnlock()
 	return ok
 }
 
@@ -179,9 +171,7 @@ func (broker *TriggerBroker) SourcesForReceiver(receiver int) map[int]bool {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return nil
 	}
-	broker.RLock()
 	sources := broker.sources[receiver]
-	broker.RUnlock()
 	return sources
 }
 
@@ -212,7 +202,6 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 		return secondaryMap, nil
 	}
 
-	broker.RLock()
 	// Loop over all receivers
 	for idx := 0; idx < broker.nchannels; idx++ {
 		sources := broker.SourcesForReceiver(idx)
@@ -225,7 +214,6 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 			secondaryMap[idx] = trigs
 		}
 	}
-	broker.RUnlock()
 
 	// generate combined trigger rate message
 	var hiTime time.Time
