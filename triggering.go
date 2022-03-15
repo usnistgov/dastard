@@ -96,6 +96,13 @@ func min(a int, b int) int {
 	return b
 }
 
+func max(a, b int) int {
+	if a >= b {
+		return a
+	}
+	return b
+}
+
 // kinkModel returns a+b(x-k) for x<k and a+c(x-k) for x>=k
 func kinkModel(k float64, x float64, a float64, b float64, c float64) float64 {
 	if x < k {
@@ -221,7 +228,7 @@ func edgeMultiFindNextTriggerInd(raw []RawType, iFirst, iLast, threshold, nmonot
 			foundMonotone = int32(-999999) // poison value to crash if no written over
 			j := int32(1)
 			for {
-				is_monotone := (rising && raw[i+j] > raw[i+j-1]) || (falling && raw[i+j] > raw[i+j-1])
+				is_monotone := (rising && raw[i+j] > raw[i+j-1]) || (falling && raw[i+j] < raw[i+j-1])
 				if !is_monotone || j >= max_nmonotone {
 					foundMonotone = int32(j)
 					break
@@ -233,7 +240,7 @@ func edgeMultiFindNextTriggerInd(raw []RawType, iFirst, iLast, threshold, nmonot
 			}
 		}
 	}
-	return NextTriggerIndResult{0, false, iLast + 1}
+	return NextTriggerIndResult{0, false, int32(max(int(iLast+1), int(iFirst)))}
 }
 
 type EMTState struct {
@@ -288,9 +295,10 @@ const (
 // u index of current trigger
 // v index of next trigger
 func edgeMultiShouldRecord(t, u, v FrameIndex, npreIn, nsampIn int32, mode EMTMode) (RecordSpec, bool) {
-	// lastNPost := min(nsampIn-npreIn, int(u-t))
-	npre := int32(min(int(npreIn), int(u-t)))
+	lastNPost := min(int(nsampIn-npreIn), int(u-t))
+	npre := int32(min(int(npreIn), int(u-t-FrameIndex(lastNPost))))
 	npost := int32(min(int(nsampIn-npreIn), int(v-u)))
+	// nextNPre := int32(min(int(npreIn), int(v-u)-int(npost)))
 	if u == 0 || u == v || u == t {
 		// u is set to 0 on reset, do not trigger until we have a new value
 		// u is set to v when we recordize before finding the next trigger to handle
@@ -329,7 +337,7 @@ func (s *EMTState) edgeMultiComputeAppendRecordSpecs(raw []RawType, frameIndexOf
 	if iFirst < max_lookback { // state has been reset
 		iFirst = max_lookback
 		s.reset()
-		fmt.Println("reseting edge multi state")
+		// fmt.Println("reseting edge multi state")
 	}
 	iLast := int32(len(raw)) - 1 - max_lookahead
 	t, u, v := s.t, s.u, s.v
