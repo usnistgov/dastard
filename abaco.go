@@ -82,7 +82,7 @@ func (group *AbacoGroup) samplePackets() error {
 	for _, p := range group.queue {
 		cidx := gIndex(p)
 		if cidx != group.index {
-			return fmt.Errorf("Packet with index %v got to group with index %v", cidx, group.index)
+			return fmt.Errorf("packet with index %v got to group with index %v", cidx, group.index)
 		}
 
 		samplesInPackets += p.Frames()
@@ -131,7 +131,7 @@ func (group *AbacoGroup) samplePackets() error {
 // meaning the sequence number referenced to the group.seqnumsync offset.
 func (group *AbacoGroup) firstSeqNum() (uint32, error) {
 	if len(group.queue) == 0 {
-		return 0, fmt.Errorf("No packets in queue")
+		return 0, fmt.Errorf("no packets in queue")
 	}
 	return group.queue[0].SequenceNumber() - group.seqnumsync, nil
 }
@@ -1040,7 +1040,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 				rawData:         data,
 				framesPerSample: 1, // This will be changed later if decimating
 				framePeriod:     as.samplePeriod,
-				firstFramenum:   as.nextFrameNum,
+				firstFrameIndex: as.nextFrameNum,
 				firstTime:       firstTime,
 				signed:          true,
 				droppedFrames:   buffersMsg.droppedFrames,

@@ -234,7 +234,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				rawData:         raw,
 				signed:          true,
 				framesPerSample: 1,
-				firstFramenum:   firstFramenum,
+				firstFrameIndex: firstFramenum,
 				firstTime:       firstTime,
 				framePeriod:     dev.period,
 			}

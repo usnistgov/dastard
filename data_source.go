@@ -356,7 +356,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		}
 	}
 	ds.readCounter++
-	flushDuration := time.Now().Sub(tStart)
+	flushDuration := time.Since(tStart)
 	if flushDuration > 50*time.Millisecond {
 		log.Println("flushDuration", flushDuration)
 	}
@@ -370,7 +370,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	}
 
 	// all segments will have the same value for droppedFrames and firstFramenum, so we just look at the first segment here
-	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFramenum)); err != nil {
+	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFrameIndex)); err != nil {
 		return err
 	}
 	if ds.writingState.Active && !ds.writingState.Paused {
@@ -896,7 +896,7 @@ type DataSegment struct {
 	rawData         []RawType
 	signed          bool
 	framesPerSample int // Normally 1, but can be larger if decimated
-	firstFramenum   FrameIndex
+	firstFrameIndex FrameIndex
 	firstTime       time.Time
 	framePeriod     time.Duration
 	voltsPerArb     float32
@@ -908,7 +908,7 @@ type DataSegment struct {
 func NewDataSegment(data []RawType, framesPerSample int, firstFrame FrameIndex,
 	firstTime time.Time, period time.Duration) *DataSegment {
 	seg := DataSegment{rawData: data, framesPerSample: framesPerSample,
-		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period}
+		firstFrameIndex: firstFrame, firstTime: firstTime, framePeriod: period}
 	return &seg
 }
 
@@ -941,7 +941,7 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	timeNowInStream := time.Duration(framesNowInStream) * stream.framePeriod
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
-	stream.firstFramenum = segment.firstFramenum - framesNowInStream
+	stream.firstFrameIndex = segment.firstFrameIndex - framesNowInStream
 	stream.firstTime = segment.firstTime.Add(-timeNowInStream)
 	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.signed = segment.signed // there are multiple sources of true on wether something is signed
@@ -961,7 +961,7 @@ func (stream *DataStream) TrimKeepingN(N int) int {
 	copy(stream.rawData[:N], stream.rawData[L-N:L])
 	stream.rawData = stream.rawData[:N]
 	deltaFrames := (L - N) * stream.framesPerSample
-	stream.firstFramenum += FrameIndex(deltaFrames)
+	stream.firstFrameIndex += FrameIndex(deltaFrames)
 	stream.firstTime = stream.firstTime.Add(time.Duration(deltaFrames) * stream.framePeriod)
 	return N
 }

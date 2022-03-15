@@ -224,7 +224,7 @@ func TestLongRecords(t *testing.T) {
 				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
 			}
 			dsp.stream.AppendSegment(segment)
-			segment.firstFramenum += FrameIndex(test.nchunk)
+			segment.firstFrameIndex += FrameIndex(test.nchunk)
 		}
 		primaries, secondaries := dsp.TriggerData()
 		if len(primaries) != len(expectedFrames) {
@@ -361,7 +361,7 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	var primaries, secondaries []*DataRecord
 	for i := 0; i < nRepeat; i++ {
 		dsp.stream.AppendSegment(segment)
-		segment.firstFramenum += FrameIndex(len(raw))
+		segment.firstFrameIndex += FrameIndex(len(raw))
 		p, s := dsp.TriggerData()
 		primaries = append(primaries, p...)
 		secondaries = append(secondaries, s...)

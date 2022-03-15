@@ -52,6 +52,8 @@ type TriggerState struct {
 	edgeMultiIPotential              FrameIndex
 	edgeMultiILastInspected          FrameIndex
 
+	EMTState
+
 	// TODO: group source/rx info.
 }
 
@@ -63,6 +65,7 @@ func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
 	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
 	dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4
 	dsp.edgeMultiIPotential = -math.MaxInt64 / 4
+	dsp.EMTState.reset()
 }
 
 // create a record using dsp.NPresamples and dsp.NSamples
@@ -76,7 +79,7 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(segment *DataSegment, i
 	data := make([]RawType, NSamples)
 	// fmt.Printf("triggerAtSpecificSamples i %v, NPresamples %v, NSamples %v, len(rawData) %v\n", i, NPresamples, NSamples, len(segment.rawData))
 	copy(data, segment.rawData[i-NPresamples:i+NSamples-NPresamples])
-	tf := segment.firstFramenum + FrameIndex(i)
+	tf := segment.firstFrameIndex + FrameIndex(i)
 	tt := segment.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
@@ -178,6 +181,275 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 
 }
 
+// use the kink model to potentially adjust the trigger point by up to 1 sample
+func zeroThreshold(raw []RawType, i int32, enable bool) int32 {
+	if !enable {
+		return i
+	}
+	xdataf := [8]float64{0, 0, 0, 0, 0, 0, 0, 0}
+	ydataf := [8]float64{0, 0, 0, 0, 0, 0, 0, 0}
+	for j := 0; j < 8; j++ {
+		xdataf[j] = float64(int32(j) + i - 4) // look at samples from i-4 to i+3
+		ydataf[j] = float64(raw[int32(j)+i-4])
+	}
+	ifit := float64(i)
+	kbest, _, err := kinkModelFit(xdataf[:], ydataf[:], []float64{ifit - 1, ifit - 0.5, ifit, ifit + 0.5, ifit + 1})
+	if err == nil {
+		return int32(math.Ceil(kbest))
+	} else {
+		return i
+	}
+}
+
+type NextTriggerIndResult struct {
+	triggerInd   int32 // only use if triggerFound == true
+	triggerFound bool
+	nextIFirst   int32
+}
+
+// edgeMultiFindNextTriggerInd
+func edgeMultiFindNextTriggerInd(raw []RawType, iFirst, iLast, threshold, nmonotone, max_nmonotone int32, enableZeroThreshold bool) NextTriggerIndResult {
+	rising := threshold >= 1
+	falling := !rising
+	var foundMonotone int32
+	for i := iFirst; i <= iLast; i++ {
+		diff := int32(raw[i]) - int32(raw[i-1])
+		if (rising && diff >= threshold) ||
+			(falling && diff <= threshold) {
+			// validate n monotone
+			// skip ahead by how many monotone samples we find
+			foundMonotone = int32(-999999) // poison value to crash if no written over
+			j := int32(1)
+			for {
+				is_monotone := (rising && raw[i+j] > raw[i+j-1]) || (falling && raw[i+j] > raw[i+j-1])
+				if !is_monotone || j >= max_nmonotone {
+					foundMonotone = int32(j)
+					break
+				}
+				j += 1
+			}
+			if foundMonotone >= nmonotone { // add trigger
+				return NextTriggerIndResult{zeroThreshold(raw, i, enableZeroThreshold), true, i + foundMonotone + 1}
+			}
+		}
+	}
+	return NextTriggerIndResult{0, false, iLast + 1}
+}
+
+type EMTState struct {
+	mode                    EMTMode
+	threshold               int32
+	nmonotone               int32
+	npre                    int32
+	nsamp                   int32
+	enableZeroThreshold     bool
+	nextFrameIndexToInspect FrameIndex
+	t                       FrameIndex
+	u                       FrameIndex
+	v                       FrameIndex
+}
+
+func (s EMTState) valid() bool {
+	if s.enableZeroThreshold && s.npre < 4 {
+		return false
+	}
+	if s.enableZeroThreshold && (s.nsamp-s.npre) < 4 {
+		return false
+	}
+	if s.nmonotone > s.nsamp-s.npre {
+		return false
+	}
+	return true
+}
+
+func (s *EMTState) reset() {
+	if !s.valid() {
+		panic("EMT state is invalid")
+	}
+	s.nextFrameIndexToInspect = 0
+	s.t, s.u, s.v = 0, 0, 0
+}
+
+type RecordSpec struct {
+	firstRisingFrameIndex FrameIndex
+	npre                  int32
+	nsamp                 int32
+}
+
+type EMTMode int
+
+const (
+	EMTRecordsTwoFullLength EMTMode = iota
+	EMTRecordsVariableLength
+	EMTRecordsFullLengthIsolated
+)
+
+// t index of previous trigger
+// u index of current trigger
+// v index of next trigger
+func edgeMultiShouldRecord(t, u, v FrameIndex, npreIn, nsampIn int32, mode EMTMode) (RecordSpec, bool) {
+	// lastNPost := min(nsampIn-npreIn, int(u-t))
+	npre := int32(min(int(npreIn), int(u-t)))
+	npost := int32(min(int(nsampIn-npreIn), int(v-u)))
+	if u == 0 || u == v || u == t {
+		// u is set to 0 on reset, do not trigger until we have a new value
+		// u is set to v when we recordize before finding the next trigger to handle
+		// the "around the corner case"
+		// this will eventually lead to u == t as more triggers are inspected
+		return RecordSpec{-1, -1, -1}, false
+	}
+	if mode == EMTRecordsVariableLength {
+		// always make a record, but dont overlap with neighboring triggers
+		return RecordSpec{u, npre, npre + npost}, true
+	} else if mode == EMTRecordsTwoFullLength {
+		// always make a record, overlap with neighboring records
+		return RecordSpec{u, npreIn, nsampIn}, true
+	} else if mode == EMTRecordsFullLengthIsolated {
+		if npre >= npreIn && npre+npost >= nsampIn {
+			return RecordSpec{u, npreIn, nsampIn}, true
+		}
+	}
+	return RecordSpec{-1, -1, -1}, false
+}
+
+func (s EMTState) NToKeepOnTrim() int {
+	return int(2*s.nsamp + 10)
+}
+
+func (s *EMTState) edgeMultiComputeAppendRecordSpecs(raw []RawType, frameIndexOfraw0 FrameIndex) []RecordSpec {
+	// we promise to never index into raw outside of a potential record starting
+	// at iFirst or iLast
+	max_lookback := s.npre            // set by npre
+	max_lookahead := s.nsamp - s.npre // set by npost=npre-nsamp
+	// EMTState.valid, which is checked on reset, makes sue npre and (nsamp-npre) are each 4 or greater, so the kink
+	// model can always look at least 4 samples back and 4 forward
+	max_nmonotone := max_lookahead
+	iFirst := int32(s.nextFrameIndexToInspect - frameIndexOfraw0)
+	recordSpecs := make([]RecordSpec, 0)
+	if iFirst < max_lookback { // state has been reset
+		iFirst = max_lookback
+		s.reset()
+		fmt.Println("reseting edge multi state")
+	}
+	iLast := int32(len(raw)) - 1 - max_lookahead
+	t, u, v := s.t, s.u, s.v
+	for {
+		x := edgeMultiFindNextTriggerInd(raw, iFirst, iLast, s.threshold, int32(s.nmonotone), max_nmonotone, s.enableZeroThreshold)
+		iFirst = x.nextIFirst
+		if !x.triggerFound {
+			break
+		}
+		t, u, v = u, v, FrameIndex(x.triggerInd)+frameIndexOfraw0
+		// fmt.Println(t, u, v)
+		recordSpec, valid := edgeMultiShouldRecord(t, u, v, s.npre, s.nsamp, s.mode)
+		if valid {
+			recordSpecs = append(recordSpecs, recordSpec)
+		}
+	}
+	// now iFirst == iLast+1, because that is always the return value when we didn't find another trigger
+
+	// at this point we need to handle records "around the corner", v may point to a valid record
+	// but we may not know how long it should be until we get more data and call this function again
+	// 1. v doesn't point to a record (aka v==0)
+	// v. v points to a record far from iLast, we need to recordize it now and signal that
+	// to the next call of this funciton
+	// 3. v points to a record near iLast, and we can't handle it until we get more data
+	// we just need to make sure we perserve enough data to recordize u later
+	nextFrameIndexToInspect := FrameIndex(iFirst) + frameIndexOfraw0
+	if 0 < v && v < nextFrameIndexToInspect-FrameIndex(s.nsamp) {
+		// here we handle cases 1 and 2
+		// the earliest possible next trigger is at nextFrameIndexToInspect, so as long as v
+		// is at least 1 nsamp from there, we know we can write a full length record
+		recordSpec, valid := edgeMultiShouldRecord(u, v, nextFrameIndexToInspect, s.npre, s.nsamp, s.mode)
+		if valid {
+			recordSpecs = append(recordSpecs, recordSpec)
+		}
+		u = v // we signal that this has already been recordized by setting u = v
+		// edgeMultiShouldRecord has a special case to check for u==v and not recordize
+	}
+	// case 3 is handled by ensuring that we always have atleast npre samples left after trimming
+	// trimming is handled by edgeMultiTriggerComputeAppend
+	// the maximum possible value of v that hasn't recordized is nextFrameIndexToInspect-FrameIndex(s.nsamp)
+	// and we will at most look back npre samples from there, so we should preserve at least nsamp+npre samples before
+	// nextFrameIndexToInspect, and nextFrameIndexToInspect is npost samples away from the end of raw.... so
+	// we need to preserve at least nsamp+npre+npost=2nsamp samples, +(no more than)10 for the shift from the kink model
+	s.t, s.u, s.v = t, u, v
+	s.nextFrameIndexToInspect = nextFrameIndexToInspect
+	return recordSpecs
+}
+
+func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
+	segment := &dsp.stream.DataSegment
+	dsp.EMTState.nmonotone = int32(dsp.EdgeMultiVerifyNMonotone)
+	dsp.EMTState.npre = int32(dsp.NPresamples)
+	dsp.EMTState.nsamp = int32(dsp.NSamples)
+	dsp.EMTState.threshold = dsp.EdgeMultiLevel
+	dsp.EMTState.enableZeroThreshold = !dsp.EdgeMultiDisableZeroThreshold
+	if dsp.EdgeMultiMakeShortRecords {
+		dsp.EMTState.mode = EMTRecordsVariableLength
+	} else if dsp.EdgeMultiMakeContaminatedRecords {
+		dsp.EMTState.mode = EMTRecordsTwoFullLength
+	} else {
+		dsp.EMTState.mode = EMTRecordsFullLengthIsolated
+	}
+	recordSpecs := dsp.EMTState.edgeMultiComputeAppendRecordSpecs(segment.rawData, segment.firstFrameIndex)
+	for _, recordSpec := range recordSpecs {
+		record := dsp.triggerAtSpecificSamples(segment, int(recordSpec.firstRisingFrameIndex-segment.firstFrameIndex), int(recordSpec.npre), int(recordSpec.nsamp))
+		records = append(records, record)
+	}
+	dsp.stream.TrimKeepingN(dsp.EMTState.NToKeepOnTrim()) // see comment at end of edgeMultiComputeAppendRecordSpecs
+	return records
+}
+
+// func edgeMultiRecordizeAtTriggerIndsAndAppend(raw []int, triggerInds []int32, records []*DataRecord) []*DataRecord {
+// 	var t, u, v, tFirst int
+// 	// t index of previous trigger
+// 	// u index of current trigger
+// 	// v index of next trigger
+// 	if dsp.LastEdgeMultiTrigger > 0 {
+// 		tFirst = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
+// 	} else {
+// 		tFirst = -dsp.NSamples
+// 	}
+// 	for i := 0; i < len(triggerInds); i++ {
+// 		u = triggerInds[i]
+// 		if i == len(triggerInds)-1 {
+// 			v = iLast
+// 		} else {
+// 			v = triggerInds[i+1]
+// 		}
+// 		if i == 0 {
+// 			t = tFirst
+
+// 		} else {
+// 			t = triggerInds[i-1]
+// 		}
+// 		// fmt.Printf("dsp.LastEdgeMultiTrigger %v, tFirst %v\n", dsp.LastEdgeMultiTrigger, tFirst)
+// 		lastNPost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
+// 		npre := min(dsp.NPresamples, int(u-t-lastNPost))
+// 		npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
+// 		// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
+// 		// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
+// 		if dsp.EdgeMultiMakeShortRecords {
+// 			// fmt.Printf("short trigger at u %v\n", u)
+// 			// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
+// 			// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
+// 			newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
+// 			records = append(records, newRecord)
+// 		} else if dsp.EdgeMultiMakeContaminatedRecords {
+// 			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+// 			records = append(records, newRecord)
+// 			if len(records) >= (len(raw)/dsp.NSamples)/2+1 {
+// 				log.Println("limiting recordization rate of EdgeMultiMakeContaminatedRecords")
+// 				break
+// 			}
+// 		} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
+// 			newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
+// 			records = append(records, newRecord)
+// 		}
+// 	}
+// }
+
 // edgeMultiTriggerComputeAppend computes the EdgeMulti Trigger
 // There are two modes
 // 1. EdgeMulti: requires: EdgeMulti, EdgeMultiLevel, EdgeMultiVerifyNMonotone
@@ -191,16 +463,16 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 // 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeMultiLevel, EdgeMultiVerifyNMonotone, AutoDelay
 // will not produce pulse containing records, just the autotrigger that fit in around them
 // negative values for EdgeMultiLevel look for negative going edges
-func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
+func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppendOld(records []*DataRecord) []*DataRecord {
 	segment := &dsp.stream.DataSegment
 	raw := segment.rawData
 	ndata := len(raw)
 
 	var triggerInds []int
 	var iPotential, iLast, iFirst int
-	iPotential = int(dsp.edgeMultiIPotential - segment.firstFramenum)
+	iPotential = int(dsp.edgeMultiIPotential - segment.firstFrameIndex)
 	iLast = ndata + dsp.NPresamples - dsp.NSamples
-	if dsp.edgeMultiILastInspected == 0 && segment.firstFramenum == 0 {
+	if dsp.edgeMultiILastInspected == 0 && segment.firstFrameIndex == 0 {
 		if dsp.edgeMultiInternalSearchState != initial {
 			dsp.edgeMultiInternalSearchState = initial
 			for i := 0; i < 10; i++ {
@@ -212,9 +484,9 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	}
 	switch dsp.edgeMultiInternalSearchState {
 	case verifying:
-		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
+		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFrameIndex) + 1
 	case searching:
-		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
+		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFrameIndex) + 1
 	case initial:
 		iFirst = dsp.NPresamples
 		if iFirst < 6 { // kink model looks at i-6
@@ -234,7 +506,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	}
 	if iFirst < 6 {
 		panic(fmt.Sprintf("channel %v, iFirst %v<6!! segment.firstFramenum %v, dsp.edgeMultiILastInspected %v, dsp.edgeMultiInernalSearchState %v, dsp.NPresamples %v, dsp.NSamples %v, iLast %v, len(raw) %v, iPotential %v",
-			dsp.channelIndex, iFirst, segment.firstFramenum, dsp.edgeMultiILastInspected, dsp.edgeMultiInternalSearchState, dsp.NPresamples, dsp.NSamples, iLast, len(raw), iPotential))
+			dsp.channelIndex, iFirst, segment.firstFrameIndex, dsp.edgeMultiILastInspected, dsp.edgeMultiInternalSearchState, dsp.NPresamples, dsp.NSamples, iLast, len(raw), iPotential))
 	}
 	rising := dsp.EdgeMultiLevel >= 0
 	falling := !rising
@@ -286,14 +558,14 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		}
 	}
 	if iLast >= iFirst {
-		dsp.edgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
+		dsp.edgeMultiILastInspected = FrameIndex(iLast) + segment.firstFrameIndex
 	}
 
-	dsp.edgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
+	dsp.edgeMultiIPotential = FrameIndex(iPotential) + segment.firstFrameIndex // dont need to condition this on EdgeMultiState because it only matters in state verifying
 
 	var lastIThatCantEdgeTrigger int
 	if dsp.edgeMultiInternalSearchState == searching {
-		lastIThatCantEdgeTrigger = int(dsp.edgeMultiILastInspected-segment.firstFramenum) - 1
+		lastIThatCantEdgeTrigger = int(dsp.edgeMultiILastInspected-segment.firstFrameIndex) - 1
 	} else if dsp.edgeMultiInternalSearchState == verifying {
 		lastIThatCantEdgeTrigger = iPotential - 1
 	}
@@ -304,7 +576,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 		// u index of current trigger
 		// v index of next trigger
 		if dsp.LastEdgeMultiTrigger > 0 {
-			tFirst = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
+			tFirst = int(dsp.LastEdgeMultiTrigger - segment.firstFrameIndex)
 		} else {
 			tFirst = -dsp.NSamples
 		}
@@ -377,7 +649,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 			}
 
 			// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
-			nextPotentialTrig := int(dsp.LastEdgeMultiTrigger-segment.firstFramenum) + delaySamples
+			nextPotentialTrig := int(dsp.LastEdgeMultiTrigger-segment.firstFrameIndex) + delaySamples
 			// fmt.Printf("nextPotentialTrig %v = dsp.LastEdgeMultiTrigger %v - segment.firstFramenum %v + delaySamples %v\n",
 			// nextPotentialTrig, dsp.LastEdgeMultiTrigger, segment.firstFramenum, delaySamples)
 			if nextPotentialTrig < dsp.NPresamples+1 {
@@ -473,7 +745,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 	}
 
 	// Solve the problem of signed data by shifting all values up by 2^15
@@ -497,7 +769,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 			i = int(nextFoundTrig) + dsp.NSamples - 1
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
-				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
@@ -533,11 +805,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 	}
 
 	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
-	nextPotentialTrig := dsp.LastTrigger - segment.firstFramenum + delaySamples
+	nextPotentialTrig := dsp.LastTrigger - segment.firstFrameIndex + delaySamples
 	if nextPotentialTrig < npre {
 		nextPotentialTrig = npre
 	}
@@ -555,7 +827,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 			nextPotentialTrig = nextFoundTrig + delaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
-				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
@@ -576,10 +848,10 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 		for i, r := range records {
 			trigList.frames[i] = r.trigFrame
 		}
-		trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
+		trigList.keyFrame = dsp.stream.DataSegment.firstFrameIndex
 		trigList.keyTime = dsp.stream.DataSegment.firstTime
 		trigList.sampleRate = dsp.SampleRate
-		trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
+		trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFrameIndex +
 			FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 		// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
@@ -587,7 +859,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 		secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.channelIndex]
 		segment := &dsp.stream.DataSegment
 		for _, st := range secondaryTrigList {
-			secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
+			secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFrameIndex)))
 		}
 		return records, secondaries
 	}
@@ -621,10 +893,10 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
 	}
-	trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
+	trigList.keyFrame = dsp.stream.DataSegment.firstFrameIndex
 	trigList.keyTime = dsp.stream.DataSegment.firstTime
 	trigList.sampleRate = dsp.SampleRate
-	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
+	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFrameIndex +
 		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 	// Step 2b: send the primary list to the group trigger broker; receive the secondary list.
@@ -632,7 +904,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord, secondarie
 	secondaryTrigList := <-dsp.Broker.SecondaryTrigs[dsp.channelIndex]
 	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
-		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
+		secondaries = append(secondaries, dsp.triggerAt(segment, int(st-segment.firstFrameIndex)))
 	}
 
 	// leave one full possible trigger in the stream
