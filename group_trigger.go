@@ -197,12 +197,16 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 		}
 	}
 
+    broker.generateTriggerMessages()
+
+    // Stop now if there are obviously no secondary triggers (either b/c no primaries to
+    // cause them, or b/c no trigger connections are set).
 	secondaryMap := make(map[int][]FrameIndex)
 	if nprimaries == 0 || broker.nconnections == 0 {
 		return secondaryMap, nil
 	}
 
-	// Loop over all receivers
+	// Loop over all receivers. If any, make list of all triggers they receive, sort, and store.
 	for idx := 0; idx < broker.nchannels; idx++ {
 		sources := broker.SourcesForReceiver(idx)
 		if len(sources) > 0 {
@@ -214,8 +218,15 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 			secondaryMap[idx] = trigs
 		}
 	}
+	return secondaryMap, nil
+}
 
-	// generate combined trigger rate message
+// generateTriggerMessages makes a trigger rate message. It combines all channels' trigger
+// rate info into a single message, and it sends that message onto `clientMessageChan`.
+// There might be more than one count stored in the triggerCounters[].messages, so this might
+// generate multiple messages.
+func (broker *TriggerBroker) generateTriggerMessages() {
+
 	var hiTime time.Time
 	var duration time.Duration
 	nMessages := len(broker.triggerCounters[0].messages)
@@ -244,5 +255,5 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 	for j := 0; j < broker.nchannels; j++ {
 		broker.triggerCounters[j].messages = make([]triggerCounterMessage, 0) // release all memory
 	}
-	return secondaryMap, nil
+
 }
