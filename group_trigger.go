@@ -75,8 +75,8 @@ func (tc *TriggerCounter) messageAndReset() {
 	tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
 }
 
-func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
-	// Update keyFrame and keyTime to have a relatively recent correspondence between
+func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
+	// Update keyFrame and keyTime to have a new, recent correspondence between
 	// the real-world time and frame number.
 	tc.keyFrame = tList.keyFrame
 	tc.keyTime = tList.keyTime
@@ -89,14 +89,14 @@ func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
 			tc.messageAndReset()
 		}
 		if frame > tc.hi {
-			return fmt.Errorf("frame %v still higher than tc.hi=%v after reset (Δf=%d)", frame, tc.hi, frame-tc.hi)
+			return fmt.Errorf("countNewTriggers: frame %v still higher than tc.hi=%v even after messageAndReset (Δf=%d)", frame, tc.hi, frame-tc.hi)
 		}
 		if frame < tc.lo {
-			return fmt.Errorf("observed count before lo=%v, frame=%v", tc.lo, frame)
+			return fmt.Errorf("countNewTriggers: observed count before lo=%v, frame=%v", tc.lo, frame)
 		}
 		tc.countsSeen++
 	}
-	if tList.lastFrameThatWillNeverTrigger > tc.hi {
+	if tList.firstFrameThatCannotTrigger > tc.hi {
 		tc.messageAndReset()
 	}
 	return nil
@@ -190,7 +190,7 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 	for idx, tlist := range primaries {
 		broker.latestPrimaries[idx] = tlist.frames
 		nprimaries += len(tlist.frames)
-		err := broker.triggerCounters[idx].observeTriggerList(&tlist)
+		err := broker.triggerCounters[idx].countNewTriggers(&tlist)
 		if err != nil {
 			log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
 				spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[idx]))

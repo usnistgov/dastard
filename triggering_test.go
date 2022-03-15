@@ -814,8 +814,8 @@ func TestTriggerCounter(t *testing.T) {
 	now := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
 	tc := NewTriggerCounter(0, time.Second)
 	tList := triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 0,
-		keyTime: now, sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now, sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 0 {
@@ -828,8 +828,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("want %v, have %v", len(tList.frames), tc.countsSeen)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1, 2, 3, 4, 5}, keyFrame: 100,
-		keyTime: now.Add(100 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(100 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.countsSeen != len(tList.frames) {
@@ -842,8 +842,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("have %v, want %v", tc.lo, 1)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1007, 1008, 1009, 2000, 2001}, keyFrame: 1900,
-		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 3000 {
@@ -856,8 +856,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("want %v, have %v", 1, tc.countsSeen)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 1900,
-		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 3001}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 3001}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 4000 {
