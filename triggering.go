@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"log"
 	"math"
 	"sort"
 	"time"
@@ -234,6 +235,7 @@ type EMTState struct {
 	npre                    int32
 	nsamp                   int32
 	enableZeroThreshold     bool
+	iFirstCheckSentinel     bool
 	nextFrameIndexToInspect FrameIndex
 	t                       FrameIndex
 	u                       FrameIndex
@@ -259,6 +261,7 @@ func (s *EMTState) reset() {
 	}
 	s.nextFrameIndexToInspect = 0
 	s.t, s.u, s.v = 0, 0, 0
+	s.iFirstCheckSentinel = false
 }
 
 type RecordSpec struct {
@@ -320,8 +323,11 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 	recordSpecs := make([]RecordSpec, 0)
 	if iFirst < max_lookback { // state has been reset
 		iFirst = max_lookback
+		if s.iFirstCheckSentinel {
+			log.Println("reseting edge multi state unexpectedly")
+		}
 		s.reset()
-		// fmt.Println("reseting edge multi state")
+		s.iFirstCheckSentinel = true
 	}
 	iLast := int32(len(raw)) - 1 - max_lookahead
 	t, u, v := s.t, s.u, s.v
