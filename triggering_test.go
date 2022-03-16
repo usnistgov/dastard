@@ -59,11 +59,11 @@ func TestBrokerConnections(t *testing.T) {
 		t.Errorf("TriggerBroker.DeleteConnection(%d,0) should fail but didn't", N)
 	}
 
-	// Check the Connections method
+	// Check the SourcesForReceiver method
 	for i := -1; i < 1; i++ {
-		con := broker.Connections(i)
+		con := broker.SourcesForReceiver(i)
 		if len(con) > 0 {
-			t.Errorf("TriggerBroker.Connections(%d)) has length %d, want 0", i, len(con))
+			t.Errorf("TriggerBroker.SourcesForReceiver(%d)) has length %d, want 0", i, len(con))
 		}
 	}
 	broker.AddConnection(1, 0)
@@ -71,16 +71,16 @@ func TestBrokerConnections(t *testing.T) {
 	broker.AddConnection(3, 0)
 	broker.AddConnection(2, 0)
 	broker.AddConnection(3, 0)
-	con := broker.Connections(0)
-	if len(con) != 3 {
-		t.Errorf("TriggerBroker.Connections(0) has length %d, want 3", len(con))
+	sources := broker.SourcesForReceiver(0)
+	if len(sources) != 3 {
+		t.Errorf("TriggerBroker.SourcesForReceiver(0) has length %d, want 3", len(sources))
 	}
-	if con[0] {
-		t.Errorf("TriggerBroker.Connections(0)[0]==true, want false")
+	if sources[0] {
+		t.Errorf("TriggerBroker.SourcesForReceiver(0)[0]==true, want false")
 	}
 	for i := 1; i < 4; i++ {
-		if !con[i] {
-			t.Errorf("TriggerBroker.Connections(0)[%d]==false, want true", i)
+		if !sources[i] {
+			t.Errorf("TriggerBroker.SourcesForReceiver(0)[%d]==false, want true", i)
 		}
 	}
 
@@ -144,21 +144,20 @@ func TestBrokerConnections(t *testing.T) {
 func TestBrokering(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
-	abort := make(chan struct{})
-	go broker.Run()
-	defer broker.Stop()
 	broker.AddConnection(0, 3)
 	broker.AddConnection(2, 3)
 
 	for iter := 0; iter < 3; iter++ {
+		allTrigs := make(map[int]triggerList)
 		for i := 0; i < N; i++ {
 			trigs := triggerList{channelIndex: i, frames: []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
-			broker.PrimaryTrigs <- trigs
+			allTrigs[i] = trigs
 		}
-		t0 := <-broker.SecondaryTrigs[0]
-		t1 := <-broker.SecondaryTrigs[1]
-		t2 := <-broker.SecondaryTrigs[2]
-		t3 := <-broker.SecondaryTrigs[3]
+		secondaryMap, _ := broker.Distribute(allTrigs)
+		t0 := secondaryMap[0]
+		t1 := secondaryMap[1]
+		t2 := secondaryMap[2]
+		t3 := secondaryMap[3]
 		for i, tn := range [][]FrameIndex{t0, t1, t2} {
 			if len(tn) > 0 {
 				t.Errorf("TriggerBroker chan %d received %d secondary triggers, want 0", i, len(tn))
@@ -173,9 +172,6 @@ func TestBrokering(t *testing.T) {
 				t.Errorf("TriggerBroker chan %d secondary trig[%d]=%d, want %d", 3, i, t2[i], expected[i])
 			}
 		}
-		if iter == 2 {
-			close(abort)
-		}
 	}
 }
 
@@ -185,8 +181,6 @@ func TestLongRecords(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	var tests = []struct {
 		npre   int
 		nsamp  int
@@ -221,14 +215,20 @@ func TestLongRecords(t *testing.T) {
 		sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 		for i := 0; i <= dsp.NSamples; i += test.nchunk {
-			primaries, secondaries := dsp.TriggerData()
+			primaries := dsp.TriggerData()
+			ptl0 := map[int]triggerList{0: dsp.lastTrigList}
+			secondaryMap, _ := broker.Distribute(ptl0)
+			secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 			if (len(primaries) != 0) || (len(secondaries) != 0) {
 				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
 			}
 			dsp.stream.AppendSegment(segment)
 			segment.firstFrameIndex += FrameIndex(test.nchunk)
 		}
-		primaries, secondaries := dsp.TriggerData()
+		primaries := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: dsp.lastTrigList}
+		secondaryMap, _ := broker.Distribute(ptl0)
+		secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 		if len(primaries) != len(expectedFrames) {
 			t.Errorf("%s trigger (test=%v) found %d triggers, want %d", trigname, test, len(primaries), len(expectedFrames))
 		}
@@ -248,8 +248,6 @@ func TestSingles(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -360,11 +358,16 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	segment.signed = dsp.stream.signed // dsp.stream.signed is later set equal to segment.signed
 	dsp.stream.samplesSeen = 0
+	dsp.Broker = NewTriggerBroker(1)
 	var primaries, secondaries []*DataRecord
 	for i := 0; i < nRepeat; i++ {
 		dsp.stream.AppendSegment(segment)
 		segment.firstFrameIndex += FrameIndex(len(raw))
-		p, s := dsp.TriggerData()
+
+		p := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: dsp.lastTrigList}
+		secondaryMap, _ := dsp.Broker.Distribute(ptl0)
+		s := dsp.TriggerDataSecondary(secondaryMap[0])
 		primaries = append(primaries, p...)
 		secondaries = append(secondaries, s...)
 	}
@@ -424,8 +427,6 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -481,11 +482,11 @@ func TestEdgeLevelInteraction(t *testing.T) {
 }
 
 func TestEdgeMulti(t *testing.T) {
+	// 3/14/2022: EdgeMulti is under active development in another branch, so skip this test for now.
+	t.Skip()
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -614,13 +615,11 @@ func TestEdgeMulti(t *testing.T) {
 	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti L: negative trigger level", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 }
 
-// TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
-func TestEdgeVetosLevel(t *testing.T) {
+// TestEdgeVetoesLevel tests that an edge trigger vetoes a level trigger as needed.
+func TestEdgeVetoesLevel(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -634,6 +633,8 @@ func TestEdgeVetosLevel(t *testing.T) {
 	dsp.LevelRising = true
 	dsp.LevelLevel = 99
 
+	// Run several data segments to make sure that the edge trigger vetoes the
+	// level trigger when they happen too close in time.
 	levelChangeAt := []int{50, 199, 200, 201, 299, 300, 301, 399, 400, 401, 500}
 	edgeChangeAt := 300
 	const rawLength = 1000
@@ -651,8 +652,14 @@ func TestEdgeVetosLevel(t *testing.T) {
 
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
 		dsp.stream.AppendSegment(segment)
-		primaries, _ := dsp.TriggerData()
+		primaries := dsp.TriggerData()
+		dsp.TrimStream()
 		if len(primaries) != want {
+			fmt.Printf("Found %d records:\n", len(primaries))
+			for _, p := range dsp.lastTrigList.frames {
+				fmt.Printf("\t%v\n", p)
+			}
+
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
 	}
@@ -661,8 +668,6 @@ func TestEdgeVetosLevel(t *testing.T) {
 func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -678,7 +683,7 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	dsp.stream.AppendSegment(segment)
 	b.ResetTimer()
-	primaries, _ := dsp.TriggerData()
+	primaries := dsp.TriggerData()
 	if len(primaries) != b.N {
 		fmt.Println("wrong number", len(primaries), b.N)
 	}
@@ -687,8 +692,6 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -722,8 +725,6 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -776,8 +777,8 @@ func TestTriggerCounter(t *testing.T) {
 	now := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
 	tc := NewTriggerCounter(0, time.Second)
 	tList := triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 0,
-		keyTime: now, sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now, sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 0 {
@@ -790,8 +791,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("want %v, have %v", len(tList.frames), tc.countsSeen)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1, 2, 3, 4, 5}, keyFrame: 100,
-		keyTime: now.Add(100 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(100 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.countsSeen != len(tList.frames) {
@@ -804,8 +805,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("have %v, want %v", tc.lo, 1)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1007, 1008, 1009, 2000, 2001}, keyFrame: 1900,
-		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 3000 {
@@ -818,8 +819,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("want %v, have %v", 1, tc.countsSeen)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 1900,
-		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 3001}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 3001}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 4000 {

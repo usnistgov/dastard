@@ -20,14 +20,17 @@ type DataStreamProcessor struct {
 	LastTrigger          FrameIndex
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
-	projectors           *mat.Dense
-	modelDescription     string
-	// realtime analysis is disable if projectors .IsEmpty
-	// otherwise projectors must be size (nbases,NSamples)
+	lastTrigList         triggerList
+
+	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
+	// Otherwise projectors must be of size (nbases,NSamples)
 	// such that projectors*data (data as a column vector) = modelCoefs
-	basis *mat.Dense
-	// if not projectors.IsEmpty basis must be size
-	// (NSamples, nbases) such that basis*modelCoefs = modeled_data
+	// If not projectors.IsEmpty(), basis must be of size
+	// (NSamples, nbases) such that basis*modelCoefs = modeled_data ≈ data
+	projectors       *mat.Dense
+	modelDescription string
+	basis            *mat.Dense
+
 	DecimateState
 	TriggerState
 	DataPublisher
@@ -133,15 +136,19 @@ func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) error {
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	records, secondaries := dsp.TriggerData()
-	dsp.AnalyzeData(records)                                       // add analysis results to records in-place
-	if err := dsp.DataPublisher.PublishData(records); err != nil { // publish and save data, when enabled
+	primaryRecords := dsp.TriggerData()
+	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place
+	if err := dsp.DataPublisher.PublishData(primaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
-	if err := dsp.DataPublisher.PublishData(secondaries); err != nil { // publish and save data, when enabled
+}
+
+func (dsp *DataStreamProcessor) processSecondaries(secondaryFrames []FrameIndex) {
+	secondaryRecords := dsp.TriggerDataSecondary(secondaryFrames)
+	dsp.AnalyzeData(secondaryRecords)                                       // add analysis results to records in-place
+	if err := dsp.DataPublisher.PublishData(secondaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
-	segment.processed = true
 }
 
 // DecimateData decimates data in-place.
@@ -172,10 +179,10 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 		}
 
 		if segment.signed {
+			// Trick for rounding to int16: don't let any numbers be negative,
+			// because float->int is a truncation operation. If we removed the
+			// +65536 in this loop, then 0 would become an unwanted "rounding attractor".
 			for i := 0; i < Nout; i++ {
-				// Trick for rounding to int16: don't let any numbers be negative
-				// because float->int is a truncation operation. If we remove the
-				// +65536 below, then 0 will be a "rounding attractor".
 				data[i] = RawType(int16(cdata[i]/float64(level) + 65536 + 0.5))
 			}
 
@@ -269,6 +276,14 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			rec.residualStdDev = stdDev(residualSlice)
 		}
 	}
+}
+
+// TrimStream trims a DataStreamProcessor's stream to contain only one record's worth of old
+// samples. That should more than suffice to extract triggers from future data.
+func (dsp *DataStreamProcessor) TrimStream() {
+	// Leave one full possible trigger in the stream, because trigger algorithms
+	// should not inspect the last NSamples samples
+	dsp.stream.TrimKeepingN(dsp.NSamples)
 }
 
 // return the uncorrected std deviation of a float slice

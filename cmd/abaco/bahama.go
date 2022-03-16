@@ -350,7 +350,7 @@ func coerceFloat(f *float64, minval, maxval float64) {
 func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per source, 4-512 allowed")
-	udp := flag.Bool("udp", false, "Make UDP packets instead of shared memory ring buffers (default false)")
+	ring := flag.Bool("ring", false, "Data into shared memory ring buffers instead of UDP packets (default false)")
 	nsource := flag.Int("nsource", 1, "Number of sources (UDP clients or ring buffers), 1-4 allowed")
 	chan0 := flag.Int("firstchan", 0, "Channel number of the first channel (default 0)")
 	changaps := flag.Int("gaps", 0, "How many channel numbers to skip between groups (relevant only if ngroups>1 or nsource>1)")
@@ -396,12 +396,13 @@ func main() {
 	if ringsize < 500*packetAlign {
 		ringsize = 500 * packetAlign
 	}
-	if *udp {
+	udp := !(*ring)
+	if udp {
 		ringsize = 0
 	}
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
-		Nsources: *nsource, udp: *udp,
+		Nsources: *nsource, udp: udp,
 		Chan0: *chan0, chanGaps: *changaps, ringsize: ringsize,
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
@@ -390,12 +391,18 @@ func setupViper() error {
 		return fmt.Errorf("error reading config file: %s", err)
 	}
 
-	// Set up different ports for testing than you'd use otherwise
-	setPortnumbers(33300)
+	// Set up different ports for testing than you'd use otherwise.
+	// Use a random value in {30000,30010,...39990} so that two tests can run at once.
+	// The steps of 10 ensures that, in the 1/1000 chance of ports overlapping, at least
+	// the overlap is between two ports of the same type. (Seems like the least confusing
+	// way to have bad luck.)
+	rand.Seed(time.Now().UnixNano())
+	portoffset := 10 * rand.Intn(1000)
+	setPortnumbers(30000 + portoffset)
 
 	// Write output files in a temporary file
 	ws := WritingState{BasePath: "/tmp"}
-	viper.Set("writing", ws)
+	viper.Set("writing", &ws)
 
 	// Check config saving.
 	msg := make(map[string]interface{})

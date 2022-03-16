@@ -101,7 +101,6 @@ func (ds *AnySource) RunDoneDeactivate() {
 // RunDoneWait returns when the source run is done, i.e., the source is stopped
 func (ds *AnySource) RunDoneWait() {
 	ds.runDone.Wait()
-	ds.broker.Stop()
 }
 
 // ShouldAutoRestart true if source should be auto-restarted after an error
@@ -332,15 +331,20 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 // Returns when all segments have been processed
 // It's a more synchronous version of each dsp launching its own goroutine
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
-	var wg sync.WaitGroup
 	if len(ds.processors) != len(block.segments) {
 		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)",
 			len(block.segments), len(ds.processors)))
 	}
 
-	// Each processor (channel) handles its segment in parallel.
-	for i, dsp := range ds.processors {
-		segment := block.segments[i]
+	// We break processing data segments into 2 halves. Each half can proceed in parallel
+	// across all data streams, but we have to synchronize in the middle in order for
+	// secondary triggers to be computed and distributed.
+
+	// Each processor (channel) ingests and analyzes/publishes its segment in parallel.
+	// Use a WaitGroup to make all finish before secondary triggers can be computed.
+	var wg sync.WaitGroup
+	for idx, dsp := range ds.processors {
+		segment := block.segments[idx]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
@@ -349,9 +353,44 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	}
 	wg.Wait()
 
+	// Build a map to hold triggerList for each channel index, and then ask the TriggerBroker
+	// to compute the corresponding slice of secondary trigger FrameIndex values for each
+	// channel index.
+	allchanTrigList := make(map[int]triggerList)
+	for idx, dsp := range ds.processors {
+		allchanTrigList[idx] = dsp.lastTrigList
+	}
+	allSecondaries, err := ds.broker.Distribute(allchanTrigList)
+	if err != nil {
+		return err
+	}
+	ds.broker.GenerateTriggerMessages()
+
+	// Each processor (channel) with secondary records analyzes them in parallel.
+	if len(allSecondaries) > 0 {
+		for idx, dsp := range ds.processors {
+			flist := allSecondaries[idx]
+			if len(flist) > 0 {
+				wg.Add(1)
+				go func(dsp *DataStreamProcessor, flist []FrameIndex) {
+					defer wg.Done()
+					dsp.processSecondaries(flist)
+				}(dsp, flist)
+			}
+		}
+	}
+	wg.Wait()
+
+	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
+	// and once every 20 reads, flush the output files (but do the files out of phase, so it's not
+	// done for all files at once).
 	tStart := time.Now()
-	for i, dsp := range ds.processors {
-		if (i+ds.readCounter)%20 == 0 { // flush each dsp once per 20 reads, but not all at once
+	for idx, dsp := range ds.processors {
+		segment := block.segments[idx]
+		segment.processed = true
+		dsp.TrimStream()
+
+		if (idx+ds.readCounter)%20 == 0 {
 			dsp.Flush()
 		}
 	}
@@ -761,15 +800,14 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	ds.abortSelf = make(chan struct{})
 	ds.nextBlock = make(chan *dataBlock)
 
-	// Start a TriggerBroker to handle secondary triggering
+	// Create a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
-	go ds.broker.Run()
 
 	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
 	ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
 	ds.writingState.dataDropTicker = time.NewTicker(time.Second * 10)
 
-	// Launch goroutines to drain the data produced by this source
+	// Create processors to drain the data produced by this source, one per channel.
 	ds.processors = make([]*DataStreamProcessor, ds.nchan)
 	vpa := ds.VoltsPerArb()
 
