@@ -4,7 +4,7 @@
 * Add `doc/` directory with `DASTARD.md` to explain the internal design of the code (issue 261).
 * Make Lancero driver's ring buffer be 256 MB instead of 32 MB (issue 258).
 * Redesign triggering so all-channel sync point is explicit (not hidden in `TriggerBroker`) (issues 235, 255).
-* Redesign edge-multi-triggering for clarity and to fix problems (several issues).
+* Redesign edge-multi-triggering for clarity and to fix problems (issues 256, 259, 260).
 
 **0.2.11** October 12, 2021
 * Fix test for exact Float64 equality on data rate from different chan groups (issue 248).
