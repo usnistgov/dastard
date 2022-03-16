@@ -100,7 +100,7 @@ func main() {
 						w.writer.Flush()
 					}
 					writeDurations[i] = tWrite.Sub(tStart)
-					flushDurations[i] = time.Now().Sub(tWrite)
+					flushDurations[i] = time.Since(tWrite)
 				}(w, i)
 			}
 			wg.Wait()
@@ -123,8 +123,8 @@ func main() {
 					flushMax = flushDurations[i]
 				}
 			}
-			if z%100 == 0 || time.Now().Sub(tLast) > 75*time.Millisecond {
-				fmt.Printf("z %v, time.Now().Sub(tLast) %v\n", z, time.Now().Sub(tLast))
+			if z%100 == 0 || time.Since(tLast) > 75*time.Millisecond {
+				fmt.Printf("z %v, time.Since(tLast) %v\n", z, time.Since(tLast))
 				fmt.Printf("writeMean %v, flushMean %v, writeMax %v, flushMax %v\n", writeSum/time.Duration(numberOfChannels), flushSum/time.Duration(numberOfChannels), writeMax, flushMax)
 			}
 			tLast = time.Now()

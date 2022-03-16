@@ -634,7 +634,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 				return
 
 			case <-ticker.C:
-				timeSinceLastSuccesfulRead := time.Now().Sub(lastSuccesfulRead)
+				timeSinceLastSuccesfulRead := time.Since(lastSuccesfulRead)
 				if timeSinceLastSuccesfulRead > 10*time.Second {
 					panic("too long since last succesful read")
 				}
