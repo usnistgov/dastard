@@ -63,6 +63,7 @@ type DataSource interface {
 	ChanGroups() []GroupIndex
 	SamplePeriod() time.Duration
 	VoltsPerArb() []float32
+	ComputeGroupTriggerState() GroupTriggerState
 	ComputeFullTriggerState() []FullTriggerState
 	ComputeWritingState() WritingState
 	WritingIsActive() bool
@@ -858,6 +859,11 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	}
 	ds.lastread = time.Now()
 	return nil
+}
+
+// ComputeGroupTriggerState returns the current `GroupTriggerState`.
+func (ds *AnySource) ComputeGroupTriggerState() GroupTriggerState {
+	return ds.broker.computeGroupTriggerState()
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState

@@ -32,8 +32,6 @@ type TriggerState struct {
 	EdgeMulti                      bool // enable EdgeMulti (actually used in triggering)
 	EMTBackwardCompatibleRPCFields      // used to allow the old RPC messages to still work
 	EMTState
-
-	// TODO: group source/rx info.
 }
 
 // create a record using dsp.NPresamples and dsp.NSamples

@@ -102,12 +102,18 @@ func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 	return nil
 }
 
+// GroupTriggerState contains all the state that controls all group trigger connections.
+// It is also used to communicate with clients about connections to add or remove.
+type GroupTriggerState struct {
+	connections map[int][]int // Map sense is connections[source] = []int{rxA, rxB, ...}
+}
+
 // TriggerBroker communicates with DataChannel objects to allow them to operate independently
 // yet still share group triggering information.
 type TriggerBroker struct {
 	nchannels       int
 	nconnections    int
-	sources         []map[int]bool
+	sources         []map[int]bool // sources[rx] is a map whose non-empty entries are the sources for that rx
 	latestPrimaries [][]FrameIndex
 	triggerCounters []TriggerCounter
 }
@@ -173,6 +179,17 @@ func (broker *TriggerBroker) SourcesForReceiver(receiver int) map[int]bool {
 	}
 	sources := broker.sources[receiver]
 	return sources
+}
+
+func (broker *TriggerBroker) computeGroupTriggerState() (gts GroupTriggerState) {
+	conns := make(map[int][]int)
+	for rx, sources := range broker.sources {
+		for source := range sources {
+			conns[source] = append(conns[source], rx)
+		}
+	}
+	gts.connections = conns
+	return gts
 }
 
 // FrameIdxSlice attaches the methods of sort.Interface to []FrameIndex, sorting in increasing order.

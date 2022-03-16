@@ -5,6 +5,7 @@
 * Make Lancero driver's ring buffer be 256 MB instead of 32 MB (issue 258).
 * Redesign triggering so all-channel sync point is explicit (not hidden in `TriggerBroker`) (issues 235, 255).
 * Redesign edge-multi-triggering for clarity and to fix problems (issues 256, 259, 260).
+* Add general-purpose "group trigger" (issue 247).
 
 **0.2.11** October 12, 2021
 * Fix test for exact Float64 equality on data rate from different chan groups (issue 248).
@@ -14,7 +15,7 @@
 * Packet data can appear as UDP instead of in shared memory buffer.
 * Fix bug in closing the file that logs data drops (issue 239).
 * Improve logging of info when packets are dropped (issue 241).
-* Improve speed limit on UDP data packet handline (issue 242).
+* Improve speed limit on UDP data packet handling (issue 242).
 * Fix ROACH2 source with latest Dastard design (issue 246).
 
 **0.2.9** March 11, 2021

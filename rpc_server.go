@@ -337,6 +337,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.status.ChanGroups = s.ActiveSource.ChanGroups()
 	s.broadcastStatus()
 	s.broadcastTriggerState()
+	s.broadcastGroupTriggerState()
 	s.broadcastChannelNames()
 	s.storeChannelGroups()
 	*reply = true
@@ -580,8 +581,14 @@ func (s *SourceControl) broadcastWritingState() {
 func (s *SourceControl) broadcastTriggerState() {
 	if s.isSourceActive && s.status.Running {
 		state := s.ActiveSource.ComputeFullTriggerState()
-		// log.Printf("TriggerState: %v\n", state)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", state}
+	}
+}
+
+func (s *SourceControl) broadcastGroupTriggerState() {
+	if s.isSourceActive && s.status.Running {
+		state := s.ActiveSource.ComputeGroupTriggerState()
+		s.clientUpdates <- ClientUpdate{"GROUPTRIGGER", state}
 	}
 }
 
