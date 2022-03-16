@@ -2,6 +2,8 @@ package dastard
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestBrokerConnections checks that we can connect/disconnect group triggers
@@ -19,6 +21,8 @@ func TestBrokerConnections(t *testing.T) {
 		}
 	}
 
+	gts := broker.computeGroupTriggerState()
+	assert.Equal(t, len(gts.connections), 0, "TriggerBroker should have 0 connections")
 
 	// Add 2 connections and make sure they are completed, but others aren't.
 	broker.AddConnection(0, 2)
@@ -35,6 +39,16 @@ func TestBrokerConnections(t *testing.T) {
 			t.Errorf("TriggerBroker.isConnected(%d,%d)==true, want false after connecting 0->2", i, j)
 		}
 	}
+	gts = broker.computeGroupTriggerState()
+	var expected = [][]int{
+		[]int{0, 2},
+		[]int{2, 0},
+	}
+	for _, want := range expected {
+		rx, ok := gts.connections[want[0]]
+		assert.Equal(t, ok, true, "Expect connection %d->something", want[0])
+		assert.Equal(t, rx[0], want[1], "Expect connection %d->%d", want[0], want[1])
+	}
 
 	// Now break the connections and check that they are disconnected
 	broker.DeleteConnection(0, 2)
@@ -46,6 +60,8 @@ func TestBrokerConnections(t *testing.T) {
 			}
 		}
 	}
+	gts = broker.computeGroupTriggerState()
+	assert.Equal(t, len(gts.connections), 0, "TriggerBroker should have 0 connections")
 
 	// Try Add/Delete/check on channel numbers that should fail
 	if err := broker.AddConnection(0, N); err == nil {
@@ -79,6 +95,22 @@ func TestBrokerConnections(t *testing.T) {
 			t.Errorf("TriggerBroker.SourcesForReceiver(0)[%d]==false, want true", i)
 		}
 	}
+	gts = broker.computeGroupTriggerState()
+	expected = [][]int{
+		[]int{1, 0},
+		[]int{2, 0},
+		[]int{3, 0},
+	}
+	for _, want := range expected {
+		rx, ok := gts.connections[want[0]]
+		assert.Equal(t, ok, true, "Expect connection %d->something", want[0])
+		assert.Equal(t, rx[0], want[1], "Expect connection %d->%d", want[0], want[1])
+	}
+
+	// Test StopTriggerCoupling
+	broker.StopTriggerCoupling()
+	gts = broker.computeGroupTriggerState()
+	assert.Equal(t, len(gts.connections), 0, "TriggerBroker should have 0 connections")
 
 	// Now test FB <-> err coupling. This works when broker is embedded in a
 	// LanceroSource.
