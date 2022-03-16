@@ -117,7 +117,7 @@ func TestEdgeMultiParts1(t *testing.T) {
 				{firstRisingFrameIndex: 12, npre: 2, nsamp: 4},
 				{firstRisingFrameIndex: 14, npre: 2, nsamp: 4},
 				{firstRisingFrameIndex: 16, npre: 2, nsamp: 4}},
-			"edgeMultiComputeAppendRecordSpecs: 2 records far enough apart to trigger both, negative going",
+			"edgeMultiComputeAppendRecordSpecs: lots over overlapping full length records",
 		},
 	}
 	for _, test := range tests {
