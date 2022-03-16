@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -76,8 +75,8 @@ func (tc *TriggerCounter) messageAndReset() {
 	tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
 }
 
-func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
-	// Update keyFrame and keyTime to have a relatively recent correspondence between
+func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
+	// Update keyFrame and keyTime to have a new, recent correspondence between
 	// the real-world time and frame number.
 	tc.keyFrame = tList.keyFrame
 	tc.keyTime = tList.keyTime
@@ -90,14 +89,14 @@ func (tc *TriggerCounter) observeTriggerList(tList *triggerList) error {
 			tc.messageAndReset()
 		}
 		if frame > tc.hi {
-			return fmt.Errorf("frame %v still higher than tc.hi=%v after reset (Δf=%d)", frame, tc.hi, frame-tc.hi)
+			return fmt.Errorf("countNewTriggers: frame %v still higher than tc.hi=%v even after messageAndReset (Δf=%d)", frame, tc.hi, frame-tc.hi)
 		}
 		if frame < tc.lo {
-			return fmt.Errorf("observed count before lo=%v, frame=%v", tc.lo, frame)
+			return fmt.Errorf("countNewTriggers: observed count before lo=%v, frame=%v", tc.lo, frame)
 		}
 		tc.countsSeen++
 	}
-	if tList.lastFrameThatWillNeverTrigger > tc.hi {
+	if tList.firstFrameThatCannotTrigger > tc.hi {
 		tc.messageAndReset()
 	}
 	return nil
@@ -111,7 +110,6 @@ type TriggerBroker struct {
 	sources         []map[int]bool
 	latestPrimaries [][]FrameIndex
 	triggerCounters []TriggerCounter
-	sync.RWMutex
 }
 
 // NewTriggerBroker creates a new TriggerBroker object for nchan channels to share group triggers.
@@ -138,12 +136,10 @@ func (broker *TriggerBroker) AddConnection(source, receiver int) error {
 		return fmt.Errorf("Could not add channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)
 	}
-	broker.Lock()
 	if !broker.sources[receiver][source] {
 		broker.nconnections++
 	}
 	broker.sources[receiver][source] = true
-	broker.Unlock()
 	return nil
 }
 
@@ -154,12 +150,10 @@ func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 		return fmt.Errorf("Could not remove channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)
 	}
-	broker.Lock()
 	if broker.sources[receiver][source] {
 		broker.nconnections--
 	}
 	delete(broker.sources[receiver], source)
-	broker.Unlock()
 	return nil
 }
 
@@ -168,9 +162,7 @@ func (broker *TriggerBroker) isConnected(source, receiver int) bool {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return false
 	}
-	broker.RLock()
 	_, ok := broker.sources[receiver][source]
-	broker.RUnlock()
 	return ok
 }
 
@@ -179,9 +171,7 @@ func (broker *TriggerBroker) SourcesForReceiver(receiver int) map[int]bool {
 	if receiver < 0 || receiver >= broker.nchannels {
 		return nil
 	}
-	broker.RLock()
 	sources := broker.sources[receiver]
-	broker.RUnlock()
 	return sources
 }
 
@@ -201,20 +191,21 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 	for idx, tlist := range primaries {
 		broker.latestPrimaries[idx] = tlist.frames
 		nprimaries += len(tlist.frames)
-		err := broker.triggerCounters[idx].observeTriggerList(&tlist)
+		err := broker.triggerCounters[idx].countNewTriggers(&tlist)
 		if err != nil {
 			log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
 				spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[idx]))
 		}
 	}
 
+    // Stop now if there are obviously no secondary triggers (either b/c no primaries to
+    // cause them, or b/c no trigger connections are set).
 	secondaryMap := make(map[int][]FrameIndex)
 	if nprimaries == 0 || broker.nconnections == 0 {
 		return secondaryMap, nil
 	}
 
-	broker.RLock()
-	// Loop over all receivers
+	// Loop over all receivers. If any, make list of all triggers they receive, sort, and store.
 	for idx := 0; idx < broker.nchannels; idx++ {
 		sources := broker.SourcesForReceiver(idx)
 		if len(sources) > 0 {
@@ -226,7 +217,14 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 			secondaryMap[idx] = trigs
 		}
 	}
-	broker.RUnlock()
+	return secondaryMap, nil
+}
+
+// GenerateTriggerMessages makes one or more trigger rate message. It combines all channels' trigger
+// rate info into a single message, and it sends that message onto `clientMessageChan`.
+// There might be more than one count stored in the triggerCounters[].messages, so this might
+// generate multiple messages.
+func (broker *TriggerBroker) GenerateTriggerMessages() {
 
 	broker.sendCombinedRateMessage()
 	return secondaryMap, nil

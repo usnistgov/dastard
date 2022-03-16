@@ -16,7 +16,7 @@ type triggerList struct {
 	keyFrame                      FrameIndex
 	keyTime                       time.Time
 	sampleRate                    float64
-	lastFrameThatWillNeverTrigger FrameIndex
+	firstFrameThatCannotTrigger FrameIndex
 }
 
 type edgeMultiInternalSearchStateType int
@@ -581,7 +581,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 		trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
 		trigList.keyTime = dsp.stream.DataSegment.firstTime
 		trigList.sampleRate = dsp.SampleRate
-		trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
+		trigList.firstFrameThatCannotTrigger = dsp.stream.DataSegment.firstFramenum +
 			FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 		dsp.lastTrigList = trigList
@@ -617,7 +617,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
 	trigList.keyTime = dsp.stream.DataSegment.firstTime
 	trigList.sampleRate = dsp.SampleRate
-	trigList.lastFrameThatWillNeverTrigger = dsp.stream.DataSegment.firstFramenum +
+	trigList.firstFrameThatCannotTrigger = dsp.stream.DataSegment.firstFramenum +
 		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 	dsp.lastTrigList = trigList
