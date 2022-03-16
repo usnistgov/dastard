@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"sort"
@@ -18,13 +19,44 @@ type triggerList struct {
 	lastFrameThatWillNeverTrigger FrameIndex
 }
 
-type edgeMultiInternalSearchStateType int
+// used to allow the old RPC messages to still work
+type EMTBackwardCompatibleRPCFields struct {
+	EdgeMultiNoise                   bool
+	EdgeMultiMakeShortRecords        bool
+	EdgeMultiMakeContaminatedRecords bool
+	EdgeMultiDisableZeroThreshold    bool
+	EdgeMultiLevel                   int32
+	EdgeMultiVerifyNMonotone         int
+}
 
-const (
-	searching edgeMultiInternalSearchStateType = iota
-	verifying
-	initial
-)
+// The old EdgeMulti* parameters are no longer used in the triggering code,
+// now being replaced with EMTState
+// for now we're maintaining backwards compatibility with the old RPC calls
+// so this is the point where we create an EMTState from the EdgeMulti* values
+func (b EMTBackwardCompatibleRPCFields) toEMTState() (EMTState, error) {
+	s := EMTState{}
+	s.reset()
+	if b.EdgeMultiNoise {
+		return s, fmt.Errorf("EdgeMultiNoise not implemented")
+	}
+	if b.EdgeMultiMakeContaminatedRecords && b.EdgeMultiMakeShortRecords {
+		return s, fmt.Errorf("EdgeMultiMakeContaminatedRecords and EdgeMultiMakeShortRecords are both true, which is invalid")
+	}
+	if b.EdgeMultiMakeContaminatedRecords {
+		s.mode = EMTRecordsTwoFullLength
+	} else if b.EdgeMultiMakeShortRecords {
+		s.mode = EMTRecordsVariableLength
+	} else {
+		s.mode = EMTRecordsFullLengthIsolated
+	}
+	s.threshold = b.EdgeMultiLevel
+	s.nmonotone = int32(b.EdgeMultiVerifyNMonotone)
+	s.enableZeroThreshold = !b.EdgeMultiDisableZeroThreshold
+	if !s.valid() {
+		return EMTState{}, fmt.Errorf("EMTBackwardCompatibleRPCFields.toEMTState gave invalid state")
+	}
+	return s, nil
+}
 
 // TriggerState contains all the state that controls trigger logic
 type TriggerState struct {
@@ -40,17 +72,11 @@ type TriggerState struct {
 	EdgeFalling bool
 	EdgeLevel   int32
 
-	EdgeMulti bool
+	EdgeMulti                      bool // enable EdgeMulti (actually used in triggering)
+	EMTBackwardCompatibleRPCFields      // used to allow the old RPC messages to still work
 	EMTState
 
 	// TODO: group source/rx info.
-}
-
-// modify dsp to have it start looking for triggers at sample 6
-// can't be sample 0 because we look back in time by up to 6 samples
-// for kink fit
-func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
-	dsp.EMTState.reset()
 }
 
 // create a record using dsp.NPresamples and dsp.NSamples
@@ -256,9 +282,6 @@ func (s EMTState) valid() bool {
 }
 
 func (s *EMTState) reset() {
-	if !s.valid() {
-		panic("EMT state is invalid")
-	}
 	s.nextFrameIndexToInspect = 0
 	s.t, s.u, s.v = 0, 0, 0
 	s.iFirstCheckSentinel = false

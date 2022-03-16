@@ -517,7 +517,7 @@ func TestEdgeMulti(t *testing.T) {
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high, no records", []FrameIndex{})
 	dsp.EMTState = EMTState{threshold: 1, mode: EMTRecordsFullLengthIsolated,
 		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, but triggers that are too short are not recordized
 	// the kinks that occur at fractional samples will end up the rounded value
 	// my tests suggest testing at 0.5 step increments is ok on real data (eg a set of data from the Raven backup array test in 2018)
@@ -525,7 +525,7 @@ func TestEdgeMulti(t *testing.T) {
 
 	dsp.EMTState = EMTState{threshold: 1, mode: EMTRecordsTwoFullLength,
 		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, and contaminated records will be created
 	primaries, _ := testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti C: MakeContaminatedRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	for _, record := range primaries {
@@ -538,7 +538,7 @@ func TestEdgeMulti(t *testing.T) {
 		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
 	dsp.NPresamples = int(dsp.EMTState.npre)
 	dsp.NSamples = int(dsp.EMTState.nsamp)
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, and short records will be created
 	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti D: MakeShortRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
@@ -568,7 +568,7 @@ func TestEdgeMulti(t *testing.T) {
 		}
 		kinkListFrameIndexE[i] = FrameIndex(kint)
 	}
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	nRepeatE := 3
 	// here we attempt to trigger around a segment boundary
 	_, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
@@ -577,7 +577,7 @@ func TestEdgeMulti(t *testing.T) {
 		nmonotone: 5, npre: 6, nsamp: 15, enableZeroThreshold: true}
 	dsp.NPresamples = int(dsp.EMTState.npre)
 	dsp.NSamples = int(dsp.EMTState.nsamp)
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: when it keeps rising for more than npost, at least trigger on the first one, after that anything is fine", []FrameIndex{945, 956})
 
 	//kink model parameters
@@ -606,11 +606,11 @@ func TestEdgeMulti(t *testing.T) {
 	dsp.NPresamples = int(dsp.EMTState.npre)
 	dsp.NSamples = int(dsp.EMTState.nsamp)
 	nRepeatK := 1
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti K: level too large (negative)", []FrameIndex{})
 	dsp.EMTState = EMTState{threshold: -1, mode: EMTRecordsTwoFullLength,
 		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti L: negative trigger level", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 }
 
