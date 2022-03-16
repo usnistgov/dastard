@@ -32,55 +32,6 @@ func TestEdgeMultiParts1(t *testing.T) {
 	assert.Equal(t, FrameIndex(12), s.u, "EMTState should have u==v, to indicated that u has has been recordized")
 	assert.Equal(t, FrameIndex(12), s.v, "EMTState should have u==v, to indicated that u has has been recordized")
 
-	// two records far enough apart to trigger both
-	rawA := [21]RawType{0, 0, 0, 0, 10, 20, 0, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	sA := EMTState{
-		threshold: 1, mode: EMTRecordsFullLengthIsolated,
-		nmonotone: 1, npre: 2, nsamp: 4}
-	expectRecordSpecsA := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
-		{firstRisingFrameIndex: 8, npre: 2, nsamp: 4}}
-	recordSpecsA1 := sA.edgeMultiComputeRecordSpecs(rawA[:], 0)
-	assert.Equal(t, expectRecordSpecsA[:], recordSpecsA1, "edgeMultiComputeAppendRecordSpecs usage A")
-
-	// two trigger, too close so only first should recordize
-	rawB := [21]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	sB := EMTState{
-		threshold: 1, mode: EMTRecordsFullLengthIsolated,
-		nmonotone: 1, npre: 2, nsamp: 4}
-	expectRecordSpecsB := [1]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4}}
-	recordSpecsB1 := sB.edgeMultiComputeRecordSpecs(rawB[:], 0)
-	assert.Equal(t, expectRecordSpecsB[:], recordSpecsB1, "edgeMultiComputeAppendRecordSpecs usage B1")
-
-	// two records, both should yield full length records
-	rawC := [21]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	sC := EMTState{
-		threshold: 1, mode: EMTRecordsTwoFullLength,
-		nmonotone: 1, npre: 2, nsamp: 4}
-	expectRecordSpecsC := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
-		{firstRisingFrameIndex: 7, npre: 2, nsamp: 4}}
-	recordSpecsC1 := sC.edgeMultiComputeRecordSpecs(rawC[:], 0)
-	assert.Equal(t, expectRecordSpecsC[:], recordSpecsC1, "edgeMultiComputeAppendRecordSpecs usage C1")
-
-	// two records, both should yield full length records
-	rawD := [21]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	sD := EMTState{
-		threshold: 1, mode: EMTRecordsTwoFullLength,
-		nmonotone: 1, npre: 2, nsamp: 4}
-	expectRecordSpecsD := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
-		{firstRisingFrameIndex: 7, npre: 2, nsamp: 4}}
-	recordSpecsD1 := sD.edgeMultiComputeRecordSpecs(rawD[:], 0)
-	assert.Equal(t, expectRecordSpecsD[:], recordSpecsD1, "edgeMultiComputeAppendRecordSpecs usage D1")
-
-	// two records, first full length, 2nd truncated in pretrigger
-	rawE := [21]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	sE := EMTState{
-		threshold: 1, mode: EMTRecordsVariableLength,
-		nmonotone: 1, npre: 2, nsamp: 4}
-	expectRecordSpecsE := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
-		{firstRisingFrameIndex: 7, npre: 1, nsamp: 3}}
-	recordSpecsE1 := sE.edgeMultiComputeRecordSpecs(rawE[:], 0)
-	assert.Equal(t, expectRecordSpecsE[:], recordSpecsE1, "edgeMultiComputeAppendRecordSpecs usage E1")
-
 	// a record right at the boundary
 	rawF := [21]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	sF := EMTState{
@@ -109,46 +60,97 @@ func TestEdgeMultiParts1(t *testing.T) {
 	recordSpecsG2 := sG.edgeMultiComputeRecordSpecs(rawG[n0G:], FrameIndex(n0G))
 	assert.Equal(t, expectRecordSpecsG[1:], recordSpecsG2, "2nd record appears")
 
-	// two records far enough apart to trigger both, negative going
-	rawH := [21]RawType{100, 100, 100, 100, 90, 80, 100, 100, 90, 80, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100}
-	sH := EMTState{
-		threshold: -1, mode: EMTRecordsFullLengthIsolated,
-		nmonotone: 1, npre: 2, nsamp: 4}
-	expectRecordSpecsH := [2]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
-		{firstRisingFrameIndex: 8, npre: 2, nsamp: 4}}
-	recordSpecsH1 := sH.edgeMultiComputeRecordSpecs(rawH[:], 0)
-	assert.Equal(t, expectRecordSpecsH[:], recordSpecsH1, "edgeMultiComputeAppendRecordSpecs usage H")
-
-	// contaminated records, trigger every 2 samples
-	rawI := [21]RawType{0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10}
-	sI := EMTState{
-		threshold: 1, mode: EMTRecordsTwoFullLength,
-		nmonotone: 1, npre: 2, nsamp: 4}
-	assert.True(t, sI.valid(), "EMT state should be valid")
-	expectRecordSpecsI := [8]RecordSpec{{firstRisingFrameIndex: 2, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
-		{firstRisingFrameIndex: 6, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 8, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 10, npre: 2, nsamp: 4},
-		{firstRisingFrameIndex: 12, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 14, npre: 2, nsamp: 4}, {firstRisingFrameIndex: 16, npre: 2, nsamp: 4},
+	var tests = []struct {
+		raw   []RawType
+		state EMTState
+		want  []RecordSpec
+		label string
+	}{
+		{
+			[]RawType{0, 0, 0, 0, 10, 20, 0, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			EMTState{threshold: 1, mode: EMTRecordsFullLengthIsolated,
+				nmonotone: 1, npre: 2, nsamp: 4},
+			[]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 8, npre: 2, nsamp: 4}},
+			"edgeMultiComputeAppendRecordSpecs: 2 records far enough apart to both trigger",
+		},
+		{
+			[]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			EMTState{threshold: 1, mode: EMTRecordsFullLengthIsolated,
+				nmonotone: 1, npre: 2, nsamp: 4},
+			[]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4}},
+			"edgeMultiComputeAppendRecordSpecs: 2 records too close so only first should recordize",
+		},
+		{
+			[]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			EMTState{threshold: 1, mode: EMTRecordsTwoFullLength,
+				nmonotone: 1, npre: 2, nsamp: 4},
+			[]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 7, npre: 2, nsamp: 4}},
+			"edgeMultiComputeAppendRecordSpecs: 2 records should yield two full-length records",
+		},
+		{
+			[]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			EMTState{threshold: 1, mode: EMTRecordsVariableLength,
+				nmonotone: 1, npre: 2, nsamp: 4},
+			[]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 7, npre: 1, nsamp: 3}},
+			"edgeMultiComputeAppendRecordSpecs: 2 records should yield one full-length record, one shorter",
+		},
+		{
+			[]RawType{100, 100, 100, 100, 90, 80, 100, 100, 90, 80, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100},
+			EMTState{threshold: -1, mode: EMTRecordsFullLengthIsolated,
+				nmonotone: 1, npre: 2, nsamp: 4},
+			[]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 8, npre: 2, nsamp: 4}},
+			"edgeMultiComputeAppendRecordSpecs: 2 records far enough apart to trigger both, negative going",
+		},
+		{
+			[]RawType{0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10},
+			EMTState{threshold: 1, mode: EMTRecordsTwoFullLength,
+				nmonotone: 1, npre: 2, nsamp: 4},
+			[]RecordSpec{{firstRisingFrameIndex: 2, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 6, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 8, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 10, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 12, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 14, npre: 2, nsamp: 4},
+				{firstRisingFrameIndex: 16, npre: 2, nsamp: 4}},
+			"edgeMultiComputeAppendRecordSpecs: 2 records far enough apart to trigger both, negative going",
+		},
 	}
-	recordSpecsI1 := sI.edgeMultiComputeRecordSpecs(rawI[:], 0)
-	assert.Equal(t, expectRecordSpecsI[:], recordSpecsI1, "edgeMultiComputeAppendRecordSpecs usage I")
-
+	for _, test := range tests {
+		recordSpecs := test.state.edgeMultiComputeRecordSpecs(test.raw[:], 0)
+		assert.True(t, test.state.valid(), "EMT state should be valid")
+		assert.Equal(t, test.want[:], recordSpecs, test.label)
+	}
 }
 
 func TestEdgeMultiShouldRecord(t *testing.T) {
-	rspec, valid := edgeMultiShouldRecord(100, 200, 301, 50, 100, EMTRecordsFullLengthIsolated)
-	assert.Equal(t, RecordSpec{firstRisingFrameIndex: 200, npre: 50, nsamp: 100}, rspec, "1")
-	assert.Equal(t, true, valid, "")
-	rspec, valid = edgeMultiShouldRecord(301, 401, 700, 50, 100, EMTRecordsFullLengthIsolated)
-	assert.Equal(t, RecordSpec{firstRisingFrameIndex: 401, npre: 50, nsamp: 100}, rspec, "1")
-	assert.Equal(t, true, valid, "")
-	rspec, valid = edgeMultiShouldRecord(55, 55, 700, 50, 100, EMTRecordsFullLengthIsolated)
-	assert.Equal(t, RecordSpec{firstRisingFrameIndex: -1, npre: -1, nsamp: -1}, rspec, "1")
-	assert.Equal(t, false, valid, "u==t is invalid")
-	rspec, valid = edgeMultiShouldRecord(55, 700, 700, 50, 100, EMTRecordsFullLengthIsolated)
-	assert.Equal(t, RecordSpec{firstRisingFrameIndex: -1, npre: -1, nsamp: -1}, rspec, "1")
-	assert.Equal(t, false, valid, "u==v is invalid")
-
-	rspec, valid = edgeMultiShouldRecord(401, 460, 500, 50, 100, EMTRecordsVariableLength)
-	assert.Equal(t, RecordSpec{firstRisingFrameIndex: 460, npre: 9, nsamp: 49}, rspec, "1")
-	assert.Equal(t, true, valid, "variable length record are greedy on post trigger, give up pretrigger")
+	var tests = []struct {
+		tuv    []FrameIndex
+		mode   EMTMode
+		want   []int
+		valid  bool
+		errmsg string
+	}{
+		{[]FrameIndex{100, 200, 301}, EMTRecordsFullLengthIsolated, []int{200, 50, 100}, true, ""},
+		{[]FrameIndex{301, 401, 700}, EMTRecordsFullLengthIsolated, []int{401, 50, 100}, true, ""},
+		{[]FrameIndex{55, 55, 700}, EMTRecordsFullLengthIsolated, []int{-1, -1, -1}, false, "u==t is invalid"},
+		{[]FrameIndex{55, 700, 700}, EMTRecordsFullLengthIsolated, []int{-1, -1, -1}, false, "u==v is invalid"},
+		{[]FrameIndex{401, 460, 500}, EMTRecordsVariableLength, []int{460, 9, 49}, true,
+			"variable length record are greedy on post trigger, give up pretrigger"},
+	}
+	for _, test := range tests {
+		T := test.tuv[0]
+		u := test.tuv[1]
+		v := test.tuv[2]
+		rspec, valid := edgeMultiShouldRecord(T, u, v, 50, 100, test.mode)
+		frfi := FrameIndex(test.want[0])
+		npre := int32(test.want[1])
+		nsamp := int32(test.want[2])
+		assert.Equal(t, RecordSpec{firstRisingFrameIndex: frfi, npre: npre, nsamp: nsamp}, rspec, "1")
+		assert.Equal(t, test.valid, valid, test.errmsg)
+	}
 }
