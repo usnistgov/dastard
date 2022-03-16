@@ -180,7 +180,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 		totalNsamp := 0
 		allData := make([][]RawType, 0, len(savedPackets))
 		nsamp := make([]int, 0, len(savedPackets))
-		var firstFramenum FrameIndex
+		var firstFrameIndex FrameIndex
 		for i, p := range savedPackets {
 			header, data := parsePacket(p)
 			if dev.nchan != int(header.Nchan) {
@@ -188,7 +188,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 					header.Nchan)
 			}
 			if i == 0 {
-				firstFramenum = FrameIndex(header.Sampnum)
+				firstFrameIndex = FrameIndex(header.Sampnum)
 			}
 			allData = append(allData, data)
 			nsamp = append(nsamp, int(header.Nsamp))
@@ -206,8 +206,8 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 		block.segments = make([]DataSegment, dev.nchan)
 		block.nSamp = totalNsamp
 		block.err = err
-		if firstFramenum != dev.nextS && dev.nextS > 0 {
-			d := int(firstFramenum-dev.nextS) - totalNsamp
+		if firstFrameIndex != dev.nextS && dev.nextS > 0 {
+			d := int(firstFrameIndex-dev.nextS) - totalNsamp
 			warning := ""
 			if d > 0 {
 				warning = fmt.Sprintf(" **** %6d samples this block or %6d too few", totalNsamp, d)
@@ -215,10 +215,10 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				warning = fmt.Sprintf(" **** %6d samples this block or %6d too many", totalNsamp, -d)
 			}
 			fmt.Printf("POTENTIAL DROPPED DATA: Sample %9d  Δs = %7d (want 0) %s\n",
-				firstFramenum, firstFramenum-dev.nextS, warning)
+				firstFrameIndex, firstFrameIndex-dev.nextS, warning)
 		}
 
-		dev.nextS = firstFramenum + FrameIndex(totalNsamp)
+		dev.nextS = firstFrameIndex + FrameIndex(totalNsamp)
 		for i := 0; i < dev.nchan; i++ {
 			raw := make([]RawType, block.nSamp)
 			idx := 0
@@ -234,7 +234,7 @@ func (dev *RoachDevice) readPackets(nextBlock chan *dataBlock) {
 				rawData:         raw,
 				signed:          true,
 				framesPerSample: 1,
-				firstFramenum:   firstFramenum,
+				firstFrameIndex: firstFrameIndex,
 				firstTime:       firstTime,
 				framePeriod:     dev.period,
 			}

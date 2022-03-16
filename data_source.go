@@ -395,7 +395,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		}
 	}
 	ds.readCounter++
-	flushDuration := time.Now().Sub(tStart)
+	flushDuration := time.Since(tStart)
 	if flushDuration > 50*time.Millisecond {
 		log.Println("flushDuration", flushDuration)
 	}
@@ -408,8 +408,8 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		return err
 	}
 
-	// all segments will have the same value for droppedFrames and firstFramenum, so we just look at the first segment here
-	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFramenum)); err != nil {
+	// all segments will have the same value for droppedFrames and firstFrameIndex, so we just look at the first segment here
+	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFrameIndex)); err != nil {
 		return err
 	}
 	if ds.writingState.Active && !ds.writingState.Paused {
@@ -432,10 +432,10 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 // HandleDataDrop writes to a file in the case that a data drop is detected.
 // "Data drop" refers to a case where a read from a source (e.g., the LanceroSource)
 // misses some frames of data.
-func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
+func (ds *AnySource) HandleDataDrop(droppedFrames, firstFrameIndex int) error {
 	if droppedFrames > 0 {
 		ds.writingState.dataDropsObserved++
-		fmt.Printf("DATA DROP. firstFramenum %v, droppedFrames %v\n", firstFramenum, droppedFrames)
+		fmt.Printf("DATA DROP. firstFrameIndex %v, droppedFrames %v\n", firstFrameIndex, droppedFrames)
 		if ds.writingState.IsActive() {
 			// Set up the log file if not already done
 			if ds.writingState.dataDropFileBufferedWriter == nil {
@@ -455,7 +455,7 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 			}
 
 			// Log to the dataDropFile
-			line := fmt.Sprintf("%12d %8d\n", firstFramenum, droppedFrames)
+			line := fmt.Sprintf("%12d %8d\n", firstFrameIndex, droppedFrames)
 			_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
 			if err != nil {
 				return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
@@ -900,7 +900,9 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndices {
 		dsp := ds.processors[channelIndex]
-		dsp.ConfigureTrigger(state.TriggerState)
+		if err := dsp.ConfigureTrigger(state.TriggerState); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -918,7 +920,9 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 		return fmt.Errorf("ConfigurePulseLengths nsamp %v, npre %v are invalid", nsamp, npre)
 	}
 	for _, dsp := range ds.processors {
-		dsp.ConfigurePulseLengths(nsamp, npre)
+		if err := dsp.ConfigurePulseLengths(nsamp, npre); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -934,7 +938,7 @@ type DataSegment struct {
 	rawData         []RawType
 	signed          bool
 	framesPerSample int // Normally 1, but can be larger if decimated
-	firstFramenum   FrameIndex
+	firstFrameIndex FrameIndex
 	firstTime       time.Time
 	framePeriod     time.Duration
 	voltsPerArb     float32
@@ -946,7 +950,7 @@ type DataSegment struct {
 func NewDataSegment(data []RawType, framesPerSample int, firstFrame FrameIndex,
 	firstTime time.Time, period time.Duration) *DataSegment {
 	seg := DataSegment{rawData: data, framesPerSample: framesPerSample,
-		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period}
+		firstFrameIndex: firstFrame, firstTime: firstTime, framePeriod: period}
 	return &seg
 }
 
@@ -979,7 +983,7 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	timeNowInStream := time.Duration(framesNowInStream) * stream.framePeriod
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
-	stream.firstFramenum = segment.firstFramenum - framesNowInStream
+	stream.firstFrameIndex = segment.firstFrameIndex - framesNowInStream
 	stream.firstTime = segment.firstTime.Add(-timeNowInStream)
 	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.signed = segment.signed // there are multiple sources of true on wether something is signed
@@ -999,7 +1003,7 @@ func (stream *DataStream) TrimKeepingN(N int) int {
 	copy(stream.rawData[:N], stream.rawData[L-N:L])
 	stream.rawData = stream.rawData[:N]
 	deltaFrames := (L - N) * stream.framesPerSample
-	stream.firstFramenum += FrameIndex(deltaFrames)
+	stream.firstFrameIndex += FrameIndex(deltaFrames)
 	stream.firstTime = stream.firstTime.Add(time.Duration(deltaFrames) * stream.framePeriod)
 	return N
 }

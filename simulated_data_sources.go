@@ -122,7 +122,7 @@ func (ts *TriangleSource) StartRun() error {
 					rawData:         datacopy,
 					framesPerSample: 1,
 					framePeriod:     ts.samplePeriod,
-					firstFramenum:   ts.nextFrameNum,
+					firstFrameIndex: ts.nextFrameNum,
 					firstTime:       firstTime,
 				}
 				block.segments[channelIndex] = seg
@@ -247,7 +247,7 @@ func (sps *SimPulseSource) StartRun() error {
 						rawData:         datacopy,
 						framesPerSample: 1,
 						framePeriod:     sps.samplePeriod,
-						firstFramenum:   sps.nextFrameNum,
+						firstFrameIndex: sps.nextFrameNum,
 						firstTime:       firstTime,
 					}
 					block.segments[channelIndex] = seg

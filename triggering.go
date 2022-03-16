@@ -1,13 +1,9 @@
 package dastard
 
 import (
-	"fmt"
-	"log"
 	"math"
 	"sort"
 	"time"
-
-	"gonum.org/v1/gonum/mat"
 )
 
 type triggerList struct {
@@ -18,14 +14,6 @@ type triggerList struct {
 	sampleRate                  float64
 	firstFrameThatCannotTrigger FrameIndex
 }
-
-type edgeMultiInternalSearchStateType int
-
-const (
-	searching edgeMultiInternalSearchStateType = iota
-	verifying
-	initial
-)
 
 // TriggerState contains all the state that controls trigger logic
 type TriggerState struct {
@@ -41,28 +29,11 @@ type TriggerState struct {
 	EdgeFalling bool
 	EdgeLevel   int32
 
-	EdgeMulti                        bool
-	EdgeMultiNoise                   bool
-	EdgeMultiMakeShortRecords        bool
-	EdgeMultiMakeContaminatedRecords bool
-	EdgeMultiDisableZeroThreshold    bool
-	EdgeMultiLevel                   int32
-	EdgeMultiVerifyNMonotone         int
-	edgeMultiInternalSearchState     edgeMultiInternalSearchStateType
-	edgeMultiIPotential              FrameIndex
-	edgeMultiILastInspected          FrameIndex
+	EdgeMulti                      bool // enable EdgeMulti (actually used in triggering)
+	EMTBackwardCompatibleRPCFields      // used to allow the old RPC messages to still work
+	EMTState
 
 	// TODO: group source/rx info.
-}
-
-// modify dsp to have it start looking for triggers at sample 6
-// can't be sample 0 because we look back in time by up to 6 samples
-// for kink fit
-func (dsp *DataStreamProcessor) edgeMultiSetInitialState() {
-	dsp.edgeMultiInternalSearchState = initial
-	dsp.edgeMultiILastInspected = -math.MaxInt64 / 4
-	dsp.LastEdgeMultiTrigger = -math.MaxInt64 / 4
-	dsp.edgeMultiIPotential = -math.MaxInt64 / 4
 }
 
 // create a record using dsp.NPresamples and dsp.NSamples
@@ -76,7 +47,7 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(segment *DataSegment, i
 	data := make([]RawType, NSamples)
 	// fmt.Printf("triggerAtSpecificSamples i %v, NPresamples %v, NSamples %v, len(rawData) %v\n", i, NPresamples, NSamples, len(segment.rawData))
 	copy(data, segment.rawData[i-NPresamples:i+NSamples-NPresamples])
-	tf := segment.firstFramenum + FrameIndex(i)
+	tf := segment.firstFrameIndex + FrameIndex(i)
 	tt := segment.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
@@ -84,351 +55,6 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(segment *DataSegment, i
 		voltsPerArb: segment.voltsPerArb,
 		presamples:  NPresamples, sampPeriod: sampPeriod}
 	return record
-}
-
-func min(a int, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
-// kinkModel returns a+b(x-k) for x<k and a+c(x-k) for x>=k
-func kinkModel(k float64, x float64, a float64, b float64, c float64) float64 {
-	if x < k {
-		return a + b*(x-k)
-	}
-	return a + c*(x-k)
-}
-
-// kinkModelResult given k, xdata and ydata does a X2 fit for parameters a,b,c
-// takes k, an index into xdata and into ydata
-// returns ymodel - the model values evaluaed at the xdata
-// returns a,b,c the model parameters
-// returns X2 the sum of squares of difference between ymodel and ydata
-// kinkModel(x) = a+b(x-k) for x<k and a+c(x-k) for x>=k
-// err is the error from SolveVec, which is used for the fitting
-func kinkModelResult(k float64, xdata []float64, ydata []float64) ([]float64, float64, float64, float64, float64, error) {
-	var sdxi, sdxj, sdxi2, sdxj2, sy, syidxi, syjdxj float64
-	// xi - (imaginary) list of xdata values with values less than k
-	// xj - (imaginary) list of xdata values with values greater than or equal to to k
-	// yi - (imaginary) list of ydata values where corresponding xdata value is less than k
-	// yi - (imaginary) list of ydata values where corresponding xdata value is greater than or equal to to k
-	// sdxi - sum of xi, with k subtracted from each value
-	// sdxj - sum of xj, with k subtracted from each value
-	// other variables follow same pattern
-	for i := 0; i < len(xdata); i++ {
-		xd := xdata[i] - k
-		yd := ydata[i]
-		sy += yd
-		if xd < 0 {
-			sdxi += xd
-			sdxi2 += xd * xd
-			syidxi += yd * xd
-		} else {
-			sdxj += xd
-			sdxj2 += xd * xd
-			syjdxj += yd * xd
-		}
-	}
-	A := mat.NewDense(3, 3,
-		[]float64{float64(len(xdata)), sdxi, sdxj,
-			sdxi, sdxi2, 0,
-			sdxj, 0, sdxj2})
-	v := mat.NewVecDense(3, []float64{sy, syidxi, syjdxj})
-	var abc mat.VecDense
-	err := abc.SolveVec(A, v)
-	a := abc.AtVec(0)
-	b := abc.AtVec(1)
-	c := abc.AtVec(2)
-	var ymodel []float64
-	var X2 float64
-	for i := 0; i < len(xdata); i++ {
-		ym := kinkModel(k, xdata[i], a, b, c)
-		d := ydata[i] - ym
-		X2 += d * d
-		ymodel = append(ymodel, ym)
-	}
-	return ymodel, a, b, c, X2, err
-}
-
-// kinkModelFit return the k in ks that results in the lowest X2 when passed to kinkModelResult along with xdata and ydata
-// also returns X2min. Immediatley returns with the error from kinkModelResult if kinkModelResult returns a non-nil error
-func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, float64, error) {
-	var X2min float64
-	X2min = math.MaxFloat64
-	var kbest float64
-	var returnErr error
-	for i := 0; i < len(ks); i++ {
-		k := ks[i]
-
-		_, _, _, _, X2, err := kinkModelResult(k, xdata, ydata)
-		if X2 < X2min {
-			X2min = X2
-			kbest = k
-		}
-		// if k < 90 {
-		// 	fmt.Println("k", k, "X2", X2, "X2min", X2min, "kbest", kbest, "err", err)
-		// }
-		if err != nil {
-			returnErr = err
-		}
-	}
-	return kbest, X2min, returnErr
-
-}
-
-// edgeMultiTriggerComputeAppend computes the EdgeMulti Trigger
-// There are two modes
-// 1. EdgeMulti: requires: EdgeMulti, EdgeMultiLevel, EdgeMultiVerifyNMonotone
-// This mode looks for successive samples that differ by EdgeMultiLevel or more. These become potential triggers
-// there are EdgeMultiVerifyNMonotone succesive samples with a positive difference
-// A new trigger can be found  Immediatley after a local maximum has been found
-// records are generated according to
-// EdgeMultiMakeShortRecords  -> variable length records
-// EdgeMultiMakeContaminatedRecords -> records that may have another pulse in them
-// Neither -> Fixed length records without any other pulses in them (as if you already did postpeak deriv cut)
-// 2. EdgeMultiNoise: requires: EdgeMulti, EdgeMulitNoise, EdgeMultiLevel, EdgeMultiVerifyNMonotone, AutoDelay
-// will not produce pulse containing records, just the autotrigger that fit in around them
-// negative values for EdgeMultiLevel look for negative going edges
-func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
-	segment := &dsp.stream.DataSegment
-	raw := segment.rawData
-	ndata := len(raw)
-
-	var triggerInds []int
-	var iPotential, iLast, iFirst int
-	iPotential = int(dsp.edgeMultiIPotential - segment.firstFramenum)
-	iLast = ndata + dsp.NPresamples - dsp.NSamples
-	if dsp.edgeMultiILastInspected == 0 && segment.firstFramenum == 0 {
-		if dsp.edgeMultiInternalSearchState != initial {
-			dsp.edgeMultiInternalSearchState = initial
-			for i := 0; i < 10; i++ {
-				fmt.Printf("channelIndex %v needed edgeMultiInternalSearchState reset to initial\n", dsp.channelIndex)
-			}
-		}
-		// I havent' figure out why this is neccesary but maybe it helps because of race conditions?
-		// helps avoid iFirst <6
-	}
-	switch dsp.edgeMultiInternalSearchState {
-	case verifying:
-		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
-	case searching:
-		iFirst = int(dsp.edgeMultiILastInspected-segment.firstFramenum) + 1
-	case initial:
-		iFirst = dsp.NPresamples
-		if iFirst < 6 { // kink model looks at i-6
-			iFirst = 6
-		}
-		if iFirst < dsp.NPresamples { // recordization looks at i-dsp.NPresamples
-			iFirst = dsp.NPresamples
-		}
-	}
-
-	// fmt.Println()
-	// fmt.Println("dsp.channelIndex", dsp.channelIndex, "segment.firstFramenum", segment.firstFramenum, "dsp.edgeMultiIPotential", dsp.edgeMultiIPotential)
-	// fmt.Println("dsp.edgeMultiInternalSearchState", dsp.edgeMultiInternalSearchState, "dsp.edgeMultiILastInspected", dsp.edgeMultiILastInspected, "dsp.EdgeMultiVerifyNMonotone", dsp.EdgeMultiVerifyNMonotone)
-	// fmt.Println("iPotential", iPotential, "iFirst", iFirst, "iLast", iLast, "len(raw)", len(raw), "dsp.NPresamples", dsp.NPresamples)
-	if dsp.EdgeMultiVerifyNMonotone+3 > dsp.NSamples-dsp.NPresamples {
-		panic(fmt.Sprintf("dsp.EdgeMultiVerifyNMonotone %v, dsp.NSamples %v, dsp.NPreSamples %v", dsp.EdgeMultiVerifyNMonotone, dsp.NSamples, dsp.NPresamples))
-	}
-	if iFirst < 6 {
-		panic(fmt.Sprintf("channel %v, iFirst %v<6!! segment.firstFramenum %v, dsp.edgeMultiILastInspected %v, dsp.edgeMultiInernalSearchState %v, dsp.NPresamples %v, dsp.NSamples %v, iLast %v, len(raw) %v, iPotential %v",
-			dsp.channelIndex, iFirst, segment.firstFramenum, dsp.edgeMultiILastInspected, dsp.edgeMultiInternalSearchState, dsp.NPresamples, dsp.NSamples, iLast, len(raw), iPotential))
-	}
-	rising := dsp.EdgeMultiLevel >= 0
-	falling := !rising
-	for i := iFirst; i <= iLast; i++ {
-		// fmt.Printf("i=%v, i_frame=%v\n", i, i+int(segment.firstFramenum))
-		// dsp.edgeMultiILastInspected = FrameIndex(i) + segment.firstFramenum
-		switch dsp.edgeMultiInternalSearchState {
-		case initial:
-			dsp.edgeMultiInternalSearchState = searching
-		case searching:
-			diff := int32(raw[i]) - int32(raw[i-1])
-			if (rising && diff >= dsp.EdgeMultiLevel) ||
-				(falling && diff <= dsp.EdgeMultiLevel) {
-				iPotential = i
-				dsp.edgeMultiInternalSearchState = verifying
-			}
-		case verifying:
-			// now we have a potenial trigger
-			// require following samples to each be greater than the last (for rising)
-			if (rising && raw[i] <= raw[i-1]) || (falling && raw[i] >= raw[i-1]) { // here we see non-monotone sample, eg a fall on a rising edge
-				nMonotone := i - iPotential
-				if nMonotone >= dsp.EdgeMultiVerifyNMonotone {
-					var iTrigger int
-					if !dsp.EdgeMultiDisableZeroThreshold {
-						// refine the trigger using the kink model
-						xdataf := make([]float64, 10)
-						ydataf := make([]float64, 10)
-						for j := 0; j < 10; j++ {
-							// fmt.Printf("j %v, iPotential %v, j+iPotential-6 %v, i %v\n", j, iPotential, j+iPotential-6, i)
-							xdataf[j] = float64(j + iPotential - 6) // look at samples from i-6 to i+3
-							ydataf[j] = float64(raw[j+iPotential-6])
-						}
-						ifit := float64(iPotential)
-						kbest, _, err := kinkModelFit(xdataf, ydataf, []float64{ifit - 1, ifit - 0.5, ifit, ifit + 0.5, ifit + 1})
-						if err == nil {
-							iTrigger = int(math.Ceil(kbest))
-						} else {
-							iTrigger = iPotential
-						}
-					} else {
-						iTrigger = iPotential
-					}
-					triggerInds = append(triggerInds, iTrigger)
-				}
-				dsp.edgeMultiInternalSearchState = searching
-			} else if i-iPotential >= dsp.NSamples { // if it has been monotone for a whole record, that won't be a useful pulse, go back to searching
-				dsp.edgeMultiInternalSearchState = searching
-			}
-		}
-	}
-	if iLast >= iFirst {
-		dsp.edgeMultiILastInspected = FrameIndex(iLast) + segment.firstFramenum
-	}
-
-	dsp.edgeMultiIPotential = FrameIndex(iPotential) + segment.firstFramenum // dont need to condition this on EdgeMultiState because it only matters in state verifying
-
-	var lastIThatCantEdgeTrigger int
-	if dsp.edgeMultiInternalSearchState == searching {
-		lastIThatCantEdgeTrigger = int(dsp.edgeMultiILastInspected-segment.firstFramenum) - 1
-	} else if dsp.edgeMultiInternalSearchState == verifying {
-		lastIThatCantEdgeTrigger = iPotential - 1
-	}
-
-	if !dsp.EdgeMultiNoise {
-		var t, u, v, tFirst int
-		// t index of previous trigger
-		// u index of current trigger
-		// v index of next trigger
-		if dsp.LastEdgeMultiTrigger > 0 {
-			tFirst = int(dsp.LastEdgeMultiTrigger - segment.firstFramenum)
-		} else {
-			tFirst = -dsp.NSamples
-		}
-		for i := 0; i < len(triggerInds); i++ {
-			u = triggerInds[i]
-			if i == len(triggerInds)-1 {
-				v = iLast
-			} else {
-				v = triggerInds[i+1]
-			}
-			if i == 0 {
-				t = tFirst
-
-			} else {
-				t = triggerInds[i-1]
-			}
-			// fmt.Printf("dsp.LastEdgeMultiTrigger %v, tFirst %v\n", dsp.LastEdgeMultiTrigger, tFirst)
-			lastNPost := min(dsp.NSamples-dsp.NPresamples, int(u-t))
-			npre := min(dsp.NPresamples, int(u-t-lastNPost))
-			npost := min(dsp.NSamples-dsp.NPresamples, int(v-u))
-			// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
-			// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
-			if dsp.EdgeMultiMakeShortRecords {
-				// fmt.Printf("short trigger at u %v\n", u)
-				// fmt.Println("ch", dsp.channelIndex, "i", i, "npre", npre, "npost", npost, "t", t,
-				// 	"u", u, "v", v, "lastNPost", lastNPost, "firstFramenum", segment.firstFramenum, "iLast", iLast)
-				newRecord := dsp.triggerAtSpecificSamples(segment, u, npre, npre+npost)
-				records = append(records, newRecord)
-			} else if dsp.EdgeMultiMakeContaminatedRecords {
-				newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
-				records = append(records, newRecord)
-				if len(records) >= (len(raw)/dsp.NSamples)/2+1 {
-					log.Println("limiting recordization rate of EdgeMultiMakeContaminatedRecords")
-					break
-				}
-			} else if npre >= dsp.NPresamples && npre+npost >= dsp.NSamples {
-				newRecord := dsp.triggerAtSpecificSamples(segment, u, dsp.NPresamples, dsp.NSamples)
-				records = append(records, newRecord)
-			}
-		}
-		if iLast >= iFirst {
-			if dsp.edgeMultiInternalSearchState == verifying {
-				// fmt.Println("dsp.NPresamples", dsp.NPresamples, "ndata", ndata, "iPotential", iPotential)
-				extraSamplesToKeep := (ndata - iPotential) + 1 // +1 to account for maximum shift from kink model
-				if extraSamplesToKeep < 0 {
-					panic("negaive extraSamplestoKeep")
-				}
-				dsp.stream.TrimKeepingN(2*dsp.NSamples + extraSamplesToKeep)
-			} else {
-				dsp.stream.TrimKeepingN(2*dsp.NSamples + 1) // +1 to account for maximum shift from kink model
-			}
-		}
-	}
-	if dsp.EdgeMultiNoise {
-		// fmt.Println("triggerInds")
-		// spew.Dump(triggerInds)
-		// fmt.Printf("iLast %v, iFirst %v, dsp.EdgeMultiNoise %v, segment.firstFramenum %v, len(raw) %v, dsp.LastEdgeMultiTrigger %v\n",
-		// iLast, iFirst, dsp.EdgeMultiNoise, segment.firstFramenum, len(raw), dsp.LastEdgeMultiTrigger)
-		// AutoTrigger
-		if dsp.EdgeMultiNoise && iLast >= iFirst {
-			delaySamples := roundint(dsp.AutoDelay.Seconds() * dsp.SampleRate)
-			if delaySamples < dsp.NSamples {
-				delaySamples = dsp.NSamples
-			}
-			idxNextTrig := 0
-			nFoundTrigs := len(triggerInds)
-			nextFoundTrig := math.MaxInt64
-			if nFoundTrigs > 0 {
-				nextFoundTrig = triggerInds[idxNextTrig]
-			}
-
-			// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
-			nextPotentialTrig := int(dsp.LastEdgeMultiTrigger-segment.firstFramenum) + delaySamples
-			// fmt.Printf("nextPotentialTrig %v = dsp.LastEdgeMultiTrigger %v - segment.firstFramenum %v + delaySamples %v\n",
-			// nextPotentialTrig, dsp.LastEdgeMultiTrigger, segment.firstFramenum, delaySamples)
-			if nextPotentialTrig < dsp.NPresamples+1 {
-				nextPotentialTrig = dsp.NPresamples + 1
-			}
-
-			// Loop through all potential trigger times.
-			lastSampleOfNextPotentialTrig := nextPotentialTrig + dsp.NSamples - dsp.NPresamples - 1
-			// fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig, "lastIThatCantEdgeTrigger", lastIThatCantEdgeTrigger)
-			for lastSampleOfNextPotentialTrig <= lastIThatCantEdgeTrigger { // can't go all the way to ndata
-				// fmt.Printf("iLast %v, iFirst %v, nextPotentialTrig %v, delaySamples %v, nextFoundTrig %v, lastIThatCantEdgeTrigger %v, segment.firstFramenum %v, len(raw) %v\n",
-				// 	iLast, iFirst, nextPotentialTrig, delaySamples, nextFoundTrig, lastIThatCantEdgeTrigger, segment.firstFramenum, len(raw))
-				// fmt.Printf("potential trigger at %v, i=%v-%v, FrameIndex=%v-%v\n", nextPotentialTrig,
-				// nextPotentialTrig-dsp.NPresamples, nextPotentialTrig+dsp.NSamples-dsp.NPresamples-1,
-				// nextPotentialTrig-dsp.NPresamples+int(segment.firstFramenum), nextPotentialTrig+dsp.NSamples-dsp.NPresamples+int(segment.firstFramenum)-1)
-				if nextPotentialTrig+dsp.NSamples <= nextFoundTrig {
-					// auto trigger is allowed: no conflict with previously found non-auto triggers
-					newRecord := dsp.triggerAt(segment, nextPotentialTrig)
-					records = append(records, newRecord)
-					// fmt.Println("trigger accepted")
-					// fmt.Printf("trigger at %v, i=%v-%v, FrameIndex=%v-%v\n", nextPotentialTrig,
-					// 	newRecord.FirstSampleFrame()-segment.firstFramenum, newRecord.LastSampleFrame()-segment.firstFramenum,
-					// 	newRecord.FirstSampleFrame(), newRecord.LastSampleFrame())
-					nextPotentialTrig += delaySamples
-				} else {
-					// fmt.Println("trigger rejected")
-					// auto trigger not allowed: conflict with previously found non-auto triggers
-					nextPotentialTrig = nextFoundTrig + delaySamples
-					idxNextTrig++
-					if nFoundTrigs > idxNextTrig {
-						// fmt.Println("increment from next edgeTrigger")
-						nextFoundTrig = triggerInds[idxNextTrig]
-					} else {
-						// fmt.Println("no more edgeTriggers")
-						nextFoundTrig = math.MaxInt64
-					}
-				}
-				lastSampleOfNextPotentialTrig = nextPotentialTrig + dsp.NSamples - dsp.NPresamples - 1
-				// fmt.Println("lastSampleOfNextPotentialTrig", lastSampleOfNextPotentialTrig)
-			}
-			if iLast >= iFirst {
-				dsp.stream.TrimKeepingN(2*dsp.NSamples + 1) // +1 to account for maximum shift from kink model
-			}
-		}
-
-	}
-	if len(records) > 0 {
-		dsp.LastEdgeMultiTrigger = records[len(records)-1].trigFrame
-	}
-	// fmt.Printf("return %v of %v possible record. len(dsp.stream.rawData) %v\n", len(records), len(triggerInds), len(dsp.stream.rawData))
-	return records
 }
 
 func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) []*DataRecord {
@@ -473,7 +99,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 	}
 
 	// Solve the problem of signed data by shifting all values up by 2^15
@@ -497,7 +123,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 			i = int(nextFoundTrig) + dsp.NSamples - 1
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
-				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
@@ -533,11 +159,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 	}
 
 	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
-	nextPotentialTrig := dsp.LastTrigger - segment.firstFramenum + delaySamples
+	nextPotentialTrig := dsp.LastTrigger - segment.firstFrameIndex + delaySamples
 	if nextPotentialTrig < npre {
 		nextPotentialTrig = npre
 	}
@@ -555,7 +181,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 			nextPotentialTrig = nextFoundTrig + delaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
-				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFramenum
+				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
@@ -578,10 +204,10 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 		for i, r := range records {
 			trigList.frames[i] = r.trigFrame
 		}
-		trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
+		trigList.keyFrame = dsp.stream.DataSegment.firstFrameIndex
 		trigList.keyTime = dsp.stream.DataSegment.firstTime
 		trigList.sampleRate = dsp.SampleRate
-		trigList.firstFrameThatCannotTrigger = dsp.stream.DataSegment.firstFramenum +
+		trigList.firstFrameThatCannotTrigger = dsp.stream.DataSegment.firstFrameIndex +
 			FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 		dsp.lastTrigList = trigList
@@ -614,10 +240,10 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	for i, r := range records {
 		trigList.frames[i] = r.trigFrame
 	}
-	trigList.keyFrame = dsp.stream.DataSegment.firstFramenum
+	trigList.keyFrame = dsp.stream.DataSegment.firstFrameIndex
 	trigList.keyTime = dsp.stream.DataSegment.firstTime
 	trigList.sampleRate = dsp.SampleRate
-	trigList.firstFrameThatCannotTrigger = dsp.stream.DataSegment.firstFramenum +
+	trigList.firstFrameThatCannotTrigger = dsp.stream.DataSegment.firstFrameIndex +
 		FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 	dsp.lastTrigList = trigList
@@ -629,7 +255,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 func (dsp *DataStreamProcessor) TriggerDataSecondary(secondaryTrigList []FrameIndex) (secRecords []*DataRecord) {
 	segment := &dsp.stream.DataSegment
 	for _, st := range secondaryTrigList {
-		secRecords = append(secRecords, dsp.triggerAt(segment, int(st-segment.firstFramenum)))
+		secRecords = append(secRecords, dsp.triggerAt(segment, int(st-segment.firstFrameIndex)))
 	}
 	return secRecords
 }

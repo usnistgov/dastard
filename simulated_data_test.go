@@ -53,8 +53,8 @@ func TestTriangle(t *testing.T) {
 	// 			t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j+n, data[j+n], int(config.Max)-j)
 	// 		}
 	// 	}
-	// 	if segment.firstFramenum != 0 {
-	// 		t.Errorf("TriangleSource first segment, output %d gives firstFramenum %d, want 0", i, segment.firstFramenum)
+	// 	if segment.firstFrameIndex != 0 {
+	// 		t.Errorf("TriangleSource first segment, output %d gives firstFrameIndex %d, want 0", i, segment.firstFrameIndex)
 	// 	}
 	// }
 	// Check second segment per source.
@@ -72,8 +72,8 @@ func TestTriangle(t *testing.T) {
 	// 			t.Errorf("TriangleSource output %d has [%d]=%d, expect %d", i, j+n, data[j+n], int(config.Max)-j)
 	// 		}
 	// 	}
-	// 	if segment.firstFramenum != FrameIndex(2*n) {
-	// 		t.Errorf("TriangleSource second segment, ouput %d gives firstFramenum %d, want %d", i, segment.firstFramenum, 2*n)
+	// 	if segment.firstFrameIndex != FrameIndex(2*n) {
+	// 		t.Errorf("TriangleSource second segment, ouput %d gives firstFrameIndex %d, want %d", i, segment.firstFrameIndex, 2*n)
 	// 	}
 	// }
 
@@ -219,8 +219,8 @@ func TestSimPulse(t *testing.T) {
 	// 	if max <= RawType(config.Pedestal+config.Amplitude*0.4) {
 	// 		t.Errorf("SimPulseSource minimum value is %d, expect > %d", max, RawType(config.Pedestal+config.Amplitude*0.4))
 	// 	}
-	// 	if segment.firstFramenum != 0 {
-	// 		t.Errorf("SimPulseSource first segment, output %d gives firstFramenum %d, want 0", i, segment.firstFramenum)
+	// 	if segment.firstFrameIndex != 0 {
+	// 		t.Errorf("SimPulseSource first segment, output %d gives firstFrameIndex %d, want 0", i, segment.firstFrameIndex)
 	// 	}
 	// }
 	// // Check second segment per source.
@@ -230,8 +230,8 @@ func TestSimPulse(t *testing.T) {
 	// 	if len(data) != config.Nsamp {
 	// 		t.Errorf("SimPulseSource output %d is length %d, expect %d", i, len(data), config.Nsamp)
 	// 	}
-	// 	if segment.firstFramenum <= 0 {
-	// 		t.Errorf("SimPulseSource second segment gives firstFramenum %d, want %d", segment.firstFramenum, config.Nsamp)
+	// 	if segment.firstFrameIndex <= 0 {
+	// 		t.Errorf("SimPulseSource second segment gives firstFrameIndex %d, want %d", segment.firstFrameIndex, config.Nsamp)
 	// 	}
 	// }
 	ds.Stop()
