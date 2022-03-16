@@ -19,7 +19,8 @@ type triggerList struct {
 	firstFrameThatCannotTrigger FrameIndex
 }
 
-// used to allow the old RPC messages to still work
+// EMTBackwardCompatibleRPCFields allows the old RPC messages to still work
+// (consider it a temporary expedient 3/16/2022).
 type EMTBackwardCompatibleRPCFields struct {
 	EdgeMultiNoise                   bool
 	EdgeMultiMakeShortRecords        bool
@@ -214,9 +215,8 @@ func zeroThreshold(raw []RawType, i int32, enable bool) int32 {
 	kbest, _, err := kinkModelFit(xdataf[:], ydataf[:], []float64{ifit - 1, ifit - 0.5, ifit, ifit + 0.5, ifit + 1})
 	if err == nil {
 		return int32(math.Ceil(kbest))
-	} else {
-		return i
 	}
+	return i
 }
 
 type NextTriggerIndResult struct {
@@ -226,7 +226,7 @@ type NextTriggerIndResult struct {
 }
 
 // edgeMultiFindNextTriggerInd
-func edgeMultiFindNextTriggerInd(raw []RawType, iFirst, iLast, threshold, nmonotone, max_nmonotone int32, enableZeroThreshold bool) NextTriggerIndResult {
+func edgeMultiFindNextTriggerInd(raw []RawType, iFirst, iLast, threshold, nmonotone, maxNmonotone int32, enableZeroThreshold bool) NextTriggerIndResult {
 	rising := threshold >= 1
 	falling := !rising
 	var foundMonotone int32
@@ -239,12 +239,12 @@ func edgeMultiFindNextTriggerInd(raw []RawType, iFirst, iLast, threshold, nmonot
 			foundMonotone = int32(-999999) // poison value to crash if no written over
 			j := int32(1)
 			for {
-				is_monotone := (rising && raw[i+j] > raw[i+j-1]) || (falling && raw[i+j] < raw[i+j-1])
-				if !is_monotone || j >= max_nmonotone {
+				isMonotone := (rising && raw[i+j] > raw[i+j-1]) || (falling && raw[i+j] < raw[i+j-1])
+				if !isMonotone || j >= maxNmonotone {
 					foundMonotone = int32(j)
 					break
 				}
-				j += 1
+				j++
 			}
 			if foundMonotone >= nmonotone { // add trigger
 				return NextTriggerIndResult{zeroThreshold(raw, i, enableZeroThreshold), true, i + foundMonotone + 1}
@@ -337,25 +337,25 @@ func (s EMTState) NToKeepOnTrim() int {
 func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 FrameIndex) []RecordSpec {
 	// we promise to never index into raw outside of a potential record starting
 	// at iFirst or iLast
-	max_lookback := s.npre            // set by npre
-	max_lookahead := s.nsamp - s.npre // set by npost=npre-nsamp
+	maxLookback := s.npre            // set by npre
+	maxLookahead := s.nsamp - s.npre // set by npost=npre-nsamp
 	// EMTState.valid, which is checked on reset, makes sue npre and (nsamp-npre) are each 4 or greater, so the kink
 	// model can always look at least 4 samples back and 4 forward
-	max_nmonotone := max_lookahead
+	maxNmonotone := maxLookahead
 	iFirst := int32(s.nextFrameIndexToInspect - frameIndexOfraw0)
 	recordSpecs := make([]RecordSpec, 0)
-	if iFirst < max_lookback { // state has been reset
-		iFirst = max_lookback
+	if iFirst < maxLookback { // state has been reset
+		iFirst = maxLookback
 		if s.iFirstCheckSentinel {
 			log.Println("reseting edge multi state unexpectedly")
 		}
 		s.reset()
 		s.iFirstCheckSentinel = true
 	}
-	iLast := int32(len(raw)) - 1 - max_lookahead
+	iLast := int32(len(raw)) - 1 - maxLookahead
 	t, u, v := s.t, s.u, s.v
 	for {
-		x := edgeMultiFindNextTriggerInd(raw, iFirst, iLast, s.threshold, int32(s.nmonotone), max_nmonotone, s.enableZeroThreshold)
+		x := edgeMultiFindNextTriggerInd(raw, iFirst, iLast, s.threshold, int32(s.nmonotone), maxNmonotone, s.enableZeroThreshold)
 		iFirst = x.nextIFirst
 		if !x.triggerFound {
 			break
