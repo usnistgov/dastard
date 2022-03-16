@@ -94,7 +94,7 @@ type DecimateState struct {
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
 // Also removes any existing projectors and basis.
-func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
+func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) error {
 	// if nsamp or npre is invalid, panic, do not silently ignore
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		dsp.removeProjectorsBasis()
@@ -106,19 +106,28 @@ func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
 	dsp.NPresamples = npre
 	dsp.EMTState.nsamp = int32(nsamp)
 	dsp.EMTState.npre = int32(npre)
+	if dsp.EdgeMulti && !dsp.EMTState.valid() {
+		return fmt.Errorf("dsp.EMTState in invalid")
+	}
 	dsp.EMTState.reset()
+	return nil
 }
 
 // ConfigureTrigger sets this stream's trigger state.
-func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
+func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) error {
 	dsp.TriggerState = state
 	dsp.LastTrigger = 0 // forget the Last Trigger, so that all channels will auto trigger
 	// at the same starting point when you send new trigger settings
 
 	// we currently have two locations where we have nsamp and npre inside a dsp
 	// we should fix that, but for now just keep them in sync	dsp.EMTState.nsamp = int32(dsp.NSamples)
+	dsp.EMTState.nsamp = int32(dsp.NSamples)
 	dsp.EMTState.npre = int32(dsp.NPresamples)
+	if dsp.EdgeMulti && !dsp.EMTState.valid() {
+		return fmt.Errorf("dsp.EMTState in invalid")
+	}
 	dsp.EMTState.reset()
+	return nil
 }
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {

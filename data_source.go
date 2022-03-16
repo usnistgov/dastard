@@ -862,7 +862,10 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndices {
 		dsp := ds.processors[channelIndex]
-		dsp.ConfigureTrigger(state.TriggerState)
+		err := dsp.ConfigureTrigger(state.TriggerState)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -880,7 +883,10 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 		return fmt.Errorf("ConfigurePulseLengths nsamp %v, npre %v are invalid", nsamp, npre)
 	}
 	for _, dsp := range ds.processors {
-		dsp.ConfigurePulseLengths(nsamp, npre)
+		err := dsp.ConfigurePulseLengths(nsamp, npre)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

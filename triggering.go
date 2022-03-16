@@ -52,9 +52,9 @@ func (b EMTBackwardCompatibleRPCFields) toEMTState() (EMTState, error) {
 	s.threshold = b.EdgeMultiLevel
 	s.nmonotone = int32(b.EdgeMultiVerifyNMonotone)
 	s.enableZeroThreshold = !b.EdgeMultiDisableZeroThreshold
-	if !s.valid() {
-		return EMTState{}, fmt.Errorf("EMTBackwardCompatibleRPCFields.toEMTState gave invalid state")
-	}
+	// if !s.valid() {
+	// 	return EMTState{}, fmt.Errorf("EMTBackwardCompatibleRPCFields.toEMTState gave invalid state")
+	// }
 	return s, nil
 }
 
