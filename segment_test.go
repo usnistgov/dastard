@@ -59,7 +59,7 @@ func TestStream(t *testing.T) {
 	}
 	expectf1 := strB.firstFrameIndex - FrameIndex(len(dA))
 	if strA.firstFrameIndex != expectf1 {
-		t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d", strA.firstFrameIndex,
+		t.Errorf("DataStream.AppendSegment firstFrameIndex = %d, want %d", strA.firstFrameIndex,
 			expectf1)
 	}
 	if strA.firstTime != tA {
@@ -90,7 +90,7 @@ func TestStream(t *testing.T) {
 		}
 		expectf1 := FrameIndex(len(dC) - len(strA.rawData))
 		if strA.firstFrameIndex != expectf1 {
-			t.Errorf("DataStream.TrimKeepingN firstFramenum = %d, want %d", strA.firstFrameIndex,
+			t.Errorf("DataStream.TrimKeepingN firstFrameIndex = %d, want %d", strA.firstFrameIndex,
 				expectf1)
 		}
 		expectt1 := tA.Add(time.Duration(len(dC)-len(strA.rawData)) * ftime)
@@ -124,7 +124,7 @@ func TestStreamGap(t *testing.T) {
 	}
 	expectf1 := fA + FrameIndex(gap)
 	if strA.firstFrameIndex != expectf1 {
-		t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d", strA.firstFrameIndex,
+		t.Errorf("DataStream.AppendSegment firstFrameIndex = %d, want %d", strA.firstFrameIndex,
 			expectf1)
 	}
 	expecttA := tA.Add(time.Duration(gap) * ftime)
@@ -153,7 +153,7 @@ func TestStreamDecimated(t *testing.T) {
 			strA.AppendSegment(strB)
 			expectf1 := fB - FrameIndex(len(dA)*decimationB)
 			if strA.firstFrameIndex != expectf1 {
-				t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d with dec %d, %d",
+				t.Errorf("DataStream.AppendSegment firstFrameIndex = %d, want %d with dec %d, %d",
 					strA.firstFrameIndex, expectf1, decimationA, decimationB)
 			}
 			expecttA := tA.Add(ftime * time.Duration(len(dA)*(decimationA-decimationB)))
