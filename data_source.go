@@ -364,7 +364,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	if err != nil {
 		return err
 	}
-    ds.broker.GenerateTriggerMessages()
+	ds.broker.GenerateTriggerMessages()
 
 	// Each processor (channel) with secondary records analyzes them in parallel.
 	if len(allSecondaries) > 0 {

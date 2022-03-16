@@ -11,11 +11,11 @@ import (
 )
 
 type triggerList struct {
-	channelIndex                  int
-	frames                        []FrameIndex
-	keyFrame                      FrameIndex
-	keyTime                       time.Time
-	sampleRate                    float64
+	channelIndex                int
+	frames                      []FrameIndex
+	keyFrame                    FrameIndex
+	keyTime                     time.Time
+	sampleRate                  float64
 	firstFrameThatCannotTrigger FrameIndex
 }
 
