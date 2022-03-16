@@ -634,7 +634,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 				return
 
 			case <-ticker.C:
-				timeSinceLastSuccesfulRead := time.Now().Sub(lastSuccesfulRead)
+				timeSinceLastSuccesfulRead := time.Since(lastSuccesfulRead)
 				if timeSinceLastSuccesfulRead > 10*time.Second {
 					panic("too long since last succesful read")
 				}
@@ -863,7 +863,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 			rawData:         data,
 			framesPerSample: 1, // This will be changed later if decimating
 			framePeriod:     ls.samplePeriod,
-			firstFramenum:   ls.nextFrameNum + FrameIndex(droppedFrames),
+			firstFrameIndex: ls.nextFrameNum + FrameIndex(droppedFrames),
 			firstTime:       firstTime,
 			signed:          !isFeedbackChannel,
 			droppedFrames:   droppedFrames,

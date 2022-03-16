@@ -193,6 +193,18 @@ func (s *SourceControl) ConfigureMixFraction(mfo *MixFractionObject, reply *bool
 
 // ConfigureTriggers configures the trigger state for 1 or more channels.
 func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) error {
+	// The old EdgeMulti* parameters are no longer used in the triggering code,
+	// now being replaced with EMTState
+	// for now we're maintaining backwards compatibility with the old RPC calls
+	// so this is the point where we create an EMTState from the EdgeMulti* values
+	if state.TriggerState.EdgeMulti && state.TriggerState.EMTState == (EMTState{}) {
+		newEMTState, err := state.TriggerState.EMTBackwardCompatibleRPCFields.toEMTState()
+		if err != nil {
+			*reply = false
+			return err
+		}
+		state.TriggerState.EMTState = newEMTState
+	}
 	log.Printf("Got ConfigureTriggers: %v", spew.Sdump(state))
 	f := func() {
 		err := s.ActiveSource.ChangeTriggerState(state)
@@ -443,17 +455,16 @@ func (s *SourceControl) SetExperimentStateLabel(config *StateLabelConfig, reply 
 		err := s.runLaterIfActive(f)
 		*reply = (err == nil)
 		return err
-	} else {
-		f2 := func() {
-			err := s.runLaterIfActive(f)
-			if err != nil {
-				// panic here since this error could never be returned
-				panic(fmt.Sprintf("error with WaitForError==false in SetExperimentStateLabel. %s", spew.Sdump(err)))
-			}
-		}
-		go f2()
-		return nil
 	}
+	f2 := func() {
+		err := s.runLaterIfActive(f)
+		if err != nil {
+			// panic here since this error could never be returned
+			panic(fmt.Sprintf("error with WaitForError == false in SetExperimentStateLabel. %s", spew.Sdump(err)))
+		}
+	}
+	go f2()
+	return nil
 }
 
 // WriteComment writes the comment to comment.txt

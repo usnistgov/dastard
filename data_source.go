@@ -101,7 +101,6 @@ func (ds *AnySource) RunDoneDeactivate() {
 // RunDoneWait returns when the source run is done, i.e., the source is stopped
 func (ds *AnySource) RunDoneWait() {
 	ds.runDone.Wait()
-	ds.broker.Stop()
 }
 
 // ShouldAutoRestart true if source should be auto-restarted after an error
@@ -332,15 +331,20 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 // Returns when all segments have been processed
 // It's a more synchronous version of each dsp launching its own goroutine
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
-	var wg sync.WaitGroup
 	if len(ds.processors) != len(block.segments) {
 		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)",
 			len(block.segments), len(ds.processors)))
 	}
 
-	// Each processor (channel) handles its segment in parallel.
-	for i, dsp := range ds.processors {
-		segment := block.segments[i]
+	// We break processing data segments into 2 halves. Each half can proceed in parallel
+	// across all data streams, but we have to synchronize in the middle in order for
+	// secondary triggers to be computed and distributed.
+
+	// Each processor (channel) ingests and analyzes/publishes its segment in parallel.
+	// Use a WaitGroup to make all finish before secondary triggers can be computed.
+	var wg sync.WaitGroup
+	for idx, dsp := range ds.processors {
+		segment := block.segments[idx]
 		wg.Add(1)
 		go func(dsp *DataStreamProcessor) {
 			defer wg.Done()
@@ -349,14 +353,49 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	}
 	wg.Wait()
 
+	// Build a map to hold triggerList for each channel index, and then ask the TriggerBroker
+	// to compute the corresponding slice of secondary trigger FrameIndex values for each
+	// channel index.
+	allchanTrigList := make(map[int]triggerList)
+	for idx, dsp := range ds.processors {
+		allchanTrigList[idx] = dsp.lastTrigList
+	}
+	allSecondaries, err := ds.broker.Distribute(allchanTrigList)
+	if err != nil {
+		return err
+	}
+	ds.broker.GenerateTriggerMessages()
+
+	// Each processor (channel) with secondary records analyzes them in parallel.
+	if len(allSecondaries) > 0 {
+		for idx, dsp := range ds.processors {
+			flist := allSecondaries[idx]
+			if len(flist) > 0 {
+				wg.Add(1)
+				go func(dsp *DataStreamProcessor, flist []FrameIndex) {
+					defer wg.Done()
+					dsp.processSecondaries(flist)
+				}(dsp, flist)
+			}
+		}
+	}
+	wg.Wait()
+
+	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
+	// and once every 20 reads, flush the output files (but do the files out of phase, so it's not
+	// done for all files at once).
 	tStart := time.Now()
-	for i, dsp := range ds.processors {
-		if (i+ds.readCounter)%20 == 0 { // flush each dsp once per 20 reads, but not all at once
+	for idx, dsp := range ds.processors {
+		segment := block.segments[idx]
+		segment.processed = true
+		dsp.TrimStream()
+
+		if (idx+ds.readCounter)%20 == 0 {
 			dsp.Flush()
 		}
 	}
 	ds.readCounter++
-	flushDuration := time.Now().Sub(tStart)
+	flushDuration := time.Since(tStart)
 	if flushDuration > 50*time.Millisecond {
 		log.Println("flushDuration", flushDuration)
 	}
@@ -369,8 +408,8 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		return err
 	}
 
-	// all segments will have the same value for droppedFrames and firstFramenum, so we just look at the first segment here
-	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFramenum)); err != nil {
+	// all segments will have the same value for droppedFrames and firstFrameIndex, so we just look at the first segment here
+	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFrameIndex)); err != nil {
 		return err
 	}
 	if ds.writingState.Active && !ds.writingState.Paused {
@@ -393,10 +432,10 @@ func (ds *AnySource) SetExperimentStateLabel(timestamp time.Time, stateLabel str
 // HandleDataDrop writes to a file in the case that a data drop is detected.
 // "Data drop" refers to a case where a read from a source (e.g., the LanceroSource)
 // misses some frames of data.
-func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
+func (ds *AnySource) HandleDataDrop(droppedFrames, firstFrameIndex int) error {
 	if droppedFrames > 0 {
 		ds.writingState.dataDropsObserved++
-		fmt.Printf("DATA DROP. firstFramenum %v, droppedFrames %v\n", firstFramenum, droppedFrames)
+		fmt.Printf("DATA DROP. firstFrameIndex %v, droppedFrames %v\n", firstFrameIndex, droppedFrames)
 		if ds.writingState.IsActive() {
 			// Set up the log file if not already done
 			if ds.writingState.dataDropFileBufferedWriter == nil {
@@ -416,7 +455,7 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFramenum int) error {
 			}
 
 			// Log to the dataDropFile
-			line := fmt.Sprintf("%12d %8d\n", firstFramenum, droppedFrames)
+			line := fmt.Sprintf("%12d %8d\n", firstFrameIndex, droppedFrames)
 			_, err := ds.writingState.dataDropFileBufferedWriter.WriteString(line)
 			if err != nil {
 				return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
@@ -761,9 +800,8 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	ds.abortSelf = make(chan struct{})
 	ds.nextBlock = make(chan *dataBlock)
 
-	// Start a TriggerBroker to handle secondary triggering
+	// Create a TriggerBroker to handle secondary triggering
 	ds.broker = NewTriggerBroker(ds.nchan)
-	go ds.broker.Run()
 
 	ds.numberWrittenTicker = time.NewTicker(1 * time.Second)
 	ds.writingState.externalTriggerTicker = time.NewTicker(time.Second * 1)
@@ -862,7 +900,9 @@ func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
 	}
 	for _, channelIndex := range state.ChannelIndices {
 		dsp := ds.processors[channelIndex]
-		dsp.ConfigureTrigger(state.TriggerState)
+		if err := dsp.ConfigureTrigger(state.TriggerState); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -880,7 +920,9 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 		return fmt.Errorf("ConfigurePulseLengths nsamp %v, npre %v are invalid", nsamp, npre)
 	}
 	for _, dsp := range ds.processors {
-		dsp.ConfigurePulseLengths(nsamp, npre)
+		if err := dsp.ConfigurePulseLengths(nsamp, npre); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -896,7 +938,7 @@ type DataSegment struct {
 	rawData         []RawType
 	signed          bool
 	framesPerSample int // Normally 1, but can be larger if decimated
-	firstFramenum   FrameIndex
+	firstFrameIndex FrameIndex
 	firstTime       time.Time
 	framePeriod     time.Duration
 	voltsPerArb     float32
@@ -908,7 +950,7 @@ type DataSegment struct {
 func NewDataSegment(data []RawType, framesPerSample int, firstFrame FrameIndex,
 	firstTime time.Time, period time.Duration) *DataSegment {
 	seg := DataSegment{rawData: data, framesPerSample: framesPerSample,
-		firstFramenum: firstFrame, firstTime: firstTime, framePeriod: period}
+		firstFrameIndex: firstFrame, firstTime: firstTime, framePeriod: period}
 	return &seg
 }
 
@@ -941,7 +983,7 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	timeNowInStream := time.Duration(framesNowInStream) * stream.framePeriod
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
-	stream.firstFramenum = segment.firstFramenum - framesNowInStream
+	stream.firstFrameIndex = segment.firstFrameIndex - framesNowInStream
 	stream.firstTime = segment.firstTime.Add(-timeNowInStream)
 	stream.rawData = append(stream.rawData, segment.rawData...)
 	stream.signed = segment.signed // there are multiple sources of true on wether something is signed
@@ -961,7 +1003,7 @@ func (stream *DataStream) TrimKeepingN(N int) int {
 	copy(stream.rawData[:N], stream.rawData[L-N:L])
 	stream.rawData = stream.rawData[:N]
 	deltaFrames := (L - N) * stream.framesPerSample
-	stream.firstFramenum += FrameIndex(deltaFrames)
+	stream.firstFrameIndex += FrameIndex(deltaFrames)
 	stream.firstTime = stream.firstTime.Add(time.Duration(deltaFrames) * stream.framePeriod)
 	return N
 }

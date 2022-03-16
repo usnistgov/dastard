@@ -32,7 +32,7 @@ type WritingState struct {
 	sync.Mutex
 }
 
-// IsActive will return ws.Active, with propert locking
+// IsActive will return ws.Active, with proper locking
 func (ws *WritingState) IsActive() bool {
 	ws.Lock()
 	defer ws.Unlock()

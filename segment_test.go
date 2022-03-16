@@ -57,9 +57,9 @@ func TestStream(t *testing.T) {
 	if !reflect.DeepEqual(strA.rawData, dC) {
 		t.Errorf("DataStream.AppendSegment result was %v, want %v", strA.rawData, dC)
 	}
-	expectf1 := strB.firstFramenum - FrameIndex(len(dA))
-	if strA.firstFramenum != expectf1 {
-		t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d", strA.firstFramenum,
+	expectf1 := strB.firstFrameIndex - FrameIndex(len(dA))
+	if strA.firstFrameIndex != expectf1 {
+		t.Errorf("DataStream.AppendSegment firstFrameIndex = %d, want %d", strA.firstFrameIndex,
 			expectf1)
 	}
 	if strA.firstTime != tA {
@@ -89,8 +89,8 @@ func TestStream(t *testing.T) {
 			t.Errorf("DataStream.TrimKeepingN left cap(rawData)=%d, want at least %d", cap(strA.rawData), len(dC))
 		}
 		expectf1 := FrameIndex(len(dC) - len(strA.rawData))
-		if strA.firstFramenum != expectf1 {
-			t.Errorf("DataStream.TrimKeepingN firstFramenum = %d, want %d", strA.firstFramenum,
+		if strA.firstFrameIndex != expectf1 {
+			t.Errorf("DataStream.TrimKeepingN firstFrameIndex = %d, want %d", strA.firstFrameIndex,
 				expectf1)
 		}
 		expectt1 := tA.Add(time.Duration(len(dC)-len(strA.rawData)) * ftime)
@@ -123,8 +123,8 @@ func TestStreamGap(t *testing.T) {
 		t.Errorf("DataStream.AppendSegment result was %v, want %v", strA.rawData, dC)
 	}
 	expectf1 := fA + FrameIndex(gap)
-	if strA.firstFramenum != expectf1 {
-		t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d", strA.firstFramenum,
+	if strA.firstFrameIndex != expectf1 {
+		t.Errorf("DataStream.AppendSegment firstFrameIndex = %d, want %d", strA.firstFrameIndex,
 			expectf1)
 	}
 	expecttA := tA.Add(time.Duration(gap) * ftime)
@@ -152,9 +152,9 @@ func TestStreamDecimated(t *testing.T) {
 
 			strA.AppendSegment(strB)
 			expectf1 := fB - FrameIndex(len(dA)*decimationB)
-			if strA.firstFramenum != expectf1 {
-				t.Errorf("DataStream.AppendSegment firstFramenum = %d, want %d with dec %d, %d",
-					strA.firstFramenum, expectf1, decimationA, decimationB)
+			if strA.firstFrameIndex != expectf1 {
+				t.Errorf("DataStream.AppendSegment firstFrameIndex = %d, want %d with dec %d, %d",
+					strA.firstFrameIndex, expectf1, decimationA, decimationB)
 			}
 			expecttA := tA.Add(ftime * time.Duration(len(dA)*(decimationA-decimationB)))
 			if strA.TimeOf(0) != expecttA {

@@ -5,6 +5,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestBrokerConnections checks that we can connect/disconnect group triggers
@@ -57,11 +59,11 @@ func TestBrokerConnections(t *testing.T) {
 		t.Errorf("TriggerBroker.DeleteConnection(%d,0) should fail but didn't", N)
 	}
 
-	// Check the Connections method
+	// Check the SourcesForReceiver method
 	for i := -1; i < 1; i++ {
-		con := broker.Connections(i)
+		con := broker.SourcesForReceiver(i)
 		if len(con) > 0 {
-			t.Errorf("TriggerBroker.Connections(%d)) has length %d, want 0", i, len(con))
+			t.Errorf("TriggerBroker.SourcesForReceiver(%d)) has length %d, want 0", i, len(con))
 		}
 	}
 	broker.AddConnection(1, 0)
@@ -69,16 +71,16 @@ func TestBrokerConnections(t *testing.T) {
 	broker.AddConnection(3, 0)
 	broker.AddConnection(2, 0)
 	broker.AddConnection(3, 0)
-	con := broker.Connections(0)
-	if len(con) != 3 {
-		t.Errorf("TriggerBroker.Connections(0) has length %d, want 3", len(con))
+	sources := broker.SourcesForReceiver(0)
+	if len(sources) != 3 {
+		t.Errorf("TriggerBroker.SourcesForReceiver(0) has length %d, want 3", len(sources))
 	}
-	if con[0] {
-		t.Errorf("TriggerBroker.Connections(0)[0]==true, want false")
+	if sources[0] {
+		t.Errorf("TriggerBroker.SourcesForReceiver(0)[0]==true, want false")
 	}
 	for i := 1; i < 4; i++ {
-		if !con[i] {
-			t.Errorf("TriggerBroker.Connections(0)[%d]==false, want true", i)
+		if !sources[i] {
+			t.Errorf("TriggerBroker.SourcesForReceiver(0)[%d]==false, want true", i)
 		}
 	}
 
@@ -142,21 +144,20 @@ func TestBrokerConnections(t *testing.T) {
 func TestBrokering(t *testing.T) {
 	N := 4
 	broker := NewTriggerBroker(N)
-	abort := make(chan struct{})
-	go broker.Run()
-	defer broker.Stop()
 	broker.AddConnection(0, 3)
 	broker.AddConnection(2, 3)
 
 	for iter := 0; iter < 3; iter++ {
+		allTrigs := make(map[int]triggerList)
 		for i := 0; i < N; i++ {
 			trigs := triggerList{channelIndex: i, frames: []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
-			broker.PrimaryTrigs <- trigs
+			allTrigs[i] = trigs
 		}
-		t0 := <-broker.SecondaryTrigs[0]
-		t1 := <-broker.SecondaryTrigs[1]
-		t2 := <-broker.SecondaryTrigs[2]
-		t3 := <-broker.SecondaryTrigs[3]
+		secondaryMap, _ := broker.Distribute(allTrigs)
+		t0 := secondaryMap[0]
+		t1 := secondaryMap[1]
+		t2 := secondaryMap[2]
+		t3 := secondaryMap[3]
 		for i, tn := range [][]FrameIndex{t0, t1, t2} {
 			if len(tn) > 0 {
 				t.Errorf("TriggerBroker chan %d received %d secondary triggers, want 0", i, len(tn))
@@ -171,9 +172,6 @@ func TestBrokering(t *testing.T) {
 				t.Errorf("TriggerBroker chan %d secondary trig[%d]=%d, want %d", 3, i, t2[i], expected[i])
 			}
 		}
-		if iter == 2 {
-			close(abort)
-		}
 	}
 }
 
@@ -183,8 +181,6 @@ func TestLongRecords(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	var tests = []struct {
 		npre   int
 		nsamp  int
@@ -219,14 +215,20 @@ func TestLongRecords(t *testing.T) {
 		sampleTime := time.Duration(float64(time.Second) / dsp.SampleRate)
 		segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 		for i := 0; i <= dsp.NSamples; i += test.nchunk {
-			primaries, secondaries := dsp.TriggerData()
+			primaries := dsp.TriggerData()
+			ptl0 := map[int]triggerList{0: dsp.lastTrigList}
+			secondaryMap, _ := broker.Distribute(ptl0)
+			secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 			if (len(primaries) != 0) || (len(secondaries) != 0) {
 				t.Errorf("%s trigger found triggers after %d chunks added, want none", trigname, i)
 			}
 			dsp.stream.AppendSegment(segment)
-			segment.firstFramenum += FrameIndex(test.nchunk)
+			segment.firstFrameIndex += FrameIndex(test.nchunk)
 		}
-		primaries, secondaries := dsp.TriggerData()
+		primaries := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: dsp.lastTrigList}
+		secondaryMap, _ := broker.Distribute(ptl0)
+		secondaries := dsp.TriggerDataSecondary(secondaryMap[0])
 		if len(primaries) != len(expectedFrames) {
 			t.Errorf("%s trigger (test=%v) found %d triggers, want %d", trigname, test, len(primaries), len(expectedFrames))
 		}
@@ -246,8 +248,6 @@ func TestSingles(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -358,27 +358,41 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	segment.signed = dsp.stream.signed // dsp.stream.signed is later set equal to segment.signed
 	dsp.stream.samplesSeen = 0
+	dsp.Broker = NewTriggerBroker(1)
 	var primaries, secondaries []*DataRecord
 	for i := 0; i < nRepeat; i++ {
 		dsp.stream.AppendSegment(segment)
-		segment.firstFramenum += FrameIndex(len(raw))
-		p, s := dsp.TriggerData()
+		segment.firstFrameIndex += FrameIndex(len(raw))
+
+		p := dsp.TriggerData()
+		ptl0 := map[int]triggerList{0: dsp.lastTrigList}
+		secondaryMap, _ := dsp.Broker.Distribute(ptl0)
+		s := dsp.TriggerDataSecondary(secondaryMap[0])
 		primaries = append(primaries, p...)
 		secondaries = append(secondaries, s...)
 	}
-	if len(primaries) != len(expectedFrames) {
-		t.Errorf("%s: have %v triggers, want %v triggers", trigname, len(primaries), len(expectedFrames))
-		fmt.Print("have ")
-		for _, p := range primaries {
-			fmt.Printf("%v,", p.trigFrame)
-		}
-		fmt.Println()
-		fmt.Print("want ")
-		for _, v := range expectedFrames {
-			fmt.Printf("%v,", v)
-		}
-		fmt.Println()
+	pTrigFramesInts := make([]int, len(primaries))
+	expectedFramesInts := make([]int, len(expectedFrames))
+	for i, primary := range primaries {
+		pTrigFramesInts[i] = int(primary.trigFrame)
 	}
+	for i, expected := range expectedFrames {
+		expectedFramesInts[i] = int(expected)
+	}
+	assert.Equal(t, expectedFramesInts, pTrigFramesInts, fmt.Sprintf("%s: expected trigger frames do not match found frames", trigname))
+	// if len(primaries) != len(expectedFrames) {
+	// 	t.Errorf("%s: have %v triggers, want %v triggers", trigname, len(primaries), len(expectedFrames))
+	// 	fmt.Print("have ")
+	// 	for _, p := range primaries {
+	// 		fmt.Printf("%v,", p.trigFrame)
+	// 	}
+	// 	fmt.Println()
+	// 	fmt.Print("want ")
+	// 	for _, v := range expectedFrames {
+	// 		fmt.Printf("%v,", v)
+	// 	}
+	// 	fmt.Println()
+	// }
 	if len(secondaries) != 0 {
 		t.Errorf("%s: trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
 	}
@@ -413,8 +427,6 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -470,14 +482,15 @@ func TestEdgeLevelInteraction(t *testing.T) {
 }
 
 func TestEdgeMulti(t *testing.T) {
+	// 3/14/2022: EdgeMulti is under active development in another branch, so skip this test for now.
+	t.Skip()
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp.EdgeMulti = true
 
 	//kink model parameters
 	var a, b, c float64
@@ -498,37 +511,35 @@ func TestEdgeMulti(t *testing.T) {
 		}
 		kinkListFrameIndex[i] = FrameIndex(kint)
 	}
-	// fmt.Println(raw)
-	dsp.NPresamples = 50
-	dsp.NSamples = 100
 
-	dsp.EdgeMultiDisableZeroThreshold = false
-	dsp.EdgeMulti = true
-	dsp.EdgeMultiLevel = 10000
-	dsp.EdgeMultiVerifyNMonotone = 5
+	dsp.EMTState = EMTState{threshold: 10000, mode: EMTRecordsFullLengthIsolated,
+		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
 	nRepeat := 1
-	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high", []FrameIndex{})
-	dsp.EdgeMultiLevel = 1
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti A: level too high, no records", []FrameIndex{})
+	dsp.EMTState = EMTState{threshold: 1, mode: EMTRecordsFullLengthIsolated,
+		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, but triggers that are too short are not recordized
 	// the kinks that occur at fractional samples will end up the rounded value
-	// ideally 200.1 should trigger at 201, but since we only check k values in 0.5 step increments, we miss it
 	// my tests suggest testing at 0.5 step increments is ok on real data (eg a set of data from the Raven backup array test in 2018)
-	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti B: make only full length records", []FrameIndex{100, 200, 301, 401, 700})
-	dsp.EdgeMultiMakeContaminatedRecords = true
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti B: full length isolated records", []FrameIndex{100, 200, 301, 401, 700})
 
+	dsp.EMTState = EMTState{threshold: 1, mode: EMTRecordsTwoFullLength,
+		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, and contaminated records will be created
-	// we expect the last two triggers to be not made because there will be limited by the rate limiting algorithm
-	primaries, _ := testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti C: MakeContaminatedRecords", []FrameIndex{100, 200, 301, 401, 460, 500})
+	primaries, _ := testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti C: MakeContaminatedRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	for _, record := range primaries {
-		if len(record.data) != dsp.NSamples {
+		if len(record.data) != int(dsp.EMTState.nsamp) {
 			t.Errorf("EdgeMulti C record has wrong number of samples %v", record)
 		}
 	}
-	dsp.EdgeMultiMakeContaminatedRecords = false
-	dsp.EdgeMultiMakeShortRecords = true
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+
+	dsp.EMTState = EMTState{threshold: 1, mode: EMTRecordsVariableLength,
+		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
+	dsp.NPresamples = int(dsp.EMTState.npre)
+	dsp.NSamples = int(dsp.EMTState.nsamp)
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	// here we will find all triggers in trigInds, and short records will be created
 	primaries, _ = testTriggerSubroutine(t, raw, nRepeat, dsp, "EdgeMulti D: MakeShortRecords", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 	///                                                                 lengths   100, 100, 100, 100, 49,  40,  50,  100
@@ -558,62 +569,17 @@ func TestEdgeMulti(t *testing.T) {
 		}
 		kinkListFrameIndexE[i] = FrameIndex(kint)
 	}
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	nRepeatE := 3
 	// here we attempt to trigger around a segment boundary
 	_, _ = testTriggerSubroutine(t, rawE, nRepeatE, dsp, "EdgeMulti E: handling segment boundary", []FrameIndex{945, 1945})
 
-	dsp.NSamples = 15
-	dsp.NPresamples = 6
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
-	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: dont make records when it is monotone for >= dsp.NSamples", []FrameIndex{})
-
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
-	dsp.NSamples = 30
-	dsp.NPresamples = 25
-	dsp.EdgeMultiMakeContaminatedRecords = true
-	dsp.EdgeMultiLevel = 0
-	dsp.EdgeMultiVerifyNMonotone = 0
-
-	rawG := make([]RawType, 10)
-	for i := 0; i < len(rawG); i++ {
-		rawG[i] = RawType(i % 2)
-	}
-	nRepeatG := 20
-	expectG := make([]FrameIndex, 0)
-	for i := dsp.NPresamples + 2; i < len(rawG)*nRepeatG-(dsp.NSamples-dsp.NPresamples); i += 2 {
-		expectG = append(expectG, FrameIndex(i))
-	}
-	_, _ = testTriggerSubroutine(t, rawG, nRepeatG, dsp, "EdgeMulti G: make lots of contaminated records", expectG)
-
-	dsp.EdgeMulti = true
-	dsp.EdgeMultiNoise = true
-	dsp.EdgeMultiLevel = math.MaxInt32 // don't ever add to TriggerInds
-	dsp.NSamples = 100
-	dsp.NPresamples = 50
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
-	dsp.LastEdgeMultiTrigger = 100 // make first noise trigger a round number
-	nRepeatH := 2
-	rawH := make([]RawType, 500)
-	_, _ = testTriggerSubroutine(t, rawH, nRepeatH, dsp, "EdgeMulti H: EdgeMultiNoise basic", []FrameIndex{200, 300, 400, 500, 600, 700, 800, 900})
-
-	nRepeatI := 25
-	rawI := make([]RawType, 40)
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
-	dsp.LastEdgeMultiTrigger = 100 // make first noise trigger a round number
-	_, _ = testTriggerSubroutine(t, rawI, nRepeatI, dsp, "EdgeMulti I: EdgeMultiNoise basic, segments shorter than records",
-		[]FrameIndex{200, 300, 400, 500, 600, 700, 800, 900})
-
-	dsp.NSamples = 10
-	dsp.NPresamples = 5
-	dsp.EdgeMultiLevel = 1
-	nRepeatJ := 2
-	rawJ := make([]RawType, 100)
-	rawJ[50] = 1
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
-	dsp.LastEdgeMultiTrigger = 20  // make first noise trigger a round number
-	_, _ = testTriggerSubroutine(t, rawJ, nRepeatJ, dsp, "EdgeMulti J: EdgeMultiNoise avoiding edge triggers",
-		[]FrameIndex{30, 40, 60, 70, 80, 90, 100, 110, 120, 130, 140, 160, 170, 180, 190})
+	dsp.EMTState = EMTState{threshold: 1, mode: EMTRecordsTwoFullLength,
+		nmonotone: 5, npre: 6, nsamp: 15, enableZeroThreshold: true}
+	dsp.NPresamples = int(dsp.EMTState.npre)
+	dsp.NSamples = int(dsp.EMTState.nsamp)
+	dsp.EMTState.reset() // call this between each edgeMulti test
+	_, _ = testTriggerSubroutine(t, rawE, nRepeat, dsp, "EdgeMulti F: when it keeps rising for more than npost, at least trigger on the first one, after that anything is fine", []FrameIndex{945, 956})
 
 	//kink model parameters
 	var aFalling, bFalling, cFalling float64
@@ -635,29 +601,25 @@ func TestEdgeMulti(t *testing.T) {
 		}
 		kinkListFrameIndex[i] = FrameIndex(kint)
 	}
-	dsp.NPresamples = 50
-	dsp.NSamples = 100
-	dsp.EdgeMulti = true
-	dsp.EdgeMultiNoise = false
-	dsp.EdgeMultiLevel = -10000
-	dsp.EdgeMultiMakeContaminatedRecords = true
-	dsp.EdgeMultiMakeShortRecords = false
-	dsp.EdgeMultiVerifyNMonotone = 5
+
+	dsp.EMTState = EMTState{threshold: -10000, mode: EMTRecordsTwoFullLength,
+		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
+	dsp.NPresamples = int(dsp.EMTState.npre)
+	dsp.NSamples = int(dsp.EMTState.nsamp)
 	nRepeatK := 1
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
+	dsp.EMTState.reset() // call this between each edgeMulti test
 	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti K: level too large (negative)", []FrameIndex{})
-	dsp.EdgeMultiLevel = -1
-	dsp.edgeMultiSetInitialState() // call this between each edgeMulti test
-	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti L: negative trigger level", []FrameIndex{100, 200, 301, 401, 460, 500})
+	dsp.EMTState = EMTState{threshold: -1, mode: EMTRecordsTwoFullLength,
+		nmonotone: 5, npre: 50, nsamp: 100, enableZeroThreshold: true}
+	dsp.EMTState.reset() // call this between each edgeMulti test
+	testTriggerSubroutine(t, rawK, nRepeatK, dsp, "EdgeMulti L: negative trigger level", []FrameIndex{100, 200, 301, 401, 460, 500, 540, 700})
 }
 
-// TestEdgeVetosLevel tests that an edge trigger vetoes a level trigger as needed.
-func TestEdgeVetosLevel(t *testing.T) {
+// TestEdgeVetoesLevel tests that an edge trigger vetoes a level trigger as needed.
+func TestEdgeVetoesLevel(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -671,6 +633,8 @@ func TestEdgeVetosLevel(t *testing.T) {
 	dsp.LevelRising = true
 	dsp.LevelLevel = 99
 
+	// Run several data segments to make sure that the edge trigger vetoes the
+	// level trigger when they happen too close in time.
 	levelChangeAt := []int{50, 199, 200, 201, 299, 300, 301, 399, 400, 401, 500}
 	edgeChangeAt := 300
 	const rawLength = 1000
@@ -688,8 +652,14 @@ func TestEdgeVetosLevel(t *testing.T) {
 
 		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
 		dsp.stream.AppendSegment(segment)
-		primaries, _ := dsp.TriggerData()
+		primaries := dsp.TriggerData()
+		dsp.TrimStream()
 		if len(primaries) != want {
+			fmt.Printf("Found %d records:\n", len(primaries))
+			for _, p := range dsp.lastTrigList.frames {
+				fmt.Printf("\t%v\n", p)
+			}
+
 			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
 		}
 	}
@@ -698,8 +668,6 @@ func TestEdgeVetosLevel(t *testing.T) {
 func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -715,7 +683,7 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	segment := NewDataSegment(raw, 1, 0, time.Now(), sampleTime)
 	dsp.stream.AppendSegment(segment)
 	b.ResetTimer()
-	primaries, _ := dsp.TriggerData()
+	primaries := dsp.TriggerData()
 	if len(primaries) != b.N {
 		fmt.Println("wrong number", len(primaries), b.N)
 	}
@@ -724,8 +692,6 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -759,8 +725,6 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
-	go broker.Run()
-	defer broker.Stop()
 	NPresamples := 256
 	NSamples := 1024
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
@@ -813,8 +777,8 @@ func TestTriggerCounter(t *testing.T) {
 	now := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
 	tc := NewTriggerCounter(0, time.Second)
 	tList := triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 0,
-		keyTime: now, sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now, sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 0 {
@@ -827,8 +791,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("want %v, have %v", len(tList.frames), tc.countsSeen)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1, 2, 3, 4, 5}, keyFrame: 100,
-		keyTime: now.Add(100 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(100 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.countsSeen != len(tList.frames) {
@@ -841,8 +805,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("have %v, want %v", tc.lo, 1)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{1007, 1008, 1009, 2000, 2001}, keyFrame: 1900,
-		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 0}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 0}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 3000 {
@@ -855,8 +819,8 @@ func TestTriggerCounter(t *testing.T) {
 		t.Errorf("want %v, have %v", 1, tc.countsSeen)
 	}
 	tList = triggerList{channelIndex: 0, frames: []FrameIndex{}, keyFrame: 1900,
-		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, lastFrameThatWillNeverTrigger: 3001}
-	if err := tc.observeTriggerList(&tList); err != nil {
+		keyTime: now.Add(1900 * time.Millisecond), sampleRate: 1000, firstFrameThatCannotTrigger: 3001}
+	if err := tc.countNewTriggers(&tList); err != nil {
 		t.Error(err)
 	}
 	if tc.hi != 4000 {

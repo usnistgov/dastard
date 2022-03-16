@@ -20,6 +20,7 @@ type DataStreamProcessor struct {
 	LastTrigger          FrameIndex
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
+	lastTrigList         triggerList
 
 	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
 	// Otherwise projectors must be of size (nbases,NSamples)
@@ -83,7 +84,7 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, NPresamples
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors = &mat.Dense{}       // dsp.projectors is set to zero value
 	dsp.basis = &mat.Dense{}            // dsp.basis is set to zero value
-	dsp.edgeMultiSetInitialState()      // set up edgeMulti in known state
+	dsp.EMTState.reset()                // set up edgeMulti in known state
 	return &dsp
 }
 
@@ -96,36 +97,58 @@ type DecimateState struct {
 
 // ConfigurePulseLengths sets this stream's pulse length and # of presamples.
 // Also removes any existing projectors and basis.
-func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) {
+func (dsp *DataStreamProcessor) ConfigurePulseLengths(nsamp, npre int) error {
 	// if nsamp or npre is invalid, panic, do not silently ignore
 	if dsp.NSamples != nsamp || dsp.NPresamples != npre {
 		dsp.removeProjectorsBasis()
-		dsp.edgeMultiSetInitialState()
+		dsp.EMTState.reset()
 	}
+	// we currently have two locations where we have nsamp and npre inside a dsp
+	// we should fix that, but for now just keep them in sync
 	dsp.NSamples = nsamp
 	dsp.NPresamples = npre
+	dsp.EMTState.nsamp = int32(nsamp)
+	dsp.EMTState.npre = int32(npre)
+	if dsp.EdgeMulti && !dsp.EMTState.valid() {
+		return fmt.Errorf("dsp.EMTState in invalid")
+	}
+	dsp.EMTState.reset()
+	return nil
 }
 
 // ConfigureTrigger sets this stream's trigger state.
-func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) {
+func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) error {
 	dsp.TriggerState = state
 	dsp.LastTrigger = 0 // forget the Last Trigger, so that all channels will auto trigger
 	// at the same starting point when you send new trigger settings
-	dsp.edgeMultiSetInitialState()
+
+	// we currently have two locations where we have nsamp and npre inside a dsp
+	// we should fix that, but for now just keep them in sync	dsp.EMTState.nsamp = int32(dsp.NSamples)
+	dsp.EMTState.nsamp = int32(dsp.NSamples)
+	dsp.EMTState.npre = int32(dsp.NPresamples)
+	if dsp.EdgeMulti && !dsp.EMTState.valid() {
+		return fmt.Errorf("dsp.EMTState in invalid")
+	}
+	dsp.EMTState.reset()
+	return nil
 }
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
 	dsp.stream.AppendSegment(segment)
-	records, secondaries := dsp.TriggerData()
-	dsp.AnalyzeData(records)                                       // add analysis results to records in-place
-	if err := dsp.DataPublisher.PublishData(records); err != nil { // publish and save data, when enabled
+	primaryRecords := dsp.TriggerData()
+	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place
+	if err := dsp.DataPublisher.PublishData(primaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
-	if err := dsp.DataPublisher.PublishData(secondaries); err != nil { // publish and save data, when enabled
+}
+
+func (dsp *DataStreamProcessor) processSecondaries(secondaryFrames []FrameIndex) {
+	secondaryRecords := dsp.TriggerDataSecondary(secondaryFrames)
+	dsp.AnalyzeData(secondaryRecords)                                       // add analysis results to records in-place
+	if err := dsp.DataPublisher.PublishData(secondaryRecords); err != nil { // publish and save data, when enabled
 		panic(err)
 	}
-	segment.processed = true
 }
 
 // DecimateData decimates data in-place.
@@ -253,6 +276,14 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 			rec.residualStdDev = stdDev(residualSlice)
 		}
 	}
+}
+
+// TrimStream trims a DataStreamProcessor's stream to contain only one record's worth of old
+// samples. That should more than suffice to extract triggers from future data.
+func (dsp *DataStreamProcessor) TrimStream() {
+	// Leave one full possible trigger in the stream, because trigger algorithms
+	// should not inspect the last NSamples samples
+	dsp.stream.TrimKeepingN(dsp.NSamples)
 }
 
 // return the uncorrected std deviation of a float slice

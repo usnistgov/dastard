@@ -10,9 +10,9 @@ matrix:
     - go: 1.x  # This tracks the latest release
       env: LATEST=true
     - go: 1.13.x  # This should stay at 1.13, as gonum supports only 1.13+
-    - go: tip
-  allow_failures:
-    - go: tip
+  #   - go: tip
+  # allow_failures:
+  #   - go: tip
 
 
 go_import_path: github.com/usnistgov/dastard
