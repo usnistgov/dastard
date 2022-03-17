@@ -316,8 +316,6 @@ func TestEdgeLevelInteraction(t *testing.T) {
 }
 
 func TestEdgeMulti(t *testing.T) {
-	// 3/14/2022: EdgeMulti is under active development in another branch, so skip this test for now.
-	t.Skip()
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
