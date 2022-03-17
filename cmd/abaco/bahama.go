@@ -43,6 +43,7 @@ type BahamaControl struct {
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
+	crosstalk  bool
 	interleave bool
 	stagger    bool
 	noiselevel float64
@@ -98,7 +99,11 @@ func (control *BahamaControl) Report() {
 		sources = append(sources, "sawtooth")
 	}
 	if control.pulses {
-		sources = append(sources, "pulses")
+		if control.crosstalk {
+			sources = append(sources, "pulses with crosstalk")
+		} else {
+			sources = append(sources, "pulses")
+		}
 	}
 	if control.sinusoid {
 		sources = append(sources, "sinusoids")
@@ -205,6 +210,10 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		}
 		if control.pulses {
 			amplitude := 5000.0 + 100.0*float64(cnum)
+			// "Crosstalk" mode means odd-number channels have 2% the signal size.
+			if control.crosstalk && i%2 == 1 {
+				amplitude *= 0.02
+			}
 			scale := amplitude * 2.116
 			for j := 0; j < Nsamp/4; j++ {
 				pulsevalue := int16(scale * (math.Exp(-float64(j)/1200.0) - math.Exp(-float64(j)/300.0)))
@@ -360,6 +369,7 @@ func main() {
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
 	usesine := flag.Bool("sine", false, "Whether to add a sinusoidal pattern")
 	usepulses := flag.Bool("pulse", false, "Whether to add pulse-like data")
+	crosstalk := flag.Bool("crosstalk", false, "Whether to have only crosstalk to odd-numbered channels (implies --pulse)")
 	interleave := flag.Bool("interleave", false, "Whether to interleave channel groups' packets regularly")
 	stagger := flag.Bool("stagger", false, "Whether to stagger channel groups' packets so each gets 'ahead' of the others")
 	droppct := flag.Float64("droppct", 0.0, "Drop this percentage of packets")
@@ -400,12 +410,15 @@ func main() {
 	if udp {
 		ringsize = 0
 	}
+	if *crosstalk {
+		*usepulses = true
+	}
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
 		Nsources: *nsource, udp: udp,
 		Chan0: *chan0, chanGaps: *changaps, ringsize: ringsize,
 		stagger: *stagger, interleave: *interleave,
-		sawtooth: *usesawtooth, pulses: *usepulses,
+		sawtooth: *usesawtooth, pulses: *usepulses, crosstalk: *crosstalk,
 		sinusoid: *usesine, noiselevel: *noiselevel,
 		samplerate: *samplerate, dropfrac: (*droppct) / 100.0}
 
