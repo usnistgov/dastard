@@ -81,8 +81,11 @@ func TestServer(t *testing.T) {
 
 	// Test a basic configuration
 	simConfig := SimPulseSourceConfig{
-		Nchan: 4, SampleRate: 10000.0, Pedestal: 3000.0,
-		Amplitudes: []float64{10000., 8000., 6000.}, Nsamp: 1000,
+		Nchan:      8,
+		SampleRate: 10000.0,
+		Pedestal:   3000.0,
+		Amplitudes: []float64{10000., 8000., 6000.},
+		Nsamp:      1000,
 	}
 	err = client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
 	if !okay {
@@ -121,7 +124,7 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Error("Error calling SourceControl.SendAllStatus():", err)
 	}
-	time.Sleep(time.Millisecond * 400)
+	time.Sleep(time.Millisecond * 100)
 	sizes := SizeObject{Nsamp: 800, Npre: 200}
 	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
 	if err != nil {
@@ -131,6 +134,8 @@ func TestServer(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.ConfigurePulseLengths(%v) returns !okay, want okay", sizes)
 	}
+	configRunningSourceTests(client, t)
+
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
 		t.Logf(err.Error())
@@ -167,7 +172,7 @@ func TestServer(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
-	time.Sleep(time.Millisecond * 400)
+	time.Sleep(time.Millisecond * 100)
 	rows := 5
 	cols := 1000
 	size := SizeObject{Nsamp: cols, Npre: cols / 4}
@@ -204,14 +209,7 @@ func TestServer(t *testing.T) {
 	if err1 := client.Call("SourceControl.ConfigureTriggers", &tstate, &okay); err1 != nil {
 		t.Error("error on ConfigureTriggers:", err)
 	}
-	for _, state := range []bool{false, true} {
-		if err1 := client.Call("SourceControl.CoupleFBToErr", &state, &okay); err1 == nil {
-			t.Error("expected error on CoupleFBToErr when non-Lancero source is active")
-		}
-		if err1 := client.Call("SourceControl.CoupleErrToFB", &state, &okay); err1 == nil {
-			t.Error("expected error on CoupleErrToFB when non-Lancero source is active")
-		}
-	}
+
 	path, err := ioutil.TempDir("", "dastard_test")
 	if err != nil {
 		t.Fatal("Could not open temporary directory")
@@ -327,13 +325,36 @@ func TestServer(t *testing.T) {
 		}
 	}
 
-	// lancero source should fail
+	// LanceroSource should fail
 	sourceName = "LanceroSource"
 	if err := client.Call("SourceControl.Start", &sourceName, &okay); err == nil {
 		t.Error("expect PrepareRun could not run with 0 channels (expect > 0)")
 	}
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+	}
+}
+
+func configRunningSourceTests(client *rpc.Client, t *testing.T) {
+	var dummy, okay bool
+	var err error
+	if err = client.Call("SourceControl.StopTriggerCoupling", &dummy, &okay); err != nil {
+		t.Errorf("Error calling StopTriggerCoupling.Stop(dummy)\n%v", err)
+	}
+
+	couple := false
+	if err = client.Call("SourceControl.CoupleFBToErr", &couple, &okay); err != nil {
+		t.Error("expected CoupleFBToErr(false) to be allowed when non-Lancero source is active")
+	}
+	if err = client.Call("SourceControl.CoupleErrToFB", &couple, &okay); err != nil {
+		t.Error("expected CoupleErrToFB(false) to be allowed when non-Lancero source is active")
+	}
+	couple = true
+	if err = client.Call("SourceControl.CoupleFBToErr", &couple, &okay); err == nil {
+		t.Error("expected error on CoupleFBToErr(true) when non-Lancero source is active")
+	}
+	if err = client.Call("SourceControl.CoupleErrToFB", &couple, &okay); err == nil {
+		t.Error("expected error on CoupleErrToFB(true) when non-Lancero source is active")
 	}
 }
 

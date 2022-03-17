@@ -105,7 +105,7 @@ func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 // GroupTriggerState contains all the state that controls all group trigger connections.
 // It is also used to communicate with clients about connections to add or remove.
 type GroupTriggerState struct {
-	connections map[int][]int // Map sense is connections[source] = []int{rxA, rxB, ...}
+	Connections map[int][]int // Map sense is connections[source] = []int{rxA, rxB, ...}
 }
 
 // TriggerBroker communicates with DataChannel objects to allow them to operate independently
@@ -165,7 +165,9 @@ func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 
 // StopTriggerCoupling ends all trigger coupling: both group triggering and TDM-style FB-Err coupling.
 func (broker *TriggerBroker) StopTriggerCoupling() error {
-	broker.sources = make([]map[int]bool, broker.nchannels)
+	for i := range broker.sources {
+		broker.sources[i] = make(map[int]bool)
+	}
 	broker.nconnections = 0
 	return nil
 }
@@ -195,7 +197,7 @@ func (broker *TriggerBroker) computeGroupTriggerState() (gts GroupTriggerState) 
 			conns[source] = append(conns[source], rx)
 		}
 	}
-	gts.connections = conns
+	gts.Connections = conns
 	return gts
 }
 

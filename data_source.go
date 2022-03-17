@@ -934,8 +934,12 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 	return nil
 }
 
-// SetCoupling is not allowed for generic data sources
+// SetCoupling sets the FB/Err coupling status.
+// SetCoupling(NoCoupling) is allowed for generic data sources, but other values are not.
 func (ds *AnySource) SetCoupling(status CouplingStatus) error {
+	if status == NoCoupling {
+		return nil
+	}
 	return fmt.Errorf("Generic data sources do not support FB/error coupling")
 }
 

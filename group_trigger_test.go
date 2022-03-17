@@ -22,7 +22,7 @@ func TestBrokerConnections(t *testing.T) {
 	}
 
 	gts := broker.computeGroupTriggerState()
-	assert.Equal(t, len(gts.connections), 0, "TriggerBroker should have 0 connections")
+	assert.Equal(t, len(gts.Connections), 0, "TriggerBroker should have 0 connections")
 
 	// Add 2 connections and make sure they are completed, but others aren't.
 	broker.AddConnection(0, 2)
@@ -45,7 +45,7 @@ func TestBrokerConnections(t *testing.T) {
 		[]int{2, 0},
 	}
 	for _, want := range expected {
-		rx, ok := gts.connections[want[0]]
+		rx, ok := gts.Connections[want[0]]
 		assert.Equal(t, ok, true, "Expect connection %d->something", want[0])
 		assert.Equal(t, rx[0], want[1], "Expect connection %d->%d", want[0], want[1])
 	}
@@ -61,7 +61,7 @@ func TestBrokerConnections(t *testing.T) {
 		}
 	}
 	gts = broker.computeGroupTriggerState()
-	assert.Equal(t, len(gts.connections), 0, "TriggerBroker should have 0 connections")
+	assert.Equal(t, len(gts.Connections), 0, "TriggerBroker should have 0 connections")
 
 	// Try Add/Delete/check on channel numbers that should fail
 	if err := broker.AddConnection(0, N); err == nil {
@@ -102,7 +102,7 @@ func TestBrokerConnections(t *testing.T) {
 		[]int{3, 0},
 	}
 	for _, want := range expected {
-		rx, ok := gts.connections[want[0]]
+		rx, ok := gts.Connections[want[0]]
 		assert.Equal(t, ok, true, "Expect connection %d->something", want[0])
 		assert.Equal(t, rx[0], want[1], "Expect connection %d->%d", want[0], want[1])
 	}
@@ -110,7 +110,7 @@ func TestBrokerConnections(t *testing.T) {
 	// Test StopTriggerCoupling
 	broker.StopTriggerCoupling()
 	gts = broker.computeGroupTriggerState()
-	assert.Equal(t, len(gts.connections), 0, "TriggerBroker should have 0 connections")
+	assert.Equal(t, len(gts.Connections), 0, "TriggerBroker should have 0 connections")
 
 	// Now test FB <-> err coupling. This works when broker is embedded in a
 	// LanceroSource.
