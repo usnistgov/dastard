@@ -138,6 +138,10 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 // AddConnection connects source -> receiver for group triggers.
 // It is safe to add connections that already exist.
 func (broker *TriggerBroker) AddConnection(source, receiver int) error {
+	// Don't connect a channel to itself. (Silently ignore this request.)
+	if source == receiver {
+		return nil
+	}
 	if receiver < 0 || receiver >= broker.nchannels {
 		return fmt.Errorf("Could not add channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)

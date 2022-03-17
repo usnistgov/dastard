@@ -51,7 +51,7 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 		return
 	}
 	if _, ok := nologMessages[tag]; !ok {
-		log.Printf("SEND %v %v\n%v\n", tag, updateType, string(message))
+		log.Printf("SEND %v %v\n\tmessage body: %v\n", tag, updateType, string(message))
 	}
 	// Commented out bits: a 3-part message with 2nd part = message serial #
 	// serial := fmt.Sprintf("s#%9.9d", messageSerial)
