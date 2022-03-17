@@ -164,9 +164,10 @@ func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 }
 
 // StopTriggerCoupling ends all trigger coupling: both group triggering and TDM-style FB-Err coupling.
-func (broker *TriggerBroker) StopTriggerCoupling() {
+func (broker *TriggerBroker) StopTriggerCoupling() error {
 	broker.sources = make([]map[int]bool, broker.nchannels)
 	broker.nconnections = 0
+	return nil
 }
 
 // isConnected returns whether source->receiver is connected.

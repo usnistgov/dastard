@@ -74,6 +74,7 @@ type DataSource interface {
 	ConfigureMixFraction(*MixFractionObject) ([]float64, error)
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
+	StopTriggerCoupling() error
 	SetExperimentStateLabel(time.Time, string) error
 	ChannelsWithProjectors() []int
 	ProcessSegments(*dataBlock) error
@@ -936,6 +937,10 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 // SetCoupling is not allowed for generic data sources
 func (ds *AnySource) SetCoupling(status CouplingStatus) error {
 	return fmt.Errorf("Generic data sources do not support FB/error coupling")
+}
+
+func (ds *AnySource) StopTriggerCoupling() error {
+	return ds.broker.StopTriggerCoupling()
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)
