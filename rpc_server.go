@@ -559,6 +559,30 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 	return err
 }
 
+// AddGroupTriggerCoupling adds all the trigger couplings listed in `gts`
+func (s *SourceControl) AddGroupTriggerCoupling(gts GroupTriggerState, reply *bool) error {
+	return s.changeGroupTriggerCoupling(true, &gts, reply)
+}
+
+// DeleteGroupTriggerCoupling removes all the trigger couplings listed in `gts`
+func (s *SourceControl) DeleteGroupTriggerCoupling(gts *GroupTriggerState, reply *bool) error {
+	return s.changeGroupTriggerCoupling(false, gts, reply)
+}
+
+// changeGroupTriggerCoupling passes both RPC requests AddGroupTriggerCoupling and
+// DeleteGroupTriggerCoupling on to the underlying ActiveSource.
+func (s *SourceControl) changeGroupTriggerCoupling(turnon bool, gts *GroupTriggerState, reply *bool) error {
+	f := func() {
+		err := s.ActiveSource.ChangeGroupTrigger(turnon, gts)
+		state := s.ActiveSource.ComputeGroupTriggerState()
+		s.clientUpdates <- ClientUpdate{"GROUPTRIGGER", state}
+		s.queuedResults <- err
+	}
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
+	return err
+}
+
 // StopTriggerCoupling turns off all trigger coupling
 func (s *SourceControl) StopTriggerCoupling(dummy *bool, reply *bool) error {
 	f := func() {

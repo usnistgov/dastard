@@ -9,6 +9,59 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
+func TestTriggerCoupling(t *testing.T) {
+	ds := AnySource{nchan: 8}
+	ds.PrepareChannels()
+	ds.PrepareRun(100, 1000)
+	var err error
+	if err = ds.SetCoupling(NoCoupling); err != nil {
+		t.Errorf("ds.SetCoupling(NoCoupling) should be allowed")
+	}
+	if err = ds.SetCoupling(FBToErr); err == nil {
+		t.Errorf("ds.SetCoupling(FBToErr) should not be allowed (for non-Lancero source)")
+	}
+
+	// Make a GTS object with 5 connections
+	connections := make(map[int][]int)
+	connections[1] = []int{2, 3, 4}
+	connections[5] = []int{6, 7}
+	gts := &GroupTriggerState{Connections: connections}
+
+	// Turn on the 5 connections and check some of them.
+	ds.ChangeGroupTrigger(true, gts)
+	if ds.broker.nconnections != 5 {
+		t.Errorf("Broker has %d connections, want 5", ds.broker.nconnections)
+	}
+	for _, rx := range connections[1] {
+		if !ds.broker.isConnected(1, rx) {
+			t.Errorf("Broker 1->%d not connected (%v)", rx, ds.broker.sources)
+		}
+	}
+
+	// Turn them on again; should not be an error.
+	ds.ChangeGroupTrigger(true, gts)
+	if ds.broker.nconnections != 5 {
+		t.Errorf("Broker has %d connections, want 5", ds.broker.nconnections)
+	}
+
+	// Turn off the 5 connections and check some of them.
+	ds.ChangeGroupTrigger(false, gts)
+	if ds.broker.nconnections != 0 {
+		t.Errorf("Broker has %d connections, want 0", ds.broker.nconnections)
+	}
+	for _, rx := range connections[1] {
+		if ds.broker.isConnected(1, rx) {
+			t.Errorf("Broker 1->%d is still connected (%v)", rx, ds.broker.sources)
+		}
+	}
+
+	// Turn them off again; should not be an error.
+	ds.ChangeGroupTrigger(false, gts)
+	if ds.broker.nconnections != 0 {
+		t.Errorf("Broker has %d connections, want 0", ds.broker.nconnections)
+	}
+}
+
 func TestChannelNames(t *testing.T) {
 	ds := AnySource{nchan: 4}
 	ds.PrepareChannels()

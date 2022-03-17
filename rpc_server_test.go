@@ -356,6 +356,17 @@ func configRunningSourceTests(client *rpc.Client, t *testing.T) {
 	if err = client.Call("SourceControl.CoupleErrToFB", &couple, &okay); err == nil {
 		t.Error("expected error on CoupleErrToFB(true) when non-Lancero source is active")
 	}
+
+	connections := make(map[int][]int)
+	connections[1] = []int{2, 3, 4}
+	connections[5] = []int{6, 7}
+	gts := GroupTriggerState{Connections: connections}
+	if err = client.Call("SourceControl.AddGroupTriggerCoupling", gts, &okay); err != nil {
+		t.Errorf("AddGroupTriggerCoupling(%v) error: %v", gts, err)
+	}
+	if err = client.Call("SourceControl.DeleteGroupTriggerCoupling", &gts, &okay); err != nil {
+		t.Errorf("DeleteGroupTriggerCoupling(%v) error: %v", gts, err)
+	}
 }
 
 // verifyConfigFile checks that path/filename exists, and creates the directory
