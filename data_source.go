@@ -65,7 +65,7 @@ type DataSource interface {
 	VoltsPerArb() []float32
 	ComputeGroupTriggerState() GroupTriggerState
 	ComputeFullTriggerState() []FullTriggerState
-	ComputeWritingState() WritingState
+	ComputeWritingState() *WritingState
 	WritingIsActive() bool
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
@@ -688,7 +688,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 }
 
 // ComputeWritingState returns a partial copy of the writingState
-func (ds *AnySource) ComputeWritingState() WritingState {
+func (ds *AnySource) ComputeWritingState() *WritingState {
 	return ds.writingState.ComputeState()
 }
 

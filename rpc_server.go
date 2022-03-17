@@ -616,7 +616,7 @@ func (s *SourceControl) broadcastStatus() {
 func (s *SourceControl) broadcastWritingState() {
 	if s.isSourceActive && s.status.Running {
 		state := s.ActiveSource.ComputeWritingState()
-		s.clientUpdates <- ClientUpdate{"WRITING", state}
+		s.clientUpdates <- ClientUpdate{"WRITING", &state}
 	}
 }
 
@@ -757,7 +757,7 @@ func RunRPCServer(portrpc int, block bool) {
 	if err == nil {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful
-		sourceControl.clientUpdates <- ClientUpdate{"WRITING", wsSend}
+		sourceControl.clientUpdates <- ClientUpdate{"WRITING", &wsSend}
 	}
 
 	var mapFileName string
