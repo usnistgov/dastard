@@ -1,103 +1,106 @@
-// These functions use unsafe.Slice, which is available only from Go version 1.17+.
-// For go -1.16 see publish_data_slices_oldversion.go (only one of the two will be built).
+// These functions work in Go versions up through 1.16, which lacks unsafe.Slice.
+// For go 1.17 see publish_data_slices.go (only one of the two will be built).
 
-//go:build go1.17
-// +build go1.17
+//go:build !go1.17
+// +build !go1.17
 
+// Package getbytes converts things to []byte faster than binary.Write using unsafe
+// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
 package getbytes
 
 import (
+	"reflect"
 	"unsafe"
 )
 
 // FromSliceUint8 convert a []uint8 to []byte using unsafe
 func FromSliceUint8(d []uint8) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 1
+	header.Len *= 1
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceUint16 convert a []uint16 to []byte using unsafe
 func FromSliceUint16(d []uint16) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 2
+	header.Len *= 2
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceUint32 convert a []uint32 to []byte using unsafe
 func FromSliceUint32(d []uint32) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 4
+	header.Len *= 4
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceUint64 convert a []uint64 to []byte using unsafe
 func FromSliceUint64(d []uint64) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 8
+	header.Len *= 8
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceInt8 convert a []int8 to []byte using unsafe
 func FromSliceInt8(d []int8) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 1
+	header.Len *= 1
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceInt16 convert a []int16 to []byte using unsafe
 func FromSliceInt16(d []int16) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 2
+	header.Len *= 2
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceInt32 convert a []int32 to []byte using unsafe
 func FromSliceInt32(d []int32) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 4
+	header.Len *= 4
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceInt64 convert a []int64 to []byte using unsafe
 func FromSliceInt64(d []int64) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 8
+	header.Len *= 8
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceFloat32 convert a []float32 to []byte using unsafe
 func FromSliceFloat32(d []float32) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 4
+	header.Len *= 4
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromSliceFloat64 convert a []float64 to []byte using unsafe
 func FromSliceFloat64(d []float64) []byte {
-	if len(d) == 0 {
-		return []byte{}
-	}
-	outlength := uintptr(len(d)) * unsafe.Sizeof(d[0]) / unsafe.Sizeof(byte(0))
-	return unsafe.Slice((*byte)(unsafe.Pointer(&d[0])), outlength)
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
+	header.Cap *= 8
+	header.Len *= 8
+	data := *(*[]byte)(unsafe.Pointer(&header))
+	return data
 }
 
 // FromUint8 converts a uint8 to []byte using unsafe
