@@ -3,9 +3,7 @@ package dastard
 import (
 	"bytes"
 	"fmt"
-	"reflect"
 	"time"
-	"unsafe"
 
 	"github.com/usnistgov/dastard/getbytes"
 	"github.com/usnistgov/dastard/ljh"
@@ -393,41 +391,4 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 		}
 	}()
 	return pubchan, nil
-}
-
-// rawTypeToBytes convert a []RawType to []byte using unsafe
-// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types
-func rawTypeToBytes(d []RawType) []byte {
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
-	header.Cap *= 2 // byte takes up half the space of RawType
-	header.Len *= 2
-	data := *(*[]byte)(unsafe.Pointer(&header))
-	return data
-}
-
-// rawTypeToUint16convert a []RawType to []uint16 using unsafe
-func rawTypeToUint16(d []RawType) []uint16 {
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
-	data := *(*[]uint16)(unsafe.Pointer(&header))
-	return data
-}
-
-func bytesToRawType(b []byte) []RawType {
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&b))
-	const ratio = int(unsafe.Sizeof(RawType(0)))
-	header.Cap /= ratio // byte takes up twice the space of RawType
-	header.Len /= ratio
-	data := *(*[]RawType)(unsafe.Pointer(&header))
-	return data
-}
-
-// bytesToInt32 converts a []byte slice to an []int32 slice, which is
-// how we interpret the raw Abaco data.
-func bytesToInt32(b []byte) []int32 {
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&b))
-	const ratio = int(unsafe.Sizeof(int32(0)))
-	header.Cap /= ratio // byte takes up ratio times the space of RawType
-	header.Len /= ratio
-	data := *(*[]int32)(unsafe.Pointer(&header))
-	return data
 }
