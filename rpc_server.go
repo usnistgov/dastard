@@ -337,6 +337,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.status.ChanGroups = s.ActiveSource.ChanGroups()
 	s.broadcastStatus()
 	s.broadcastTriggerState()
+	s.broadcastGroupTriggerState()
 	s.broadcastChannelNames()
 	s.storeChannelGroups()
 	*reply = true
@@ -558,6 +559,48 @@ func (s *SourceControl) CoupleFBToErr(couple *bool, reply *bool) error {
 	return err
 }
 
+// AddGroupTriggerCoupling adds all the trigger couplings listed in `gts`
+func (s *SourceControl) AddGroupTriggerCoupling(gts GroupTriggerState, reply *bool) error {
+	return s.changeGroupTriggerCoupling(true, &gts, reply)
+}
+
+// DeleteGroupTriggerCoupling removes all the trigger couplings listed in `gts`
+func (s *SourceControl) DeleteGroupTriggerCoupling(gts *GroupTriggerState, reply *bool) error {
+	return s.changeGroupTriggerCoupling(false, gts, reply)
+}
+
+// changeGroupTriggerCoupling passes both RPC requests AddGroupTriggerCoupling and
+// DeleteGroupTriggerCoupling on to the underlying ActiveSource.
+func (s *SourceControl) changeGroupTriggerCoupling(turnon bool, gts *GroupTriggerState, reply *bool) error {
+	f := func() {
+		err := s.ActiveSource.ChangeGroupTrigger(turnon, gts)
+		state := s.ActiveSource.ComputeGroupTriggerState()
+		s.clientUpdates <- ClientUpdate{"GROUPTRIGGER", state}
+		s.queuedResults <- err
+	}
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
+	return err
+}
+
+// StopTriggerCoupling turns off all trigger coupling
+func (s *SourceControl) StopTriggerCoupling(dummy *bool, reply *bool) error {
+	f := func() {
+		err := s.ActiveSource.StopTriggerCoupling()
+		state := s.ActiveSource.ComputeGroupTriggerState()
+		s.clientUpdates <- ClientUpdate{"GROUPTRIGGER", state}
+		if err == nil {
+			c := NoCoupling
+			err = s.ActiveSource.SetCoupling(c)
+			s.clientUpdates <- ClientUpdate{"TRIGCOUPLING", c}
+		}
+		s.queuedResults <- err
+	}
+	err := s.runLaterIfActive(f)
+	*reply = (err == nil)
+	return err
+}
+
 func (s *SourceControl) broadcastHeartbeat() {
 	s.clientUpdates <- ClientUpdate{"ALIVE", s.totalData}
 	s.totalData.HWactualMB = 0
@@ -573,15 +616,21 @@ func (s *SourceControl) broadcastStatus() {
 func (s *SourceControl) broadcastWritingState() {
 	if s.isSourceActive && s.status.Running {
 		state := s.ActiveSource.ComputeWritingState()
-		s.clientUpdates <- ClientUpdate{"WRITING", state}
+		s.clientUpdates <- ClientUpdate{"WRITING", &state}
 	}
 }
 
 func (s *SourceControl) broadcastTriggerState() {
 	if s.isSourceActive && s.status.Running {
 		state := s.ActiveSource.ComputeFullTriggerState()
-		// log.Printf("TriggerState: %v\n", state)
 		s.clientUpdates <- ClientUpdate{"TRIGGER", state}
+	}
+}
+
+func (s *SourceControl) broadcastGroupTriggerState() {
+	if s.isSourceActive && s.status.Running {
+		state := s.ActiveSource.ComputeGroupTriggerState()
+		s.clientUpdates <- ClientUpdate{"GROUPTRIGGER", state}
 	}
 }
 
@@ -708,7 +757,7 @@ func RunRPCServer(portrpc int, block bool) {
 	if err == nil {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful
-		sourceControl.clientUpdates <- ClientUpdate{"WRITING", wsSend}
+		sourceControl.clientUpdates <- ClientUpdate{"WRITING", &wsSend}
 	}
 
 	var mapFileName string

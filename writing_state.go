@@ -41,7 +41,7 @@ func (ws *WritingState) IsActive() bool {
 
 // ComputeState will return a property-by-property copy of the WritingState.
 // It will not copy the "active" features like open files, tickers, etc.
-func (ws *WritingState) ComputeState() WritingState {
+func (ws *WritingState) ComputeState() *WritingState {
 	ws.Lock()
 	defer ws.Unlock()
 	var copyState WritingState
@@ -54,7 +54,7 @@ func (ws *WritingState) ComputeState() WritingState {
 	copyState.ExperimentStateLabelUnixNano = ws.ExperimentStateLabelUnixNano
 	copyState.ExternalTriggerFilename = ws.ExternalTriggerFilename
 	copyState.externalTriggerNumberObserved = ws.externalTriggerNumberObserved
-	return copyState
+	return &copyState
 }
 
 // Start will set the WritingState to begin writing
