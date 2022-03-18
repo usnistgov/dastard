@@ -395,8 +395,11 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	return pubchan, nil
 }
 
-// rawTypeToBytes convert a []RawType to []byte using unsafe
-// see https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types
+// rawTypeToBytes converts a []RawType to []byte using unsafe
+// See https://stackoverflow.com/questions/11924196/convert-between-slices-of-different-types for the
+// source of this solution.
+// See https://stackoverflow.com/a/69676107 for the preferred solution in Golang 1.17+ (using unsafe.Slice).
+// TODO: when we're comfortable not supporting Go pre-1.17, we should use unsafe.Slice here.
 func rawTypeToBytes(d []RawType) []byte {
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&d))
 	header.Cap *= 2 // byte takes up half the space of RawType

@@ -63,8 +63,9 @@ type DataSource interface {
 	ChanGroups() []GroupIndex
 	SamplePeriod() time.Duration
 	VoltsPerArb() []float32
+	ComputeGroupTriggerState() GroupTriggerState
 	ComputeFullTriggerState() []FullTriggerState
-	ComputeWritingState() WritingState
+	ComputeWritingState() *WritingState
 	WritingIsActive() bool
 	ChannelNames() []string
 	ConfigurePulseLengths(int, int) error
@@ -73,6 +74,8 @@ type DataSource interface {
 	ConfigureMixFraction(*MixFractionObject) ([]float64, error)
 	WriteControl(*WriteControlConfig) error
 	SetCoupling(CouplingStatus) error
+	ChangeGroupTrigger(turnon bool, gts *GroupTriggerState) error
+	StopTriggerCoupling() error
 	SetExperimentStateLabel(time.Time, string) error
 	ChannelsWithProjectors() []int
 	ProcessSegments(*dataBlock) error
@@ -685,7 +688,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 }
 
 // ComputeWritingState returns a partial copy of the writingState
-func (ds *AnySource) ComputeWritingState() WritingState {
+func (ds *AnySource) ComputeWritingState() *WritingState {
 	return ds.writingState.ComputeState()
 }
 
@@ -860,6 +863,11 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	return nil
 }
 
+// ComputeGroupTriggerState returns the current `GroupTriggerState`.
+func (ds *AnySource) ComputeGroupTriggerState() GroupTriggerState {
+	return ds.broker.computeGroupTriggerState()
+}
+
 // FullTriggerState used to collect channels that share the same TriggerState
 type FullTriggerState struct {
 	ChannelIndices []int
@@ -927,9 +935,34 @@ func (ds *AnySource) ConfigurePulseLengths(nsamp, npre int) error {
 	return nil
 }
 
-// SetCoupling is not allowed for generic data sources
+// SetCoupling sets the FB/Err coupling status.
+// SetCoupling(NoCoupling) is allowed for generic data sources, but other values are not.
 func (ds *AnySource) SetCoupling(status CouplingStatus) error {
+	if status == NoCoupling {
+		return nil
+	}
 	return fmt.Errorf("Generic data sources do not support FB/error coupling")
+}
+
+// ChangeGroupTrigger either adds or deletes the connections in `gts` (add when `turnon` is true,
+// otherwise delete).
+func (ds *AnySource) ChangeGroupTrigger(turnon bool, gts *GroupTriggerState) error {
+	// changer is either the Add or Delete function, depending on turnon
+	changer := ds.broker.DeleteConnection
+	if turnon {
+		changer = ds.broker.AddConnection
+	}
+	for source, receivers := range gts.Connections {
+		for _, receiver := range receivers {
+			changer(source, receiver)
+		}
+	}
+	return nil
+}
+
+// StopTriggerCoupling turns off all trigger coupling, including all group triggers and FB/Err coupling.
+func (ds *AnySource) StopTriggerCoupling() error {
+	return ds.broker.StopTriggerCoupling()
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)

@@ -102,12 +102,18 @@ func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 	return nil
 }
 
+// GroupTriggerState contains all the state that controls all group trigger connections.
+// It is also used to communicate with clients about connections to add or remove.
+type GroupTriggerState struct {
+	Connections map[int][]int // Map sense is connections[source] = []int{rxA, rxB, ...}
+}
+
 // TriggerBroker communicates with DataChannel objects to allow them to operate independently
 // yet still share group triggering information.
 type TriggerBroker struct {
 	nchannels       int
 	nconnections    int
-	sources         []map[int]bool
+	sources         []map[int]bool // sources[rx] is a map whose non-empty entries are the sources for that rx
 	latestPrimaries [][]FrameIndex
 	triggerCounters []TriggerCounter
 }
@@ -132,6 +138,10 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 // AddConnection connects source -> receiver for group triggers.
 // It is safe to add connections that already exist.
 func (broker *TriggerBroker) AddConnection(source, receiver int) error {
+	// Don't connect a channel to itself. (Silently ignore this request.)
+	if source == receiver {
+		return nil
+	}
 	if receiver < 0 || receiver >= broker.nchannels {
 		return fmt.Errorf("Could not add channel %d as a group receiver (nchannels=%d)",
 			receiver, broker.nchannels)
@@ -157,6 +167,15 @@ func (broker *TriggerBroker) DeleteConnection(source, receiver int) error {
 	return nil
 }
 
+// StopTriggerCoupling ends all trigger coupling: both group triggering and TDM-style FB-Err coupling.
+func (broker *TriggerBroker) StopTriggerCoupling() error {
+	for i := range broker.sources {
+		broker.sources[i] = make(map[int]bool)
+	}
+	broker.nconnections = 0
+	return nil
+}
+
 // isConnected returns whether source->receiver is connected.
 func (broker *TriggerBroker) isConnected(source, receiver int) bool {
 	if receiver < 0 || receiver >= broker.nchannels {
@@ -173,6 +192,17 @@ func (broker *TriggerBroker) SourcesForReceiver(receiver int) map[int]bool {
 	}
 	sources := broker.sources[receiver]
 	return sources
+}
+
+func (broker *TriggerBroker) computeGroupTriggerState() (gts GroupTriggerState) {
+	conns := make(map[int][]int)
+	for rx, sources := range broker.sources {
+		for source := range sources {
+			conns[source] = append(conns[source], rx)
+		}
+	}
+	gts.Connections = conns
+	return gts
 }
 
 // FrameIdxSlice attaches the methods of sort.Interface to []FrameIndex, sorting in increasing order.
