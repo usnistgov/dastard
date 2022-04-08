@@ -319,8 +319,8 @@ func TestEdgeMulti(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	NPresamples := 256
-	NSamples := 1024
+	NPresamples := 50
+	NSamples := 100
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
 	dsp.EdgeMulti = true
 

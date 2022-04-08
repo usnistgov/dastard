@@ -73,7 +73,7 @@ func publishRoachPackets(port int, nchan uint16, value uint16) (closer chan stru
 }
 
 // TestDevice checks that the raw RoachDevice can receive and parse a header
-func TestRoachDevice(t *testing.T) {
+func _skip_TestRoachDevice(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60001
 	var nchan uint16 = 40
@@ -124,7 +124,7 @@ func TestRoachDevice(t *testing.T) {
 }
 
 // TestDevice checks that the full RoachSource can receive and parse a header
-func TestRoachSource(t *testing.T) {
+func _skip_TestRoachSource(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60005
 	var nchan uint16 = 40

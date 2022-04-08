@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"errors"
 	"math"
 	"sort"
 	"time"
@@ -38,6 +39,27 @@ type TriggerState struct {
 func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataRecord {
 	record := dsp.triggerAtSpecificSamples(segment, i, dsp.NPresamples, dsp.NSamples)
 	return record
+}
+
+// create a record with NPresamples and NSamples passed as arguments
+// or fail and return an error if it would be out of bounds
+func (dsp *DataStreamProcessor) tryTriggerAtSpecificSamples(segment *DataSegment, i int, NPresamples int, NSamples int) (*DataRecord, error) {
+	data := make([]RawType, NSamples)
+	// fmt.Printf("triggerAtSpecificSamples i %v, NPresamples %v, NSamples %v, len(rawData) %v\n", i, NPresamples, NSamples, len(segment.rawData))
+	a := i - NPresamples
+	b := i + NSamples - NPresamples
+	if a < 0 || b >= len(segment.rawData) {
+		return nil, errors.New("out of bounds")
+	}
+	copy(data, segment.rawData[i-NPresamples:i+NSamples-NPresamples])
+	tf := segment.firstFrameIndex + FrameIndex(i)
+	tt := segment.TimeOf(i)
+	sampPeriod := float32(1.0 / dsp.SampleRate)
+	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
+		channelIndex: dsp.channelIndex, signed: segment.signed,
+		voltsPerArb: segment.voltsPerArb,
+		presamples:  NPresamples, sampPeriod: sampPeriod}
+	return record, nil
 }
 
 // create a record with NPresamples and NSamples passed as arguments

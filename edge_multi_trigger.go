@@ -206,17 +206,19 @@ func edgeMultiFindNextTriggerInd(raw []RawType, iFirst, iLast, threshold, nmonot
 
 // EMTState enables the search for EMTs by storing the needed state.
 type EMTState struct {
-	mode                    EMTMode
-	threshold               int32
-	nmonotone               int32
-	npre                    int32
-	nsamp                   int32
-	enableZeroThreshold     bool
-	iFirstCheckSentinel     bool
-	nextFrameIndexToInspect FrameIndex
-	t                       FrameIndex
-	u                       FrameIndex
-	v                       FrameIndex
+	mode                     EMTMode
+	threshold                int32
+	nmonotone                int32
+	npre                     int32
+	nsamp                    int32
+	enableZeroThreshold      bool
+	iFirstCheckSentinel      bool
+	nextFrameIndexToInspect  FrameIndex
+	t                        FrameIndex
+	u                        FrameIndex
+	v                        FrameIndex
+	lastSeenFrameIndexofRaw0 FrameIndex
+	lastNTrimmed             int32
 }
 
 func (s EMTState) valid() bool {
@@ -285,7 +287,7 @@ func edgeMultiShouldRecord(t, u, v FrameIndex, npreIn, nsampIn int32, mode EMTMo
 }
 
 // NToKeepOnTrim returns how many samples to keep when trimming a stream.
-func (s EMTState) NToKeepOnTrim() int {
+func (s *EMTState) NToKeepOnTrim() int {
 	return int(2*s.nsamp + 10)
 }
 
@@ -298,6 +300,14 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 	// model can always look at least 4 samples back and 4 forward
 	maxNmonotone := maxLookahead
 	iFirst := int32(s.nextFrameIndexToInspect - frameIndexOfraw0)
+	if s.lastNTrimmed > 0 { // check for data drops and reset if we see them
+		expectedFramedIndexOfRaw0 := s.lastSeenFrameIndexofRaw0 + FrameIndex(s.lastNTrimmed)
+		if frameIndexOfraw0 != expectedFramedIndexOfRaw0 {
+			s.reset()
+		} else {
+			s.lastSeenFrameIndexofRaw0 = frameIndexOfraw0
+		}
+	}
 	recordSpecs := make([]RecordSpec, 0)
 	if iFirst < maxLookback { // state has been reset
 		iFirst = maxLookback
@@ -332,7 +342,7 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 	// 3. v points to a record near iLast, and we can't handle it until we get more data
 	// we just need to make sure we perserve enough data to recordize u later
 	nextFrameIndexToInspect := FrameIndex(iFirst) + frameIndexOfraw0
-	if 0 < v && v < nextFrameIndexToInspect-FrameIndex(s.nsamp) {
+	if 0 < v && v < nextFrameIndexToInspect-FrameIndex(s.nsamp-s.npre) {
 		// here we handle cases 1 and 2
 		// the earliest possible next trigger is at nextFrameIndexToInspect, so as long as v
 		// is at least 1 nsamp from there, we know we can write a full length record
@@ -356,11 +366,22 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	segment := &dsp.stream.DataSegment
+	dsp.EMTState.nsamp = int32(dsp.NSamples)
+	dsp.EMTState.npre = int32(dsp.NPresamples)
 	recordSpecs := dsp.EMTState.edgeMultiComputeRecordSpecs(segment.rawData, segment.firstFrameIndex)
 	for _, recordSpec := range recordSpecs {
-		record := dsp.triggerAtSpecificSamples(segment, int(recordSpec.firstRisingFrameIndex-segment.firstFrameIndex), int(recordSpec.npre), int(recordSpec.nsamp))
-		records = append(records, record)
+		// here we simply discard records if they would have been out of bounds
+		// we probably dont need this since we track for frame drops inside EMTState, but lets be extra defensive
+		record, err := dsp.tryTriggerAtSpecificSamples(segment, int(recordSpec.firstRisingFrameIndex-segment.firstFrameIndex), int(recordSpec.npre), int(recordSpec.nsamp))
+		if err == nil {
+			records = append(records, record)
+		} else {
+			log.Println(fmt.Sprintf("channelNumber %d discarding record because it would have panic'd", dsp.ChannelNumber))
+		}
 	}
+	n0 := len(dsp.stream.rawData)
 	dsp.stream.TrimKeepingN(dsp.EMTState.NToKeepOnTrim()) // see comment at end of edgeMultiComputeAppendRecordSpecs
+	nTrimmed := n0 - len(dsp.stream.rawData)
+	dsp.EMTState.lastNTrimmed = int32(nTrimmed)
 	return records
 }
