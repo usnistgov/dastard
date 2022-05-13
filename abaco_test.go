@@ -78,7 +78,7 @@ func TestGeneratePackets(t *testing.T) {
 	}
 }
 
-func _skip_TestAbacoRing(t *testing.T) {
+func TestAbacoRing(t *testing.T) {
 	if _, err := NewAbacoRing(99999); err == nil {
 		t.Errorf("NewAbacoRing(99999) succeeded, want failure")
 	}
