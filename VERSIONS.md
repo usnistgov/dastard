@@ -1,6 +1,9 @@
 ## DASTARD Versions
 
-**0.2.12** March 2022
+**0.2.13** May 2022-
+* Fix crashing problem when you start with Edge Multi Triggers on (issue 271).
+
+**0.2.12** March 18, 2022
 * Add `doc/` directory with `DASTARD.md` to explain the internal design of the code (issue 261).
 * Make Lancero driver's ring buffer be 256 MB instead of 32 MB (issue 258).
 * Redesign triggering so all-channel sync point is explicit (not hidden in `TriggerBroker`) (issues 235, 255).
