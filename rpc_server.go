@@ -729,8 +729,8 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var asc AbacoSourceConfig
 	// Set reasonable defaults when not in the config file.
-	asc.Unwrapping = true
-	asc.UnwrapResetSamp = 20000
+	asc.AbacoUnwrapOptions.Enable = true
+	asc.AbacoUnwrapOptions.ResetAfter = 20000
 	err = viper.UnmarshalKey("abaco", &asc)
 	if err == nil {
 		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)

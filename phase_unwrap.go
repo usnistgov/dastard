@@ -15,10 +15,11 @@ type PhaseUnwrapper struct {
 	resetAfter    int // jump back to near 0 after this many
 	resetOffset   uint16
 	enable        bool // are we even unwrapping at all?
+	dropBits      bool // if False, return without any unwrapping before dropping bits, even more of a disable than enable=false
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
-func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int) *PhaseUnwrapper {
+func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int, dropBits bool) *PhaseUnwrapper {
 	u := new(PhaseUnwrapper)
 	// data bytes representing a 2s complement integer
 	// where 2^fractionBits = ϕ0 of phase.
@@ -35,6 +36,7 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 	bias := int16(biasLevel>>lowBitsToDrop) % int16(u.twoPi)
 	u.upperStepLim = bias + onePi
 	u.lowerStepLim = bias - onePi
+	u.dropBits = dropBits
 
 	if pulseSign > 0 {
 		u.resetOffset = u.twoPi
@@ -56,6 +58,9 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 
 // UnwrapInPlace unwraps in place
 func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
+	if !u.dropBits {
+		return
+	}
 	drop := u.lowBitsToDrop
 
 	// When unwrapping is disabled, simply drop the low bits.
