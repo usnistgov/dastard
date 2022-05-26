@@ -8,7 +8,7 @@ require (
 	github.com/spf13/viper v1.11.0
 	github.com/stretchr/testify v1.7.1
 	github.com/zeromq/goczmq v4.1.0+incompatible
-	gonum.org/v1/gonum v0.11.0
+	gonum.org/v1/gonum v0.9.3
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 

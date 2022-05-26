@@ -4,7 +4,7 @@
 A data acquisition framework for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
-Requires Go version 1.13 or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.13 and 1.15 (as of August 2020, Go version 1.15 is the most recent).
+Requires Go version 1.16 or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.16 and LATEST (as of May 2022, Go version 1.18.2 is the most recent).
 
 ### Ubuntu 20, 18.04 and 16.04
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
