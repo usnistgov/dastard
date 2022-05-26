@@ -22,9 +22,8 @@ type RoachDevice struct {
 
 // RoachSource represents multiple ROACH devices
 type RoachSource struct {
-	Ndevices   int
-	active     []*RoachDevice
-	readPeriod time.Duration
+	Ndevices int
+	active   []*RoachDevice
 	AnySource
 }
 
@@ -257,7 +256,7 @@ func NewRoachSource() (*RoachSource, error) {
 // Sample determines key data facts by sampling some initial data.
 func (rs *RoachSource) Sample() error {
 	if len(rs.active) <= 0 {
-		return fmt.Errorf("No Roach devices are configured")
+		return fmt.Errorf("no Roach devices are configured")
 	}
 	rs.nchan = 0
 	for _, device := range rs.active {
@@ -350,10 +349,10 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 			rs.samplePeriod = dev.period
 			rs.sampleRate = dev.rate
 		} else if rs.samplePeriod != dev.period {
-			return fmt.Errorf("Roach device %d period %v != device[0] period %v",
+			return fmt.Errorf("roach device %d period %v != device[0] period %v",
 				i, dev.period, rs.samplePeriod)
 		} else if rs.sampleRate != dev.rate {
-			return fmt.Errorf("Roach device %d rate %v != device[0] rate %v",
+			return fmt.Errorf("roach device %d rate %v != device[0] rate %v",
 				i, dev.rate, rs.sampleRate)
 		}
 	}
