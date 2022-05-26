@@ -147,10 +147,7 @@ func TestAbacoRing(t *testing.T) {
 	if len(ps) <= 0 {
 		t.Errorf("AbacoRing.samplePackets returned only %d packets", len(ps))
 	}
-	const enable = true
-	const resetAfter = 20000
 	unwrapOpts := AbacoUnwrapOptions{}
-	const pulseSign = +1
 	group := NewAbacoGroup(gIndex(ps[0]), unwrapOpts)
 	group.queue = append(group.queue, ps...)
 	err = group.samplePackets()

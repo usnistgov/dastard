@@ -55,7 +55,7 @@ type AbacoUnwrapOptions struct {
 
 func (u AbacoUnwrapOptions) isvalid() error {
 	if u.Enable && !u.DropBits {
-		return fmt.Errorf("AbacoUnwrapOpts should not have both enable and DropBits True")
+		return fmt.Errorf("should not have both enable and DropBits true in AbacoUnwrapOpts")
 	}
 	return nil
 }
