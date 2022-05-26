@@ -9,7 +9,7 @@ matrix:
     # e.g. "1.x" is 1.11 until 1.11.1 is available.
     - go: 1.x  # This tracks the latest release
       env: LATEST=true
-    - go: 1.13.x  # This should stay at 1.13, as gonum supports only 1.13+
+    - go: 1.17.x  # This should stay at 1.17, as more recent gonum supports only 1.17+
   #   - go: tip
   # allow_failures:
   #   - go: tip
