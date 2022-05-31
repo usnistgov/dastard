@@ -17,7 +17,6 @@ func TestUnwrap(t *testing.T) {
 	const bits2drop = 2
 	var biaslevel int
 	const pulsesign = 1
-	const dropBits = true
 	enables := []bool{true, false}
 
 	shouldFail1 := func() {
@@ -137,7 +136,6 @@ func BenchmarkPhaseUnwrap(b *testing.B) {
 	const bits2drop = 2
 	const bias = 0
 	const pulsesign = +1
-	const dropBits = true
 	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		const enable = true
 		const resetAfter = 20000
