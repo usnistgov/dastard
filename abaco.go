@@ -45,6 +45,7 @@ type AbacoGroup struct {
 	lastSN     uint32
 }
 
+// AbacoUnwrapOptions contains options to control phase unwrapping.
 type AbacoUnwrapOptions struct {
 	Enable     bool // are we even unwrapping at all?
 	ResetAfter int  // auto relock like number of samples to reset the phase unwrap offset back to 0 after
@@ -53,7 +54,7 @@ type AbacoUnwrapOptions struct {
 }
 
 func (u AbacoUnwrapOptions) calcBiasLevel() int {
-	var biasLevel int = 0
+	var biasLevel int
 	if u.Bias {
 		// Assume 2^16 equals exactly one ϕ0, then bias based on the assumption of critically
 		// damped pulses. In that case, the largest falling and rising slopes are in the ratio
