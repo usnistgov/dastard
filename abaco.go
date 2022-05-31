@@ -47,17 +47,9 @@ type AbacoGroup struct {
 
 type AbacoUnwrapOptions struct {
 	Enable     bool // are we even unwrapping at all?
-	DropBits   bool // if false, return early and don't drop bits
 	ResetAfter int  // auto relock like number of samples to reset the phase unwrap offset back to 0 after
 	Bias       bool // should the unwrapping be biased?
 	PulseSign  int  // direction data will go when pulse arrives, used to calculate bias level
-}
-
-func (u AbacoUnwrapOptions) isvalid() error {
-	if u.Enable && !u.DropBits {
-		return fmt.Errorf("should not have both enable and DropBits true in AbacoUnwrapOpts")
-	}
-	return nil
 }
 
 func (u AbacoUnwrapOptions) calcBiasLevel() int {
@@ -75,15 +67,15 @@ func (u AbacoUnwrapOptions) calcBiasLevel() int {
 }
 
 // NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
-func NewAbacoGroup(index GroupIndex, u AbacoUnwrapOptions) *AbacoGroup {
+func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 	g := new(AbacoGroup)
 	g.index = index
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
 	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, u.Enable, u.calcBiasLevel(),
-			u.ResetAfter, u.PulseSign, u.DropBits)
+		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, opt.Enable,
+			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign)
 	}
 	return g
 }
@@ -650,9 +642,6 @@ type AbacoSourceConfig struct {
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
-	if err := config.AbacoUnwrapOptions.isvalid(); err != nil {
-		return err
-	}
 	// Make sure entries in the ActiveCards slice are unique and sorted
 	cardseen := make(map[int]bool)
 	i := 0

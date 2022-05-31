@@ -15,11 +15,10 @@ type PhaseUnwrapper struct {
 	resetAfter    int // jump back to near 0 after this many
 	resetOffset   uint16
 	enable        bool // are we even unwrapping at all?
-	dropBits      bool // if False, return without any unwrapping before dropping bits, even more of a disable than enable=false
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
-func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int, dropBits bool) *PhaseUnwrapper {
+func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int) *PhaseUnwrapper {
 	u := new(PhaseUnwrapper)
 	// data bytes representing a 2s complement integer
 	// where 2^fractionBits = ϕ0 of phase.
@@ -36,7 +35,6 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 	bias := int16(biasLevel>>lowBitsToDrop) % int16(u.twoPi)
 	u.upperStepLim = bias + onePi
 	u.lowerStepLim = bias - onePi
-	u.dropBits = dropBits
 
 	if pulseSign > 0 {
 		u.resetOffset = u.twoPi
@@ -47,6 +45,10 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 
 	u.resetAfter = resetAfter
 	u.enable = enable
+
+	// Subtle point here: if no bits are to be dropped, then it makes no sense to perform
+	// phase unwrapping. When lowBitsToDrop==0, we cannot allow enable==true (because where would you
+	// put the bits set in the unwrapping process when there are no dropped bits?)
 	if lowBitsToDrop == 0 && enable {
 		panic("NewPhaseUnwrapper is enabled but with lowBitsToDrop=0, must be >0.")
 	}
@@ -58,10 +60,10 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 
 // UnwrapInPlace unwraps in place
 func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
-	if !u.dropBits {
+	drop := u.lowBitsToDrop
+	if drop == 0 {
 		return
 	}
-	drop := u.lowBitsToDrop
 
 	// When unwrapping is disabled, simply drop the low bits.
 	if !u.enable {
