@@ -112,7 +112,6 @@ func (dev *RoachDevice) samplePacket() error {
 	for i := range dev.unwrap {
 		const enable = true
 		const resetAfter = 20000
-		const dropBits = true
 		dev.unwrap[i] = NewPhaseUnwrapper(roachFractionBits, roachBitsToDrop, enable,
 			biaslevel, resetAfter, pulseSign)
 	}
