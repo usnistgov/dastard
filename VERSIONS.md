@@ -2,6 +2,7 @@
 
 **0.2.13** May 2022-
 * Fix crashing problem when you start with Edge Multi Triggers on (issue 271).
+* Add way to turn on/off µMUX rescaling separate from phase unwrapping (for non-µMUX UDP sources).
 
 **0.2.12** March 18, 2022
 * Add `doc/` directory with `DASTARD.md` to explain the internal design of the code (issue 261).
