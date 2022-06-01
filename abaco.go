@@ -18,7 +18,7 @@ import (
 )
 
 const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
-const abacoBitsToDrop = 4
+const abacoDefaultBitsToDrop = 4
 
 // That is, Abaco data is of the form bbbb bbbb bbbb bbbb with 0 integer bits
 // and 16 fractional bits. In the unwrapping process, we drop 4, making it 4/12, or
@@ -47,10 +47,13 @@ type AbacoGroup struct {
 
 // AbacoUnwrapOptions contains options to control phase unwrapping.
 type AbacoUnwrapOptions struct {
-	Enable     bool // are we even unwrapping at all?
-	ResetAfter int  // auto relock like number of samples to reset the phase unwrap offset back to 0 after
-	Bias       bool // should the unwrapping be biased?
-	PulseSign  int  // direction data will go when pulse arrives, used to calculate bias level
+	Enable                         bool // are we even unwrapping at all?
+	ResetAfter                     int  // auto relock like number of samples to reset the phase unwrap offset back to 0 after
+	Bias                           bool // should the unwrapping be biased?
+	PulseSign                      int  // direction data will go when pulse arrives, used to calculate bias level
+	OverrideAbacoDefaultBitsToDrop bool // override abacoDefaultBitsToDrop with OverrideBitsToDropValue
+	OverrideBitsToDropValue        uint // we could just send the number of bits to drop, but that makes setting up a normal style abaco source more complicated via the api,
+	// so instead i made the non-default more complicated
 }
 
 func (u AbacoUnwrapOptions) calcBiasLevel() int {
@@ -75,7 +78,11 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
 	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, opt.Enable,
+		var bitsToDrop uint = abacoDefaultBitsToDrop
+		if opt.OverrideAbacoDefaultBitsToDrop {
+			bitsToDrop = opt.OverrideBitsToDropValue
+		}
+		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, bitsToDrop, opt.Enable,
 			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign)
 	}
 	return g
