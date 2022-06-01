@@ -310,6 +310,31 @@ func TestAbacoSource(t *testing.T) {
 	source.Stop()
 	close(abortSupply)
 	source.RunDoneWait()
+
+	// Check that config unwrap options are tested for validity.
+	var unwrapTests = []struct {
+		unwrap      bool
+		rescale     bool
+		shouldError bool
+	}{
+		{true, false, true},
+		{true, true, false},
+		{false, true, false},
+		{false, false, false},
+	}
+	for _, test := range unwrapTests {
+		config.Unwrap = test.unwrap
+		config.RescaleRaw = test.rescale
+		err = source.Configure(&config)
+		diderror := (err != nil)
+		if diderror != test.shouldError {
+			if test.shouldError {
+				t.Fatalf("AbacoSource.Configure(%v) does not fail with invalid AbacoUnwrapOptions", config)
+			} else {
+				t.Fatalf("AbacoSource.Configure(%v) fails with valid AbacoUnwrapOptions: %s", config, err)
+			}
+		}
+	}
 }
 
 func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
