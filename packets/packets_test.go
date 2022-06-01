@@ -229,7 +229,7 @@ func TestTLVs(t *testing.T) {
 	}
 
 	// Try a timestamp, with and without units
-	ts := PacketTimestamp{0x0000030405060708, 0}
+	ts := PacketTimestamp{217304205466533888, 1e+09}
 	tp := timestampToPacket(&ts)
 	tlvs, err = parseTLV(tp)
 	if err != nil {

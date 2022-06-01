@@ -147,11 +147,8 @@ func TestAbacoRing(t *testing.T) {
 	if len(ps) <= 0 {
 		t.Errorf("AbacoRing.samplePackets returned only %d packets", len(ps))
 	}
-	const enable = true
-	const resetAfter = 20000
-	const bias = false
-	const pulseSign = +1
-	group := NewAbacoGroup(gIndex(ps[0]), enable, bias, resetAfter, pulseSign)
+	unwrapOpts := AbacoUnwrapOptions{}
+	group := NewAbacoGroup(gIndex(ps[0]), unwrapOpts)
 	group.queue = append(group.queue, ps...)
 	err = group.samplePackets()
 	if err != nil {
@@ -313,16 +310,39 @@ func TestAbacoSource(t *testing.T) {
 	source.Stop()
 	close(abortSupply)
 	source.RunDoneWait()
+
+	// Check that config unwrap options are tested for validity.
+	var unwrapTests = []struct {
+		unwrap      bool
+		rescale     bool
+		shouldError bool
+	}{
+		{true, false, true},
+		{true, true, false},
+		{false, true, false},
+		{false, false, false},
+	}
+	for _, test := range unwrapTests {
+		config.Unwrap = test.unwrap
+		config.RescaleRaw = test.rescale
+		err = source.Configure(&config)
+		diderror := (err != nil)
+		if diderror != test.shouldError {
+			if test.shouldError {
+				t.Fatalf("AbacoSource.Configure(%v) does not fail with invalid AbacoUnwrapOptions", config)
+			} else {
+				t.Fatalf("AbacoSource.Configure(%v) fails with valid AbacoUnwrapOptions: %s", config, err)
+			}
+		}
+	}
 }
 
 func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	const offset = 1
 	const nchan = 16
-	const enable = true
-	const resetAfter = 20000
-	const bias = false
-	const pulseSign = +1
-	group := NewAbacoGroup(GroupIndex{Firstchan: offset, Nchan: nchan}, enable, bias, resetAfter, pulseSign)
+	unwrapOpts := AbacoUnwrapOptions{Unwrap: true, RescaleRaw: true, ResetAfter: 20000, PulseSign: 1}
+
+	group := NewAbacoGroup(GroupIndex{Firstchan: offset, Nchan: nchan}, unwrapOpts)
 	group.unwrap = group.unwrap[:0] // get rid of phase unwrapping
 
 	copies := make([][]RawType, nchan)

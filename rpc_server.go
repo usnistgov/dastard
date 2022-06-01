@@ -161,7 +161,7 @@ func (s *SourceControl) ConfigureRoachSource(args *RoachSourceConfig, reply *boo
 // and return any error sent on s.queuedRequests.
 func (s *SourceControl) runLaterIfActive(f func()) error {
 	if !s.isSourceActive {
-		return fmt.Errorf("No source is active")
+		return fmt.Errorf("no source is active")
 	}
 	s.queuedRequests <- f
 	return <-s.queuedResults
@@ -265,7 +265,7 @@ func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) err
 	*reply = false // handle the case that sizes fails the validation tests and we return early
 	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if !s.isSourceActive {
-		return fmt.Errorf("No source is active")
+		return fmt.Errorf("no source is active")
 	}
 	if s.status.Npresamp == sizes.Npre && s.status.Nsamples == sizes.Nsamp {
 		return nil // no change requested
@@ -321,7 +321,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.status.SourceName = "Erroring"
 
 	default:
-		return fmt.Errorf("Data Source \"%s\" is not recognized", *sourceName)
+		return fmt.Errorf("data Source \"%s\" is not recognized", *sourceName)
 	}
 
 	log.Printf("Starting data source named %s\n", *sourceName)
@@ -347,7 +347,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 // Stop stops the running data source, if any
 func (s *SourceControl) Stop(dummy *string, reply *bool) error {
 	if !s.isSourceActive {
-		return fmt.Errorf("No source is active")
+		return fmt.Errorf("no source is active")
 	}
 	log.Printf("Stopping data source\n")
 	s.ActiveSource.Stop()
@@ -654,10 +654,10 @@ func (s *SourceControl) storeChannelGroups() error {
 		}
 		filename := path.Join(home, ".dastard", "channels.json")
 		fp, err := os.Create(filename)
-		defer fp.Close()
 		if err != nil {
 			return err
 		}
+		defer fp.Close()
 		text, err := json.MarshalIndent(s.status.ChanGroups, "", "  ")
 		if err != nil {
 			return err
@@ -729,8 +729,8 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var asc AbacoSourceConfig
 	// Set reasonable defaults when not in the config file.
-	asc.Unwrapping = true
-	asc.UnwrapResetSamp = 20000
+	asc.AbacoUnwrapOptions.Unwrap = true
+	asc.AbacoUnwrapOptions.ResetAfter = 20000
 	err = viper.UnmarshalKey("abaco", &asc)
 	if err == nil {
 		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)

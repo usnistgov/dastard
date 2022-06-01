@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/usnistgov/dastard/getbytes"
 	"io"
 	"io/ioutil"
 	"math"
 	"reflect"
+
+	"github.com/usnistgov/dastard/getbytes"
 )
 
 // Packet represents the header of an Abaco data packet
@@ -579,7 +580,15 @@ func parseTLV(data []byte) (result []interface{}, err error) {
 		case tlvTIMESTAMP: // timestamps without units
 			x := binary.BigEndian.Uint16(data[2:])
 			y := binary.BigEndian.Uint32(data[4:])
-			result = append(result, MakeTimestamp(x, y, 0.0))
+
+			// we assume a 64 bit int with units of nanoseconds
+			// has its 16 least significant bits truncated
+			// so the rate is 1e9 but we shift up the number by 16 bits
+			ts := MakeTimestamp(x, y, 1e9)
+			ts.T = ts.T << 16
+			result = append(result, ts)
+			// fmt.Println("tlvTIMESTAMP x, y, result", x, y, ts.T)
+			// fmt.Println(data[0:8])
 
 		case tlvCOUNTER:
 			if tlvsize != 8 {
