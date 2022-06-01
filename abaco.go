@@ -47,10 +47,18 @@ type AbacoGroup struct {
 
 // AbacoUnwrapOptions contains options to control phase unwrapping.
 type AbacoUnwrapOptions struct {
-	Enable     bool // are we even unwrapping at all?
-	ResetAfter int  // auto relock like number of samples to reset the phase unwrap offset back to 0 after
+	RescaleRaw bool // are we rescaling (left-shifting) the raw data? If not, the rest is ignored
+	Unwrap     bool // are we even unwrapping at all?
 	Bias       bool // should the unwrapping be biased?
+	ResetAfter int  // reset the phase unwrap offset back to 0 after this many samples (≈auto-relock)
 	PulseSign  int  // direction data will go when pulse arrives, used to calculate bias level
+}
+
+func (u AbacoUnwrapOptions) isvalid() error {
+	if u.Unwrap && !u.RescaleRaw {
+		return fmt.Errorf("should not have Unwrap=true when RescaleRaw=false in AbacoUnwrapOpts")
+	}
+	return nil
 }
 
 func (u AbacoUnwrapOptions) calcBiasLevel() int {
@@ -69,13 +77,18 @@ func (u AbacoUnwrapOptions) calcBiasLevel() int {
 
 // NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
 func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
+	var bitsToDrop uint
+	if opt.RescaleRaw {
+		bitsToDrop = abacoBitsToDrop
+	}
+
 	g := new(AbacoGroup)
 	g.index = index
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
 	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, opt.Enable,
+		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, bitsToDrop, opt.Unwrap,
 			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign)
 	}
 	return g
@@ -643,6 +656,10 @@ type AbacoSourceConfig struct {
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
 func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
+	if err := config.AbacoUnwrapOptions.isvalid(); err != nil {
+		return err
+	}
+
 	// Make sure entries in the ActiveCards slice are unique and sorted
 	cardseen := make(map[int]bool)
 	i := 0

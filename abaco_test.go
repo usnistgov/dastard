@@ -315,7 +315,7 @@ func TestAbacoSource(t *testing.T) {
 func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	const offset = 1
 	const nchan = 16
-	unwrapOpts := AbacoUnwrapOptions{Enable: true, ResetAfter: 20000, PulseSign: 1}
+	unwrapOpts := AbacoUnwrapOptions{Unwrap: true, RescaleRaw: true, ResetAfter: 20000, PulseSign: 1}
 
 	group := NewAbacoGroup(GroupIndex{Firstchan: offset, Nchan: nchan}, unwrapOpts)
 	group.unwrap = group.unwrap[:0] // get rid of phase unwrapping
