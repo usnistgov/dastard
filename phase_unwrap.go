@@ -19,6 +19,13 @@ type PhaseUnwrapper struct {
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
 func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int) *PhaseUnwrapper {
+	// Subtle point here: if no bits are to be dropped, then it makes no sense to perform
+	// phase unwrapping. When lowBitsToDrop==0, we cannot allow enable==true (because where would you
+	// put the bits set in the unwrapping process when there are no dropped bits?)
+	if lowBitsToDrop == 0 && enable {
+		panic("NewPhaseUnwrapper is enabled but with lowBitsToDrop=0, must be >0.")
+	}
+
 	u := new(PhaseUnwrapper)
 	// data bytes representing a 2s complement integer
 	// where 2^fractionBits = ϕ0 of phase.
@@ -30,30 +37,27 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 	// or 32 for int16 or int32, but leave that parameter here...for now.
 	u.fractionBits = fractionBits
 	u.lowBitsToDrop = lowBitsToDrop
-	u.twoPi = uint16(1) << (fractionBits - lowBitsToDrop)
-	onePi := int16(1) << (fractionBits - lowBitsToDrop - 1)
-	bias := int16(biasLevel>>lowBitsToDrop) % int16(u.twoPi)
-	u.upperStepLim = bias + onePi
-	u.lowerStepLim = bias - onePi
-
-	if pulseSign > 0 {
-		u.resetOffset = u.twoPi
-	} else {
-		u.resetOffset = uint16(-2 * int(u.twoPi))
-	}
-	u.offset = u.resetOffset
-
-	u.resetAfter = resetAfter
 	u.enable = enable
 
-	// Subtle point here: if no bits are to be dropped, then it makes no sense to perform
-	// phase unwrapping. When lowBitsToDrop==0, we cannot allow enable==true (because where would you
-	// put the bits set in the unwrapping process when there are no dropped bits?)
-	if lowBitsToDrop == 0 && enable {
-		panic("NewPhaseUnwrapper is enabled but with lowBitsToDrop=0, must be >0.")
-	}
-	if resetAfter <= 0 && enable {
-		panic(fmt.Sprintf("NewPhaseUnwrapper is enabled but with resetAfter=%d, expect positive", resetAfter))
+	if lowBitsToDrop > 0 && enable {
+		u.twoPi = uint16(1) << (fractionBits - lowBitsToDrop)
+		onePi := int16(1) << (fractionBits - lowBitsToDrop - 1)
+		bias := int16(biasLevel>>lowBitsToDrop) % int16(u.twoPi)
+		u.upperStepLim = bias + onePi
+		u.lowerStepLim = bias - onePi
+
+		if pulseSign > 0 {
+			u.resetOffset = u.twoPi
+		} else {
+			u.resetOffset = uint16(-2 * int(u.twoPi))
+		}
+		u.offset = u.resetOffset
+
+		u.resetAfter = resetAfter
+
+		if resetAfter <= 0 && enable {
+			panic(fmt.Sprintf("NewPhaseUnwrapper is enabled but with resetAfter=%d, expect positive", resetAfter))
+		}
 	}
 	return u
 }
