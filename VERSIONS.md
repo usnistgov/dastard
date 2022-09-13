@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.2.14** September 2022-
+* Add features to test use of multiple Abaco cards at once (like Tomcat-1k).
+
 **0.2.13** June 1, 2022
 * Fix crashing problem when you start with Edge Multi Triggers on (issue 271).
 * Update all dependencies with latest upstream versions.
