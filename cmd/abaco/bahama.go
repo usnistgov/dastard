@@ -39,6 +39,7 @@ type BahamaControl struct {
 	Chan0      int // channel number of first channel
 	chanGaps   int // how many channel numbers to skip between groups/rings
 	ringsize   int // Bytes per ring
+	port       int
 	udp        bool
 	sinusoid   bool
 	sawtooth   bool
@@ -56,7 +57,7 @@ func (control *BahamaControl) Report() {
 	fmt.Println("Samples per second:       ", control.samplerate)
 	fmt.Printf("Drop packets randomly:     %.2f%%\n", 100.0*control.dropfrac)
 	if control.udp {
-		fmt.Println("Generating UDP packets.")
+		fmt.Println("Generating UDP packets on port ", control.port)
 		fmt.Println("Number of UDP sources:    ", control.Nsources)
 		fmt.Println("Channels per UDP source:  ", control.Nchan)
 		fmt.Println("Channel groups per UDP:   ", control.Ngroups)
@@ -313,8 +314,8 @@ func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 	return nil
 }
 
-func udpwriter(sourcenum int, packetchan chan []byte) error {
-	hostname := fmt.Sprintf("localhost:%d", 4000+sourcenum)
+func udpwriter(portnum int, packetchan chan []byte) error {
+	hostname := fmt.Sprintf("localhost:%d", portnum)
 	addr, err := net.ResolveUDPAddr("udp", hostname)
 	if err != nil {
 		return err
@@ -364,6 +365,7 @@ func main() {
 	chan0 := flag.Int("firstchan", 0, "Channel number of the first channel (default 0)")
 	changaps := flag.Int("gaps", 0, "How many channel numbers to skip between groups (relevant only if ngroups>1 or nsource>1)")
 	ngroups := flag.Int("ngroups", 1, "Number of channel groups per source, (1-Nchan/4) allowed")
+	port := flag.Int("port", 4000, "UDP port to produce data")
 	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 1000-500000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
@@ -430,7 +432,8 @@ func main() {
 	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
 		if control.udp {
-			if err := udpwriter(cardnum, packetchan); err != nil {
+			portnum := (*port)+cardnum
+			if err := udpwriter(portnum, packetchan); err != nil {
 				fmt.Printf("udpwriter(%d,...) failed: %v\n", cardnum, err)
 				continue
 			}
