@@ -3,7 +3,6 @@
 // SOPC component interrupt events and handle the cyclic mode of SGDMA.
 // Exports object Lancero for general use. Internally, that object works with
 // the lower-level adapter, collector, and lanceroDevice.
-//
 package lancero
 
 import (
@@ -71,7 +70,7 @@ func NewLancero(devnum int) (*Lancero, error) {
 	return lan, nil
 }
 
-//ChangeRingBuffer re-sizes the adapter's ring buffer.
+// ChangeRingBuffer re-sizes the adapter's ring buffer.
 func (lan *Lancero) ChangeRingBuffer(length, threshold int) error {
 	return lan.adapter.allocateRingBuffer(length, threshold)
 }
