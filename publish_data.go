@@ -268,8 +268,9 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 // float32: residualStdDev
 // uint64: UnixNano trigTime
 // uint64: trigFrame
-//  end of first message packet
-//  modelCoefs, each coef is float32, length can vary
+//
+//	end of first message packet
+//	modelCoefs, each coef is float32, length can vary
 func messageSummaries(rec *DataRecord) [][]byte {
 	const headerVersion = uint16(0)
 

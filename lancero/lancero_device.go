@@ -1,7 +1,6 @@
 // Package lancero provides an interface to all Lancero SGDMA
 // character devices, read/write from/to registers of SOPC slaves, wait for
 // SOPC component interrupt events and handle the cyclic mode of SGDMA.
-//
 package lancero
 
 // #include <unistd.h>

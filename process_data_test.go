@@ -127,7 +127,7 @@ type RTExpect struct {
 	ResidualStdDev float64
 }
 
-//TestAnalyzeRealtime tests the DataChannel.AnalyzeData computations on a very simple "pulse".
+// TestAnalyzeRealtime tests the DataChannel.AnalyzeData computations on a very simple "pulse".
 func TestAnalyzeRealtimeBases(t *testing.T) {
 	d := []RawType{1, 2, 3, 4}
 	rec := &DataRecord{data: d, presamples: 1}

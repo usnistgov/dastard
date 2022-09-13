@@ -124,14 +124,15 @@ func (ds *AnySource) getNextBlock() chan *dataBlock {
 }
 
 // Start will start the given DataSource, including sampling its data for # channels. Steps:
-// 1) Sample: a method implemented per source that determines the # of channels and other
-//    internal facts that we need to know.
-// 2) PrepareChannels: an AnySource method (but overridden by certain other sources). Set up
-//    the channel numbering and naming system.
-// 3) PrepareRun: an AnySource method to do the actions that any source needs
-//    before starting the actual acquisition phase.
-// 4) StartRun: a per-source method to begin data acquisition, if relevant.
-// 5) Loop over calls to ds.blockingRead(), a per-source method that waits for data.
+//  1. Sample: a method implemented per source that determines the # of channels and other
+//     internal facts that we need to know.
+//  2. PrepareChannels: an AnySource method (but overridden by certain other sources). Set up
+//     the channel numbering and naming system.
+//  3. PrepareRun: an AnySource method to do the actions that any source needs
+//     before starting the actual acquisition phase.
+//  4. StartRun: a per-source method to begin data acquisition, if relevant.
+//  5. Loop over calls to ds.blockingRead(), a per-source method that waits for data.
+//
 // When done with the loop, close all channels to DataStreamProcessor objects.
 func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int) error {
 	if err := ds.SetStateStarting(); err != nil {
@@ -488,8 +489,8 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFrameIndex int) error {
 	return nil
 }
 
-//HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
-//with the number of external triggers observed
+// HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
+// with the number of external triggers observed
 func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) error {
 	if ds.writingState.externalTriggerFileBufferedWriter == nil && len(externalTriggerRowcounts) > 0 &&
 		ds.writingState.ExternalTriggerFilename != "" {
