@@ -186,7 +186,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	// Raw packets
 	const version = 10
 	const sourceID = 20
-	const initSeqNum = 0
+	initSeqNum := uint32(randsource.Intn(10000))
 	packet := packets.NewPacket(version, sourceID, initSeqNum, firstchanOffset)
 
 	// Raw data that will go into packets
