@@ -28,7 +28,6 @@ import (
 // the ADC, but autotune's values assume that we work with the _mean_ (because it
 // lets autotune communicate an NSAMP-agnostic value). So we store NOT the auto-
 // tune value but the value that actually multiplies the error sum.
-//
 type Mix struct {
 	errorScale float64 // Multiply this by raw error data. NSAMP is scaled out.
 	lastFb     RawType
