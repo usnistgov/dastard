@@ -15,16 +15,27 @@ Date: March 2022
 
 ## Responsibilities of DASTARD
 
-DASTARD handles many responsibilities in the acquisition and analysis of microcalorimeter timestream data. 1.
-DASTARD reads data from a data source such as an Abaco card for μMUX systems (see other examples in [Data
+DASTARD handles many responsibilities in the acquisition and analysis of microcalorimeter timestream data.
+
+1. DASTARD reads data from a data source such as an Abaco card for μMUX systems (see other examples in [Data
 sources](#data-sources-for-dastard)). In some advanced cases that we haven’t really tested, it might even read
-more than one source of the same type, such as multiple Abaco cards. 2. DASTARD appropriately handles unwanted
-gaps in the data. 3. DASTARD de-multiplexes that raw data source into a set of data streams, one stream per
-detector. 4. DASTARD applies triggering conditions to each data stream to determine when photon pulses appear
+more than one source of the same type, such as multiple Abaco cards.
+
+2. DASTARD appropriately handles unwanted
+gaps in the data.
+
+3. DASTARD de-multiplexes that raw data source into a set of data streams, one stream per
+detector.
+
+4. DASTARD applies triggering conditions to each data stream to determine when photon pulses appear
 in the stream. When a pulse is found, it creates a triggered record of prescribed length (before and after the
-trigger sample) from a continuous segment of the stream. 5. DASTARD records triggered records to files, in the
+trigger sample) from a continuous segment of the stream.
+
+5. DASTARD records triggered records to files, in the
 LJH or OFF formats. The LJH format records complete raw pulse records. The OFF format stores only linear
-summaries of each record, including an optimally filtered pulse amplitude. 6. DASTARD also puts copies of each
+summaries of each record, including an optimally filtered pulse amplitude.
+
+6. DASTARD also puts copies of each
 triggered record onto a TCP port using the ZMQ Publisher paradigm, so that real-time plotting/analysis
 programs such as microscope can use all triggered records, or those from a selection of channel numbers.
 
@@ -58,9 +69,13 @@ DASTARD. If a global configuration` /etc/dastard/config.yaml/` exists, it will b
 configuration. The parallel tasks are:
 
 1. Start and keep open a [`log.Logger`](https://pkg.go.dev/log#Logger) in `dastard.problemLogger` that writes
-to a rotating set of files in `$HOME/.dastard/logs/` 2. Launch `RunClientUpdater()` in a goroutine. It is used
+to a rotating set of files in `$HOME/.dastard/logs/`
+
+2. Launch `RunClientUpdater()` in a goroutine. It is used
 to publish status updates on a ZMQ Publisher socket. The GUI client Dastard-commander and any other
-control/monitoring clients learn the state of DASTARD by ZMQ-subscribing to this socket. 3. Call
+control/monitoring clients learn the state of DASTARD by ZMQ-subscribing to this socket.
+
+3. Call
 `RunRPCServer()`. When it returns notify the `RunClientUpdater` goroutine to terminate, then end the program.
 
 ### The JSON-RPC server
@@ -75,11 +90,15 @@ clients (by pushing the message to `sourceControl.clientUpdates` channel, which 
 goroutine is receiving from). The previous info about the data-writing state and the TES map (location) file
 are loaded by viper. Also a new `MapServer` object is created to load and send TES position data.
 
-After these setup tasks are completed, 2 goroutines are launched: 1. A heartbeat service. Using a
+After these setup tasks are completed, 2 goroutines are launched:
+
+1. A heartbeat service. Using a
 read-channel, this accumulates info about the time active and the number of bytes sent and the number read
 from hardware (the latter might be less, in the case of dropped data being replaced by dummy filler data).
 Using a `time.Tick` timer, the service wakes up every 2 seconds and sends the accumulated information as part
-of an "ALIVE" message to any active clients. 2. An RPC connection handler. Creates a listener on tcp port 5500
+of an "ALIVE" message to any active clients.
+
+2. An RPC connection handler. Creates a listener on tcp port 5500
 (see `global_config.go` for where this is set) with `net.Listen("tcp", 5500)` and then waits for connections
 with `listener.Accept()`. When received, a new goroutine is launched where codec is created by
 `jsonrpc.NewServerCodec(...)` and we attempt to handle all RPC requests by calling
@@ -88,15 +107,23 @@ step) to be forwarded to the `sourceControl` or `mapServer` objects, as appropri
 
 The RPC server supports the notion of an _active source_. At any one time, one or none of these sources may be
 active. Some RPC requests are handled immediately. Others are queued up to be acted upon at the appropriate
-phase in the data handling cycle, to prevent race conditions. The following can be handled immediately: -
-`Start()`: argument says which of the 5 source types to activate. (Fails if any source is active.) - `Stop()`:
-signals the active source to stop. (Fails if none is active.) - `ConfigureMixFraction()`: configure the TDM
-mix if the Lancero source is active (errors otherwise). - `ReadComment()`: reads the `comment.txt` file.
-Errors if no source is active, writing is not on, or the comment file cannot be read. - `SendAllStatus()`:
+phase in the data handling cycle, to prevent race conditions. The following can be handled immediately:
+
+- `Start()`: argument says which of the 5 source types to activate. (Fails if any source is active.)
+- `Stop()`:
+signals the active source to stop. (Fails if none is active.)
+- `ConfigureMixFraction()`: configure the TDM
+mix if the Lancero source is active (errors otherwise).
+- `ReadComment()`: reads the `comment.txt` file.
+Errors if no source is active, writing is not on, or the comment file cannot be read.
+- `SendAllStatus()`:
 broadcast the maximal Dastard state information to any active clients (such as Dastard-commander).
 
-The following can be handled immediately, but only if the corresponding source is not running: -
-`ConfigureLanceroSource()` - `ConfigureAbacoSource()` - `ConfigureRoachSource()` - `ConfigureTriangleSource()`
+The following can be handled immediately, but only if the corresponding source is not running:
+- `ConfigureLanceroSource()`
+- `ConfigureAbacoSource()`
+- `ConfigureRoachSource()`
+- `ConfigureTriangleSource()`
 - `ConfigureSimPulseSource()`
 
 Most RPC commands only make sense when a source is active (often because they require the exact number of
@@ -105,9 +132,16 @@ the right moment if we are to avert any race conditions. Requests are queued by 
 where the argument `f` is a zero-argument, void-returning closure. The run-later function returns an error if
 no source is running. If some source _is_ running, the closure goes into channel
 `SourceControl.queuedRequests`. When a reply comes back on channel `SourceControl.queuedResults`, the
-run-later function returns that reply. Requests that run delayed include: - `ConfigureTriggers` -
-`ConfigureProjectorsBasis` - `ConfigurePulseLengths` - `WriteControl()`: starts/stops/pauses/unpauses data
-writing. - `SetExperimentStateLabel()` - `WriteComment()` - `CoupleErrToFB()` - `CoupleFBToErr()`
+run-later function returns that reply. Requests that run delayed include:
+- `ConfigureTriggers`
+- `ConfigureProjectorsBasis`
+- `ConfigurePulseLengths`
+- `WriteControl()`: starts/stops/pauses/unpauses data
+writing.
+- `SetExperimentStateLabel()`
+- `WriteComment()`
+- `CoupleErrToFB()`
+- `CoupleFBToErr()`
 
 ## Data sources for DASTARD
 
@@ -117,22 +151,27 @@ of the interface that are not source-specific. The life-cycle of a data acquisit
 
 When the RPC server gets a START request, it calls `Start(ds,...)` where the first argument is the specific
 source of interest, for which all critical configuration has already been set. The function is found in
-`data_source.go`. It calls, in order: 1. `ds.SetStateStarting()`: sets `AnySource.sourceState=Starting` but
+`data_source.go`. It calls, in order:
+1. `ds.SetStateStarting()`: sets `AnySource.sourceState=Starting` but
 with a Mutex to serialize access to the state (also `GetState()` and `SetStateInactive()` use the same Mutex).
 1. `ds.Sample()`: runs a source-specific step that reads a certain amount of data from the source to determine
-key facts such as the number of channels available and the data sampling rate. 1. `ds.PrepareChannels()`: now
+key facts such as the number of channels available and the data sampling rate.
+1. `ds.PrepareChannels()`: now
 that the number of channels and channel names and numbers are known/knowable, store the info in the
 `AnySource`. There is an `AnySource.PrepareChannels`, but it's overridden by source-specific
 `AbacoSource.PrepareChannels` or `LanceroSource.PrepareChannels`, because these two sources have more
-complicated channel numbering possibilities. 1. `ds.PrepareRun()`: initialize run-related features, including
+complicated channel numbering possibilities.
+1. `ds.PrepareRun()`: initialize run-related features, including
 channel `ds.abortSelf` for knowing when to stop; channel `ds.nextBlock` for passing data chunks from the
 source to the downstream processors; a `TriggerBroker`; tickers to regularly track the amount of data written,
 write out external triggers, and monitor data drops (1, 1, and 10 seconds period). Also start one
 `DataStreamProcessor` per channel (`process_data.go`), assigning the viper-stored trigger state as a starting
-value. 1. `ds.RunDoneActivate()`: sets `AnySource.sourceState=Active` and increments a WaitGroup, again using
-the Mutex to serialize access. 1. `ds.StartRun()`: calls a source-specific `StartRun()` method. It will
-initiate data acquisition (some sources require a kind of "now go" command, which should be issued here). 1.
-`go coreLoop(ds,...)`
+value.
+1. `ds.RunDoneActivate()`: sets `AnySource.sourceState=Active` and increments a WaitGroup, again using
+the Mutex to serialize access.
+1. `ds.StartRun()`: calls a source-specific `StartRun()` method. It will
+initiate data acquisition (some sources require a kind of "now go" command, which should be issued here).
+1. `go coreLoop(ds,...)`
 
 The `coreLoop` (in `data_source.go`) starts with a `defer ds.RunDoneDeactivate` which will set
 `AnySource.sourceState=Inactive` and decrements the WaitGroup, again using the Mutex to serialize access. It
@@ -294,31 +333,33 @@ at a time (at least on average) for all channels currently running. As described
 source-independent step) is to call `AnySource.ProcessSegments()` on the data block. First, the relevant data
 types:
 
-**Key data types** - The `dataBlock` contains only a slice of `DataSegment` objects (one per data stream) that
-*are of equal length and completely synchronized, plus a slice saying when external triggers were found, an
-*error container, and the length of the segments. - The `DataSegment` is a continuous, single-channel raw data
-*buffer containing a limited piece of the data stream, plus info about raw-physical unit relationships, the
-*first sample’s frame number and sample time and period. - The `DataStream` (`data_source.go`) models a
-*continuous stream of data. It's basically identical to `DataSegment` in implementation, but the concept is
-*different: the segment is a finite piece, while the stream is conceptually infinite (though only a limited
-*portion is available at any one time). The object is a composition of a `DataSegment` plus the number of
-*samples ever fed into it. - The `DataStreamProcessor` (`process_data.go`) contains all the state needed to
-*decimate, trigger, write, and publish data from a single channel based on its `DataStream`.
+**Key data types**
 
-When a data block is handed to `ProcessSegments(block)` (`data_source.go`), the following steps happen: 1.
-Each of the source's `ds.processors` objects is given the appropriate data segment from the block, and
+- The `dataBlock` contains only a slice of `DataSegment` objects (one per data stream) that are of equal length and completely synchronized, plus a slice saying when external triggers were found, an error container, and the length of the segments.
+- The `DataSegment` is a continuous, single-channel raw data
+*buffer containing a limited piece of the data stream, plus info about raw-physical unit relationships, the first sample’s frame number and sample time and period.
+- The `DataStream` (`data_source.go`) models a continuous stream of data. It's basically identical to `DataSegment` in implementation, but the concept is different: the segment is a finite piece, while the stream is conceptually infinite (though only a limited portion is available at any one time). The object is a composition of a `DataSegment` plus the number of samples ever fed into it.
+- The `DataStreamProcessor` (`process_data.go`) contains all the state needed to decimate, trigger, write, and publish data from a single channel based on its `DataStream`.
+
+When a data block is handed to `ProcessSegments(block)` (`data_source.go`), the following steps happen:
+1. Each of the source's `ds.processors` objects is given the appropriate data segment from the block, and
 `DataStreamProcessor.processSegment` (details below) is called on the segment in a goroutine. A
-`WaitGroup.Add()` is called before each, with a deferred `WaitGroup.Done()` 1. All processors as waited on
+`WaitGroup.Add()` is called before each, with a deferred `WaitGroup.Done()`
+1. All processors as waited on
 before proceeding (using `WaitGroup.Wait()`). Thus, the processing is done in parallel but all completed
-before the next step. 1. A map is made containing the `triggerList` of new primary triggers for each
+before the next step.
+1. A map is made containing the `triggerList` of new primary triggers for each
 processor. The `ds.broker.Distribute()` is called with this map as an argument. It returns a similar map,
-containing a slice of new secondary trigger points for each processor to handle. 1. Each processor that has
+containing a slice of new secondary trigger points for each processor to handle.
+1. Each processor that has
 any secondary triggers, if any, will have `dsp.processSecondaries()` on the secondary trigger points. Again,
 this is done in one goroutine per processor, with a `WaitGroup` used to synchronize before moving to the next
-step. 1. A loop over processors is made. It cleans up by marking each segment as processed; trimming each
+step.
+1. A loop over processors is made. It cleans up by marking each segment as processed; trimming each
 processor's data stream (saving only 1 record worth of old data) with `dsp.TrimStream()`. Also, every 20th
 time through, it calls `dsp.Flush()` to flush any open output files (but this is done out of phase, so only
-~1/20th of all processors are flushed in each iteration). 1. We `HandleExternalTriggers` and `HandleDataDrop`.
+~1/20th of all processors are flushed in each iteration).
+1. We `HandleExternalTriggers` and `HandleDataDrop`.
 If writing is active (not paused), we send a NUMBERWRITTEN message to all listening clients.
 
 Each `DataStreamProcessor` contains tons of information: a channel's name and number; the number of samples
@@ -326,13 +367,16 @@ and pre-trigger samples to be used in making triggered records; a `DataStream`; 
 projectors for making linear approximations to a record (for OFF files); info about the last stream index
 where triggers were made; a `DecimateState`; a `TriggerState`; and a `DataPublisher`.
 
-In `DataStreamProcessor.processSegment(seg)`, the steps are: 1. `dsp.DecimateData(seg)` to downsample the
-segment by an integer factor (either by averaging or dropping samples). 1. `dsp.stream.AppendSegment(seg)` to
-append the new data to the processor's stream. 1. `dsp.TriggerData()` to compute _primary_ triggers only. 1.
-`dsp.AnalyzeData()` to analyze any primary triggered records. Computes pretrigger mean and pretrigger delta
+In `DataStreamProcessor.processSegment(seg)`, the steps are:
+1. `dsp.DecimateData(seg)` to downsample the
+segment by an integer factor (either by averaging or dropping samples).
+1. `dsp.stream.AppendSegment(seg)` to
+append the new data to the processor's stream.
+1. `dsp.TriggerData()` to compute _primary_ triggers only.
+1. `dsp.AnalyzeData()` to analyze any primary triggered records. Computes pretrigger mean and pretrigger delta
 (?), pulse average and pulse RMS for each record, and (if projectors exist) the record's model coefficients
-(projections) and residual RMS. Store these results in the `DataRecord` object (`data_source.go`). 1.
-`dsp.DataPublisher.PublishData(rec)` for the primary triggers.
+(projections) and residual RMS. Store these results in the `DataRecord` object (`data_source.go`).
+1. `dsp.DataPublisher.PublishData(rec)` for the primary triggers.
 
 In `DataStreamProcessor.processSecondaries(secondaryTrigList)`, the same last two steps are performed but this
 time on secondary triggers. We define _Primary triggers_ = due to the data in this stream. _Secondary_ = due
@@ -342,13 +386,19 @@ to trigger coupling of some kind and a primary trigger happening in this process
 
 The above functions are all in `process_data.go` except for the trigger step. Triggering is so complicated, it
 lives separately in `triggering.go` with the complex `TriggerState` object and some relevant methods. The
-`dsp.TriggerData()` step does the following in sequence: 1. If `dsp.EdgeMulti`, then any other triggers will
-be ignored (they don't work well together). The rest of this list will be skipped. 1. Compute edge triggers
-and append them to the (empty) list of triggered records. 1. Compute level triggers and append them to the
-list of triggered records. 1. Compute auto triggers and append them to the list of triggered records. 1.
-(Noise triggers would go here, but they are not currently implemented.) 1. Create a `TriggerList` object
-containing all information about the full collection of triggered records. Store as `dsp.lastTrigList`. 1.
-Return a slice of `*DataRecord` objects.  Each `DataRecord` corresponds to one primary trigger and contains a
+`dsp.TriggerData()` step does the following in sequence:
+1. If `dsp.EdgeMulti`, then any other triggers will
+be ignored (they don't work well together). The rest of this list will be skipped.
+1. Compute edge triggers
+and append them to the (empty) list of triggered records.
+1. Compute level triggers and append them to the
+list of triggered records.
+1. Compute auto triggers and append them to the list of triggered records.
+1.
+(Noise triggers would go here, but they are not currently implemented.)
+1. Create a `TriggerList` object
+containing all information about the full collection of triggered records. Store as `dsp.lastTrigList`.
+1. Return a slice of `*DataRecord` objects.  Each `DataRecord` corresponds to one primary trigger and contains a
 slice with the raw data, trigger time and frame index info, and placeholders for the analyzed quantities.
 
 For edge-multi-triggers, `dsp.edgeMultiTriggerComputeAppend(records)` is called and the rest of the list is
@@ -361,14 +411,21 @@ TODO: Fuller description of EMTs. Hold off writing for now, because this will ch
 
 Each `DataStreamProcessor` contains (is composed with) a `DataPublisher` (`publish_data.go`). Its job is to
 publish data records on certain ZMQ PUBlisher channels and to write them to disk. When `PublishData(rec
-*[]DataRecord)` is called: 1. The records are sent on the full record channel `PubRecordsChan` (if it's
-non-nil). 1. The records are sent on the record summary channel `PubSummariesChan` (if it's non-nil). 1. If
-writing is paused, or if no output writing types are active, return. 1. If LJH 2.2 writing is active, then
+*[]DataRecord)` is called:
+1. The records are sent on the full record channel `PubRecordsChan` (if it's
+non-nil).
+1. The records are sent on the record summary channel `PubSummariesChan` (if it's non-nil).
+1. If
+writing is paused, or if no output writing types are active, return.
+1. If LJH 2.2 writing is active, then
 `LJH22.WriteRecord(rec)` is called on each (first writing the header if this is the first record written to
-that output file). 1. If LJH 3 writing is active, then `LJH3.WriteRecord(rec)` is called on each (first
-writing the header if this is the first record written to that output file). 1. If OFF writing is active, then
+that output file).
+1. If LJH 3 writing is active, then `LJH3.WriteRecord(rec)` is called on each (first
+writing the header if this is the first record written to that output file).
+1. If OFF writing is active, then
 `OFF.WriteRecord(rec)` is called on each (first writing the header if this is the first record written to that
-output file). 1. Update the count of records written.
+output file).
+1. Update the count of records written.
 
 A single full record channel `PubRecordsChan` is shared by all processors, so records from all data streams go
 on this same channel. It is set up for use by `startSocket()` (`publish_data.go`), which opens a ZMQ PUB
@@ -380,8 +437,10 @@ the two elements). This two-part ZMQ message is then sent over the ZMQ socket, r
 found on the channel have been processed and sent.
 
 The `PubSummariesChan` is similarly unique and shared by all processors. It is set up and operates just like
-the records channel except that: - It sends out data on a different ZMQ PUB socket on port `Ports.Summaries`
-(base+3=5503). - It converts a record to a message with the `messageSummaries` function, which returns a
+the records channel except that:
+- It sends out data on a different ZMQ PUB socket on port `Ports.Summaries`
+(base+3=5503).
+- It converts a record to a message with the `messageSummaries` function, which returns a
 2-part message with a different header, and with the second part being the linear projection coefficients (the
 values that would be stored in OFF files).
 
