@@ -278,12 +278,12 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 	}
 }
 
-// TrimStream trims a DataStreamProcessor's stream to contain only one record's worth of old
-// samples. That should more than suffice to extract triggers from future data.
+// TrimStream trims a DataStreamProcessor's stream to contain a limited amount of data.
+// When zero threshold model is enabled, we can always look back at least 4 samples,
+// so I (GCO) think the minimum we can keep is ds.NSamples+4. I added more since it doesn't
+// cost much and the details of kink model could be change in the future.
 func (dsp *DataStreamProcessor) TrimStream() {
-	// Leave one full possible trigger in the stream, because trigger algorithms
-	// should not inspect the last NSamples samples
-	dsp.stream.TrimKeepingN(dsp.NSamples)
+	dsp.stream.TrimKeepingN(dsp.NToKeepOnTrim())
 }
 
 // return the uncorrected std deviation of a float slice

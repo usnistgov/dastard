@@ -285,6 +285,8 @@ func edgeMultiShouldRecord(t, u, v FrameIndex, npreIn, nsampIn int32, mode EMTMo
 }
 
 // NToKeepOnTrim returns how many samples to keep when trimming a stream.
+// GCO thinks the minimum is s.nsamp + 4 based on the lookback in the kink model, but
+// I made the function keep more just to be conservative and it doesn't
 func (s EMTState) NToKeepOnTrim() int {
 	return int(2*s.nsamp + 10)
 }
@@ -316,9 +318,11 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 			break
 		}
 		t, u, v = u, v, FrameIndex(x.triggerInd)+frameIndexOfraw0
-		// fmt.Println(t, u, v)
 		recordSpec, valid := edgeMultiShouldRecord(t, u, v, s.npre, s.nsamp, s.mode)
 		if valid {
+			// if (recordSpec.firstRisingFrameIndex - frameIndexOfraw0) < FrameIndex(s.npre) {
+			// 	panic("wtf")
+			// }
 			recordSpecs = append(recordSpecs, recordSpec)
 		}
 	}
@@ -338,6 +342,9 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 		// is at least 1 nsamp from there, we know we can write a full length record
 		recordSpec, valid := edgeMultiShouldRecord(u, v, nextFrameIndexToInspect, s.npre, s.nsamp, s.mode)
 		if valid {
+			// if (recordSpec.firstRisingFrameIndex - frameIndexOfraw0) < FrameIndex(s.npre) {
+			// 	panic("wtf")
+			// }
 			recordSpecs = append(recordSpecs, recordSpec)
 		}
 		u = v // we signal that this has already been recordized by setting u = v
@@ -355,12 +362,16 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 }
 
 func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRecord) []*DataRecord {
-	segment := &dsp.stream.DataSegment
-	recordSpecs := dsp.EMTState.edgeMultiComputeRecordSpecs(segment.rawData, segment.firstFrameIndex)
+	stream := dsp.stream
+	// fmt.Println("firstFrameIndex", stream.firstFrameIndex, "len(segment.rawData)", len(stream.rawData))
+	recordSpecs := dsp.EMTState.edgeMultiComputeRecordSpecs(stream.rawData, stream.firstFrameIndex)
 	for _, recordSpec := range recordSpecs {
-		record := dsp.triggerAtSpecificSamples(segment, int(recordSpec.firstRisingFrameIndex-segment.firstFrameIndex), int(recordSpec.npre), int(recordSpec.nsamp))
+		record := dsp.triggerAtSpecificSamples(&stream, int(recordSpec.firstRisingFrameIndex-stream.firstFrameIndex), int(recordSpec.npre), int(recordSpec.nsamp))
 		records = append(records, record)
 	}
-	dsp.stream.TrimKeepingN(dsp.EMTState.NToKeepOnTrim()) // see comment at end of edgeMultiComputeAppendRecordSpecs
+	// n_before := len(stream.rawData)
+	// n_keep := dsp.EMTState.NToKeepOnTrim()
+	// dsp.stream.TrimKeepingN(n_keep) // see comment at end of edgeMultiComputeAppendRecordSpecs
+	// fmt.Println("had", n_before, "want to keep", n_keep, "have", len(stream.rawData), "firstFrameIndex ", stream.firstFrameIndex)
 	return records
 }

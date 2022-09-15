@@ -35,22 +35,22 @@ type TriggerState struct {
 }
 
 // create a record using dsp.NPresamples and dsp.NSamples
-func (dsp *DataStreamProcessor) triggerAt(segment *DataSegment, i int) *DataRecord {
-	record := dsp.triggerAtSpecificSamples(segment, i, dsp.NPresamples, dsp.NSamples)
+func (dsp *DataStreamProcessor) triggerAt(stream *DataStream, i int) *DataRecord {
+	record := dsp.triggerAtSpecificSamples(stream, i, dsp.NPresamples, dsp.NSamples)
 	return record
 }
 
 // create a record with NPresamples and NSamples passed as arguments
-func (dsp *DataStreamProcessor) triggerAtSpecificSamples(segment *DataSegment, i int, NPresamples int, NSamples int) *DataRecord {
+func (dsp *DataStreamProcessor) triggerAtSpecificSamples(stream *DataStream, i int, NPresamples int, NSamples int) *DataRecord {
 	data := make([]RawType, NSamples)
 	// fmt.Printf("triggerAtSpecificSamples i %v, NPresamples %v, NSamples %v, len(rawData) %v\n", i, NPresamples, NSamples, len(segment.rawData))
-	copy(data, segment.rawData[i-NPresamples:i+NSamples-NPresamples])
-	tf := segment.firstFrameIndex + FrameIndex(i)
-	tt := segment.TimeOf(i)
+	copy(data, stream.rawData[i-NPresamples:i+NSamples-NPresamples])
+	tf := stream.firstFrameIndex + FrameIndex(i)
+	tt := stream.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
-		channelIndex: dsp.channelIndex, signed: segment.signed,
-		voltsPerArb: segment.voltsPerArb,
+		channelIndex: dsp.channelIndex, signed: stream.signed,
+		voltsPerArb: stream.voltsPerArb,
 		presamples:  NPresamples, sampPeriod: sampPeriod}
 	return record
 }
@@ -59,14 +59,14 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 	if !dsp.EdgeTrigger {
 		return records
 	}
-	segment := &dsp.stream.DataSegment
-	raw := segment.rawData
+	stream := dsp.stream
+	raw := stream.rawData
 	ndata := len(raw)
 
 	// Solve the problem of signed data by shifting all values up by 2^15
 	if dsp.stream.signed {
 		raw = make([]RawType, ndata)
-		copy(raw, segment.rawData)
+		copy(raw, stream.rawData)
 		for i := 0; i < ndata; i++ {
 			raw[i] += 32768
 		}
@@ -76,7 +76,7 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 		diff := int32(raw[i]) + int32(raw[i-1]) - int32(raw[i-2]) - int32(raw[i-3])
 		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
-			newRecord := dsp.triggerAt(segment, i)
+			newRecord := dsp.triggerAt(&stream, i)
 			records = append(records, newRecord)
 			i += dsp.NSamples
 		}
@@ -88,8 +88,8 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	if !dsp.LevelTrigger {
 		return records
 	}
-	segment := &dsp.stream.DataSegment
-	raw := segment.rawData
+	stream := dsp.stream
+	raw := stream.rawData
 	ndata := len(raw)
 	nsamp := FrameIndex(dsp.NSamples)
 
@@ -97,7 +97,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
+		nextFoundTrig = records[idxNextTrig].trigFrame - stream.firstFrameIndex
 	}
 
 	// Solve the problem of signed data by shifting all values up by 2^15
@@ -105,7 +105,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	if dsp.stream.signed {
 		threshold += 32768
 		raw = make([]RawType, ndata)
-		copy(raw, segment.rawData)
+		copy(raw, stream.rawData)
 		for i := 0; i < ndata; i++ {
 			raw[i] += 32768
 		}
@@ -121,7 +121,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 			i = int(nextFoundTrig) + dsp.NSamples - 1
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
-				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
+				nextFoundTrig = records[idxNextTrig].trigFrame - stream.firstFrameIndex
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
@@ -131,7 +131,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 		// If you get here, a level trigger is permissible. Check for it.
 		if (dsp.LevelRising && raw[i] >= threshold && raw[i-1] < threshold) ||
 			(!dsp.LevelRising && raw[i] <= threshold && raw[i-1] > threshold) {
-			newRecord := dsp.triggerAt(segment, i)
+			newRecord := dsp.triggerAt(&stream, i)
 			records = append(records, newRecord)
 		}
 	}
@@ -143,8 +143,8 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	if !dsp.AutoTrigger {
 		return records
 	}
-	segment := &dsp.stream.DataSegment
-	raw := segment.rawData
+	stream := dsp.stream
+	raw := stream.rawData
 	ndata := len(raw)
 	nsamp := FrameIndex(dsp.NSamples)
 	npre := FrameIndex(dsp.NPresamples)
@@ -157,11 +157,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
 	if nFoundTrigs > 0 {
-		nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
+		nextFoundTrig = records[idxNextTrig].trigFrame - stream.firstFrameIndex
 	}
 
 	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
-	nextPotentialTrig := dsp.LastTrigger - segment.firstFrameIndex + delaySamples
+	nextPotentialTrig := dsp.LastTrigger - stream.firstFrameIndex + delaySamples
 	if nextPotentialTrig < npre {
 		nextPotentialTrig = npre
 	}
@@ -170,7 +170,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	for nextPotentialTrig+nsamp-npre < FrameIndex(ndata) {
 		if nextPotentialTrig+nsamp <= nextFoundTrig {
 			// auto trigger is allowed: no conflict with previously found non-auto triggers
-			newRecord := dsp.triggerAt(segment, int(nextPotentialTrig))
+			newRecord := dsp.triggerAt(&stream, int(nextPotentialTrig))
 			records = append(records, newRecord)
 			nextPotentialTrig += delaySamples
 
@@ -179,7 +179,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 			nextPotentialTrig = nextFoundTrig + delaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
-				nextFoundTrig = records[idxNextTrig].trigFrame - segment.firstFrameIndex
+				nextFoundTrig = records[idxNextTrig].trigFrame - stream.firstFrameIndex
 			} else {
 				nextFoundTrig = math.MaxInt64
 			}
@@ -251,9 +251,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 // TriggerDataSecondary converts a slice of secondary trigger frame numbers into a slice
 // of records, the secondary trigger records.
 func (dsp *DataStreamProcessor) TriggerDataSecondary(secondaryTrigList []FrameIndex) (secRecords []*DataRecord) {
-	segment := &dsp.stream.DataSegment
+	stream := dsp.stream
 	for _, st := range secondaryTrigList {
-		secRecords = append(secRecords, dsp.triggerAt(segment, int(st-segment.firstFrameIndex)))
+		secRecords = append(secRecords, dsp.triggerAt(&stream, int(st-stream.firstFrameIndex)))
 	}
 	return secRecords
 }
