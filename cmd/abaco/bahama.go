@@ -417,7 +417,7 @@ func main() {
 	}
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
-		Nsources: *nsource, udp: udp,
+		Nsources: *nsource, udp: udp, port: *port,
 		Chan0: *chan0, chanGaps: *changaps, ringsize: ringsize,
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses, crosstalk: *crosstalk,
