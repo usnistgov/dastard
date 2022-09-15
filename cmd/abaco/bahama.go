@@ -432,7 +432,7 @@ func main() {
 	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
 		if control.udp {
-			portnum := (*port)+cardnum
+			portnum := (*port) + cardnum
 			if err := udpwriter(portnum, packetchan); err != nil {
 				fmt.Printf("udpwriter(%d,...) failed: %v\n", cardnum, err)
 				continue
