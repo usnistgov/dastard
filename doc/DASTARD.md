@@ -394,8 +394,7 @@ and append them to the (empty) list of triggered records.
 1. Compute level triggers and append them to the
 list of triggered records.
 1. Compute auto triggers and append them to the list of triggered records.
-1.
-(Noise triggers would go here, but they are not currently implemented.)
+1. (Noise triggers would go here, but they are not currently implemented.)
 1. Create a `TriggerList` object
 containing all information about the full collection of triggered records. Store as `dsp.lastTrigList`.
 1. Return a slice of `*DataRecord` objects.  Each `DataRecord` corresponds to one primary trigger and contains a
