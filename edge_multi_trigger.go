@@ -320,9 +320,6 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 		t, u, v = u, v, FrameIndex(x.triggerInd)+frameIndexOfraw0
 		recordSpec, valid := edgeMultiShouldRecord(t, u, v, s.npre, s.nsamp, s.mode)
 		if valid {
-			// if (recordSpec.firstRisingFrameIndex - frameIndexOfraw0) < FrameIndex(s.npre) {
-			// 	panic("wtf")
-			// }
 			recordSpecs = append(recordSpecs, recordSpec)
 		}
 	}
@@ -342,9 +339,6 @@ func (s *EMTState) edgeMultiComputeRecordSpecs(raw []RawType, frameIndexOfraw0 F
 		// is at least 1 nsamp from there, we know we can write a full length record
 		recordSpec, valid := edgeMultiShouldRecord(u, v, nextFrameIndexToInspect, s.npre, s.nsamp, s.mode)
 		if valid {
-			// if (recordSpec.firstRisingFrameIndex - frameIndexOfraw0) < FrameIndex(s.npre) {
-			// 	panic("wtf")
-			// }
 			recordSpecs = append(recordSpecs, recordSpec)
 		}
 		u = v // we signal that this has already been recordized by setting u = v
