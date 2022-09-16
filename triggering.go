@@ -28,9 +28,9 @@ type TriggerState struct {
 	EdgeRising  bool
 	EdgeFalling bool
 	EdgeLevel   int32
+	EdgeMulti   bool // enable EdgeMulti (actually used in triggering)
 
-	EdgeMulti                      bool // enable EdgeMulti (actually used in triggering)
-	EMTBackwardCompatibleRPCFields      // used to allow the old RPC messages to still work
+	EMTBackwardCompatibleRPCFields // used to allow the old RPC messages to still work
 	EMTState
 }
 
@@ -43,7 +43,6 @@ func (dsp *DataStreamProcessor) triggerAt(i int) *DataRecord {
 func (dsp *DataStreamProcessor) triggerAtSpecificSamples(i int, NPresamples int, NSamples int) *DataRecord {
 
 	data := make([]RawType, NSamples)
-	// fmt.Printf("triggerAtSpecificSamples i %v, NPresamples %v, NSamples %v, len(rawData) %v\n", i, NPresamples, NSamples, len(segment.rawData))
 	stream := dsp.stream
 	copy(data, stream.rawData[i-NPresamples:i+NSamples-NPresamples])
 	tf := stream.firstFrameIndex + FrameIndex(i)
@@ -194,7 +193,6 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 // a triggerList object just when the triggers happened.
 func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 	if dsp.EdgeMulti {
-		// EdgeMulti does not play nice with other triggers!!
 		records = dsp.edgeMultiTriggerComputeAppend(records)
 		trigList := triggerList{channelIndex: dsp.channelIndex}
 		trigList.frames = make([]FrameIndex, len(records))
@@ -208,6 +206,7 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 			FrameIndex(len(dsp.stream.rawData)) - FrameIndex(dsp.NSamples-dsp.NPresamples)
 
 		dsp.lastTrigList = trigList
+		// EdgeMulti does not play nice with other triggers, so return now!!
 		return records
 	}
 

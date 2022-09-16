@@ -223,7 +223,8 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 
 		var val float64        // used to calculate pretrigger mean, then reused in the next loop
 		var valPTDelta float64 // used to calculate pretrigger delta
-		// slope = dot(x,y.-y[0])/z where z = dot(x,x) and x = [0, 1, 2, ..., N-1]/(N-1), where .-y[0] is elementwise subtraction of the first element
+		// slope = dot(x,y.-y[0])/z where z = dot(x,x) and x = [0, 1, 2, ..., N-1]/(N-1),
+		// where .-y[0] is elementwise subtraction of the first element
 		npre := rec.presamples
 		d0 := dataVec.AtVec(0)
 		xmean := float64(npre-1) * 0.5
@@ -279,9 +280,8 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 }
 
 // TrimStream trims a DataStreamProcessor's stream to contain a limited amount of data.
-// When zero threshold model is enabled, we can always look back at least 4 samples,
-// so I (GCO) think the minimum we can keep is ds.NSamples+4. I added more since it doesn't
-// cost much and the details of kink model could be change in the future.
+// When the zero-threshold model is enabled, we might look back at least 4 samples,
+// but the EMTState.NToKeepOnTrim() method figures out the necessary number.
 func (dsp *DataStreamProcessor) TrimStream() {
 	dsp.stream.TrimKeepingN(dsp.NToKeepOnTrim())
 }
