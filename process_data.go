@@ -286,7 +286,7 @@ func (dsp *DataStreamProcessor) TrimStream() {
 	dsp.stream.TrimKeepingN(dsp.NToKeepOnTrim())
 }
 
-// return the uncorrected std deviation of a float slice
+// stdDev returns the std deviation of a float slice
 func stdDev(a []float64) float64 {
 	if len(a) == 0 {
 		return math.NaN()
