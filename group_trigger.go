@@ -62,7 +62,7 @@ func (tc *TriggerCounter) initialize() {
 }
 
 // messageAndReset appends a new triggerCounterMessage to our slice of them and
-// reset to count triggers in the subsequent interval.
+// resets to count triggers in the subsequent interval.
 func (tc *TriggerCounter) messageAndReset() {
 	// Generate a message
 	message := triggerCounterMessage{hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
@@ -82,6 +82,10 @@ func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 	tc.keyFrame = tList.keyFrame
 	tc.keyTime = tList.keyTime
 	tc.sampleRate = tList.sampleRate
+	if tc.sampleRate <= 0 {
+		// Counting trigger rates
+		return nil
+	}
 	if !tc.initialized {
 		tc.initialize()
 	}
@@ -125,9 +129,9 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 	}
 	broker.latestPrimaries = make([][]FrameIndex, nchan)
 	broker.triggerCounters = make([]TriggerCounter, nchan)
+	triggerReportingPeriod := time.Second // could be programmable in future
 	for i := 0; i < nchan; i++ {
-		triggerReportRate := time.Second // could be programmable in future
-		broker.triggerCounters[i] = NewTriggerCounter(i, triggerReportRate)
+		broker.triggerCounters[i] = NewTriggerCounter(i, triggerReportingPeriod)
 	}
 	return broker
 }
