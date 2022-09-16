@@ -223,7 +223,8 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 
 		var val float64        // used to calculate pretrigger mean, then reused in the next loop
 		var valPTDelta float64 // used to calculate pretrigger delta
-		// slope = dot(x,y.-y[0])/z where z = dot(x,x) and x = [0, 1, 2, ..., N-1]/(N-1), where .-y[0] is elementwise subtraction of the first element
+		// slope = dot(x,y.-y[0])/z where z = dot(x,x) and x = [0, 1, 2, ..., N-1]/(N-1),
+		// where .-y[0] is elementwise subtraction of the first element
 		npre := rec.presamples
 		d0 := dataVec.AtVec(0)
 		xmean := float64(npre-1) * 0.5
@@ -278,15 +279,14 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 	}
 }
 
-// TrimStream trims a DataStreamProcessor's stream to contain only one record's worth of old
-// samples. That should more than suffice to extract triggers from future data.
+// TrimStream trims a DataStreamProcessor's stream to contain a limited amount of data.
+// When the zero-threshold model is enabled, we might look back at least 4 samples,
+// but the EMTState.NToKeepOnTrim() method figures out the necessary number.
 func (dsp *DataStreamProcessor) TrimStream() {
-	// Leave one full possible trigger in the stream, because trigger algorithms
-	// should not inspect the last NSamples samples
-	dsp.stream.TrimKeepingN(dsp.NSamples)
+	dsp.stream.TrimKeepingN(dsp.NToKeepOnTrim())
 }
 
-// return the uncorrected std deviation of a float slice
+// stdDev returns the std deviation of a float slice
 func stdDev(a []float64) float64 {
 	if len(a) == 0 {
 		return math.NaN()
