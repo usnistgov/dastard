@@ -360,7 +360,7 @@ func (dsp *DataStreamProcessor) edgeMultiTriggerComputeAppend(records []*DataRec
 	// fmt.Println("firstFrameIndex", stream.firstFrameIndex, "len(segment.rawData)", len(stream.rawData))
 	recordSpecs := dsp.EMTState.edgeMultiComputeRecordSpecs(stream.rawData, stream.firstFrameIndex)
 	for _, recordSpec := range recordSpecs {
-		record := dsp.triggerAtSpecificSamples(&stream, int(recordSpec.firstRisingFrameIndex-stream.firstFrameIndex), int(recordSpec.npre), int(recordSpec.nsamp))
+		record := dsp.triggerAtSpecificSamples(int(recordSpec.firstRisingFrameIndex-stream.firstFrameIndex), int(recordSpec.npre), int(recordSpec.nsamp))
 		records = append(records, record)
 	}
 	// n_before := len(stream.rawData)
