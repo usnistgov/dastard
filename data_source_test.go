@@ -1,7 +1,6 @@
 package dastard
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -96,7 +95,7 @@ func TestChannelNames(t *testing.T) {
 }
 
 func TestWritingFiles(t *testing.T) {
-	tmp, err1 := ioutil.TempDir("", "dastardTest")
+	tmp, err1 := os.MkdirTemp("", "dastardTest")
 	if err1 != nil {
 		t.Errorf("could not make TempDir")
 		return
@@ -192,7 +191,7 @@ func TestWritingFiles(t *testing.T) {
 		t.Error("Stop did not result in !HasLJH3")
 	}
 	if true { // prevent variable from persisting
-		fileContents, err2 := ioutil.ReadFile(experimentStateFilename)
+		fileContents, err2 := os.ReadFile(experimentStateFilename)
 		fileContentsStr := string(fileContents)
 		if err2 != nil {
 			t.Error(err2)

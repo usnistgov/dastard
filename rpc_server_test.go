@@ -3,7 +3,6 @@ package dastard
 import (
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/rpc"
@@ -210,7 +209,7 @@ func TestServer(t *testing.T) {
 		t.Error("error on ConfigureTriggers:", err)
 	}
 
-	path, err := ioutil.TempDir("", "dastard_test")
+	path, err := os.MkdirTemp("", "dastard_test")
 	if err != nil {
 		t.Fatal("Could not open temporary directory")
 	}

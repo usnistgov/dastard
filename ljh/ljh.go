@@ -351,7 +351,7 @@ header:
 		case lnum == 0:
 			firstLine := "#LJH Memorial File Format"
 			if line != firstLine {
-				return fmt.Errorf("File must begin with '%s'", firstLine)
+				return fmt.Errorf("file must begin with '%s'", firstLine)
 			}
 		case strings.Contains(line, "Save File Format Version:"):
 			if err := r.setVersionNumber(line); err != nil {
@@ -384,7 +384,7 @@ header:
 	r.file.ReadAt(b, int64(textLength))
 	idx := strings.Index(string(b), endHeaderTag)
 	if idx < 0 {
-		return fmt.Errorf("Could not find '%s' in LJH file", endHeaderTag)
+		return fmt.Errorf("could not find '%s' in LJH file", endHeaderTag)
 	}
 	idx += len(endHeaderTag)
 	// Consume all leading \r and/or \n bytes.

@@ -3,7 +3,7 @@ package dastard
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -301,10 +301,10 @@ func (ls *LanceroSource) PrepareChannels() error {
 	// Check that ls.chanSepColumns and chanSepCards are appropriate,
 	// i.e. large enough to avoid channel number collisions.
 	if ls.chanSepCards < 0 {
-		return fmt.Errorf("Lancero configured with ChanSepCards=%d, need non-negative", ls.chanSepCards)
+		return fmt.Errorf("lancero configured with ChanSepCards=%d, need non-negative", ls.chanSepCards)
 	}
 	if ls.chanSepColumns < 0 {
-		return fmt.Errorf("Lancero configured with chanSepColumns=%d, need non-negative", ls.chanSepColumns)
+		return fmt.Errorf("lancero configured with chanSepColumns=%d, need non-negative", ls.chanSepColumns)
 	}
 	if ls.chanSepColumns > 0 {
 		for _, device := range ls.active {
@@ -506,12 +506,11 @@ var cringeGlobalsPath = cringeGlobalsCalculatePath()
 // cringeGlobalsRead loads the cringeGlobals.json file into a cringeGlobals struct
 func cringeGlobalsRead(jsonPath string) (cringeGlobals, error) {
 	jsonFile, err := os.Open(jsonPath)
-	defer jsonFile.Close()
-	// if we os.Open returns an error then handle it
 	if err != nil {
 		return cringeGlobals{}, err
 	}
-	byteValue, _ := ioutil.ReadAll(jsonFile)
+	defer jsonFile.Close()
+	byteValue, _ := io.ReadAll(jsonFile)
 
 	var cg cringeGlobals
 	// unmarshal our byteArray which contains our

@@ -3,7 +3,6 @@ package ljh
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,7 +72,7 @@ func TestCannotOpenNonLJH(t *testing.T) {
 }
 
 func TestBadVersionNumbers(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "ljh_test")
+	tempDir, err := os.MkdirTemp("", "ljh_test")
 	if err != nil {
 		t.Error(err)
 	}
@@ -95,7 +94,7 @@ func TestBadVersionNumbers(t *testing.T) {
 	for _, vt := range versiontests {
 		content := []byte(
 			fmt.Sprintf("#LJH Memorial File Format\nSave File Format Version: %s\n#End of Header\n", vt.vnum))
-		if err = ioutil.WriteFile(tempFile, content, 0666); err != nil {
+		if err = os.WriteFile(tempFile, content, 0666); err != nil {
 			t.Error(err)
 		}
 		_, err = OpenReader(tempFile)

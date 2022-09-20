@@ -614,7 +614,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	for _, dsp := range ds.processors {
 		if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
 			return fmt.Errorf(
-				"Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
+				"writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
 	}
@@ -948,7 +948,7 @@ func (ds *AnySource) SetCoupling(status CouplingStatus) error {
 	if status == NoCoupling {
 		return nil
 	}
-	return fmt.Errorf("Generic data sources do not support FB/error coupling")
+	return fmt.Errorf("generic data sources do not support FB/error coupling")
 }
 
 // ChangeGroupTrigger either adds or deletes the connections in `gts` (add when `turnon` is true,
