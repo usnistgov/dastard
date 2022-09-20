@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/rpc"
@@ -509,7 +508,7 @@ func (s *SourceControl) ReadComment(zero *int, reply *string) error {
 		return fmt.Errorf("cannot read comment when not actively writing")
 	}
 	commentFilename := path.Join(filepath.Dir(ws.FilenamePattern), "comment.txt")
-	b, err := ioutil.ReadFile(commentFilename)
+	b, err := os.ReadFile(commentFilename)
 	if err != nil {
 		return err
 	}
@@ -769,10 +768,10 @@ func RunRPCServer(portrpc int, block bool) {
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
 	go func() {
-		ticker := time.Tick(2 * time.Second)
+		ticker := time.NewTicker(2 * time.Second)
 		for {
 			select {
-			case <-ticker:
+			case <-ticker.C:
 				sourceControl.broadcastHeartbeat()
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.HWactualMB += h.HWactualMB

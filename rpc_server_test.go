@@ -39,10 +39,10 @@ func simpleClient() (*rpc.Client, error) {
 
 func TestServer(t *testing.T) {
 	client, err := simpleClient()
-	defer client.Close()
 	if err != nil {
 		t.Fatalf("Could not connect simpleClient() to RPC server")
 	}
+	defer client.Close()
 
 	// Test the silly multiply feature
 	type Args struct {
@@ -253,10 +253,10 @@ func TestServer(t *testing.T) {
 		date := time.Now().Format("20060102")
 		fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
 		file, err0 := os.Open(fname)
-		defer file.Close()
 		if err0 != nil {
 			t.Errorf("Could not open comment file %q", fname)
 		} else {
+			defer file.Close()
 			b := make([]byte, 1+len(comment))
 			_, err2 := file.Read(b)
 			if err2 != nil {
@@ -271,10 +271,10 @@ func TestServer(t *testing.T) {
 		date := time.Now().Format("20060102")
 		fname := fmt.Sprintf("%s/%s/0000/%s_run0000_experiment_state.txt", path, date, date)
 		file, err0 := os.Open(fname)
-		defer file.Close()
 		if err0 != nil {
 			t.Error(err0)
 		}
+		defer file.Close()
 	}
 	if err1 := client.Call("SourceControl.WriteComment", &comment, &okay); err1 != nil {
 		t.Error("SourceControl.WriteComment error after source stoped:", err1)
@@ -444,10 +444,10 @@ func setupViper() error {
 
 func TestErroringSourceRPC(t *testing.T) {
 	client, errClient := simpleClient()
-	defer client.Close()
 	if errClient != nil {
 		t.Fatal(errClient)
 	}
+	defer client.Close()
 	sourceName := "ERRORINGSOURCE"
 	dummy := ""
 	okay := false

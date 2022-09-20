@@ -8,10 +8,10 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-func matPrint(X mat.Matrix, t *testing.T) {
-	fa := mat.Formatted(X, mat.Prefix(""), mat.Squeeze())
-	t.Logf("%v\n", fa)
-}
+// func matPrint(X mat.Matrix, t *testing.T) {
+// 	fa := mat.Formatted(X, mat.Prefix(""), mat.Squeeze())
+// 	t.Logf("%v\n", fa)
+// }
 
 func TestStdDev(t *testing.T) {
 	s := []float64{1.0, 1.0, 1.0}
