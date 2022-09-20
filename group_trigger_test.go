@@ -41,8 +41,8 @@ func TestBrokerConnections(t *testing.T) {
 	}
 	gts = broker.computeGroupTriggerState()
 	var expected = [][]int{
-		[]int{0, 2},
-		[]int{2, 0},
+		{0, 2},
+		{2, 0},
 	}
 	for _, want := range expected {
 		rx, ok := gts.Connections[want[0]]
@@ -97,9 +97,9 @@ func TestBrokerConnections(t *testing.T) {
 	}
 	gts = broker.computeGroupTriggerState()
 	expected = [][]int{
-		[]int{1, 0},
-		[]int{2, 0},
-		[]int{3, 0},
+		{1, 0},
+		{2, 0},
+		{3, 0},
 	}
 	for _, want := range expected {
 		rx, ok := gts.Connections[want[0]]
