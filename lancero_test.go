@@ -190,19 +190,19 @@ func TestPrepareChannels(t *testing.T) {
 		expect               bool
 	}
 	checks := []Checks{
-		Checks{0, 0, true},
-		Checks{0, 2, false},
-		Checks{0, 3, false},
-		Checks{0, 4, true},
-		Checks{100, 0, true},
-		Checks{16, 0, true},
-		Checks{15, 0, false},
-		Checks{16, 4, true},
-		Checks{19, 4, true},
-		Checks{19, 5, false},
-		Checks{20, 5, true},
-		Checks{-1, 0, false},
-		Checks{0, -1, false},
+		{0, 0, true},
+		{0, 2, false},
+		{0, 3, false},
+		{0, 4, true},
+		{100, 0, true},
+		{16, 0, true},
+		{15, 0, false},
+		{16, 4, true},
+		{19, 4, true},
+		{19, 5, false},
+		{20, 5, true},
+		{-1, 0, false},
+		{0, -1, false},
 	}
 	for _, chk := range checks {
 		ls.chanSepCards = chk.sepCards

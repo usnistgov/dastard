@@ -1,7 +1,6 @@
 package dastard
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -9,7 +8,7 @@ import (
 // See also data_source_test.go, which contains several implicit tests of WritingState.
 
 func TestWriteControl(t *testing.T) {
-	tmp, err1 := ioutil.TempDir("", "dastardTest")
+	tmp, err1 := os.MkdirTemp("", "dastardTest")
 	if err1 != nil {
 		t.Errorf("could not make TempDir")
 		return

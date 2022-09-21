@@ -499,7 +499,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 
 			case message := <-singlepackets:
 				p, err := packets.ReadPacket(bytes.NewReader(message))
-				bufferPool.Put(message)
+				bufferPool.Put(&message)
 				if err != nil {
 					if err != io.EOF {
 						fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
@@ -518,7 +518,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 			message := bufferPool.Get().([]byte)
 			if _, _, err := device.conn.ReadFrom(message); err != nil {
 				// Getting an error here is the normal way to detect closed connection.
-				bufferPool.Put(message)
+				bufferPool.Put(&message)
 				return
 			}
 			singlepackets <- message
@@ -739,7 +739,7 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 // Sample determines key data facts by sampling some initial data.
 func (as *AbacoSource) Sample() error {
 	if len(as.producers) <= 0 {
-		return fmt.Errorf("No Abaco ring buffers or UDP receivers are active")
+		return fmt.Errorf("no Abaco ring buffers or UDP receivers are active")
 	}
 
 	// Launch device.samplePackets as goroutines on each device, in parallel, to save time.
@@ -760,7 +760,7 @@ func (as *AbacoSource) Sample() error {
 	// Now sort the packets received into the right AbacoGroups
 	as.nchan = 0
 	as.groups = make(map[GroupIndex]*AbacoGroup)
-	for _ = range as.producers {
+	for range as.producers {
 		results := <-sampleResults
 		now := time.Now()
 		if results.err != nil {
@@ -784,7 +784,7 @@ func (as *AbacoSource) Sample() error {
 		cend := cinit + g.index.Nchan
 		for cnum := cinit; cnum < cend; cnum++ {
 			if known[cnum] {
-				return fmt.Errorf("Channel group %v sees channel %d, which was in another group", g.index, cnum)
+				return fmt.Errorf("channel group %v sees channel %d, which was in another group", g.index, cnum)
 			}
 			known[cnum] = true
 		}

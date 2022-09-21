@@ -200,7 +200,6 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 	}
 	segment.rawData = data[:Nout]
 	segment.framesPerSample *= dsp.DecimateLevel
-	return
 }
 
 // AnalyzeData computes pulse-analysis values in-place for all elements of a

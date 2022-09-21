@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"sync"
@@ -40,7 +39,7 @@ func (w *Writer) writeRecord(nBytes int) error {
 }
 
 func main() {
-	dirname, err0 := ioutil.TempDir("", "")
+	dirname, err0 := os.MkdirTemp("", "")
 	if err0 != nil {
 		panic(err0)
 	}

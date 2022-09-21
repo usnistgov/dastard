@@ -280,23 +280,22 @@ type dataBlock struct {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan                  int           // how many channels to provide
-	name                   string        // what kind of source is this?
-	chanNames              []string      // one name per channel
-	chanNumbers            []int         // names have format "prefixNumber", this is the number
-	rowColCodes            []RowColCode  // one RowColCode per channel
-	groupKeysSorted        []GroupIndex  // sorted slice of channel group information
-	voltsPerArb            []float32     // the physical units per arb, one per channel
-	sampleRate             float64       // samples per second
-	samplePeriod           time.Duration // time per sample
-	lastread               time.Time
-	nextFrameNum           FrameIndex // frame number for the next frame we will receive
-	previousLastSampleTime time.Time
-	processors             []*DataStreamProcessor
-	abortSelf              chan struct{}   // Signal to the core loop of active sources to stop
-	nextBlock              chan *dataBlock // Signal from the core loop that a block is ready to process
-	broker                 *TriggerBroker
-	configError            error // Any error that arose when configuring the source (before Start)
+	nchan           int           // how many channels to provide
+	name            string        // what kind of source is this?
+	chanNames       []string      // one name per channel
+	chanNumbers     []int         // names have format "prefixNumber", this is the number
+	rowColCodes     []RowColCode  // one RowColCode per channel
+	groupKeysSorted []GroupIndex  // sorted slice of channel group information
+	voltsPerArb     []float32     // the physical units per arb, one per channel
+	sampleRate      float64       // samples per second
+	samplePeriod    time.Duration // time per sample
+	lastread        time.Time
+	nextFrameNum    FrameIndex // frame number for the next frame we will receive
+	processors      []*DataStreamProcessor
+	abortSelf       chan struct{}   // Signal to the core loop of active sources to stop
+	nextBlock       chan *dataBlock // Signal from the core loop that a block is ready to process
+	broker          *TriggerBroker
+	configError     error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
@@ -614,7 +613,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	for _, dsp := range ds.processors {
 		if dsp.DataPublisher.HasLJH22() || dsp.DataPublisher.HasOFF() || dsp.DataPublisher.HasLJH3() {
 			return fmt.Errorf(
-				"Writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
+				"writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
 	}
@@ -948,7 +947,7 @@ func (ds *AnySource) SetCoupling(status CouplingStatus) error {
 	if status == NoCoupling {
 		return nil
 	}
-	return fmt.Errorf("Generic data sources do not support FB/error coupling")
+	return fmt.Errorf("generic data sources do not support FB/error coupling")
 }
 
 // ChangeGroupTrigger either adds or deletes the connections in `gts` (add when `turnon` is true,
