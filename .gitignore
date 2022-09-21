@@ -30,3 +30,4 @@ dastard
 !dastard/
 .idea
 .vscode
+*.log
