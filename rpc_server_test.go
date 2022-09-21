@@ -485,7 +485,8 @@ func TestMain(m *testing.M) {
 
 	abort := make(chan struct{})
 	go RunClientUpdater(Ports.Status, abort)
-	RunRPCServer(Ports.RPC, false)
+	block := false
+	RunRPCServer(Ports.RPC, block)
 
 	// run tests and wrap up
 	result := m.Run()

@@ -51,7 +51,7 @@ func NewTriggerCounter(channelIndex int, stepDuration time.Duration) TriggerCoun
 func (tc *TriggerCounter) initialize() {
 	// Set hiTime (end of the integration period) to the first multiple of stepDuration after keyTime
 	hiTime := tc.keyTime.Round(tc.stepDuration)
-	if hiTime.Before(tc.keyTime) {
+	for hiTime.Before(tc.keyTime) {
 		hiTime = hiTime.Add(tc.stepDuration)
 	}
 	tc.hiTime = hiTime
@@ -62,7 +62,7 @@ func (tc *TriggerCounter) initialize() {
 }
 
 // messageAndReset appends a new triggerCounterMessage to our slice of them and
-// reset to count triggers in the subsequent interval.
+// resets to count triggers in the subsequent interval.
 func (tc *TriggerCounter) messageAndReset() {
 	// Generate a message
 	message := triggerCounterMessage{hiTime: tc.hiTime, duration: tc.stepDuration, countsSeen: tc.countsSeen}
@@ -72,31 +72,39 @@ func (tc *TriggerCounter) messageAndReset() {
 	tc.countsSeen = 0
 	tc.hiTime = tc.hiTime.Add(tc.stepDuration)
 	tc.lo = tc.hi + 1
-	tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*tc.hiTime.Sub(tc.keyTime).Seconds()))
+	hi_minus_key := tc.hiTime.Sub(tc.keyTime).Seconds()
+	tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*hi_minus_key))
 }
 
+// countNewTriggers increments the relevant per-channel counters.
+// It also generates a set of messages in `tc.messages` at the
+// chosen message rate (i.e., each `tc.stepDuration`).
 func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 	// Update keyFrame and keyTime to have a new, recent correspondence between
 	// the real-world time and frame number.
 	tc.keyFrame = tList.keyFrame
 	tc.keyTime = tList.keyTime
 	tc.sampleRate = tList.sampleRate
+	if tc.sampleRate <= 0 {
+		// Counting trigger rates makes no sense if the counter has no understanding of the
+		// data sample rate. Give up.
+		return nil
+	}
 	if !tc.initialized {
 		tc.initialize()
 	}
 	for _, frame := range tList.frames {
-		if frame > tc.hi {
+		// The following loop might appear infinite, but it isn't, because tc.hi increases in each
+		// call to tc.messageAndReset().
+		for frame > tc.hi {
 			tc.messageAndReset()
 		}
-		if frame > tc.hi {
-			return fmt.Errorf("countNewTriggers: frame %v still higher than tc.hi=%v even after messageAndReset (Δf=%d)", frame, tc.hi, frame-tc.hi)
+		if frame >= tc.lo {
+			tc.countsSeen++
 		}
-		if frame < tc.lo {
-			return fmt.Errorf("countNewTriggers: observed count before lo=%v, frame=%v", tc.lo, frame)
-		}
-		tc.countsSeen++
 	}
-	if tList.firstFrameThatCannotTrigger > tc.hi {
+	// The following loop might appear infinite; again, tc.messageAndReset() ensures it isn't.
+	for tList.firstFrameThatCannotTrigger > tc.hi {
 		tc.messageAndReset()
 	}
 	return nil
@@ -128,9 +136,9 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 	}
 	broker.latestPrimaries = make([][]FrameIndex, nchan)
 	broker.triggerCounters = make([]TriggerCounter, nchan)
+	triggerReportingPeriod := time.Second // could be programmable in future
 	for i := 0; i < nchan; i++ {
-		triggerReportRate := time.Second // could be programmable in future
-		broker.triggerCounters[i] = NewTriggerCounter(i, triggerReportRate)
+		broker.triggerCounters[i] = NewTriggerCounter(i, triggerReportingPeriod)
 	}
 	return broker
 }
@@ -223,8 +231,9 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 		nprimaries += len(tlist.frames)
 		err := broker.triggerCounters[idx].countNewTriggers(&tlist)
 		if err != nil {
-			log.Printf("triggering assumptions broken!\n%v\n%v\n%v", err,
+			msg := fmt.Sprintf("Triggering assumptions broken!\n%v\n%v\n%v", err,
 				spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[idx]))
+			log.Printf(msg)
 		}
 	}
 
