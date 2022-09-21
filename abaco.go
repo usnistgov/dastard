@@ -499,7 +499,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 
 			case message := <-singlepackets:
 				p, err := packets.ReadPacket(bytes.NewReader(message))
-				bufferPool.Put(message)
+				bufferPool.Put(&message)
 				if err != nil {
 					if err != io.EOF {
 						fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
@@ -518,7 +518,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 			message := bufferPool.Get().([]byte)
 			if _, _, err := device.conn.ReadFrom(message); err != nil {
 				// Getting an error here is the normal way to detect closed connection.
-				bufferPool.Put(message)
+				bufferPool.Put(&message)
 				return
 			}
 			singlepackets <- message
