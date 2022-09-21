@@ -249,7 +249,6 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		for burstnum := 0; burstnum < nbursts; burstnum++ {
 			select {
 			case <-cancel:
-				close(packetchan)
 				return nil
 			case <-timer.C:
 				lastvalue := (burstnum + 1) * BurstNvalues
@@ -314,6 +313,7 @@ func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 	return nil
 }
 
+// udpwriter is called once per data source (i.e., per UDP port producing data)
 func udpwriter(portnum int, packetchan chan []byte) error {
 	hostname := fmt.Sprintf("localhost:%d", portnum)
 	addr, err := net.ResolveUDPAddr("udp", hostname)
@@ -435,6 +435,7 @@ func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 	ch0 := control.Chan0
 	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
+		defer close(packetchan)
 		if control.udp {
 			portnum := (control.port) + cardnum
 			if err := udpwriter(portnum, packetchan); err != nil {
@@ -452,7 +453,7 @@ func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 		chanPerGroup := (1 + (control.Nchan-1)/control.Ngroups)
 		for i := 0; i < control.Nchan; i += chanPerGroup {
 			nch := chanPerGroup
-			if i*chanPerGroup+nch > control.Nchan {
+			if i+nch > control.Nchan {
 				nch = control.Nchan - i
 			}
 			pchan := packetchan
