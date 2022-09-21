@@ -76,6 +76,9 @@ func (tc *TriggerCounter) messageAndReset() {
 	tc.hi = tc.keyFrame + FrameIndex(roundint(tc.sampleRate*hi_minus_key))
 }
 
+// countNewTriggers increments the relevant per-channel counters.
+// It also generates a set of messages in `tc.messages` at the
+// chosen message rate (i.e., each `tc.stepDuration`).
 func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 	// Update keyFrame and keyTime to have a new, recent correspondence between
 	// the real-world time and frame number.
@@ -83,13 +86,16 @@ func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 	tc.keyTime = tList.keyTime
 	tc.sampleRate = tList.sampleRate
 	if tc.sampleRate <= 0 {
-		// Counting trigger rates
+		// Counting trigger rates makes no sense if the counter has no understanding of the
+		// data sample rate. Give up.
 		return nil
 	}
 	if !tc.initialized {
 		tc.initialize()
 	}
 	for _, frame := range tList.frames {
+		// The following loop might appear infinite, but it isn't, because tc.hi increases in each
+		// call to tc.messageAndReset().
 		for frame > tc.hi {
 			tc.messageAndReset()
 		}
@@ -97,6 +103,7 @@ func (tc *TriggerCounter) countNewTriggers(tList *triggerList) error {
 			tc.countsSeen++
 		}
 	}
+	// The following loop might appear infinite; again, tc.messageAndReset() ensures it isn't.
 	for tList.firstFrameThatCannotTrigger > tc.hi {
 		tc.messageAndReset()
 	}
