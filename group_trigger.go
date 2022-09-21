@@ -233,7 +233,7 @@ func (broker *TriggerBroker) Distribute(primaries map[int]triggerList) (map[int]
 		if err != nil {
 			msg := fmt.Sprintf("Triggering assumptions broken!\n%v\n%v\n%v", err,
 				spew.Sdump(tlist), spew.Sdump(broker.triggerCounters[idx]))
-			log.Printf(msg)
+			log.Print(msg)
 		}
 	}
 

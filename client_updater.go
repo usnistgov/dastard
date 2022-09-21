@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pebbe/zmq4"
 	"github.com/spf13/viper"
-	czmq "github.com/zeromq/goczmq"
 )
 
 // ClientUpdate carries the messages to be published on the status port.
@@ -44,7 +44,7 @@ var nologMessages = map[string]struct{}{
 // publish sends to all clients of the status update socket a 2-part message, with
 // the `update.tag` as the first part and `message` as the second. The latter should be
 // decodable as JSON.
-func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
+func publish(pubSocket *zmq4.Socket, update ClientUpdate, message []byte) {
 	updateType := reflect.TypeOf(update.state).String()
 	tag := update.tag
 	if _, ok := nopublishMessages[tag]; ok {
@@ -53,19 +53,15 @@ func publish(pubSocket *czmq.Sock, update ClientUpdate, message []byte) {
 	if _, ok := nologMessages[tag]; !ok {
 		log.Printf("SEND %v %v\n\tmessage body: %v\n", tag, updateType, string(message))
 	}
-	// Commented out bits: a 3-part message with 2nd part = message serial #
-	// serial := fmt.Sprintf("s#%9.9d", messageSerial)
-	// messageSerial++
-	// fullmessage := [][]byte{[]byte(tag), []byte(serial), message}
-	// fmt.Printf("Full message: {%s...%s...%s}\n", fullmessage[0], fullmessage[1], fullmessage[2])
-
 	// Send the 2-part message to all subscribers (clients).
 	// If there are errors, retry up to `maxSendAttempts` times with a sleep between.
-	fullmessage := [][]byte{[]byte(tag), message}
 	const maxSendAttempts = 5
 	var err error
 	for iter := 0; iter < maxSendAttempts; iter++ {
-		if err = pubSocket.SendMessage(fullmessage); err == nil {
+		if _, err = pubSocket.Send(tag, zmq4.SNDMORE); err == nil {
+			break
+		}
+		if _, err = pubSocket.SendBytes(message, zmq4.DONTWAIT); err == nil {
 			break
 		}
 		// fmt.Printf("Error sending iteration %d\n", iter)
@@ -87,11 +83,17 @@ func init() {
 // to publish any information that clients need to know.
 func RunClientUpdater(statusport int, abort <-chan struct{}) {
 	hostname := fmt.Sprintf("tcp://*:%d", statusport)
-	pubSocket, err := czmq.NewPub(hostname)
+	pubSocket, err := zmq4.NewSocket(zmq4.PUB)
 	if err != nil {
-		return
+		panicmsg := fmt.Errorf("could not create client updater port %d\n\terr=%v", statusport, err)
+		panic(panicmsg)
 	}
-	defer pubSocket.Destroy()
+	defer pubSocket.Close()
+	// pubSocket.SetSndhwm(100)
+	if err = pubSocket.Bind(hostname); err != nil {
+		panicmsg := fmt.Errorf("could not bind client updater port %d\n\terr=%v", statusport, err)
+		panic(panicmsg)
+	}
 
 	// The ZMQ middleware will need some time for existing SUBscribers (and their
 	// subscription topics) to be hooked up to this new PUBlisher.
