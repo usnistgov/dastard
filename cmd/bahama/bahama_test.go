@@ -126,3 +126,15 @@ func TestGenerate(t *testing.T) {
 		t.Errorf("generateData() left shm:%s in existence", name)
 	}
 }
+
+func BenchmarkUDPGenerate(b *testing.B) {
+	cancel := make(chan os.Signal)
+	go func() {
+		time.Sleep(60 * time.Second)
+		close(cancel)
+	}()
+
+	control := BahamaControl{Nchan: 32, Ngroups: 8, Nsources: 2, pulses: true,
+		noiselevel: 5.0, samplerate: 244140, udp: true, port: 4000}
+	generateAndPublishData(control, cancel)
+}

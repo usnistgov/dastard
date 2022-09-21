@@ -427,18 +427,22 @@ func main() {
 	control.Report()
 
 	cancel := make(chan os.Signal)
+	generateAndPublishData(control, cancel)
+}
+
+func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	ch0 := control.Chan0
 	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
 		if control.udp {
-			portnum := (*port) + cardnum
+			portnum := (control.port) + cardnum
 			if err := udpwriter(portnum, packetchan); err != nil {
 				fmt.Printf("udpwriter(%d,...) failed: %v\n", cardnum, err)
 				continue
 			}
 		} else {
-			if err := ringwriter(cardnum, packetchan, ringsize); err != nil {
+			if err := ringwriter(cardnum, packetchan, control.ringsize); err != nil {
 				fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
 				continue
 			}
