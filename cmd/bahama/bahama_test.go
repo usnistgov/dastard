@@ -133,15 +133,8 @@ func BenchmarkUDPGenerate(b *testing.B) {
 		time.Sleep(60 * time.Second)
 		close(cancel)
 	}()
-	// Keep the data channel drained...
-	packetchan := make(chan []byte)
 
-	control := BahamaControl{Nchan: 64, Ngroups: 1, Nsources: 1, pulses: true,
+	control := BahamaControl{Nchan: 32, Ngroups: 8, Nsources: 2, pulses: true,
 		noiselevel: 5.0, samplerate: 244140, udp: true, port: 4000}
-	if err := udpwriter(control.port, packetchan); err != nil {
-		b.Errorf("udpwriter(%d,...) failed: %v\n", control.port, err)
-	}
-	if err := generateData(control.Nchan, 0, packetchan, cancel, control); err != nil {
-		b.Errorf("generateData() returned %s", err.Error())
-	}
+	generateAndPublishData(control, cancel)
 }
