@@ -55,16 +55,13 @@ func publish(pubSocket *zmq4.Socket, update ClientUpdate, message []byte) {
 	}
 	// Send the 2-part message to all subscribers (clients).
 	// If there are errors, retry up to `maxSendAttempts` times with a sleep between.
+	fullmessage := [][]byte{[]byte(tag), message}
 	const maxSendAttempts = 5
 	var err error
 	for iter := 0; iter < maxSendAttempts; iter++ {
-		if _, err = pubSocket.Send(tag, zmq4.SNDMORE); err == nil {
+		if _, err = pubSocket.SendMessage(fullmessage); err == nil {
 			break
 		}
-		if _, err = pubSocket.SendBytes(message, zmq4.DONTWAIT); err == nil {
-			break
-		}
-		// fmt.Printf("Error sending iteration %d\n", iter)
 		time.Sleep(time.Millisecond)
 	}
 	if err != nil {

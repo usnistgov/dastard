@@ -389,14 +389,8 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 			}
 			for _, record := range records {
 				message := converter(record)
-				for framenum, frame := range message {
-					flag := zmq4.SNDMORE
-					if framenum == len(message)-1 {
-						flag = zmq4.DONTWAIT
-					}
-					if _, err := pubSocket.SendBytes(frame, flag); err != nil {
-						ProblemLogger.Println("zmq send error publishing a triggered record:", err)
-					}
+				if _, err := pubSocket.SendMessage(message); err != nil {
+					ProblemLogger.Println("zmq send error publishing a triggered record:", err)
 				}
 			}
 		}
