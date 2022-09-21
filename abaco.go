@@ -518,7 +518,10 @@ func (device *AbacoUDPReceiver) start() (err error) {
 				}
 				queue = make([]*packets.Packet, 0, initialQueueCapacity)
 
-			case message := <-singlepackets:
+			case message, ok := <-singlepackets:
+				if !ok {
+					return
+				}
 				p, err := packets.ReadPacket(bytes.NewReader(*message))
 				bufferPool.Put(message)
 				if err != nil {
