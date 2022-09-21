@@ -472,25 +472,25 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	}
 	const UDPPacketSize = 8192
 	bufferPool := sync.Pool{
-		New: func() interface{} { return make([]byte, UDPPacketSize) },
+		New: func() interface{} { p := make([]byte, UDPPacketSize); return &p },
 	}
 	device.conn = conn
 
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
-	singlepackets := make(chan []byte, 20)
+	singlepackets := make(chan *[]byte, 20)
 
 	// Two goroutines:
-	// 1. Read from the UDP socket.
-	// 2.
+	// 1. Read from the UDP socket, put packet on channel singlepackets.
+	// 2. Read packet from channel singlepackets and convert to a dastard `packets.Packet` type.
 
 	// This goroutine (#1) reads the UDP socket and puts the resulting packets on channel singlepackets.
 	// They will be removed and queued by the other goroutine (#2).
 	go func() {
 		defer close(singlepackets)
 		for {
-			message := bufferPool.Get().([]byte)
-			if _, _, err := device.conn.ReadFrom(message); err != nil {
+			message := bufferPool.Get().(*[]byte)
+			if _, _, err := device.conn.ReadFrom(*message); err != nil {
 				// Getting an error in ReadFrom is the normal way to detect closed connection.
 				// bufferPool.Put() returns an object to the pool for reuse.
 				bufferPool.Put(message)
@@ -500,7 +500,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		}
 	}()
 
-	// This goroutine handles UDP message sent one at a time on singlepackets by the other goroutine.
+	// This goroutine (#2) handles UDP message sent one at a time on singlepackets by the other goroutine (#1).
 	// It converts them into packet.Packet objects, queues them into a slice of *packets.Packet
 	// pointers and sends the whole slice when a request comes on device.sendmore.
 	go func() {
@@ -519,7 +519,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 				queue = make([]*packets.Packet, 0, initialQueueCapacity)
 
 			case message := <-singlepackets:
-				p, err := packets.ReadPacket(bytes.NewReader(message))
+				p, err := packets.ReadPacket(bytes.NewReader(*message))
 				bufferPool.Put(message)
 				if err != nil {
 					if err != io.EOF {
