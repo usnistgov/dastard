@@ -135,14 +135,9 @@ func BenchmarkUDPGenerate(b *testing.B) {
 	}()
 	// Keep the data channel drained...
 	packetchan := make(chan []byte)
-	go func() {
-		for {
-			<-packetchan
-		}
-	}()
 
-	control := BahamaControl{Nchan: 4, Ngroups: 1, Nsources: 1, pulses: true,
-		noiselevel: 5.0, samplerate: 244000, udp: true, port: 4000}
+	control := BahamaControl{Nchan: 64, Ngroups: 1, Nsources: 1, pulses: true,
+		noiselevel: 5.0, samplerate: 244140, udp: true, port: 4000}
 	if err := udpwriter(control.port, packetchan); err != nil {
 		b.Errorf("udpwriter(%d,...) failed: %v\n", control.port, err)
 	}
