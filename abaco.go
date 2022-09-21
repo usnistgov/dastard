@@ -479,6 +479,27 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
 	singlepackets := make(chan []byte, 20)
+
+	// Two goroutines:
+	// 1. Read from the UDP socket.
+	// 2.
+
+	// This goroutine (#1) reads the UDP socket and puts the resulting packets on channel singlepackets.
+	// They will be removed and queued by the other goroutine (#2).
+	go func() {
+		defer close(singlepackets)
+		for {
+			message := bufferPool.Get().([]byte)
+			if _, _, err := device.conn.ReadFrom(message); err != nil {
+				// Getting an error in ReadFrom is the normal way to detect closed connection.
+				// bufferPool.Put() returns an object to the pool for reuse.
+				bufferPool.Put(message)
+				return
+			}
+			singlepackets <- message
+		}
+	}()
+
 	// This goroutine handles UDP message sent one at a time on singlepackets by the other goroutine.
 	// It converts them into packet.Packet objects, queues them into a slice of *packets.Packet
 	// pointers and sends the whole slice when a request comes on device.sendmore.
@@ -499,7 +520,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 
 			case message := <-singlepackets:
 				p, err := packets.ReadPacket(bytes.NewReader(message))
-				bufferPool.Put(&message)
+				bufferPool.Put(message)
 				if err != nil {
 					if err != io.EOF {
 						fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
@@ -508,20 +529,6 @@ func (device *AbacoUDPReceiver) start() (err error) {
 				}
 				queue = append(queue, p)
 			}
-		}
-	}()
-	// This goroutine reads the UDP socket and puts the resulting packets on channel singlepackets.
-	// They will be removed and queued by the previous goroutine.
-	go func() {
-		defer close(singlepackets)
-		for {
-			message := bufferPool.Get().([]byte)
-			if _, _, err := device.conn.ReadFrom(message); err != nil {
-				// Getting an error here is the normal way to detect closed connection.
-				bufferPool.Put(&message)
-				return
-			}
-			singlepackets <- message
 		}
 	}()
 	return nil
