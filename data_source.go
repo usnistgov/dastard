@@ -1018,8 +1018,7 @@ func NewDataStream(data []RawType, framesPerSample int, firstFrame FrameIndex,
 // It will update the frame/time counters to be consistent with the appended
 // segment, not necessarily with the previous values.
 func (stream *DataStream) AppendSegment(segment *DataSegment) {
-	nsamp := len(stream.rawData)
-	framesNowInStream := FrameIndex(nsamp * segment.framesPerSample)
+	framesNowInStream := FrameIndex(len(stream.rawData) * segment.framesPerSample)
 	timeNowInStream := time.Duration(framesNowInStream) * stream.framePeriod
 
 	stream.framesPerSample = segment.framesPerSample
@@ -1031,7 +1030,7 @@ func (stream *DataStream) AppendSegment(segment *DataSegment) {
 	// There are multiple sources of truth on whether something is signed.
 	// This syncs with segment.signed, which comes from deep in a datasource,
 	// but there is also AnySource.signed which seems indepdendent (?)
-	stream.samplesSeen += nsamp
+	stream.samplesSeen += len(segment.rawData)
 }
 
 // TrimKeepingN will trim (discard) all but the last N values in the DataStream.
