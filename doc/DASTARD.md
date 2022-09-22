@@ -52,12 +52,12 @@ DASTARD replaces an earlier pair of programs
 ([`ndfb_server`](https://bitbucket.org/nist_microcal/nasa_daq/src/master/) and
 [`matter`](https://bitbucket.org/nist_microcal/nasa_daq/src/master/)) that were written in C++. Each contains
 both the code to perform any underlying DAQ activities and a GUI to permit users to control the programs. One
-key design decision for DASTARD was to split the DAQ work and the GUI front-end into two separate programs.1
+key design decision for DASTARD was to split the DAQ work and the GUI front-end into two separate programs.
 By splitting the DAQ work from the control GUI, we were able to write each in a language best suited to the
 job. GUIs are really complicated, and writing a Qt5 GUI in Python is considerably easier than writing it in
 C++ (though it is still far from easy).
 
-The way the GUI(s) communicate with DASTARD is by having DASTARD operate a server for Remote Procedure Calls
+The way the GUI (or GUIs) communicate with DASTARD is by having DASTARD operate a server for Remote Procedure Calls
 (RPCs). The specific protocol used is JSON-RPC, in which the function calls, argument lists, and results are
 represented as JSON objects. We are using [JSON-RPC version 1.0](https://www.jsonrpc.org/specification_v1). It
 is implemented by a Go package, [net/rpc/jsonrpc](https://pkg.go.dev/net/rpc/jsonrpc).
@@ -65,7 +65,7 @@ is implemented by a Go package, [net/rpc/jsonrpc](https://pkg.go.dev/net/rpc/jso
 The main DASTARD program (`dastard/dastard.go`) is simple. It performs one startup task then launches three
 parallel tasks. The startup task uses the [viper configuration manager](http://github.com/spf13/viper) to read
 a configuration file `$HOME/.dastard/config.yaml` that restores much of the configuration from the last run of
-DASTARD. If a global configuration` /etc/dastard/config.yaml/` exists, it will be read before the user’s main
+DASTARD. If a global configuration` /etc/dastard/config.yaml` exists, it will be read before the user’s main
 configuration. The parallel tasks are:
 
 1. Start and keep open a [`log.Logger`](https://pkg.go.dev/log#Logger) in `dastard.problemLogger` that writes
@@ -83,7 +83,7 @@ control/monitoring clients learn the state of DASTARD by ZMQ-subscribing to this
 Within `RunRPCServer` a new `SourceControl` object is created. It's in charge of configuring and running the
 various supported data sources (e.g., an Abaco). It contains one each of a `LanceroSource`, `AbacoSource`,
 `RoachSource`, `SimPulseSource`, and `TriangleSource`. These 5 specific types match the `DataSource` interface
-and therefore offer a ton of identical methods like `Sample()`, `PrepareRun()`, `StartRun()`, and `Stop()`.
+and therefore offer a ton of identically named methods like `Sample()`, `PrepareRun()`, `StartRun()`, and `Stop()`.
 Each of these 5 sources also has configuration/control options specific to that type of data source. Each has
 a stored state that is read (by viper) initially. A "new Dastard is running" message is sent to all active
 clients (by pushing the message to `sourceControl.clientUpdates` channel, which the `RunClientUpdater`
@@ -100,8 +100,8 @@ of an "ALIVE" message to any active clients.
 
 2. An RPC connection handler. Creates a listener on tcp port 5500
 (see `global_config.go` for where this is set) with `net.Listen("tcp", 5500)` and then waits for connections
-with `listener.Accept()`. When received, a new goroutine is launched where codec is created by
-`jsonrpc.NewServerCodec(...)` and we attempt to handle all RPC requests by calling
+with `listener.Accept()`. When a connection is received, the handler launches a new goroutine, a codec is created by
+`jsonrpc.NewServerCodec(...)`, and we attempt to handle all RPC requests by calling
 `server.ServeRequest(codec)` repeatedly until it errors. These requests are configured (before the listen
 step) to be forwarded to the `sourceControl` or `mapServer` objects, as appropriate.
 
@@ -109,7 +109,7 @@ The RPC server supports the notion of an _active source_. At any one time, one o
 active. Some RPC requests are handled immediately. Others are queued up to be acted upon at the appropriate
 phase in the data handling cycle, to prevent race conditions. The following can be handled immediately:
 
-- `Start()`: argument says which of the 5 source types to activate. (Fails if any source is active.)
+- `Start()`: an argument says which of the 5 source types to activate. (Fails if any source is active.)
 - `Stop()`:
 signals the active source to stop. (Fails if none is active.)
 - `ConfigureMixFraction()`: configure the TDM
@@ -117,7 +117,7 @@ mix if the Lancero source is active (errors otherwise).
 - `ReadComment()`: reads the `comment.txt` file.
 Errors if no source is active, writing is not on, or the comment file cannot be read.
 - `SendAllStatus()`:
-broadcast the maximal Dastard state information to any active clients (such as Dastard-commander).
+broadcast complete Dastard state information to any active clients (such as Dastard-commander).
 
 The following can be handled immediately, but only if the corresponding source is not running:
 - `ConfigureLanceroSource()`
@@ -154,7 +154,7 @@ source of interest, for which all critical configuration has already been set. T
 `data_source.go`. It calls, in order:
 1. `ds.SetStateStarting()`: sets `AnySource.sourceState=Starting` but
 with a Mutex to serialize access to the state (also `GetState()` and `SetStateInactive()` use the same Mutex).
-1. `ds.Sample()`: runs a source-specific step that reads a certain amount of data from the source to determine
+1. `ds.Sample()`: runs a source-specific step that reads a certain small amount of data from the source to determine
 key facts such as the number of channels available and the data sampling rate.
 1. `ds.PrepareChannels()`: now
 that the number of channels and channel names and numbers are known/knowable, store the info in the
@@ -205,7 +205,7 @@ possible source.
 
 A `LanceroSource` reads out one or more `LanceroDevice` objects. Each `LanceroDevice` corresponds to a set of
 device-special files like `/dev/lancero_user0`. (The use of 2+ devices has not yet been tested, and it in fact
-causes DASTARD to panic in the main data loop. It's at least intended to be possible, however.)
+causes DASTARD to panic in the main data loop. It's at least *intended* to be possible, however.)
 
 The `Sample()` method checks each device. It grabs some data and finds the frame bits in the unaligned stream.
 By analyzing these from the start of at least 2 successive frames, it figures out the number of columns and
@@ -250,7 +250,7 @@ into a large user-space ring buffer or to produce UDP packets for DASTARD to rea
 older, and the UDP type is the newer version intended for long-term use. Either device produces data in a
 packet format (defined and processed in `packets/packets.go`).
 
-The `AbacoSource` owns slices of both `AbacoRing` and `AbacoUDPReceiver`. Both types implement the
+The `AbacoSource` owns slices of two types: `[]AbacoRing` and `[]AbacoUDPReceiver`. Both types implement the
 `PacketProducer` interface. The slice of rings is filled at creation time in `NewAbacoSource()` by checking
 for the existence of shared memory regions named `xdma*_c2h_0_description`. The UDP receivers, by contrast,
 are not created until the source is configured in `AbacoSource.Configure()`, because the user has to choose
@@ -274,9 +274,9 @@ The `PrepareChannels` method computes channel names from the numbers in the one 
 slice of all numbers.
 
 The `StartRun()` method tells each producer to dump its existing stored data and launches
-`AbacoSource.readerMainLoop` in a goroutine. This, in turn, starts a 50 ms ticker and a 5 s timer (so we can
-recognize packet timeouts). In an infinite loop it selects on the abort channel (exiting when that closes);
-the timeout timer (also exiting if that fires); and the ticker. If the ticker ticks, all available packets are
+`AbacoSource.readerMainLoop` in a goroutine. This, in turn, starts a 50 ms ticker and a 5 s timer (the latter so we can
+recognize packet timeouts). In an infinite loop it selects on the abort channel (exiting normally when that closes);
+the timeout timer (exiting with an error if that fires); and the ticker. If the ticker ticks, all available packets are
 read from all producers and handed to `AbacoSource.distributePackets()`. That simply checks each packet and
 enqueues it on the appropriate group's data queue. Then each queue is checked to be sure there are no missing
 packets (filling in null data if there are) and then that no queue's first packet has a global sequence number
@@ -345,7 +345,7 @@ When a data block is handed to `ProcessSegments(block)` (`data_source.go`), the 
 1. Each of the source's `ds.processors` objects is given the appropriate data segment from the block, and
 `DataStreamProcessor.processSegment` (details below) is called on the segment in a goroutine. A
 `WaitGroup.Add()` is called before each, with a deferred `WaitGroup.Done()`
-1. All processors as waited on
+1. All processors are waited on
 before proceeding (using `WaitGroup.Wait()`). Thus, the processing is done in parallel but all completed
 before the next step.
 1. A map is made containing the `triggerList` of new primary triggers for each

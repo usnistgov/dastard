@@ -331,8 +331,8 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 }
 
 // ProcessSegments processes a single outstanding segment for each of ds.processors
-// Returns when all segments have been processed
-// It's a more synchronous version of each dsp launching its own goroutine
+// in parallel. Returns when all segments have been processed.
+// It's more synchronous than our original plan of each dsp launching its own goroutine.
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	if len(ds.processors) != len(block.segments) {
 		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)",
@@ -1018,17 +1018,20 @@ func NewDataStream(data []RawType, framesPerSample int, firstFrame FrameIndex,
 // It will update the frame/time counters to be consistent with the appended
 // segment, not necessarily with the previous values.
 func (stream *DataStream) AppendSegment(segment *DataSegment) {
-	framesNowInStream := FrameIndex(len(stream.rawData) * segment.framesPerSample)
+	nsamp := len(stream.rawData)
+	framesNowInStream := FrameIndex(nsamp * segment.framesPerSample)
 	timeNowInStream := time.Duration(framesNowInStream) * stream.framePeriod
+
 	stream.framesPerSample = segment.framesPerSample
 	stream.framePeriod = segment.framePeriod
 	stream.firstFrameIndex = segment.firstFrameIndex - framesNowInStream
 	stream.firstTime = segment.firstTime.Add(-timeNowInStream)
 	stream.rawData = append(stream.rawData, segment.rawData...)
-	stream.signed = segment.signed // there are multiple sources of true on wether something is signed
-	// this syncs with segment.signed which comes from deep in a datasource
-	// but there is also AnySource.signed which seems indepdendent
-	stream.samplesSeen += len(segment.rawData)
+	stream.signed = segment.signed
+	// There are multiple sources of truth on whether something is signed.
+	// This syncs with segment.signed, which comes from deep in a datasource,
+	// but there is also AnySource.signed which seems indepdendent (?)
+	stream.samplesSeen += nsamp
 }
 
 // TrimKeepingN will trim (discard) all but the last N values in the DataStream.
