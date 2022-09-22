@@ -480,7 +480,8 @@ func (device *AbacoUDPReceiver) start() (err error) {
 
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
-	singlepackets := make(chan *[]byte, 20)
+	const packetCapacity = 4000 // = 32 MB worth of full-size packets
+	singlepackets := make(chan *[]byte, packetCapacity)
 
 	// Two goroutines:
 	// 1. Read from the UDP socket, put packet on channel singlepackets.
