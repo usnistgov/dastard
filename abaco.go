@@ -234,6 +234,7 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 	totalBytes := 0
 	packetsConsumed := 0
 	samplesConsumed := 0
+	lastPacketSize := 0
 	nchan := group.nchan
 
 	for _, p := range group.queue {
@@ -245,6 +246,7 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 
 		// Don't demux a packet that would over-fill the requested # of frames.
 		frameAvail := p.Frames()
+		lastPacketSize = frameAvail
 		if frameAvail > frames {
 			break
 		}
@@ -290,8 +292,8 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 
 	// TODO: What if the # of frames points to the middle of a packet? For now, panic.
 	if frames > 0 {
-		msg := fmt.Sprintf("Consumed %d of %d packets, but there are still %d frames to fill\n",
-			packetsConsumed, len(group.queue), frames)
+		msg := fmt.Sprintf("Consumed %d of available %d packets, but there are still %d frames to fill and %d frames in packet\n",
+			packetsConsumed, len(group.queue), frames, lastPacketSize)
 		panic(msg)
 	}
 
@@ -444,10 +446,10 @@ func enumerateAbacoRings() (rings []int, err error) {
 
 // AbacoUDPReceiver represents a single Abaco device producing data by UDP packets to a single UDP port.
 type AbacoUDPReceiver struct {
-	host     string       // in the form: "127.0.0.1:56789"
-	conn     *net.UDPConn // active UDP connection
-	data     chan []*packets.Packet
-	sendmore chan bool
+	host     string                 // in the form: "127.0.0.1:56789"
+	conn     *net.UDPConn           // active UDP connection
+	data     chan []*packets.Packet // channel for sending next bunch of packets to downstream processor
+	sendmore chan bool              // a channel by which downstream processor signals readiness for next bunch of packets
 }
 
 // NewAbacoUDPReceiver creates a new AbacoUDPReceiver and binds as a server to the requested host:port
@@ -483,6 +485,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	// Two goroutines:
 	// 1. Read from the UDP socket, put packet on channel singlepackets.
 	// 2. Read packet from channel singlepackets and convert to a dastard `packets.Packet` type.
+	//    Build a slice of all such objects; put slice onto `device.data` when `device.sendmore` says so.
 
 	// This goroutine (#1) reads the UDP socket and puts the resulting packets on channel singlepackets.
 	// They will be removed and queued by the other goroutine (#2).
@@ -884,9 +887,9 @@ func (as *AbacoSource) readerMainLoop() {
 	defer close(as.buffersChan)
 	const timeoutPeriod = 5 * time.Second
 	timeout := time.NewTimer(timeoutPeriod)
+	defer timeout.Stop()
 	ticker := time.NewTicker(as.readPeriod)
 	defer ticker.Stop()
-	defer timeout.Stop()
 	as.lastread = time.Now()
 
 awaitmoredata:
@@ -902,7 +905,7 @@ awaitmoredata:
 			return
 
 		case <-ticker.C:
-			// read from the ring buffer
+			// read from the UDP port or ring buffer
 			var lastSampleTime time.Time
 			var droppedFrames int
 			var droppedBytes int
