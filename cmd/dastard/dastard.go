@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -99,13 +100,24 @@ func main() {
 	dastard.Build.Githash = githash
 
 	printVersion := flag.Bool("version", false, "print version and quit")
+	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
+	memprofile := flag.String("memprofile", "", "write memory profile to this file")
 	flag.Parse()
+
 	if *printVersion {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
 		fmt.Printf("Git commit hash: %s\n", githash)
 		fmt.Printf("Build time: %s\n", buildDate)
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		os.Exit(0)
+	}
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
 
 	// Start logging problems to a log file.
@@ -125,4 +137,16 @@ func main() {
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 	close(abort)
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		runtime.GC()    // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
+	}
 }
