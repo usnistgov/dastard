@@ -10,7 +10,7 @@ import (
 	"github.com/usnistgov/dastard/off"
 	"gonum.org/v1/gonum/mat"
 
-	czmq "github.com/zeromq/goczmq"
+	"github.com/pebbe/zmq4"
 )
 
 // DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
@@ -153,7 +153,7 @@ func (dp *DataPublisher) HasPubRecords() bool {
 	return dp.PubRecordsChan != nil
 }
 
-// SetPubRecords starts publishing records with czmq over tcp at port=PortTrigs
+// SetPubRecords starts publishing records with zmq4 over tcp at port=PortTrigs
 func (dp *DataPublisher) SetPubRecords() {
 	if PubRecordsChan == nil {
 		configurePubRecordsSocket()
@@ -173,7 +173,7 @@ func (dp *DataPublisher) HasPubSummaries() bool {
 	return dp.PubSummariesChan != nil
 }
 
-// SetPubSummaries starts publishing records with czmq over tcp at port=PortSummaries
+// SetPubSummaries starts publishing records with zmq4 over tcp at port=PortSummaries
 func (dp *DataPublisher) SetPubSummaries() {
 	if PubSummariesChan == nil {
 		configurePubSummariesSocket()
@@ -362,30 +362,34 @@ func configurePubSummariesSocket() error {
 // startSocket sets up a ZMQ publisher socket and starts a goroutine to publish
 // messages based on any records that appear on a new channel. Returns the
 // channel for other routines to fill. Close that channel to destroy the socket.
-//
-// *** This looks like it could be replaced by PubChanneler, but tests showed terrible
-// performance with Channeler ***
 func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
-	const publishChannelDepth = 500 // not totally sure how to choose this, but it should probably be
-	// at least as large as number of channels
+
+	// Not totally sure how to choose this, but it should probably be
+	// at least as large as number of channels.
+	const publishChannelDepth = 500
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
+
+	//  Socket to talk to clients
 	hostname := fmt.Sprintf("tcp://*:%d", port)
-	pubSocket, err := czmq.NewPub(hostname)
+	pubSocket, err := zmq4.NewSocket(zmq4.PUB)
 	if err != nil {
 		return nil, err
 	}
-	pubSocket.SetSndhwm(10)
+	pubSocket.SetSndhwm(100)
+	if err = pubSocket.Bind(hostname); err != nil {
+		return nil, err
+	}
+
 	go func() {
 		for {
 			records, ok := <-pubchan
 			if !ok { // Destroy socket when pubchan is closed and drained
-				pubSocket.Destroy()
+				pubSocket.Close()
 				return
 			}
 			for _, record := range records {
 				message := converter(record)
-				err := pubSocket.SendMessage(message)
-				if err != nil {
+				if _, err := pubSocket.SendMessage(message); err != nil {
 					ProblemLogger.Println("zmq send error publishing a triggered record:", err)
 				}
 			}
