@@ -176,6 +176,8 @@ var nosaveMessages = map[string]struct{}{
 // saveState stores server configuration to the standard config file.
 func saveState(lastMessages map[string]interface{}) {
 
+	lastMessages["___1"] = "DASTARD configuration file. Written and read by DASTARD."
+	lastMessages["___2"] = "Human intervention by experts is permitted but not expected."
 	now := time.Now().Format(time.UnixDate)
 	lastMessages["CURRENTTIME"] = now
 	// Note that the nosaveMessages shouldn't get into the lastMessages map.

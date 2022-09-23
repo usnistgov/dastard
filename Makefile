@@ -7,8 +7,8 @@ GOTEST=$(GOCMD) test
 BINARY_NAME=dastard
 
 LDFLAGS=-ldflags "-X main.buildDate=$(shell date -u '+%Y-%m-%d.%H:%M:%S.%Z') -X main.githash=$(shell git rev-parse --short HEAD)"
-all: test build install
 build: $(BINARY_NAME)
+all: test build install
 
 $(BINARY_NAME): *.go cmd/dastard/dastard.go getbytes/*.go lancero/*.go ljh/*.go off/*.go packets/*.go ringbuffer/*.go
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
