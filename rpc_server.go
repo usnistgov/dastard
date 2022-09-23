@@ -696,6 +696,7 @@ func RunRPCServer(portrpc int, block bool) {
 	var err error
 	var okay bool
 	var spc SimPulseSourceConfig
+	spc.SampleRate = 1000.0
 	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
 	err = viper.UnmarshalKey("simpulse", &spc)
 	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
@@ -708,6 +709,7 @@ func RunRPCServer(portrpc int, block bool) {
 		}
 	}
 	var tsc TriangleSourceConfig
+	tsc.SampleRate = 1000.0
 	err = viper.UnmarshalKey("triangle", &tsc)
 	// Default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
 	if tsc.Nchan == 0 {
