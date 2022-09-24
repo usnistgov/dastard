@@ -6,6 +6,8 @@
 * Make Edge Multi Triggers stop crashing Dastard every time they are switched on (issue 279).
 * Using VScode's golang code checker, found and fixed deprecations and other bad practices (PR 282).
 * Change ZMQ library from goczmq to pebbe/zmq4 (issues 253, 281).
+* Clarify in the README what the config.yaml file is for and in the file itself (issue 285).
+* Fix bug in the main reader loop of an `AbacoUDPReceiver`; caused crashes when loop tries to end (issue 288).
 
 **0.2.13** June 1, 2022
 * Fix crashing problem when you start with Edge Multi Triggers on (issue 271).
