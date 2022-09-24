@@ -27,6 +27,11 @@ type ClientUpdate struct {
 // contain no configuration that makes sense for clients to hear.
 var nopublishMessages = map[string]struct{}{
 	"CURRENTTIME": {},
+	"___1":        {},
+	"___2":        {},
+	"___3":        {},
+	"___4":        {},
+	"___5":        {},
 }
 
 // nologMessages is a set of message names that you don't log to the terminal, because they
