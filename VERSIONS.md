@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.2.14** September 2022-
+**0.2.14** September 26, 2022
 * Add features to test use of multiple Abaco cards at once (like Tomcat-1k).
 * Fix crashes found when data rates (in sim data) are very low and some chan don't trigger (issue 277).
 * Make Edge Multi Triggers stop crashing Dastard every time they are switched on (issue 279).
