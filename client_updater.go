@@ -27,6 +27,11 @@ type ClientUpdate struct {
 // contain no configuration that makes sense for clients to hear.
 var nopublishMessages = map[string]struct{}{
 	"CURRENTTIME": {},
+	"___1":        {},
+	"___2":        {},
+	"___3":        {},
+	"___4":        {},
+	"___5":        {},
 }
 
 // nologMessages is a set of message names that you don't log to the terminal, because they
@@ -176,6 +181,8 @@ var nosaveMessages = map[string]struct{}{
 // saveState stores server configuration to the standard config file.
 func saveState(lastMessages map[string]interface{}) {
 
+	lastMessages["___1"] = "DASTARD configuration file. Written and read by DASTARD."
+	lastMessages["___2"] = "Human intervention by experts is permitted but not expected."
 	now := time.Now().Format(time.UnixDate)
 	lastMessages["CURRENTTIME"] = now
 	// Note that the nosaveMessages shouldn't get into the lastMessages map.

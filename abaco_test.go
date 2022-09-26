@@ -100,7 +100,7 @@ func TestAbacoRing(t *testing.T) {
 	if err = ring.Create(128 * packetAlign); err != nil {
 		t.Fatalf("Failed RingBuffer.Create: %s", err)
 	}
-	timeout := 2000 * time.Millisecond
+	timeout := 500 * time.Millisecond
 	dev.start()
 	dev.samplePackets(timeout)
 

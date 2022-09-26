@@ -1,12 +1,26 @@
 # Dastard
-[![Build Status](https://travis-ci.org/usnistgov/dastard.svg?branch=master)](https://travis-ci.org/usnistgov/dastard)
+[![Build Status](https://app.travis-ci.com/usnistgov/dastard.svg?branch=master)](https://app.travis-ci.com/github/usnistgov/dastard)
 
 A data acquisition framework for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
 Requires Go version 1.16 or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.16 and LATEST (as of May 2022, Go version 1.18.2 is the most recent).
 
+We recommend always using the `Makefile` to build Dastard. That's not a typical go usage, but we have a very simple trick built into the `Makefile` that allows it to call `go build` with linker arguments that override the default values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
+```
+# To build locally and run that copy
+make build && ./dastard
+```
+or
+```
+# To install as $HOME/go/bin/dastard
+make install   # implies make build
+dastard
+```
+
+
 ### Ubuntu 20, 18.04 and 16.04
+
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
 simple command as sudo first; otherwise, the password entering step will screw up your multi-line paste.
 ```
@@ -26,15 +40,18 @@ git clone https://github.com/usnistgov/dastard
 cd dastard
 
 # Build, then try to run the local copy
-make all    # implies "make test build install"
-./dastard --version
+# Using the Makefile is preferred, because it's the only way we're aware of to get the git hash and build date
+# embedded in the built binary file.
+# 
+make build && ./dastard --version
 
 # Check whether the GOPATH is in your bash path. If not, update ~/.bashrc to make it so.
 # This will fix the current terminal AND all that run ~/.bashrc in the future, but not
 # any other existing terminals (until you do "source ~/.bashrc" in them).
 source update-path.sh
 
-# Now that PATH includes go's bin, try to run the installed copy
+# Now that PATH includes go's bin, try to install and run the installed copy
+make install
 dastard --version
 ```
 
@@ -48,9 +65,6 @@ sudo apt-key add - < Release.key
 sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git
 ```
-
-Get go version 1.13 or higher, with MacPorts or homebrew, or by direct download. For Ports, assuming
-that MacPorts is already installed, it's simple:
 
 ### MacOS dependencies
 
@@ -76,7 +90,8 @@ This only applies to users who will need µMUX, or any data source that eventual
 sudo sysctl -w net.core.rmem_max=67108864
 ```
 
-If that works as intended, you can make the configuration permanent (persist after rebooting) by adding the following line to `/etc/sysctl.conf`
+If that works as intended, you can make the configuration permanent (i.e., it will persist after rebooting) if 
+you add the following line to `/etc/sysctl.conf`
 
 `net.core.rmem_max=67108864`
 
@@ -120,8 +135,16 @@ DASTARD is a back-end program written in Go. It handles the "server" aspects of 
 * [dastardcommander](https://github.com/usnistgov/dastardcommander) is a Python-Qt5 GUI to control Dastard.
 * [microscope](https://github.com/usnistgov/microscope) is a Qt-based plotting GUI to plot microcalorimeter pulse records, discrete Fourier transforms, and related data. It is written in C++ and contains code from [matter](https://bitbucket.org/nist_microcal/nasa_daq/)
 
-We envision future control clients other than dastard-commander. They should enable commanding from, for example, the beamline control system of a synchrotron.
+We envision future control clients other than Dastard-commander. They should enable commanding from, for example, the beamline control system of a synchrotron.
 
+Futher reading:
+* [DASTARD.md](doc/DASTARD.md): info about Dastard internals (very technical!)
+* [BINARY_FORMATS.md](doc/BINARY_FORMATS.md): info about the binary data packets sent by Dastard (very technical!)
+
+### Configuration
+DASTARD caches its configuration via the [Viper](https://github.com/spf13/viper) "complete configuration solution for Go applications". You can find your user file at `$HOME/.dastard/config.yaml`. It's human-readable, though you should normally never need to read or edit it. If you have configuration problems and cannot find another way out, it is okay to delete this file (or hide it temporarily in, for example, `/tmp/`). If you want some kind of global defaults that you want to persist even if that file is deleted, it is possible to create a global `/etc/dastard/config.yaml` file with a subset of the values you want to set by default.
+
+But again, this is expert usage! You should not normally need to touch or look at the configuration file. It's there for internal use to allow settings to persist from one run of Dastard to another.
 
 ### Contributors and acknowledgments
 

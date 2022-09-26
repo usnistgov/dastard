@@ -107,6 +107,7 @@ func main() {
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		os.Exit(0)
 	}
+	fmt.Printf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
 
 	// Start logging problems to a log file.
 	logname, err := makeFileExist("$HOME/.dastard/logs", "problems.log")
@@ -114,7 +115,7 @@ func main() {
 		panic(err)
 	}
 	dastard.ProblemLogger = startProblemLogger(logname)
-	fmt.Printf("Logging problems to %v\n", dastard.ProblemLogger)
+	fmt.Printf("Logging problems to %s\n\n", logname)
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
