@@ -475,11 +475,9 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	device.conn = conn
 
 	const UDPPacketSize = 8192
-	const packetCapacity = 4000 // = 32 MB worth of full-size packets
 
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
-	singlepackets := make(chan *packets.Packet, packetCapacity)
 
 	// Two goroutines:
 	// 1. Read from the UDP socket, put packet on channel singlepackets.
@@ -489,34 +487,17 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	// This goroutine (#1) reads the UDP socket and puts the resulting packets on channel singlepackets.
 	// They will be removed and queued by the other goroutine (#2).
 	go func() {
-		defer close(singlepackets)
-		message := make([]byte, UDPPacketSize)
-		for {
-			if _, _, err := device.conn.ReadFrom(message); err != nil {
-				// Getting an error in ReadFrom is the normal way to detect closed connection.
-				// bufferPool.Put() returns an object to the pool for reuse.
-				return
-			}
-			if p, err := packets.ReadPacket(bytes.NewReader(message)); err == nil {
-				singlepackets <- p
-			} else if err == io.EOF {
-				return
-			} else {
-				fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
-				return
-			}
-		}
-	}()
-
-	// This goroutine (#2) handles UDP message sent one at a time on singlepackets by the other goroutine (#1).
-	// It converts them into packet.Packet objects, queues them into a slice of *packets.Packet
-	// pointers and sends the whole slice when a request comes on device.sendmore.
-	go func() {
 		defer close(device.data)
 		defer func() { device.conn = nil }()
 
-		const initialQueueCapacity = 2048
+		message := make([]byte, UDPPacketSize)
+
+		const initialQueueCapacity = 4000 // = 32 MB worth of full-size packets
 		queue := make([]*packets.Packet, 0, initialQueueCapacity)
+
+		const delay = 10 * time.Millisecond
+		device.conn.SetReadDeadline(time.Now().Add(delay))
+
 		for {
 			select {
 			case _, ok := <-device.sendmore:
@@ -525,12 +506,26 @@ func (device *AbacoUDPReceiver) start() (err error) {
 					return
 				}
 				queue = make([]*packets.Packet, 0, initialQueueCapacity)
-
-			case pack, ok := <-singlepackets:
-				if !ok {
+			default:
+				_, _, err := device.conn.ReadFrom(message)
+				// If error, was it a timeout?
+				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+					device.conn.SetReadDeadline(time.Now().Add(delay))
+					continue
+				}
+				if err != nil {
+					// Getting an error in ReadFrom is the normal way to detect closed connection.
 					return
 				}
-				queue = append(queue, pack)
+
+				if pack, err := packets.ReadPacket(bytes.NewReader(message)); err == nil {
+					queue = append(queue, pack)
+				} else if err == io.EOF {
+					return
+				} else {
+					fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, pack)
+					return
+				}
 			}
 		}
 	}()
