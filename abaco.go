@@ -472,16 +472,14 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	if err != nil {
 		return err
 	}
-	const UDPPacketSize = 8192
-	bufferPool := sync.Pool{
-		New: func() interface{} { p := make([]byte, UDPPacketSize); return &p },
-	}
 	device.conn = conn
+
+	const UDPPacketSize = 8192
+	const packetCapacity = 4000 // = 32 MB worth of full-size packets
 
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
-	const packetCapacity = 4000 // = 32 MB worth of full-size packets
-	singlepackets := make(chan *[]byte, packetCapacity)
+	singlepackets := make(chan *packets.Packet, packetCapacity)
 
 	// Two goroutines:
 	// 1. Read from the UDP socket, put packet on channel singlepackets.
@@ -492,15 +490,21 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	// They will be removed and queued by the other goroutine (#2).
 	go func() {
 		defer close(singlepackets)
+		message := make([]byte, UDPPacketSize)
 		for {
-			message := bufferPool.Get().(*[]byte)
-			if _, _, err := device.conn.ReadFrom(*message); err != nil {
+			if _, _, err := device.conn.ReadFrom(message); err != nil {
 				// Getting an error in ReadFrom is the normal way to detect closed connection.
 				// bufferPool.Put() returns an object to the pool for reuse.
-				bufferPool.Put(message)
 				return
 			}
-			singlepackets <- message
+			if p, err := packets.ReadPacket(bytes.NewReader(message)); err == nil {
+				singlepackets <- p
+			} else if err == io.EOF {
+				return
+			} else {
+				fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
+				return
+			}
 		}
 	}()
 
@@ -522,19 +526,11 @@ func (device *AbacoUDPReceiver) start() (err error) {
 				}
 				queue = make([]*packets.Packet, 0, initialQueueCapacity)
 
-			case message, ok := <-singlepackets:
+			case pack, ok := <-singlepackets:
 				if !ok {
 					return
 				}
-				p, err := packets.ReadPacket(bytes.NewReader(*message))
-				bufferPool.Put(message)
-				if err != nil {
-					if err != io.EOF {
-						fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
-					}
-					return
-				}
-				queue = append(queue, p)
+				queue = append(queue, pack)
 			}
 		}
 	}()
