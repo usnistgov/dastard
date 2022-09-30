@@ -80,7 +80,7 @@ func (p *Packet) ClearData() error {
 
 // String returns a string summarizing the packet's version, sequence number, and size.
 func (p *Packet) String() string {
-	return fmt.Sprintf("Packet v0x%2.2x 0x%8.8x  Size (%2d+%5d)", p.version,
+	return fmt.Sprintf("Packet v:0x%2.2x sn:0x%8.8x  Size (%2d+%4d)", p.version,
 		p.sequenceNumber, p.headerLength, p.payloadLength)
 }
 
