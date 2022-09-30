@@ -1,12 +1,12 @@
 # Dastard
 [![Build Status](https://app.travis-ci.com/usnistgov/dastard.svg?branch=master)](https://app.travis-ci.com/github/usnistgov/dastard)
 
-A data acquisition framework for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
+A data acquisition program for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
-Requires Go version 1.16 or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.16 and LATEST (as of May 2022, Go version 1.18.2 is the most recent).
+**Requires Go version 1.16)) (released February 2021) or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.16 and LATEST (as of September 2022, Go version 1.19.1 is the most recent).
 
-We recommend always using the `Makefile` to build Dastard. That's not a typical go usage, but we have a very simple trick built into the `Makefile` that allows it to call `go build` with linker arguments that override the default values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
+We recommend always using the `Makefile` to build Dastard. That's not a typical go usage, but we have a very simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments that override the default values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
 ```
 # To build locally and run that copy
 make build && ./dastard
@@ -42,7 +42,7 @@ cd dastard
 # Build, then try to run the local copy
 # Using the Makefile is preferred, because it's the only way we're aware of to get the git hash and build date
 # embedded in the built binary file.
-# 
+#
 make build && ./dastard --version
 
 # Check whether the GOPATH is in your bash path. If not, update ~/.bashrc to make it so.
@@ -66,17 +66,16 @@ sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git
 ```
 
-### MacOS dependencies
+### MacOS dependencies (Homebrew or MacPorts)
 
-#### Homebrew
-`brew install go pkg-config czmq libsodium`
-
-#### Macports
-`port install go czmq libsodium-dev pkg-config`
-
+As appropriate, use one of
+```brew install go pkg-config czmq libsodium```
+or
+```sudo port install go czmq libsodium-dev pkg-config```
 
 
-### Also install these
+
+### Also install these companion programs
 
 * Install microscope https://github.com/usnistgov/microscope
 * Install dastard_commander https://github.com/usnistgov/dastardcommander
@@ -90,7 +89,7 @@ This only applies to users who will need µMUX, or any data source that eventual
 sudo sysctl -w net.core.rmem_max=67108864
 ```
 
-If that works as intended, you can make the configuration permanent (i.e., it will persist after rebooting) if 
+If that works as intended, you can make the configuration permanent (i.e., it will persist after rebooting) if
 you add the following line to `/etc/sysctl.conf`
 
 `net.core.rmem_max=67108864`
