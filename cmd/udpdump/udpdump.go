@@ -53,16 +53,20 @@ func main() {
 		host = flag.Arg(0)
 
 		// If host ends in :portnum, split that off and update the port value
-		if a, b, hascolon := strings.Cut(host, ":"); hascolon {
-			host = a
-			if attachedport, err := strconv.Atoi(b); err != nil {
-				fmt.Printf("Cannot convert port '%s' to integer\n", b)
+		if pieces := strings.Split(host, ":"); len(pieces) > 1 {
+			if len(pieces) > 2 {
+				fmt.Printf("Cannot parse host '%s' with %d colon separators\n", host, len(pieces)-1)
+				return
+			}
+			if attachedport, err := strconv.Atoi(pieces[1]); err != nil {
+				fmt.Printf("Cannot convert port '%s' to integer\n", pieces[1])
 				return
 			} else {
 				if port != default_port && port != attachedport {
-					fmt.Printf("Cannot use -p argument and a conflicting host:port port\n")
+					fmt.Printf("Cannot use -p argument and a conflicting host:port pair\n")
 					return
 				}
+				host = pieces[0]
 				port = attachedport
 			}
 		}
