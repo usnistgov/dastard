@@ -143,7 +143,8 @@ func (group *AbacoGroup) samplePackets() error {
 		if dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			group.sampleRate = float64(dserial) * avgSampPerPacket / dt
-			fmt.Printf("Sample rate %.6g /sec determined from %d packets:\n\tΔt=%f sec, Δserial=%d, and %f samp/packet\n", group.sampleRate,
+			fmt.Printf("Sample rate for chan [%4d-%4d] %.6g /sec determined from %4d packets: Δt=%f sec, Δserial=%d, and %.3f samp/packet\n",
+				group.index.Firstchan, group.index.Firstchan+group.nchan-1, group.sampleRate,
 				packetsRead, dt, dserial, avgSampPerPacket)
 		}
 	}
@@ -495,7 +496,11 @@ func (device *AbacoUDPReceiver) start() (err error) {
 		const initialQueueCapacity = 4000 // = 32 MB worth of full-size packets
 		queue := make([]*packets.Packet, 0, initialQueueCapacity)
 
-		const delay = 10 * time.Millisecond
+		// This 100ms timeout for reading the UDP socket will allow the goroutine to wake up that often
+		// and check for requests on the `device.sendmore` channel to send the queued data to `device.data`.
+		// That's a timeout for the unusual case of the socket having no packets, of course. Normal
+		// behavior is to get messages almost every time.
+		const delay = 100 * time.Millisecond
 		device.conn.SetReadDeadline(time.Now().Add(delay))
 
 		for {
