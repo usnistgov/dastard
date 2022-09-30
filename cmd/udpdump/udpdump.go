@@ -40,7 +40,7 @@ func main() {
 	var port int
 	const default_host = "localhost"
 	const default_port = 4000
-    host := default_host
+	host := default_host
 	flag.IntVar(&npack, "n", 10, "Number of packets to dump")
 	flag.IntVar(&port, "port", default_port, "Port to monitor")
 	flag.IntVar(&port, "p", default_port, "Port to monitor (shorthand)")
@@ -62,7 +62,7 @@ func main() {
 				return
 			}
 			attachedport, err := strconv.Atoi(pieces[1])
-            if err != nil {
+			if err != nil {
 				fmt.Printf("Cannot convert port '%s' to integer\n", pieces[1])
 				return
 			}
@@ -71,8 +71,8 @@ func main() {
 				return
 			}
 			if len(pieces[0]) == 0 {
-                host = default_host
-            } else {
+				host = default_host
+			} else {
 				host = pieces[0]
 			}
 			port = attachedport
