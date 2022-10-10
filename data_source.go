@@ -153,7 +153,7 @@ func Start(ds DataSource, queuedRequests chan func(), Npresamp int, Nsamples int
 		return err
 	}
 
-	ds.RunDoneActivate() // Call RunDoneDeactivate inside CoreLoop when it returns.
+	ds.RunDoneActivate() // RunDoneDeactivate will normally be called inside CoreLoop when it returns.
 	if err := ds.StartRun(); err != nil {
 		ds.RunDoneDeactivate()
 		return err

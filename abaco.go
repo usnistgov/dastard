@@ -835,6 +835,22 @@ func (as *AbacoSource) PrepareChannels() error {
 	return nil
 }
 
+// PrepareRun configures an AbacoSource by initializing all data structures that
+// cannot be prepared until we know the number of channels. It calls the Anysource.PrepareRun
+// then adds the Abaco-specific requirement that the DataStreamProcessors have an unwrapper
+func (as *AbacoSource) PrepareRun(Npresamples int, Nsamples int) error {
+	if err := as.AnySource.PrepareRun(Npresamples, Nsamples); err != nil {
+		return err
+	}
+
+	// Now set up phase unwrapping for each channel
+	opt := as.unwrapOpts
+	for _, dsp := range as.processors {
+		dsp.Unwrapper = NewPhaseUnwrapper(abacoFractionBits, abacoBitsToDrop, opt.Unwrap, opt.calcBiasLevel(), opt.PulseSign)
+	}
+	return nil
+}
+
 // StartRun tells the hardware to switch into data streaming mode.
 // Discard existing data, then launch a goroutine to consume data.
 func (as *AbacoSource) StartRun() error {

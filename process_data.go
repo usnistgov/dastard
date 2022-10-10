@@ -8,7 +8,8 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data.
+// DataStreamProcessor contains all the state needed to decimate, trigger, write, and publish data
+// for a single channel.
 type DataStreamProcessor struct {
 	channelIndex         int
 	ChannelNumber        int
@@ -21,6 +22,7 @@ type DataStreamProcessor struct {
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
 	lastTrigList         triggerList
+	Unwrapper            *PhaseUnwrapper // For unwrapping µMUX phase (if non-nil)
 
 	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
 	// Otherwise projectors must be of size (nbases,NSamples)
