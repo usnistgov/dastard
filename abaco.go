@@ -38,7 +38,7 @@ type AbacoGroup struct {
 	index      GroupIndex
 	nchan      int
 	sampleRate float64
-	unwrap     []*PhaseUnwrapper
+	unwrap     []*PhaseUnwrapperStreams
 	queue      []*packets.Packet
 	lasttime   time.Time
 	seqnumsync uint32 // Global sequence number is referenced to this group's seq number at seqnumsync
@@ -86,9 +86,9 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 	g.index = index
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
-	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
+	g.unwrap = make([]*PhaseUnwrapperStreams, g.nchan)
 	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, bitsToDrop, opt.Unwrap,
+		g.unwrap[i] = NewPhaseUnwrapperStreams(abacoFractionBits, bitsToDrop, opt.Unwrap,
 			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign)
 	}
 	return g
@@ -302,7 +302,7 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 	var wg sync.WaitGroup
 	for i, unwrapper := range group.unwrap {
 		wg.Add(1)
-		go func(up *PhaseUnwrapper, dc *[]RawType) {
+		go func(up *PhaseUnwrapperStreams, dc *[]RawType) {
 			defer wg.Done()
 			up.UnwrapInPlace(dc)
 		}(unwrapper, &datacopies[i])

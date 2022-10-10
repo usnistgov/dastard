@@ -2,6 +2,7 @@
 
 **0.2.15** September 2022-
 * Add a `udpdump` main program to read a few packets from an Abaco UDP source (issue 290).
+* Phase unwrap triggered records, not entire Abaco data streams (issue 177).
 
 **0.2.14** September 26, 2022
 * Add features to test use of multiple Abaco cards at once (like Tomcat-1k).

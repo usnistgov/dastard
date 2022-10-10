@@ -17,7 +17,7 @@ type RoachDevice struct {
 	nchan  int
 	conn   *net.UDPConn // active UDP connection
 	nextS  FrameIndex
-	unwrap []*PhaseUnwrapper
+	unwrap []*PhaseUnwrapperStreams
 }
 
 // RoachSource represents multiple ROACH devices
@@ -106,13 +106,13 @@ func (dev *RoachDevice) samplePacket() error {
 	header, _ := parsePacket(p)
 	dev.nextS = FrameIndex(header.Nsamp) + FrameIndex(header.Sampnum)
 	dev.nchan = int(header.Nchan)
-	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
+	dev.unwrap = make([]*PhaseUnwrapperStreams, dev.nchan)
 	biaslevel := 0
 	pulseSign := +1
 	for i := range dev.unwrap {
 		const enable = true
 		const resetAfter = 20000
-		dev.unwrap[i] = NewPhaseUnwrapper(roachFractionBits, roachBitsToDrop, enable,
+		dev.unwrap[i] = NewPhaseUnwrapperStreams(roachFractionBits, roachBitsToDrop, enable,
 			biaslevel, resetAfter, pulseSign)
 	}
 	return err
