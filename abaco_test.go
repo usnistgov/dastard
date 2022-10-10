@@ -147,8 +147,7 @@ func TestAbacoRing(t *testing.T) {
 	if len(ps) <= 0 {
 		t.Errorf("AbacoRing.samplePackets returned only %d packets", len(ps))
 	}
-	unwrapOpts := AbacoUnwrapOptions{}
-	group := NewAbacoGroup(gIndex(ps[0]), unwrapOpts)
+	group := NewAbacoGroup(gIndex(ps[0]))
 	group.queue = append(group.queue, ps...)
 	err = group.samplePackets()
 	if err != nil {
@@ -340,11 +339,8 @@ func TestAbacoSource(t *testing.T) {
 func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	const offset = 1
 	const nchan = 16
-	unwrapOpts := AbacoUnwrapOptions{Unwrap: true, RescaleRaw: true, ResetAfter: 20000, PulseSign: 1}
 
-	group := NewAbacoGroup(GroupIndex{Firstchan: offset, Nchan: nchan}, unwrapOpts)
-	group.unwrap = group.unwrap[:0] // get rid of phase unwrapping
-
+	group := NewAbacoGroup(GroupIndex{Firstchan: offset, Nchan: nchan})
 	copies := make([][]RawType, nchan)
 	for i := 0; i < nchan; i++ {
 		copies[i] = make([]RawType, nframes)

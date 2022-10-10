@@ -38,7 +38,6 @@ type AbacoGroup struct {
 	index      GroupIndex
 	nchan      int
 	sampleRate float64
-	unwrap     []*PhaseUnwrapperStreams
 	queue      []*packets.Packet
 	lasttime   time.Time
 	seqnumsync uint32 // Global sequence number is referenced to this group's seq number at seqnumsync
@@ -76,21 +75,11 @@ func (u AbacoUnwrapOptions) calcBiasLevel() int {
 }
 
 // NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
-func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
-	var bitsToDrop uint
-	if opt.RescaleRaw {
-		bitsToDrop = abacoBitsToDrop
-	}
-
+func NewAbacoGroup(index GroupIndex) *AbacoGroup {
 	g := new(AbacoGroup)
 	g.index = index
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
-	g.unwrap = make([]*PhaseUnwrapperStreams, g.nchan)
-	for i := range g.unwrap {
-		g.unwrap[i] = NewPhaseUnwrapperStreams(abacoFractionBits, bitsToDrop, opt.Unwrap,
-			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign)
-	}
 	return g
 }
 
@@ -297,17 +286,6 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 			packetsConsumed, len(group.queue), frames, lastPacketSize)
 		panic(msg)
 	}
-
-	// Apply phase unwrapping to each channel's data. Do in parallel to use multiple processors.
-	var wg sync.WaitGroup
-	for i, unwrapper := range group.unwrap {
-		wg.Add(1)
-		go func(up *PhaseUnwrapperStreams, dc *[]RawType) {
-			defer wg.Done()
-			up.UnwrapInPlace(dc)
-		}(unwrapper, &datacopies[i])
-	}
-	wg.Wait()
 
 	return totalBytes
 }
@@ -780,7 +758,7 @@ func (as *AbacoSource) Sample() error {
 		for _, p := range results.allpackets {
 			cidx := gIndex(p)
 			if _, ok := as.groups[cidx]; !ok {
-				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapOpts)
+				as.groups[cidx] = NewAbacoGroup(cidx)
 				as.nchan += cidx.Nchan
 			}
 		}
