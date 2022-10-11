@@ -64,20 +64,17 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 	}
 	raw := dsp.stream.rawData
 	ndata := len(raw)
-
-	// Solve the problem of signed data by shifting all values up by 2^15
-	if dsp.stream.signed {
-		raw = make([]RawType, ndata)
-		copy(raw, dsp.stream.rawData)
-		for i := 0; i < ndata; i++ {
-			raw[i] += 32768
-		}
+	riseThresh := RawType(dsp.EdgeLevel)
+	fallThresh := RawType(-dsp.EdgeLevel)
+	if dsp.Unwrapper != nil {
+		riseThresh <<= dsp.Unwrapper.lowBitsToDrop
+		fallThresh <<= dsp.Unwrapper.lowBitsToDrop
 	}
 
 	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
-		diff := int32(raw[i]) + int32(raw[i-1]) - int32(raw[i-2]) - int32(raw[i-3])
-		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
-			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
+		diff := raw[i] - raw[i-1]
+		if (dsp.EdgeRising && diff >= riseThresh && diff < 3*16384) ||
+			(dsp.EdgeFalling && diff <= fallThresh && diff > 16384) {
 			newRecord := dsp.triggerAt(i)
 			records = append(records, newRecord)
 			i += dsp.NSamples
