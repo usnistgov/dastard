@@ -45,6 +45,9 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(i int, NPresamples int,
 	data := make([]RawType, NSamples)
 	stream := dsp.stream
 	copy(data, stream.rawData[i-NPresamples:i+NSamples-NPresamples])
+	if dsp.Unwrapper != nil {
+		dsp.Unwrapper.UnwrapInPlace(&data)
+	}
 	tf := stream.firstFrameIndex + FrameIndex(i)
 	tt := stream.TimeOf(i)
 	sampPeriod := float32(1.0 / dsp.SampleRate)

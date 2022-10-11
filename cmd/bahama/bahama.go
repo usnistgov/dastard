@@ -210,7 +210,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 			}
 		}
 		if control.pulses {
-			amplitude := 5000.0 + 100.0*float64(cnum)
+			amplitude := 30000.0 + 1600.0*float64(cnum)
 			// "Crosstalk" mode means odd-number channels have 2% the signal size.
 			if control.crosstalk && i%2 == 1 {
 				amplitude *= 0.02
