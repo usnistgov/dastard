@@ -98,25 +98,23 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 		nextFoundTrig = records[idxNextTrig].trigFrame - dsp.stream.firstFrameIndex
 	}
 
-	// Solve the problem of signed data by shifting all values up by 2^15
-	threshold := dsp.LevelLevel
-	if dsp.stream.signed {
-		threshold += 32768
-		raw = make([]RawType, ndata)
-		copy(raw, dsp.stream.rawData)
-		for i := 0; i < ndata; i++ {
-			raw[i] += 32768
-		}
-	}
-
 	// Normal loop through all samples in triggerable range
+	threshold := dsp.LevelLevel
+	if dsp.Unwrapper != nil {
+		threshold <<= dsp.Unwrapper.lowBitsToDrop
+	}
+	prevDelta := int16(raw[dsp.NPresamples-1] - threshold)
 	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
+		delta := int16(raw[i] - threshold)
 
 		// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
 		// Notice how this works: edge triggers get priority, vetoing (1 record minus 1 sample) into the past
 		// and 1 record into the future.
 		if FrameIndex(i)+nsamp > nextFoundTrig {
 			i = int(nextFoundTrig) + dsp.NSamples - 1
+			if i < ndata {
+				prevDelta = int16(raw[i] - threshold)
+			}
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
 				nextFoundTrig = records[idxNextTrig].trigFrame - dsp.stream.firstFrameIndex
@@ -127,11 +125,16 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 		}
 
 		// If you get here, a level trigger is permissible. Check for it.
-		if (dsp.LevelRising && raw[i] >= threshold && raw[i-1] < threshold) ||
-			(!dsp.LevelRising && raw[i] <= threshold && raw[i-1] > threshold) {
+		if (dsp.LevelRising && delta >= 0 && prevDelta < 0) ||
+			(!dsp.LevelRising && delta <= 0 && prevDelta > 0) {
 			newRecord := dsp.triggerAt(i)
 			records = append(records, newRecord)
+			i += dsp.NSamples
+			if i < ndata {
+				delta = int16(raw[i] - threshold)
+			}
 		}
+		prevDelta = delta
 	}
 	sort.Sort(RecordSlice(records))
 	return records
