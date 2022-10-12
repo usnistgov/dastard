@@ -76,6 +76,8 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 
 	// Reach here only if unwrapping is enabled
 	// The first output will be in the range [u.twoPi, 2*u.twoPi) for positive-going pulses.
+	nUp := 0
+	nDown := 0
 	lastVal := (*data)[0] >> drop
 	offset := u.defaultOffset
 	for i, rawVal := range *data {
@@ -86,10 +88,22 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		// Short-term unwrapping
 		if thisstep > u.upperStepLim {
 			offset -= u.twoPi
+			nDown++
 		} else if thisstep < u.lowerStepLim {
 			offset += u.twoPi
+			nUp++
 		}
 		(*data)[i] = v + offset
+	}
+
+	if nDown != nUp {
+		positivePulses := u.defaultOffset < 0x8000
+		if (nDown > nUp && positivePulses) || (nUp > nDown && !positivePulses) {
+			shift := RawType(nDown-nUp) * (u.twoPi)
+			for i, rawVal := range *data {
+				(*data)[i] = rawVal + shift
+			}
+		}
 	}
 }
 

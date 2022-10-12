@@ -204,7 +204,7 @@ func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) 
 		}
 		state.TriggerState.EMTState = newEMTState
 	}
-	log.Printf("Got ConfigureTriggers: %v", spew.Sdump(state))
+	// log.Printf("Got ConfigureTriggers: %v", spew.Sdump(state))
 	f := func() {
 		err := s.ActiveSource.ChangeTriggerState(state)
 		s.broadcastTriggerState()
