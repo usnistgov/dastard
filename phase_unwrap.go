@@ -8,16 +8,16 @@ type PhaseUnwrapper struct {
 	lowBitsToDrop uint // Drop this many least significant bits in each value
 	upperStepLim  int16
 	lowerStepLim  int16
-	twoPi         uint16
-	defaultOffset uint16
+	twoPi         RawType
+	defaultOffset RawType
 	enable        bool // are we even unwrapping at all?
 }
 
 // PhaseUnwrapperStreams makes phase values continous by adding integers as needed for a continuous stream
 type PhaseUnwrapperStreams struct {
 	PhaseUnwrapper
-	lastVal    uint16
-	offset     uint16
+	lastVal    RawType
+	offset     RawType
 	resetCount int
 	resetAfter int // jump back to near 0 after this many
 }
@@ -45,7 +45,7 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 	u.enable = enable
 
 	if lowBitsToDrop > 0 && enable {
-		u.twoPi = uint16(1) << (fractionBits - lowBitsToDrop)
+		u.twoPi = RawType(1) << (fractionBits - lowBitsToDrop)
 		onePi := int16(1) << (fractionBits - lowBitsToDrop - 1)
 		bias := int16(biasLevel>>lowBitsToDrop) % int16(u.twoPi)
 		u.upperStepLim = bias + onePi
@@ -53,7 +53,7 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 		if pulseSign > 0 {
 			u.defaultOffset = u.twoPi
 		} else {
-			u.defaultOffset = uint16(-2 * int(u.twoPi))
+			u.defaultOffset = RawType(-int(u.twoPi))
 		}
 	}
 	return u
@@ -75,10 +75,10 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	}
 
 	// Enter this loop only if unwrapping is enabled
-	var lastVal uint16
+	var lastVal RawType
 	offset := u.defaultOffset
 	for i, rawVal := range *data {
-		v := uint16(rawVal) >> drop
+		v := rawVal >> drop
 		thisstep := int16(v - lastVal)
 		lastVal = v
 
@@ -88,7 +88,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		} else if thisstep < u.lowerStepLim {
 			offset += u.twoPi
 		}
-		(*data)[i] = RawType(v + offset)
+		(*data)[i] = v + offset
 	}
 }
 
@@ -115,7 +115,7 @@ func NewPhaseUnwrapperStreams(fractionBits, lowBitsToDrop uint, enable bool, bia
 	u.enable = enable
 
 	if lowBitsToDrop > 0 && enable {
-		u.twoPi = uint16(1) << (fractionBits - lowBitsToDrop)
+		u.twoPi = RawType(1) << (fractionBits - lowBitsToDrop)
 		onePi := int16(1) << (fractionBits - lowBitsToDrop - 1)
 		bias := int16(biasLevel>>lowBitsToDrop) % int16(u.twoPi)
 		u.upperStepLim = bias + onePi
@@ -124,7 +124,7 @@ func NewPhaseUnwrapperStreams(fractionBits, lowBitsToDrop uint, enable bool, bia
 		if pulseSign > 0 {
 			u.defaultOffset = u.twoPi
 		} else {
-			u.defaultOffset = uint16(-2 * int(u.twoPi))
+			u.defaultOffset = RawType(-2 * int(u.twoPi))
 		}
 		u.offset = u.defaultOffset
 
@@ -155,7 +155,7 @@ func (u *PhaseUnwrapperStreams) UnwrapInPlace(data *[]RawType) {
 
 	// Enter this loop only if unwrapping is enabled
 	for i, rawVal := range *data {
-		v := uint16(rawVal) >> drop
+		v := RawType(rawVal) >> drop
 		thisstep := int16(v - u.lastVal)
 		u.lastVal = v
 
