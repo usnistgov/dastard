@@ -53,7 +53,7 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 		if pulseSign > 0 {
 			u.defaultOffset = u.twoPi
 		} else {
-			u.defaultOffset = RawType(-int(u.twoPi))
+			u.defaultOffset = RawType(-2 * int(u.twoPi))
 		}
 	}
 	return u
@@ -74,8 +74,9 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		return
 	}
 
-	// Enter this loop only if unwrapping is enabled
-	var lastVal RawType
+	// Reach here only if unwrapping is enabled
+	// The first output will be in the range [u.twoPi, 2*u.twoPi) for positive-going pulses.
+	lastVal := (*data)[0] >> drop
 	offset := u.defaultOffset
 	for i, rawVal := range *data {
 		v := rawVal >> drop
