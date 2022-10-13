@@ -74,7 +74,7 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 		return
 	}
 
-	// Reach here only if unwrapping is enabled
+	// Reach here only if unwrapping is enabled.
 	// The first output will be in the range [u.twoPi, 2*u.twoPi) for positive-going pulses.
 	nUp := 0
 	nDown := 0
