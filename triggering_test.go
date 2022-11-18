@@ -587,20 +587,40 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 
 }
 
+func almostEqual(a, b, threshold float64) bool {
+	return math.Abs(a-b) <= threshold
+}
+
 func TestKinkModel(t *testing.T) {
 	xdata := []float64{0, 1, 2, 3, 4, 5, 6, 7}
 	ydata := []float64{0, 0, 0, 0, 1, 2, 3, 4}
-	ymodel, a, b, c, X2, err := kinkModelResult(3, xdata, ydata)
-	if a != 0 || b != 0 || c != 1 || X2 != 0 || err != nil {
-		t.Errorf("a %v, b %v, c %v, X2 %v, err %v, ymodel %v", a, b, c, X2, err, ymodel)
+
+	var tests = []struct {
+		offset float64
+		abcX2  [4]float64
+	}{
+		{3, [4]float64{0, 0, 1, 0}},
+		{4, [4]float64{0.6818181818181821, 0.22727272727272738, 1.1363636363636362, 0.45454545454545453}},
 	}
-	ymodel, a, b, c, X2, err = kinkModelResult(4, xdata, ydata)
-	if a != 0.6818181818181821 || b != 0.22727272727272738 ||
-		c != 1.1363636363636362 || X2 != 0.45454545454545453 || err != nil {
-		t.Errorf("a %v, b %v, c %v, X2 %v, err %v, ymodel %v", a, b, c, X2, err, ymodel)
+
+	for _, test := range tests {
+		ymodel, a, b, c, X2, err := kinkModelResult(test.offset, xdata, ydata)
+		outputs := [4]float64{a, b, c, X2}
+		fail := false
+		for i := 0; i < 4; i++ {
+			if !almostEqual(outputs[i], test.abcX2[i], 1e-12) {
+				fail = true
+				break
+			}
+		}
+		if fail || err != nil {
+			t.Errorf("offset %.0f: a %v, b %v, c %v, X2 %v, err %v, ymodel %v",
+				test.offset, a, b, c, X2, err, ymodel)
+		}
 	}
+
 	kbest, X2min, err := kinkModelFit(xdata, ydata, []float64{1, 2, 2.5, 3, 3.5, 4, 5})
-	if kbest != 3 || X2min != 0 || err != nil {
+	if kbest != 3 || math.Abs(X2min) > 1e-15 || err != nil {
 		t.Errorf("kbest %v, X2min %v, err %v", kbest, X2min, err)
 	}
 }
