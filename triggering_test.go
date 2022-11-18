@@ -497,6 +497,54 @@ func TestEdgeVetoesLevel(t *testing.T) {
 	}
 }
 
+// TestTriggersDontOverlap tests that an edge trigger won't overlap another when the segment boundary intervenes.
+// Tests for issue #293 (https://github.com/usnistgov/dastard/issues/293)
+func TestTriggersDontOverlap(t *testing.T) {
+	const nchan = 1
+
+	broker := NewTriggerBroker(nchan)
+	NPresamples := 10
+	NSamples := 50
+	SegLen := 400
+
+	// Run several pairs of data segments to make sure that the edge trigger is found exactly once
+	// even if it's near the segment boundary.
+	rawLength := 4*SegLen + 4
+	rawData := make([]RawType, rawLength)
+	for i := 2 * SegLen; i < 2*SegLen+NSamples; i++ {
+		rawData[i] = 10 * RawType(i)
+	}
+	for i := 2*SegLen + NSamples; i < rawLength; i++ {
+		rawData[i] = rawData[i-1]
+	}
+
+	for offset := 0; offset < 2*SegLen+1; offset++ {
+		dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+		dsp.NPresamples = NPresamples
+		dsp.NSamples = NSamples
+
+		dsp.EdgeTrigger = true
+		dsp.EdgeLevel = 4
+		dsp.EdgeRising = true
+
+		segment := NewDataSegment(rawData[offset:offset+SegLen], 1, 0, time.Now(), time.Millisecond)
+		dsp.stream.AppendSegment(segment)
+		p1 := dsp.TriggerData()
+		dsp.TrimStream()
+		segment = NewDataSegment(rawData[offset+SegLen:offset+2*SegLen], 1, FrameIndex(SegLen), time.Now(), time.Millisecond)
+		dsp.stream.AppendSegment(segment)
+		p2 := dsp.TriggerData()
+		dsp.TrimStream()
+
+		a := len(p1)
+		b := len(p2)
+		if a > 0 && b > 0 {
+			t.Errorf("Overlaps at offset %5d: (%d, %d) triggers in segments (a,b): %v %v\n",
+				offset, a, b, p1[0].trigFrame, p2[0].trigFrame)
+		}
+	}
+}
+
 func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	const nchan = 1
 	broker := NewTriggerBroker(nchan)
