@@ -538,9 +538,10 @@ func TestTriggersDontOverlap(t *testing.T) {
 
 		a := len(p1)
 		b := len(p2)
-		if a > 0 && b > 0 {
-			t.Errorf("Overlaps at offset %5d: (%d, %d) triggers in segments (a,b): %v %v\n",
-				offset, a, b, p1[0].trigFrame, p2[0].trigFrame)
+		if a > 0 && b > 0 && p2[0].trigFrame-p1[0].trigFrame < FrameIndex(dsp.NSamples) {
+			dt := p2[0].trigFrame - p1[0].trigFrame
+			t.Errorf("Overlaps at offset %5d: (%d, %d) triggers in segments (a,b) at %d,%d (only %d apart, want >= %d)\n",
+				offset, a, b, p1[0].trigFrame, p2[0].trigFrame, dt, dsp.NSamples)
 		}
 	}
 }
