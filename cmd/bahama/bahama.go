@@ -24,7 +24,7 @@ func clearRings(nclear int) error {
 		ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 		ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
 		if err != nil {
-			return fmt.Errorf("Could not open ringbuffer: %s", err)
+			return fmt.Errorf("could not open ringbuffer: %s", err)
 		}
 		ring.Unlink() // in case it exists from before
 	}
@@ -161,7 +161,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	stride := 4000 / Nchan // We'll put this many samples into each packet
 	valuesPerPacket := stride * Nchan
 	if 2*valuesPerPacket > 8000 {
-		return fmt.Errorf("Packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
+		return fmt.Errorf("packet payload size %d exceeds 8000 bytes", 2*valuesPerPacket)
 	}
 	const counterRate = 1e8 // counts per second
 	countsPerSample := uint64(counterRate/sampleRate + 0.5)
@@ -249,7 +249,6 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		for burstnum := 0; burstnum < nbursts; burstnum++ {
 			select {
 			case <-cancel:
-				close(packetchan)
 				return nil
 			case <-timer.C:
 				lastvalue := (burstnum + 1) * BurstNvalues
@@ -285,11 +284,11 @@ func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
 	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
 	if err != nil {
-		return fmt.Errorf("Could not open ringbuffer %d: %s", cardnum, err)
+		return fmt.Errorf("could not open ringbuffer %d: %s", cardnum, err)
 	}
 	ring.Unlink() // in case it exists from before
 	if err = ring.Create(ringsize); err != nil {
-		return fmt.Errorf("Failed RingBuffer.Create(%d): %s", ringsize, err)
+		return fmt.Errorf("failed RingBuffer.Create(%d): %s", ringsize, err)
 	}
 	fmt.Printf("Generating data in shm:%s\n", ringname)
 
@@ -314,6 +313,7 @@ func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 	return nil
 }
 
+// udpwriter is called once per data source (i.e., per UDP port producing data)
 func udpwriter(portnum int, packetchan chan []byte) error {
 	hostname := fmt.Sprintf("localhost:%d", portnum)
 	addr, err := net.ResolveUDPAddr("udp", hostname)
@@ -427,18 +427,23 @@ func main() {
 	control.Report()
 
 	cancel := make(chan os.Signal)
+	generateAndPublishData(control, cancel)
+}
+
+func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	ch0 := control.Chan0
 	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
+		defer close(packetchan)
 		if control.udp {
-			portnum := (*port) + cardnum
+			portnum := (control.port) + cardnum
 			if err := udpwriter(portnum, packetchan); err != nil {
-				fmt.Printf("udpwriter(%d,...) failed: %v\n", cardnum, err)
+				fmt.Printf("udpwriter(%d,...) failed: %v\n", portnum, err)
 				continue
 			}
 		} else {
-			if err := ringwriter(cardnum, packetchan, ringsize); err != nil {
+			if err := ringwriter(cardnum, packetchan, control.ringsize); err != nil {
 				fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
 				continue
 			}
@@ -448,7 +453,7 @@ func main() {
 		chanPerGroup := (1 + (control.Nchan-1)/control.Ngroups)
 		for i := 0; i < control.Nchan; i += chanPerGroup {
 			nch := chanPerGroup
-			if i*chanPerGroup+nch > control.Nchan {
+			if i+nch > control.Nchan {
 				nch = control.Nchan - i
 			}
 			pchan := packetchan

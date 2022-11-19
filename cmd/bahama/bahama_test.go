@@ -126,3 +126,22 @@ func TestGenerate(t *testing.T) {
 		t.Errorf("generateData() left shm:%s in existence", name)
 	}
 }
+
+func BenchmarkUDPGenerate(b *testing.B) {
+	cancel := make(chan os.Signal)
+	go func() {
+		time.Sleep(60 * time.Second)
+		close(cancel)
+	}()
+
+	packetchan := make(chan []byte)
+
+	control := BahamaControl{Nchan: 64, Ngroups: 1, Nsources: 1, pulses: true,
+		noiselevel: 5.0, samplerate: 244140, udp: true, port: 4000}
+	if err := udpwriter(control.port, packetchan); err != nil {
+		b.Errorf("udpwriter(%d,...) failed: %v\n", control.port, err)
+	}
+	if err := generateData(control.Nchan, 0, packetchan, cancel, control); err != nil {
+		b.Errorf("generateData() returned %s", err.Error())
+	}
+}

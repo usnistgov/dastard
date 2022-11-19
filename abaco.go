@@ -143,7 +143,8 @@ func (group *AbacoGroup) samplePackets() error {
 		if dserial > 0 {
 			avgSampPerPacket := float64(samplesInPackets) / float64(packetsRead)
 			group.sampleRate = float64(dserial) * avgSampPerPacket / dt
-			fmt.Printf("Sample rate %.6g /sec determined from %d packets:\n\tΔt=%f sec, Δserial=%d, and %f samp/packet\n", group.sampleRate,
+			fmt.Printf("Sample rate for chan [%4d-%4d] %.6g /sec determined from %4d packets: Δt=%f sec, Δserial=%d, and %.3f samp/packet\n",
+				group.index.Firstchan, group.index.Firstchan+group.nchan-1, group.sampleRate,
 				packetsRead, dt, dserial, avgSampPerPacket)
 		}
 	}
@@ -234,6 +235,7 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 	totalBytes := 0
 	packetsConsumed := 0
 	samplesConsumed := 0
+	lastPacketSize := 0
 	nchan := group.nchan
 
 	for _, p := range group.queue {
@@ -245,6 +247,7 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 
 		// Don't demux a packet that would over-fill the requested # of frames.
 		frameAvail := p.Frames()
+		lastPacketSize = frameAvail
 		if frameAvail > frames {
 			break
 		}
@@ -290,8 +293,8 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 
 	// TODO: What if the # of frames points to the middle of a packet? For now, panic.
 	if frames > 0 {
-		msg := fmt.Sprintf("Consumed %d of %d packets, but there are still %d frames to fill\n",
-			packetsConsumed, len(group.queue), frames)
+		msg := fmt.Sprintf("Consumed %d of available %d packets, but there are still %d frames to fill and %d frames in packet\n",
+			packetsConsumed, len(group.queue), frames, lastPacketSize)
 		panic(msg)
 	}
 
@@ -444,10 +447,10 @@ func enumerateAbacoRings() (rings []int, err error) {
 
 // AbacoUDPReceiver represents a single Abaco device producing data by UDP packets to a single UDP port.
 type AbacoUDPReceiver struct {
-	host     string       // in the form: "127.0.0.1:56789"
-	conn     *net.UDPConn // active UDP connection
-	data     chan []*packets.Packet
-	sendmore chan bool
+	host     string                 // in the form: "127.0.0.1:56789"
+	conn     *net.UDPConn           // active UDP connection
+	data     chan []*packets.Packet // channel for sending next bunch of packets to downstream processor
+	sendmore chan bool              // a channel by which downstream processor signals readiness for next bunch of packets
 }
 
 // NewAbacoUDPReceiver creates a new AbacoUDPReceiver and binds as a server to the requested host:port
@@ -470,45 +473,36 @@ func (device *AbacoUDPReceiver) start() (err error) {
 	if err != nil {
 		return err
 	}
-	const UDPPacketSize = 8192
-	bufferPool := sync.Pool{
-		New: func() interface{} { p := make([]byte, UDPPacketSize); return &p },
-	}
 	device.conn = conn
+
+	const UDPPacketSize = 8192
 
 	device.sendmore = make(chan bool)
 	device.data = make(chan []*packets.Packet)
-	singlepackets := make(chan *[]byte, 20)
 
 	// Two goroutines:
 	// 1. Read from the UDP socket, put packet on channel singlepackets.
 	// 2. Read packet from channel singlepackets and convert to a dastard `packets.Packet` type.
+	//    Build a slice of all such objects; put slice onto `device.data` when `device.sendmore` says so.
 
 	// This goroutine (#1) reads the UDP socket and puts the resulting packets on channel singlepackets.
 	// They will be removed and queued by the other goroutine (#2).
 	go func() {
-		defer close(singlepackets)
-		for {
-			message := bufferPool.Get().(*[]byte)
-			if _, _, err := device.conn.ReadFrom(*message); err != nil {
-				// Getting an error in ReadFrom is the normal way to detect closed connection.
-				// bufferPool.Put() returns an object to the pool for reuse.
-				bufferPool.Put(message)
-				return
-			}
-			singlepackets <- message
-		}
-	}()
-
-	// This goroutine (#2) handles UDP message sent one at a time on singlepackets by the other goroutine (#1).
-	// It converts them into packet.Packet objects, queues them into a slice of *packets.Packet
-	// pointers and sends the whole slice when a request comes on device.sendmore.
-	go func() {
 		defer close(device.data)
 		defer func() { device.conn = nil }()
 
-		const initialQueueCapacity = 2048
+		message := make([]byte, UDPPacketSize)
+
+		const initialQueueCapacity = 4000 // = 32 MB worth of full-size packets
 		queue := make([]*packets.Packet, 0, initialQueueCapacity)
+
+		// This 100ms timeout for reading the UDP socket will allow the goroutine to wake up that often
+		// and check for requests on the `device.sendmore` channel to send the queued data to `device.data`.
+		// That's a timeout for the unusual case of the socket having no packets, of course. Normal
+		// behavior is to get messages almost every time.
+		const delay = 100 * time.Millisecond
+		device.conn.SetReadDeadline(time.Now().Add(delay))
+
 		for {
 			select {
 			case _, ok := <-device.sendmore:
@@ -517,20 +511,26 @@ func (device *AbacoUDPReceiver) start() (err error) {
 					return
 				}
 				queue = make([]*packets.Packet, 0, initialQueueCapacity)
-
-			case message, ok := <-singlepackets:
-				if !ok {
-					return
+			default:
+				_, _, err := device.conn.ReadFrom(message)
+				// If error, was it a timeout?
+				if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+					device.conn.SetReadDeadline(time.Now().Add(delay))
+					continue
 				}
-				p, err := packets.ReadPacket(bytes.NewReader(*message))
-				bufferPool.Put(message)
 				if err != nil {
-					if err != io.EOF {
-						fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, p)
-					}
+					// Getting an error in ReadFrom is the normal way to detect closed connection.
 					return
 				}
-				queue = append(queue, p)
+
+				if pack, err := packets.ReadPacket(bytes.NewReader(message)); err == nil {
+					queue = append(queue, pack)
+				} else if err == io.EOF {
+					return
+				} else {
+					fmt.Printf("Error converting UDP to packet: err %v, packet %v\n", err, pack)
+					return
+				}
 			}
 		}
 	}()
@@ -884,9 +884,9 @@ func (as *AbacoSource) readerMainLoop() {
 	defer close(as.buffersChan)
 	const timeoutPeriod = 5 * time.Second
 	timeout := time.NewTimer(timeoutPeriod)
+	defer timeout.Stop()
 	ticker := time.NewTicker(as.readPeriod)
 	defer ticker.Stop()
-	defer timeout.Stop()
 	as.lastread = time.Now()
 
 awaitmoredata:
@@ -902,7 +902,7 @@ awaitmoredata:
 			return
 
 		case <-ticker.C:
-			// read from the ring buffer
+			// read from the UDP port or ring buffer
 			var lastSampleTime time.Time
 			var droppedFrames int
 			var droppedBytes int
