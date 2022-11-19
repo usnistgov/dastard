@@ -452,18 +452,16 @@ func TestEdgeVetoesLevel(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	NPresamples := 256
-	NSamples := 1024
+	NPresamples := 20
+	NSamples := 100
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
-	dsp.NPresamples = 20
-	dsp.NSamples = 100
 
 	dsp.EdgeTrigger = true
-	dsp.EdgeLevel = 290
+	dsp.EdgeLevel = 200
 	dsp.EdgeRising = true
 	dsp.LevelTrigger = true
 	dsp.LevelRising = true
-	dsp.LevelLevel = 99
+	dsp.LevelLevel = 50
 
 	// Run several data segments to make sure that the edge trigger vetoes the
 	// level trigger when they happen too close in time.
@@ -471,18 +469,20 @@ func TestEdgeVetoesLevel(t *testing.T) {
 	edgeChangeAt := 300
 	const rawLength = 1000
 	expectNT := []int{2, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2}
+	ffIdx := FrameIndex(0)
 	for j, lca := range levelChangeAt {
 		want := expectNT[j]
 
 		raw := make([]RawType, rawLength)
-		for i := lca; i < rawLength; i++ {
+		for i := lca; i < lca+NSamples; i++ {
 			raw[i] = 100
 		}
-		for i := edgeChangeAt; i < edgeChangeAt+100; i++ {
+		for i := edgeChangeAt; i < edgeChangeAt+NSamples; i++ {
 			raw[i] = 400
 		}
 
-		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
+		segment := NewDataSegment(raw, 1, ffIdx, time.Now(), time.Millisecond)
+		ffIdx += rawLength
 		dsp.stream.AppendSegment(segment)
 		primaries := dsp.TriggerData()
 		dsp.TrimStream()
@@ -492,7 +492,7 @@ func TestEdgeVetoesLevel(t *testing.T) {
 				fmt.Printf("\t%v\n", p)
 			}
 
-			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
+			t.Errorf("EdgeVetosLevel %d problem with LCA=%d: saw %d triggers, want %d", j, lca, len(primaries), want)
 		}
 	}
 }
