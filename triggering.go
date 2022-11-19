@@ -55,6 +55,22 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(i int, NPresamples int,
 	return record
 }
 
+func (dsp *DataStreamProcessor) nextPotentialTriggerFrame(isAuto bool) int {
+	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
+	mindelay := dsp.NSamples
+	if isAuto {
+		autoDelaySamples := int(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
+		if autoDelaySamples > mindelay {
+			mindelay = autoDelaySamples
+		}
+	}
+	nextPotentialTrig := int(dsp.LastTrigger-dsp.stream.firstFrameIndex) + mindelay
+	if nextPotentialTrig < dsp.NPresamples {
+		return dsp.NPresamples
+	}
+	return nextPotentialTrig
+}
+
 func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) []*DataRecord {
 	if !dsp.EdgeTrigger {
 		return records
@@ -71,7 +87,8 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 		}
 	}
 
-	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
+	const isauto = false
+	for i := dsp.nextPotentialTriggerFrame(isauto); i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
 		diff := int32(raw[i]) + int32(raw[i-1]) - int32(raw[i-2]) - int32(raw[i-3])
 		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
@@ -110,7 +127,8 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 	}
 
 	// Normal loop through all samples in triggerable range
-	for i := dsp.NPresamples; i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
+	const isauto = false
+	for i := dsp.nextPotentialTriggerFrame(isauto); i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
 
 		// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
 		// Existing edge triggers get priority, vetoing (1 record minus 1 sample) into the past
@@ -147,10 +165,6 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	nsamp := FrameIndex(dsp.NSamples)
 	npre := FrameIndex(dsp.NPresamples)
 
-	delaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
-	if delaySamples < nsamp {
-		delaySamples = nsamp
-	}
 	idxNextTrig := 0
 	nFoundTrigs := len(records)
 	nextFoundTrig := FrameIndex(math.MaxInt64)
@@ -158,10 +172,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 		nextFoundTrig = records[idxNextTrig].trigFrame - stream.firstFrameIndex
 	}
 
-	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
-	nextPotentialTrig := dsp.LastTrigger - stream.firstFrameIndex + delaySamples
-	if nextPotentialTrig < npre {
-		nextPotentialTrig = npre
+	const auto = true
+	nextPotentialTrig := FrameIndex(dsp.nextPotentialTriggerFrame(auto))
+	autoDelaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
+	if autoDelaySamples < FrameIndex(dsp.NSamples) {
+		autoDelaySamples = FrameIndex(dsp.NSamples)
 	}
 
 	// Loop through all potential trigger times.
@@ -170,11 +185,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 			// auto trigger is allowed: no conflict with previously found non-auto triggers
 			newRecord := dsp.triggerAt(int(nextPotentialTrig))
 			records = append(records, newRecord)
-			nextPotentialTrig += delaySamples
+			nextPotentialTrig += autoDelaySamples
 
 		} else {
 			// auto trigger not allowed: conflict with previously found non-auto triggers
-			nextPotentialTrig = nextFoundTrig + delaySamples
+			nextPotentialTrig = nextFoundTrig + autoDelaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {
 				nextFoundTrig = records[idxNextTrig].trigFrame - stream.firstFrameIndex

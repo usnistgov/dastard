@@ -214,19 +214,19 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 		expectedFramesInts[i] = int(expected)
 	}
 	assert.Equal(t, expectedFramesInts, pTrigFramesInts, fmt.Sprintf("%s: expected trigger frames do not match found frames", trigname))
-	// if len(primaries) != len(expectedFrames) {
-	// 	t.Errorf("%s: have %v triggers, want %v triggers", trigname, len(primaries), len(expectedFrames))
-	// 	fmt.Print("have ")
-	// 	for _, p := range primaries {
-	// 		fmt.Printf("%v,", p.trigFrame)
-	// 	}
-	// 	fmt.Println()
-	// 	fmt.Print("want ")
-	// 	for _, v := range expectedFrames {
-	// 		fmt.Printf("%v,", v)
-	// 	}
-	// 	fmt.Println()
-	// }
+	if len(primaries) != len(expectedFrames) {
+		t.Errorf("%s: have %v triggers, want %v triggers", trigname, len(primaries), len(expectedFrames))
+		fmt.Print("have ")
+		for _, p := range primaries {
+			fmt.Printf("%v,", p.trigFrame)
+		}
+		fmt.Println()
+		fmt.Print("want ")
+		for _, v := range expectedFrames {
+			fmt.Printf("%v,", v)
+		}
+		fmt.Println()
+	}
 	if len(secondaries) != 0 {
 		t.Errorf("%s: trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
 	}
