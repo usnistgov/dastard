@@ -55,7 +55,10 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(i int, NPresamples int,
 	return record
 }
 
-func (dsp *DataStreamProcessor) nextPotentialTriggerFrame(isAuto bool) int {
+// firstPotentialTriggerFrame returns the first frame at which a trigger can be allowed in
+// the current segment. The isAuto flag says whether the triggers are auto-triggers (in which
+// case, the auto trigger delay is considered when determining the first frame).
+func (dsp *DataStreamProcessor) firstPotentialTriggerFrame(isAuto bool) int {
 	// dsp.LastTrigger stores the frame of the last trigger found by the most recent invocation of TriggerData
 	mindelay := dsp.NSamples
 	if isAuto {
@@ -88,7 +91,7 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 	}
 
 	const isauto = false
-	for i := dsp.nextPotentialTriggerFrame(isauto); i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
+	for i := dsp.firstPotentialTriggerFrame(isauto); i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
 		diff := int32(raw[i]) + int32(raw[i-1]) - int32(raw[i-2]) - int32(raw[i-3])
 		if (dsp.EdgeRising && diff >= dsp.EdgeLevel) ||
 			(dsp.EdgeFalling && diff <= -dsp.EdgeLevel) {
@@ -128,7 +131,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 
 	// Normal loop through all samples in triggerable range
 	const isauto = false
-	for i := dsp.nextPotentialTriggerFrame(isauto); i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
+	for i := dsp.firstPotentialTriggerFrame(isauto); i < ndata+dsp.NPresamples-dsp.NSamples; i++ {
 
 		// Now skip over 2 record's worth of samples (minus 1) if an edge trigger is too soon in future.
 		// Existing edge triggers get priority, vetoing (1 record minus 1 sample) into the past
@@ -173,7 +176,7 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	}
 
 	const auto = true
-	nextPotentialTrig := FrameIndex(dsp.nextPotentialTriggerFrame(auto))
+	nextPotentialTrig := FrameIndex(dsp.firstPotentialTriggerFrame(auto))
 	autoDelaySamples := FrameIndex(dsp.AutoDelay.Seconds()*dsp.SampleRate + 0.5)
 	if autoDelaySamples < FrameIndex(dsp.NSamples) {
 		autoDelaySamples = FrameIndex(dsp.NSamples)
