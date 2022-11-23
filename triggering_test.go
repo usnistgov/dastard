@@ -669,7 +669,7 @@ func TestKinkModel(t *testing.T) {
 	}
 
 	kbest, X2min, err := kinkModelFit(xdata, ydata, []float64{1, 2, 2.5, 3, 3.5, 4, 5})
-	if kbest != 3 || math.Abs(X2min) > 1e-15 || err != nil {
+	if kbest != 3 || !almostEqual(X2min, 0, 1e-15) || err != nil {
 		t.Errorf("kbest %v, X2min %v, err %v", kbest, X2min, err)
 	}
 }
