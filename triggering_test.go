@@ -214,19 +214,19 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 		expectedFramesInts[i] = int(expected)
 	}
 	assert.Equal(t, expectedFramesInts, pTrigFramesInts, fmt.Sprintf("%s: expected trigger frames do not match found frames", trigname))
-	// if len(primaries) != len(expectedFrames) {
-	// 	t.Errorf("%s: have %v triggers, want %v triggers", trigname, len(primaries), len(expectedFrames))
-	// 	fmt.Print("have ")
-	// 	for _, p := range primaries {
-	// 		fmt.Printf("%v,", p.trigFrame)
-	// 	}
-	// 	fmt.Println()
-	// 	fmt.Print("want ")
-	// 	for _, v := range expectedFrames {
-	// 		fmt.Printf("%v,", v)
-	// 	}
-	// 	fmt.Println()
-	// }
+	if len(primaries) != len(expectedFrames) {
+		t.Errorf("%s: have %v triggers, want %v triggers", trigname, len(primaries), len(expectedFrames))
+		fmt.Print("have ")
+		for _, p := range primaries {
+			fmt.Printf("%v,", p.trigFrame)
+		}
+		fmt.Println()
+		fmt.Print("want ")
+		for _, v := range expectedFrames {
+			fmt.Printf("%v,", v)
+		}
+		fmt.Println()
+	}
 	if len(secondaries) != 0 {
 		t.Errorf("%s: trigger found %d secondary (group) triggers, want 0", trigname, len(secondaries))
 	}
@@ -452,18 +452,16 @@ func TestEdgeVetoesLevel(t *testing.T) {
 	const nchan = 1
 
 	broker := NewTriggerBroker(nchan)
-	NPresamples := 256
-	NSamples := 1024
+	NPresamples := 20
+	NSamples := 100
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
-	dsp.NPresamples = 20
-	dsp.NSamples = 100
 
 	dsp.EdgeTrigger = true
-	dsp.EdgeLevel = 290
+	dsp.EdgeLevel = 200
 	dsp.EdgeRising = true
 	dsp.LevelTrigger = true
 	dsp.LevelRising = true
-	dsp.LevelLevel = 99
+	dsp.LevelLevel = 50
 
 	// Run several data segments to make sure that the edge trigger vetoes the
 	// level trigger when they happen too close in time.
@@ -471,18 +469,20 @@ func TestEdgeVetoesLevel(t *testing.T) {
 	edgeChangeAt := 300
 	const rawLength = 1000
 	expectNT := []int{2, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2}
+	ffIdx := FrameIndex(0)
 	for j, lca := range levelChangeAt {
 		want := expectNT[j]
 
 		raw := make([]RawType, rawLength)
-		for i := lca; i < rawLength; i++ {
+		for i := lca; i < lca+NSamples; i++ {
 			raw[i] = 100
 		}
-		for i := edgeChangeAt; i < edgeChangeAt+100; i++ {
+		for i := edgeChangeAt; i < edgeChangeAt+NSamples; i++ {
 			raw[i] = 400
 		}
 
-		segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
+		segment := NewDataSegment(raw, 1, ffIdx, time.Now(), time.Millisecond)
+		ffIdx += rawLength
 		dsp.stream.AppendSegment(segment)
 		primaries := dsp.TriggerData()
 		dsp.TrimStream()
@@ -492,7 +492,56 @@ func TestEdgeVetoesLevel(t *testing.T) {
 				fmt.Printf("\t%v\n", p)
 			}
 
-			t.Errorf("EdgeVetosLevel problem with LCA=%d: saw %d triggers, want %d", lca, len(primaries), want)
+			t.Errorf("EdgeVetosLevel %d problem with LCA=%d: saw %d triggers, want %d", j, lca, len(primaries), want)
+		}
+	}
+}
+
+// TestTriggersDontOverlap tests that an edge trigger won't overlap another when the segment boundary intervenes.
+// Tests for issue #293 (https://github.com/usnistgov/dastard/issues/293)
+func TestTriggersDontOverlap(t *testing.T) {
+	const nchan = 1
+
+	broker := NewTriggerBroker(nchan)
+	NPresamples := 10
+	NSamples := 50
+	SegLen := 400
+
+	// Run several pairs of data segments to make sure that the edge trigger is found exactly once
+	// even if it's near the segment boundary.
+	rawLength := 4*SegLen + 4
+	rawData := make([]RawType, rawLength)
+	for i := 2 * SegLen; i < 2*SegLen+NSamples; i++ {
+		rawData[i] = 10 * RawType(i)
+	}
+	for i := 2*SegLen + NSamples; i < rawLength; i++ {
+		rawData[i] = rawData[i-1]
+	}
+
+	for offset := 0; offset < 2*SegLen+1; offset++ {
+		dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+		dsp.NPresamples = NPresamples
+		dsp.NSamples = NSamples
+
+		dsp.EdgeTrigger = true
+		dsp.EdgeLevel = 4
+		dsp.EdgeRising = true
+
+		segment := NewDataSegment(rawData[offset:offset+SegLen], 1, 0, time.Now(), time.Millisecond)
+		dsp.stream.AppendSegment(segment)
+		p1 := dsp.TriggerData()
+		dsp.TrimStream()
+		segment = NewDataSegment(rawData[offset+SegLen:offset+2*SegLen], 1, FrameIndex(SegLen), time.Now(), time.Millisecond)
+		dsp.stream.AppendSegment(segment)
+		p2 := dsp.TriggerData()
+		dsp.TrimStream()
+
+		a := len(p1)
+		b := len(p2)
+		if a > 0 && b > 0 && p2[0].trigFrame-p1[0].trigFrame < FrameIndex(dsp.NSamples) {
+			dt := p2[0].trigFrame - p1[0].trigFrame
+			t.Errorf("Overlaps at offset %5d: (%d, %d) triggers in segments (a,b) at %d,%d (only %d apart, want >= %d)\n",
+				offset, a, b, p1[0].trigFrame, p2[0].trigFrame, dt, dsp.NSamples)
 		}
 	}
 }
@@ -587,20 +636,40 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 
 }
 
+func almostEqual(a, b, threshold float64) bool {
+	return math.Abs(a-b) <= threshold
+}
+
 func TestKinkModel(t *testing.T) {
 	xdata := []float64{0, 1, 2, 3, 4, 5, 6, 7}
 	ydata := []float64{0, 0, 0, 0, 1, 2, 3, 4}
-	ymodel, a, b, c, X2, err := kinkModelResult(3, xdata, ydata)
-	if a != 0 || b != 0 || c != 1 || X2 != 0 || err != nil {
-		t.Errorf("a %v, b %v, c %v, X2 %v, err %v, ymodel %v", a, b, c, X2, err, ymodel)
+
+	var tests = []struct {
+		offset float64
+		abcX2  [4]float64
+	}{
+		{3, [4]float64{0, 0, 1, 0}},
+		{4, [4]float64{0.6818181818181821, 0.22727272727272738, 1.1363636363636362, 0.45454545454545453}},
 	}
-	ymodel, a, b, c, X2, err = kinkModelResult(4, xdata, ydata)
-	if a != 0.6818181818181821 || b != 0.22727272727272738 ||
-		c != 1.1363636363636362 || X2 != 0.45454545454545453 || err != nil {
-		t.Errorf("a %v, b %v, c %v, X2 %v, err %v, ymodel %v", a, b, c, X2, err, ymodel)
+
+	for _, test := range tests {
+		ymodel, a, b, c, X2, err := kinkModelResult(test.offset, xdata, ydata)
+		outputs := [4]float64{a, b, c, X2}
+		fail := false
+		for i := 0; i < 4; i++ {
+			if !almostEqual(outputs[i], test.abcX2[i], 1e-12) {
+				fail = true
+				break
+			}
+		}
+		if fail || err != nil {
+			t.Errorf("offset %.0f: a %v, b %v, c %v, X2 %v, err %v, ymodel %v",
+				test.offset, a, b, c, X2, err, ymodel)
+		}
 	}
+
 	kbest, X2min, err := kinkModelFit(xdata, ydata, []float64{1, 2, 2.5, 3, 3.5, 4, 5})
-	if kbest != 3 || X2min != 0 || err != nil {
+	if kbest != 3 || !almostEqual(X2min, 0, 1e-15) || err != nil {
 		t.Errorf("kbest %v, X2min %v, err %v", kbest, X2min, err)
 	}
 }
