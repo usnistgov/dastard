@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.2.15** September 2022-
+**0.2.15** November 29, 2022
 * Add a `udpdump` main program to read a few packets from an Abaco UDP source (issue 290).
 * Add some profiling features to Dastard main program (as command-line options).
 * Redesign "legacy triggers" so they don't unintentionally overlap (issue 293).
