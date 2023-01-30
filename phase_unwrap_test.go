@@ -31,6 +31,14 @@ func TestUnwrap(t *testing.T) {
 	NewPhaseUnwrapper(13, bits2drop, false, biaslevel, -1, pulsesign)
 	NewPhaseUnwrapper(13, bits2drop, true, biaslevel, 100, pulsesign)
 
+	expectA := map[uint]RawType{13: 0x1fff, 14: 0x3fff, 15: 0x7fff, 16: 0xffff}
+	for fractionbits, expectMask := range expectA {
+		pu := NewPhaseUnwrapper(fractionbits, bits2drop, true, 0, 20000, pulsesign)
+		if expectMask != pu.signMask {
+			t.Errorf("PhaseUnwrapper.signMask=%x, want %x", pu.signMask, expectMask)
+		}
+
+	}
 	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		for _, enable := range enables {
 			const resetAfter = 20000
