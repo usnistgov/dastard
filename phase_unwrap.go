@@ -75,14 +75,14 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	if !u.enable {
 		u.resetCount = 0
 		for i, rawVal := range *data {
-			(*data)[i] = rawVal >> drop
+			(*data)[i] = (rawVal & u.signMask) >> drop
 		}
 		return
 	}
 
 	// Enter this loop only if unwrapping is enabled
 	for i, rawVal := range *data {
-		v := uint16(rawVal) >> drop
+		v := uint16(rawVal&u.signMask) >> drop
 		thisstep := int16(v - u.lastVal)
 		u.lastVal = v
 

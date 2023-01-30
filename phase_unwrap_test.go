@@ -60,22 +60,19 @@ func TestUnwrap(t *testing.T) {
 			}
 			// Test basic unwrap
 			twopi := RawType(1) << fractionbits // this is a jump of 2π
+			baseline := RawType(100)
 			for i := 0; i < ndata; i++ {
-				data[i] = 100
+				data[i] = baseline
 				if i > 5 && i < 10 {
 					data[i] += twopi
 				}
-				if enable {
-					target[i] = (100 >> bits2drop) + resetValue
-				} else {
-					target[i] = (data[i] >> bits2drop)
-				}
+				target[i] = (baseline >> bits2drop) + resetValue
 			}
 			pu.UnwrapInPlace(&data)
 
 			for i, want := range target {
 				if data[i] != want {
-					t.Errorf("unwrap: %t, data[%d] = %d, want %d", enable, i, data[i], want)
+					t.Errorf("unwrap fb=%d error: enable=%t, data[%d] = %d, want %d", fractionbits, enable, i, data[i], want)
 				}
 			}
 			// Test unwrap on sawtooth of 4 steps
