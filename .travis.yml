@@ -1,6 +1,8 @@
 language: go
 
-dist: bionic
+dist: focal  
+# See https://docs.travis-ci.com/user/reference/linux/ for linux distribution code names.
+# Key values are xenial = 16.04; bionic = 18.04; focal = 20.04; jammy = 22.04
 sudo: required
 
 matrix:
