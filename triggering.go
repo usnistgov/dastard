@@ -196,9 +196,11 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 			// Now verify that it's not vetoed by the allowed (max-min) limit, if any.
 			vetoed := false
 			if dsp.AutoVetoRange > 0 {
-				maxD := dsp.stream.rawData[nextPotentialTrig]
+				begin := nextPotentialTrig - npre
+				finish := begin + nsamp
+				maxD := dsp.stream.rawData[begin]
 				minD := maxD
-				for i := nextPotentialTrig + 1; i < nextPotentialTrig+nsamp-npre; i++ {
+				for i := begin + 1; i < finish; i++ {
 					d := dsp.stream.rawData[i]
 					if d > maxD {
 						maxD = d

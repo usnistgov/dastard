@@ -123,13 +123,15 @@ func TestSingles(t *testing.T) {
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_0Millisecond", []FrameIndex{100, 1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
 	// Now use auto-veto to eliminate the first.
 	dsp.AutoVetoRange = 100
-	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_Veto_0Millisecond", []FrameIndex{1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_Veto_0Millisecond", []FrameIndex{100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
 
 	// AutoDelay now corresponds to 5000 samples. With and without veto, should get 1 and 2 records, respectively.
 	dsp.AutoDelay = 500 * time.Millisecond
+	dsp.NSamples = 1100 // temp make longer so the veto actually works
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_Veto_500Millisecond", []FrameIndex{5100})
 	dsp.AutoVetoRange = 0
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_500Millisecond", []FrameIndex{100, 5100})
+	dsp.NSamples = 1000
 
 	dsp.LevelTrigger = true
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 6000})
