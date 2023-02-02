@@ -14,7 +14,8 @@ type PhaseUnwrapper struct {
 	resetCount    int
 	resetAfter    int // jump back to near 0 after this many
 	resetOffset   uint16
-	enable        bool // are we even unwrapping at all?
+	signMask      RawType // Mask off the upper bits of raw: effect = convert signed->unsigned.
+	enable        bool    // are we even unwrapping at all?
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
@@ -33,10 +34,11 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 	// after this function we want 2^(fractionBits-lowBitsToDrop) to be
 	// exactly one single ϕ0, or 2π of phase.
 	//
-	// As of Jan 2021, we decided to let fractionBits = all bits, so 16
-	// or 32 for int16 or int32, but leave that parameter here...for now.
+	// As of Jan 2021, we decided to let fractionBits = all bits for Abaco sources, so 16
+	// or 32 for int16 or int32, but leave that parameter here--ROACH2 sources need it.
 	u.fractionBits = fractionBits
 	u.lowBitsToDrop = lowBitsToDrop
+	u.signMask = ^(RawType(0xffff) << fractionBits)
 	u.enable = enable
 
 	if lowBitsToDrop > 0 && enable {
@@ -73,14 +75,14 @@ func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
 	if !u.enable {
 		u.resetCount = 0
 		for i, rawVal := range *data {
-			(*data)[i] = rawVal >> drop
+			(*data)[i] = (rawVal & u.signMask) >> drop
 		}
 		return
 	}
 
 	// Enter this loop only if unwrapping is enabled
 	for i, rawVal := range *data {
-		v := uint16(rawVal) >> drop
+		v := uint16(rawVal&u.signMask) >> drop
 		thisstep := int16(v - u.lastVal)
 		u.lastVal = v
 

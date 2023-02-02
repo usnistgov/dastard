@@ -31,6 +31,14 @@ func TestUnwrap(t *testing.T) {
 	NewPhaseUnwrapper(13, bits2drop, false, biaslevel, -1, pulsesign)
 	NewPhaseUnwrapper(13, bits2drop, true, biaslevel, 100, pulsesign)
 
+	expectA := map[uint]RawType{13: 0x1fff, 14: 0x3fff, 15: 0x7fff, 16: 0xffff}
+	for fractionbits, expectMask := range expectA {
+		pu := NewPhaseUnwrapper(fractionbits, bits2drop, true, 0, 20000, pulsesign)
+		if expectMask != pu.signMask {
+			t.Errorf("PhaseUnwrapper.signMask=%x, want %x", pu.signMask, expectMask)
+		}
+
+	}
 	for fractionbits := uint(13); fractionbits <= 16; fractionbits++ {
 		for _, enable := range enables {
 			const resetAfter = 20000
@@ -52,22 +60,19 @@ func TestUnwrap(t *testing.T) {
 			}
 			// Test basic unwrap
 			twopi := RawType(1) << fractionbits // this is a jump of 2π
+			baseline := RawType(100)
 			for i := 0; i < ndata; i++ {
-				data[i] = 100
+				data[i] = baseline
 				if i > 5 && i < 10 {
 					data[i] += twopi
 				}
-				if enable {
-					target[i] = (100 >> bits2drop) + resetValue
-				} else {
-					target[i] = (data[i] >> bits2drop)
-				}
+				target[i] = (baseline >> bits2drop) + resetValue
 			}
 			pu.UnwrapInPlace(&data)
 
 			for i, want := range target {
 				if data[i] != want {
-					t.Errorf("unwrap: %t, data[%d] = %d, want %d", enable, i, data[i], want)
+					t.Errorf("unwrap fb=%d error: enable=%t, data[%d] = %d, want %d", fractionbits, enable, i, data[i], want)
 				}
 			}
 			// Test unwrap on sawtooth of 4 steps
