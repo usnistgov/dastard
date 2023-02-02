@@ -838,13 +838,14 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	// This will be needed any time you have more channels than in the
 	// last saved configuration. All trigger types are disabled.
 	defaultTS := TriggerState{
-		AutoTrigger:  false,
-		AutoDelay:    250 * time.Millisecond,
-		EdgeTrigger:  false,
-		EdgeLevel:    100,
-		EdgeRising:   true,
-		LevelTrigger: false,
-		LevelLevel:   4000,
+		AutoTrigger:   false,
+		AutoDelay:     250 * time.Millisecond,
+		AutoVetoRange: 0,
+		EdgeTrigger:   false,
+		EdgeLevel:     100,
+		EdgeRising:    true,
+		LevelTrigger:  false,
+		LevelLevel:    4000,
 	}
 
 	for channelIndex := range ds.processors {

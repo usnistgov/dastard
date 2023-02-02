@@ -2,6 +2,7 @@
 
 **0.2.16** January 2023-
 * Make ROACH2 firmware for HOLMES team work (issue 297).
+* Add a veto possibility to the auto-trigger (issue 300).
 
 **0.2.15** November 29, 2022
 * Add a `udpdump` main program to read a few packets from an Abaco UDP source (issue 290).

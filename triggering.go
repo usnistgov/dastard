@@ -17,14 +17,15 @@ type triggerList struct {
 
 // TriggerState contains all the state that controls trigger logic
 type TriggerState struct {
-	AutoTrigger bool
-	AutoDelay   time.Duration
+	AutoTrigger   bool // Whether to have automatic (timed) triggers
+	AutoDelay     time.Duration
+	AutoVetoRange RawType // Veto any auto triggers when (max-min) exceeds this value (if it's >0)
 
-	LevelTrigger bool
+	LevelTrigger bool // Whether to trigger records when the level exceeds some value
 	LevelRising  bool
 	LevelLevel   RawType
 
-	EdgeTrigger bool
+	EdgeTrigger bool // Whether to trigger records when the "local derivative" exceeds some value
 	EdgeRising  bool
 	EdgeFalling bool
 	EdgeLevel   int32
@@ -191,13 +192,32 @@ func (dsp *DataStreamProcessor) autoTriggerComputeAppend(records []*DataRecord) 
 	// Loop through all potential trigger times.
 	for nextPotentialTrig+nsamp-npre < FrameIndex(ndata) {
 		if nextPotentialTrig+nsamp <= nextFoundTrig {
-			// auto trigger is allowed: no conflict with previously found non-auto triggers
-			newRecord := dsp.triggerAt(int(nextPotentialTrig))
-			records = append(records, newRecord)
+			// Auto trigger is allowed: no conflict with previously found non-auto triggers
+			// Now verify that it's not vetoed by the allowed (max-min) limit, if any.
+			vetoed := false
+			if dsp.AutoVetoRange > 0 {
+				begin := nextPotentialTrig - npre
+				finish := begin + nsamp
+				maxD := dsp.stream.rawData[begin]
+				minD := maxD
+				for i := begin + 1; i < finish; i++ {
+					d := dsp.stream.rawData[i]
+					if d > maxD {
+						maxD = d
+					} else if d < minD {
+						minD = d
+					}
+				}
+				vetoed = maxD-minD >= dsp.AutoVetoRange
+			}
+			if !vetoed {
+				newRecord := dsp.triggerAt(int(nextPotentialTrig))
+				records = append(records, newRecord)
+			}
 			nextPotentialTrig += autoDelaySamples
 
 		} else {
-			// auto trigger not allowed: conflict with previously found non-auto triggers
+			// Auto trigger not allowed: it conflicts with previously found non-auto triggers
 			nextPotentialTrig = nextFoundTrig + autoDelaySamples
 			idxNextTrig++
 			if nFoundTrigs > idxNextTrig {

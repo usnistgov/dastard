@@ -87,6 +87,7 @@ func TestSingles(t *testing.T) {
 	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
 	nRepeat := 1
 
+	// Set raw data to mostly 0s, with runs of 10 large (and later small) values at certain times.
 	const bigval = 8000
 	const tframe = 1000
 	raw := make([]RawType, 10000)
@@ -120,13 +121,17 @@ func TestSingles(t *testing.T) {
 	// Zero Delay results in records that are spaced by 1000 samples (dsp.NSamples)
 	// starting at 100 (dsp.NPreSamples)
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_0Millisecond", []FrameIndex{100, 1100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
+	// Now use auto-veto to eliminate the first.
+	dsp.AutoVetoRange = 100
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_Veto_0Millisecond", []FrameIndex{100, 2100, 3100, 4100, 5100, 6100, 7100, 8100})
 
-	dsp.LevelTrigger = false
-	dsp.AutoTrigger = true
+	// AutoDelay now corresponds to 5000 samples. With and without veto, should get 1 and 2 records, respectively.
 	dsp.AutoDelay = 500 * time.Millisecond
-	// first trigger is at NPreSamples=100
-	// AutoDelay corresponds to 5000 samples, so we add that to 1100 to get 5100
+	dsp.NSamples = 1100 // temp make longer so the veto actually works
+	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_Veto_500Millisecond", []FrameIndex{5100})
+	dsp.AutoVetoRange = 0
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Auto_500Millisecond", []FrameIndex{100, 5100})
+	dsp.NSamples = 1000
 
 	dsp.LevelTrigger = true
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "Level+Auto_500Millisecond", []FrameIndex{1000, 6000})
