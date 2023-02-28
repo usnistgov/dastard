@@ -1,6 +1,6 @@
 -- Create the Dastard files database. Run as
--- mysql -u USERNAME -p$DASTARD_MYSQLPASSWORD < setup.sql
--- Obviously, `export MYSQLPASSWORD=xyz` first.
+-- mysql -u $DASTARD_MYSQL_USER -p$DASTARD_MYSQL_PASSWORD < setup.sql
+-- Obviously, `export DASTARD_MYSQL_USER=username` and the password first.
 
 -- To completely remove the database before running this program, your query would be
 -- DROP DATABASE spectrometer;
@@ -20,13 +20,15 @@ CREATE TABLE IF NOT EXISTS files (
     sha256     CHAR(64)
 );
 
-CREATE TABLE IF NOT EXISTS ftypes (
+DROP TABLE IF EXISTS ftypes;
+CREATE TABLE ftypes (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    code VARCHAR(64) UNIQUE
+    code        VARCHAR(64) UNIQUE,
+    description VARCHAR(256)
 );
 
-INSERT INTO ftypes (code) VALUES('LJH');
-INSERT INTO ftypes (code) VALUES('OFF');
+INSERT INTO ftypes (code, description) VALUES('LJH', 'raw pulse records in LJH 2.2 format');
+INSERT INTO ftypes (code, description) VALUES('OFF', 'optimally filtered files in OFF format');
 
 CREATE TABLE IF NOT EXISTS dataruns (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -46,7 +48,7 @@ CREATE TABLE IF NOT EXISTS channelgroups (
 );
 
 DROP TABLE IF EXISTS intentions;
-CREATE TABLE IF NOT EXISTS intentions (
+CREATE TABLE intentions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     intention VARCHAR(64)
 );
@@ -56,7 +58,8 @@ INSERT INTO intentions (intention) VALUES('noise');
 INSERT INTO intentions (intention) VALUES('training');
 INSERT INTO intentions (intention) VALUES('pulses');
 
-CREATE TABLE IF NOT EXISTS creators (
+DROP TABLE IF EXISTS creators;
+CREATE TABLE creators (
     id INT AUTO_INCREMENT PRIMARY KEY,
     creator VARCHAR(256) UNIQUE
 );
