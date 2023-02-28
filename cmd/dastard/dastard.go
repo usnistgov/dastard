@@ -102,6 +102,7 @@ func main() {
 	printVersion := flag.Bool("version", false, "print version and quit")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
 	memprofile := flag.String("memprofile", "", "write memory profile to this file")
+	testmysql := flag.Bool("mysql", false, "connect to MySQL server and quit")
 	flag.Parse()
 
 	if *printVersion {
@@ -112,6 +113,11 @@ func main() {
 		os.Exit(0)
 	}
 	fmt.Printf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
+
+	if *testmysql {
+		dastard.Run_mysql_interface()
+		return
+	}
 
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
