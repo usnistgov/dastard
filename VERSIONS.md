@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.2.16** January 2023-
+**0.2.16** February 2 2023
 * Make ROACH2 firmware for HOLMES team work (issue 297).
 * Add a veto possibility to the auto-trigger (issue 300).
 
