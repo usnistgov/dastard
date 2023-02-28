@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.0** February 28 2023-
+* Working on an optional MySQL DB to register files and data runs.
+
 **0.2.16** February 2 2023
 * Make ROACH2 firmware for HOLMES team work (issue 297).
 * Add a veto possibility to the auto-trigger (issue 300).
