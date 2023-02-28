@@ -1,6 +1,7 @@
 ## DASTARD Versions
 
 **0.3.0** February 28 2023-
+* Runs only on Go 1.17 and later (released August 2021).
 * Working on an optional MySQL DB to register files and data runs.
 
 **0.2.16** February 2 2023

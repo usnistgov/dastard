@@ -1,6 +1,6 @@
 language: go
 
-dist: focal  
+dist: focal
 # See https://docs.travis-ci.com/user/reference/linux/ for linux distribution code names.
 # Key values are xenial = 16.04; bionic = 18.04; focal = 20.04; jammy = 22.04
 sudo: required
@@ -11,8 +11,7 @@ matrix:
     # e.g. "1.x" is 1.11 until 1.11.1 is available.
     - go: 1.x  # This tracks the latest release
       env: LATEST=true
-    - go: 1.16.x  # This should stay at 1.16, as gonum v.0.9.3 supports only 1.16+
-    # FYI: gonum v0.11.0 supports only 1.17+
+    - go: 1.17.x  # This should stay at 1.17, as gonum v0.11.0 supports only 1.17+
   #   - go: tip
   # allow_failures:
   #   - go: tip

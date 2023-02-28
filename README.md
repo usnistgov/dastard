@@ -4,7 +4,7 @@
 A data acquisition program for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
-**Requires Go version 1.16** (released February 2021) or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.16 and LATEST (as of February 2023, Go version 1.20 is the most recent).
+**Requires Go version 1.17** (released August 2021) or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.17 and LATEST (as of February 2023, Go version 1.20 is the most recent).
 
 We recommend always using the `Makefile` to build Dastard. That's not a typical go usage, but we have a very simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments that override the default values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
 ```
@@ -19,7 +19,7 @@ dastard
 ```
 
 
-### Ubuntu 20, 18.04 and 16.04
+### Ubuntu 20.04 and 18.04
 
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
 simple command as sudo first; otherwise, the password entering step will screw up your multi-line paste.
