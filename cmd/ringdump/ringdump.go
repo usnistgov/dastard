@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/usnistgov/dastard/packets"
-	"github.com/usnistgov/dastard/ringbuffer"
 	"time"
+
+	"internal/ringbuffer"
+
+	"github.com/usnistgov/dastard/packets"
 )
 
 func dumpdata(data []byte, max int) {

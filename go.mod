@@ -4,6 +4,8 @@ go 1.17
 
 require internal/mysql v0.0.0
 replace internal/mysql => ./internal/mysql
+require internal/ringbuffer v0.0.0
+replace internal/ringbuffer => ./internal/ringbuffer
 
 require (
 	github.com/davecgh/go-spew v1.1.1

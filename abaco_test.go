@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"internal/ringbuffer"
+
 	"github.com/usnistgov/dastard/packets"
-	"github.com/usnistgov/dastard/ringbuffer"
 )
 
 func TestGeneratePackets(t *testing.T) {

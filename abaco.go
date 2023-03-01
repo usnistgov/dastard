@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"internal/ringbuffer"
+
 	"github.com/fabiokung/shm"
 	"github.com/usnistgov/dastard/packets"
-	"github.com/usnistgov/dastard/ringbuffer"
 )
 
 const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
