@@ -42,15 +42,18 @@ CREATE TABLE IF NOT EXISTS dataruns (
     offcreator_id   INT
 );
 
-CREATE TABLE IF NOT EXISTS channelgroups (
+DROP TABLE IF EXISTS channelgroups;
+CREATE TABLE channelgroups (
     id INT AUTO_INCREMENT PRIMARY KEY,
     description VARCHAR(256) UNIQUE
 );
 
+INSERT INTO channelgroups(description) VALUES('unknown');
+
 DROP TABLE IF EXISTS intentions;
 CREATE TABLE intentions (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    intention VARCHAR(64)
+    intention VARCHAR(64) UNIQUE
 );
 
 INSERT INTO intentions (intention) VALUES('unknown');

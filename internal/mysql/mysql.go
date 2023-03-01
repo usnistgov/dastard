@@ -10,18 +10,9 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-type datarunMessage struct {
-	creator      string
-	intention    string
-	channelgroup string
-}
-
-type datafileMessage struct {
-}
-
 type mySQLConnection struct {
 	db         *sql.DB
-	datarunmsg chan datarunMessage
+	datarunmsg chan DatarunMessage
 	// datafilemsg chan datafileMessage
 }
 
@@ -34,9 +25,52 @@ func (conn *mySQLConnection) Close() {
 	}
 }
 
-func (conn *mySQLConnection) handleDRMessage(msg datarunMessage) {
+type DatarunMessage struct {
+	Creator      string
+	Intention    string
+	Channelgroup string
+}
+
+type DatafileMessage struct {
+}
+
+func RecordDatarun(msg DatarunMessage) {
+	if singledbconn == nil || singledbconn.datarunmsg == nil {
+		return
+	}
+	go func() {
+		singledbconn.datarunmsg <- msg
+	}()
+}
+
+func (conn *mySQLConnection) handleDRMessage(msg DatarunMessage) {
 	fmt.Println("I have received a DataRun message:")
-	fmt.Print(msg)
+	fmt.Println(msg)
+	if conn.db == nil {
+		return
+	}
+
+	// Put intention, creator, and channel group info into that table (and get the IDs)
+	// Ignore DB errors here, b/c we have default values to use
+	const unknownID = int(1)
+	insertUniqueGetID := func(table, field, value string) int {
+		qinsert := fmt.Sprintf("INSERT INTO %s(%s) VALUES(?) ON DUPLICATE KEY UPDATE id=id", table, field)
+		conn.db.Exec(qinsert, value)
+		id := unknownID
+		qgetid := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, field)
+		fmt.Println(qinsert)
+		fmt.Println(qgetid)
+		conn.db.QueryRow(qgetid, value).Scan(&id)
+		fmt.Printf("%s '%s' is registered in the DB as %s.id=%d\n", field, value, table, id)
+		return id
+	}
+	intentionID := insertUniqueGetID("intentions", "intention", msg.Intention)
+	changroupID := insertUniqueGetID("channelgroups", "description", msg.Channelgroup)
+	creatorID := insertUniqueGetID("creators", "creator", msg.Creator)
+
+	fmt.Println(intentionID, changroupID, creatorID)
+
+	// TODO: Put datarun into that table.
 }
 
 func newMySQLConnection() {
@@ -59,35 +93,36 @@ func newMySQLConnection() {
 			db.SetMaxOpenConns(10)
 			db.SetMaxIdleConns(10)
 
-			rmsg := make(chan datarunMessage)
+			rmsg := make(chan DatarunMessage)
 			// fmsg := make(chan datafileMessage)
 			singledbconn = &mySQLConnection{db, rmsg} // , fmsg}
 		})
 }
 
-func closeMySQLConnection() {
-	singledbconn.Close()
-}
-
-func PingMySQLServer() {
+func PingMySQLServer() bool {
 	newMySQLConnection()
 	if singledbconn.db == nil {
 		fmt.Println("Could not open DB connection")
-		return
+		return false
 	}
 	if err := singledbconn.db.Ping(); err != nil {
 		fmt.Println("Could not ping the open DB connection:", err)
-		return
+		return false
 	}
 	fmt.Println("Ping to MySQL server succeeds.")
+	return true
 }
 
-func StartMySQLConnection(abort chan struct{}) {
+func StartMySQLConnection(abort <-chan struct{}) {
 	newMySQLConnection()
+	go handleConnection(abort)
+}
 
+func handleConnection(abort <-chan struct{}) {
 	for {
 		select {
 		case <-abort:
+			singledbconn.Close()
 			return
 		case rmsg := <-singledbconn.datarunmsg:
 			singledbconn.handleDRMessage(rmsg)

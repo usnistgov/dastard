@@ -152,7 +152,7 @@ func main() {
 	}
 
 	abort := make(chan struct{})
-	go mysql.StartMySQLConnection(abort)
+	mysql.StartMySQLConnection(abort)
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 
 	dastard.RunRPCServer(dastard.Ports.RPC, true)

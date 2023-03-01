@@ -3,6 +3,7 @@ package dastard
 import (
 	"bufio"
 	"fmt"
+	"internal/mysql"
 	"os"
 	"sync"
 	"time"
@@ -68,6 +69,8 @@ func (ws *WritingState) Start(filenamePattern, path string) error {
 	ws.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	ws.ExternalTriggerFilename = fmt.Sprintf(filenamePattern, "external_trigger", "bin")
 	ws.DataDropFilename = fmt.Sprintf(filenamePattern, "data_drop", "txt")
+	sqlmsg := mysql.DatarunMessage{Creator: Build.Summary, Intention: "testing", Channelgroup: "xyzsdjfh"}
+	mysql.RecordDatarun(sqlmsg)
 	return ws.setExperimentStateLabel(time.Now(), "START")
 }
 
