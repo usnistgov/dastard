@@ -9,12 +9,27 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+type datarunMessage struct {
+	creator      string
+	intention    string
+	channelgroup string
+}
+
+type datafileMessage struct {
+}
+
 type MySQLConnection struct {
-	db *sql.DB
+	db         *sql.DB
+	datarunmsg chan datarunMessage
+	// datafilemsg chan datafileMessage
 }
 
 func (conn *MySQLConnection) Close() {
 	conn.db.Close()
+}
+
+func (conn *MySQLConnection) handleDRMessage(msg datarunMessage) {
+	//
 }
 
 func newMySQLConnection() (*MySQLConnection, error) {
@@ -28,7 +43,10 @@ func newMySQLConnection() (*MySQLConnection, error) {
 	db.SetConnMaxLifetime(time.Minute * 3)
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(10)
-	connection := &MySQLConnection{db}
+
+	rmsg := make(chan datarunMessage)
+	// fmsg := make(chan datafileMessage)
+	connection := &MySQLConnection{db, rmsg} // , fmsg}
 	return connection, err
 }
 
@@ -45,5 +63,24 @@ func PingMySQLServer() {
 		return
 	}
 	fmt.Println("Ping to MySQL server succeeds.")
-	fmt.Println("Connection: ", connection, " is ending now.")
+}
+
+func RunMySQLConnection(abort chan struct{}) {
+	connection, err := newMySQLConnection()
+	if err != nil {
+		fmt.Println("Could not open DB:", err)
+		return
+	}
+	defer connection.Close()
+
+	for {
+		select {
+		case <-abort:
+			return
+			// case rmsg := <-connection.datarunmsg:
+			//
+			// case fmsg := <-connection.datafilemsg:
+			//
+		}
+	}
 }
