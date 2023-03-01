@@ -31,6 +31,7 @@ type BuildInfo struct {
 	Version string
 	Githash string
 	Date    string
+	Summary string // A summary to enter into file database
 }
 
 // Build is a global holding compile-time information about the build
@@ -38,6 +39,7 @@ var Build = BuildInfo{
 	Version: "0.3.0",
 	Githash: "no git hash computed",
 	Date:    "no build date computed",
+	Summary: "DASTARD Version x.y.z (git commit .......)",
 }
 
 // DastardStartTime is a global holding the time init() was run

@@ -98,6 +98,7 @@ func main() {
 	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
+	dastard.Build.Summary = fmt.Sprintf("DASTARD version %s (git commit %s)", dastard.Build.Version, githash)
 
 	printVersion := flag.Bool("version", false, "print version and quit")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
@@ -113,7 +114,7 @@ func main() {
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		quitImmediately = true
 	} else {
-		fmt.Printf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
+		fmt.Printf("\nThis is %s\n", dastard.Build.Summary)
 	}
 
 	// Pinging the MySQL server prints messages and ends the program.
@@ -151,18 +152,26 @@ func main() {
 	abort := make(chan struct{})
 	go dastard.RunMySQLConnection(abort)
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
+
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 	close(abort)
+	writeMemoryProfile(memprofile)
+}
 
-	if *memprofile != "" {
-		f, err := os.Create(*memprofile)
-		if err != nil {
-			log.Fatal("could not create memory profile: ", err)
-		}
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			log.Fatal("could not write memory profile: ", err)
-		}
+// writeMemoryProfile writes the memory use profile to the indicated file.
+// If `memprofile` points to an empty string, do not write.
+func writeMemoryProfile(memprofile *string) {
+	if *memprofile == "" {
+		return
+	}
+
+	f, err := os.Create(*memprofile)
+	if err != nil {
+		log.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+	runtime.GC()    // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Fatal("could not write memory profile: ", err)
 	}
 }
