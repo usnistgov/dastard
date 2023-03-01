@@ -104,19 +104,26 @@ func main() {
 	memprofile := flag.String("memprofile", "", "write memory profile to this file")
 	pingmysql := flag.Bool("ping-mysql", false, "connect to MySQL server, test with a ping, and quit")
 	flag.Parse()
+	quitImmediately := false
 
 	if *printVersion {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
 		fmt.Printf("Git commit hash: %s\n", githash)
-		fmt.Printf("Build time: %s\n", buildDate)
+		fmt.Printf("Build date+time: %s\n", buildDate)
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
-		os.Exit(0)
+		quitImmediately = true
+	} else {
+		fmt.Printf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
 	}
-	fmt.Printf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
 
+	// Pinging the MySQL server prints messages and ends the program.
 	if *pingmysql {
 		dastard.PingMySQLServer()
-		return
+		quitImmediately = true
+	}
+
+	if quitImmediately {
+		os.Exit(0)
 	}
 
 	if *cpuprofile != "" {
