@@ -10,6 +10,8 @@ import (
 	"runtime/pprof"
 	"strings"
 
+	"internal/mysql"
+
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -119,7 +121,7 @@ func main() {
 
 	// Pinging the MySQL server prints messages and ends the program.
 	if *pingmysql {
-		dastard.PingMySQLServer()
+		mysql.PingMySQLServer()
 		quitImmediately = true
 	}
 
@@ -150,7 +152,7 @@ func main() {
 	}
 
 	abort := make(chan struct{})
-	go dastard.StartMySQLConnection(abort)
+	go mysql.StartMySQLConnection(abort)
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 
 	dastard.RunRPCServer(dastard.Ports.RPC, true)

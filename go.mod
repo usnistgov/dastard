@@ -2,6 +2,9 @@ module github.com/usnistgov/dastard
 
 go 1.17
 
+require internal/mysql v0.0.0
+replace internal/mysql => ./internal/mysql
+
 require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fabiokung/shm v0.0.0-20150728212823-2852b0d79bae

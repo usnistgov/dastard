@@ -1,4 +1,4 @@
-package dastard
+package mysql
 
 import (
 	"database/sql"
