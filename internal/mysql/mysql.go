@@ -64,6 +64,23 @@ func RecordDatafile(msg *DatafileMessage) {
 	}()
 }
 
+const unknownID = int(1)
+
+func insertUniqueGetID(db *sql.DB, table, field, value string) int {
+	if len(value) == 0 {
+		return unknownID
+	}
+	qinsert := fmt.Sprintf("INSERT INTO %s(%s) VALUES(?) ON DUPLICATE KEY UPDATE id=id", table, field)
+	db.Exec(qinsert, value)
+	id := unknownID
+	qgetid := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, field)
+	fmt.Println(qinsert)
+	fmt.Println(qgetid)
+	db.QueryRow(qgetid, value).Scan(&id)
+	fmt.Printf("%s '%s' is registered in the DB as %s.id=%d\n", field, value, table, id)
+	return id
+}
+
 func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 	fmt.Println("I have received a DataRun message:")
 	fmt.Println(*msg)
@@ -73,25 +90,10 @@ func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 
 	// Put intention, creator, and channel group info into that table (and get the IDs)
 	// Ignore DB errors here, b/c we have default values to use
-	const unknownID = int(1)
-	insertUniqueGetID := func(table, field, value string) int {
-		if len(value) == 0 {
-			return unknownID
-		}
-		qinsert := fmt.Sprintf("INSERT INTO %s(%s) VALUES(?) ON DUPLICATE KEY UPDATE id=id", table, field)
-		conn.db.Exec(qinsert, value)
-		id := unknownID
-		qgetid := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, field)
-		fmt.Println(qinsert)
-		fmt.Println(qgetid)
-		conn.db.QueryRow(qgetid, value).Scan(&id)
-		fmt.Printf("%s '%s' is registered in the DB as %s.id=%d\n", field, value, table, id)
-		return id
-	}
-	intentionID := insertUniqueGetID("intentions", "intention", msg.Intention)
-	changroupID := insertUniqueGetID("channelgroups", "description", msg.Channelgroup)
-	dsourceID := insertUniqueGetID("datasources", "source", msg.DataSource)
-	creatorID := insertUniqueGetID("creators", "creator", msg.Creator)
+	intentionID := insertUniqueGetID(conn.db, "intentions", "intention", msg.Intention)
+	changroupID := insertUniqueGetID(conn.db, "channelgroups", "description", msg.Channelgroup)
+	dsourceID := insertUniqueGetID(conn.db, "datasources", "source", msg.DataSource)
+	creatorID := insertUniqueGetID(conn.db, "creators", "creator", msg.Creator)
 	ljhID := unknownID
 	offID := unknownID
 	if msg.LJH {
@@ -101,20 +103,23 @@ func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 		offID = creatorID
 	}
 
-	fmt.Println(intentionID, changroupID, creatorID, dsourceID)
-
 	q := "INSERT INTO dataruns(directory,numchan,channelgroup_id,intention_id,datasource_id,ljhcreator_id,offcreator_id) VALUES(?,?,?,?,?,?,?)"
 	conn.db.Exec(q, msg.Directory, msg.Numchan, changroupID, intentionID, dsourceID, ljhID, offID)
 }
 
 func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 	fmt.Println("I have received a Datafile message:")
-	msg.Filename = path.Base(msg.Filename)
 	fmt.Println(*msg)
 	if conn.db == nil {
 		return
 	}
-	// TODO
+
+	ftypeID := insertUniqueGetID(conn.db, "ftypes", "code", msg.Filetype)
+
+	q := "INSERT INTO files(name,ftype_id,start) VALUES(?,?,?)"
+	basename := path.Base(msg.Filename)
+	start := msg.Starttime.Local().Format("2006-01-02 15:04:05")
+	conn.db.Exec(q, basename, ftypeID, start)
 }
 
 func newMySQLConnection() {

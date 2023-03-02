@@ -28,6 +28,7 @@ CREATE TABLE ftypes (
 );
 
 INSERT INTO ftypes (code, description) VALUES('LJH', 'raw pulse records in LJH 2.2 format');
+INSERT INTO ftypes (code, description) VALUES('LJH3', 'raw pulse records in LJH 3 format');
 INSERT INTO ftypes (code, description) VALUES('OFF', 'optimally filtered files in OFF format');
 
 CREATE TABLE IF NOT EXISTS dataruns (
