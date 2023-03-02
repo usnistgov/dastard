@@ -25,6 +25,7 @@ func (conn *mySQLConnection) Close() {
 	}
 }
 
+// DatarunMessage is the information required to make an entry in the dataruns table.
 type DatarunMessage struct {
 	Directory    string
 	Numchan      int
@@ -36,6 +37,7 @@ type DatarunMessage struct {
 	OFF          bool
 }
 
+// DatafileMessage TODO need to fill in the information required to make an entry in the files table.
 type DatafileMessage struct {
 }
 

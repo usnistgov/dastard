@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
+
+	"internal/mysql"
 
 	"github.com/usnistgov/dastard/getbytes"
 
@@ -637,14 +640,26 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				len(config.MapInternalOnly.Pixels), ds.nchan/ds.channelsPerPixel, ds.nchan, ds.channelsPerPixel)}
 		}
 	}
-	path := ds.writingState.BasePath
+	basepath := ds.writingState.BasePath
 	if len(config.Path) > 0 {
-		path = config.Path
+		basepath = config.Path
 	}
 	var err error
-	filenamePattern, err := makeDirectory(path)
+	filenamePattern, err := makeDirectory(basepath)
 	if err != nil {
 		return fmt.Errorf("could not make directory: %s", err.Error())
+	}
+
+	directory := path.Dir(filenamePattern)
+	sqlmsg := mysql.DatarunMessage{
+		Directory:    directory,
+		Numchan:      ds.Nchan(),
+		Channelgroup: fmt.Sprint(ds.ChanGroups()),
+		Intention:    "testing", // TODO: add ability to change datarun intentions
+		DataSource:   ds.name,
+		Creator:      Build.Summary,
+		LJH:          config.WriteLJH22 || config.WriteLJH3,
+		OFF:          config.WriteOFF,
 	}
 
 	channelsWithOff := 0
@@ -684,7 +699,8 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, filename)
 		}
 	}
-	return ds.writingState.Start(filenamePattern, path)
+
+	return ds.writingState.Start(filenamePattern, basepath, &sqlmsg)
 }
 
 // ComputeWritingState returns a partial copy of the writingState
