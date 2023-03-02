@@ -32,12 +32,11 @@ INSERT INTO ftypes (code, description) VALUES('OFF', 'optimally filtered files i
 
 CREATE TABLE IF NOT EXISTS dataruns (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    hostname        VARCHAR(256),
     directory       VARCHAR(256),
     numchan         INT,
     channelgroup_id INT,
     intention_id    INT,
-    datasource      VARCHAR(64),
+    datasource_id   INT,
     ljhcreator_id   INT,
     offcreator_id   INT
 );
@@ -68,3 +67,11 @@ CREATE TABLE creators (
 );
 
 INSERT INTO creators (creator) VALUES('unknown');
+
+DROP TABLE IF EXISTS datasources;
+CREATE TABLE datasources (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    source VARCHAR(256) UNIQUE
+);
+
+INSERT INTO datasources (source) VALUES('unknown');

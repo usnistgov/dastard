@@ -12,7 +12,7 @@ import (
 
 type mySQLConnection struct {
 	db         *sql.DB
-	datarunmsg chan DatarunMessage
+	datarunmsg chan *DatarunMessage
 	// datafilemsg chan datafileMessage
 }
 
@@ -26,15 +26,20 @@ func (conn *mySQLConnection) Close() {
 }
 
 type DatarunMessage struct {
-	Creator      string
-	Intention    string
+	Directory    string
+	Numchan      int
 	Channelgroup string
+	Intention    string
+	DataSource   string
+	Creator      string
+	LJH          bool
+	OFF          bool
 }
 
 type DatafileMessage struct {
 }
 
-func RecordDatarun(msg DatarunMessage) {
+func RecordDatarun(msg *DatarunMessage) {
 	if singledbconn == nil || singledbconn.datarunmsg == nil {
 		return
 	}
@@ -43,9 +48,9 @@ func RecordDatarun(msg DatarunMessage) {
 	}()
 }
 
-func (conn *mySQLConnection) handleDRMessage(msg DatarunMessage) {
+func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 	fmt.Println("I have received a DataRun message:")
-	fmt.Println(msg)
+	fmt.Println(*msg)
 	if conn.db == nil {
 		return
 	}
@@ -54,6 +59,9 @@ func (conn *mySQLConnection) handleDRMessage(msg DatarunMessage) {
 	// Ignore DB errors here, b/c we have default values to use
 	const unknownID = int(1)
 	insertUniqueGetID := func(table, field, value string) int {
+		if len(value) == 0 {
+			return unknownID
+		}
 		qinsert := fmt.Sprintf("INSERT INTO %s(%s) VALUES(?) ON DUPLICATE KEY UPDATE id=id", table, field)
 		conn.db.Exec(qinsert, value)
 		id := unknownID
@@ -66,11 +74,21 @@ func (conn *mySQLConnection) handleDRMessage(msg DatarunMessage) {
 	}
 	intentionID := insertUniqueGetID("intentions", "intention", msg.Intention)
 	changroupID := insertUniqueGetID("channelgroups", "description", msg.Channelgroup)
+	dsourceID := insertUniqueGetID("datasources", "source", msg.DataSource)
 	creatorID := insertUniqueGetID("creators", "creator", msg.Creator)
+	ljhID := unknownID
+	offID := unknownID
+	if msg.LJH {
+		ljhID = creatorID
+	}
+	if msg.OFF {
+		offID = creatorID
+	}
 
-	fmt.Println(intentionID, changroupID, creatorID)
+	fmt.Println(intentionID, changroupID, creatorID, dsourceID)
 
-	// TODO: Put datarun into that table.
+	q := "INSERT INTO dataruns(directory,numchan,channelgroup_id,intention_id,datasource_id,ljhcreator_id,offcreator_id) VALUES(?,?,?,?,?,?,?)"
+	conn.db.Exec(q, msg.Directory, msg.Numchan, changroupID, intentionID, dsourceID, ljhID, offID)
 }
 
 func newMySQLConnection() {
@@ -93,7 +111,7 @@ func newMySQLConnection() {
 			db.SetMaxOpenConns(10)
 			db.SetMaxIdleConns(10)
 
-			rmsg := make(chan DatarunMessage)
+			rmsg := make(chan *DatarunMessage)
 			// fmsg := make(chan datafileMessage)
 			singledbconn = &mySQLConnection{db, rmsg} // , fmsg}
 		})

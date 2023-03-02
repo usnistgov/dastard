@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"internal/mysql"
 	"os"
+	"path"
 	"sync"
 	"time"
 )
@@ -59,18 +60,28 @@ func (ws *WritingState) ComputeState() *WritingState {
 }
 
 // Start will set the WritingState to begin writing
-func (ws *WritingState) Start(filenamePattern, path string) error {
+func (ws *WritingState) Start(filenamePattern, basepath string) error {
 	ws.Lock()
 	defer ws.Unlock()
 	ws.Active = true
 	ws.Paused = false
-	ws.BasePath = path
+	ws.BasePath = basepath
 	ws.FilenamePattern = filenamePattern
 	ws.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	ws.ExternalTriggerFilename = fmt.Sprintf(filenamePattern, "external_trigger", "bin")
 	ws.DataDropFilename = fmt.Sprintf(filenamePattern, "data_drop", "txt")
-	sqlmsg := mysql.DatarunMessage{Creator: Build.Summary, Intention: "testing", Channelgroup: "xyzsdjfh"}
-	mysql.RecordDatarun(sqlmsg)
+	directory := path.Dir(filenamePattern)
+	sqlmsg := mysql.DatarunMessage{
+		Directory: directory,
+		// Channelgroup: "xyzsdjfh",
+		Intention: "testing",
+		Creator:   Build.Summary,
+		LJH:       true,
+		// Numchan: 99,
+		// DataSource: "abaco",
+		// OFF:          false,
+	}
+	mysql.RecordDatarun(&sqlmsg)
 	return ws.setExperimentStateLabel(time.Now(), "START")
 }
 
