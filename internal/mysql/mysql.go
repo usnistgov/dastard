@@ -64,21 +64,29 @@ func RecordDatafile(msg *DatafileMessage) {
 	}()
 }
 
-const unknownID = int(1)
+const unknownID = int64(1)
 
-func insertUniqueGetID(db *sql.DB, table, field, value string) int {
+// insertUniqueGetID puts `value` into `table.field` in the database `db` if not there
+// and (whether new or not) returns the id field for that row.
+func insertUniqueGetID(db *sql.DB, table, field, value string) int64 {
 	if len(value) == 0 {
 		return unknownID
 	}
-	qinsert := fmt.Sprintf("INSERT INTO %s(%s) VALUES(?) ON DUPLICATE KEY UPDATE id=id", table, field)
-	db.Exec(qinsert, value)
 	id := unknownID
 	qgetid := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, field)
-	fmt.Println(qinsert)
-	fmt.Println(qgetid)
-	db.QueryRow(qgetid, value).Scan(&id)
-	fmt.Printf("%s '%s' is registered in the DB as %s.id=%d\n", field, value, table, id)
-	return id
+	if err := db.QueryRow(qgetid, value).Scan(&id); err == nil {
+		return id
+	}
+
+	// The ON DUPLICATE KEY UPDATE clause will usually be unnecessary because we just SELECTed for this value.
+	// But database could theoretically have been changed since previous query, so just to be safe, use it.
+	qinsert := fmt.Sprintf("INSERT INTO %s(%s) VALUES(?) ON DUPLICATE KEY UPDATE id=id", table, field)
+	if result, err := db.Exec(qinsert, value); err == nil {
+		if id, err = result.LastInsertId(); err == nil {
+			return id
+		}
+	}
+	return unknownID
 }
 
 func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
