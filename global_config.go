@@ -31,6 +31,7 @@ type BuildInfo struct {
 	Version string
 	Githash string
 	Date    string
+	Host    string
 	Summary string // A summary to enter into file database
 }
 
@@ -39,6 +40,7 @@ var Build = BuildInfo{
 	Version: "0.3.0",
 	Githash: "no git hash computed",
 	Date:    "no build date computed",
+	Host:    "no host found",
 	Summary: "DASTARD Version x.y.z (git commit .......)",
 }
 

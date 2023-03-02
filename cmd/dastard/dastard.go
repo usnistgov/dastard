@@ -101,6 +101,11 @@ func main() {
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
 	dastard.Build.Summary = fmt.Sprintf("DASTARD version %s (git commit %s)", dastard.Build.Version, githash)
+	if host, err := os.Hostname(); err == nil {
+		dastard.Build.Host = host
+	} else {
+		dastard.Build.Host = "host not detected"
+	}
 
 	printVersion := flag.Bool("version", false, "print version and quit")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
@@ -111,6 +116,7 @@ func main() {
 
 	if *printVersion {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
+		fmt.Printf("Hostname:        %s\n", dastard.Build.Host)
 		fmt.Printf("Git commit hash: %s\n", githash)
 		fmt.Printf("Build date+time: %s\n", buildDate)
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
