@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"internal/mysql"
 	"os"
 	"time"
 
@@ -207,15 +208,21 @@ func (w Writer) Close() {
 // CreateFile creates a file at w.FileName
 // must be called before WriteHeader or WriteRecord
 func (w *Writer) CreateFile() error {
-	if w.file == nil {
-		file, err := os.Create(w.fileName)
-		if err != nil {
-			return err
-		}
-		w.file = file
-	} else {
+	if w.file != nil {
 		return errors.New("file already exists")
 	}
+	file, err := os.Create(w.fileName)
+	if err != nil {
+		return err
+	}
+	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
+	msg := mysql.DatafileMessage{
+		Filename:   w.fileName,
+		Datarun_id: 0, // TODO figure out how to do this
+		Filetype:   "OFF",
+		Starttime:  time.Now(),
+	}
+	mysql.RecordDatafile(&msg)
 	return nil
 }

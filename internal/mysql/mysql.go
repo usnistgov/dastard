@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -11,9 +12,9 @@ import (
 )
 
 type mySQLConnection struct {
-	db         *sql.DB
-	datarunmsg chan *DatarunMessage
-	// datafilemsg chan datafileMessage
+	db          *sql.DB
+	datarunmsg  chan *DatarunMessage
+	datafilemsg chan *DatafileMessage
 }
 
 var oncedbconn sync.Once
@@ -37,8 +38,12 @@ type DatarunMessage struct {
 	OFF          bool
 }
 
-// DatafileMessage TODO need to fill in the information required to make an entry in the files table.
+// DatafileMessage is the information required to make an entry in the files table.
 type DatafileMessage struct {
+	Filename   string
+	Datarun_id int
+	Filetype   string
+	Starttime  time.Time
 }
 
 func RecordDatarun(msg *DatarunMessage) {
@@ -47,6 +52,15 @@ func RecordDatarun(msg *DatarunMessage) {
 	}
 	go func() {
 		singledbconn.datarunmsg <- msg
+	}()
+}
+
+func RecordDatafile(msg *DatafileMessage) {
+	if singledbconn == nil || singledbconn.datarunmsg == nil {
+		return
+	}
+	go func() {
+		singledbconn.datafilemsg <- msg
 	}()
 }
 
@@ -93,6 +107,16 @@ func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 	conn.db.Exec(q, msg.Directory, msg.Numchan, changroupID, intentionID, dsourceID, ljhID, offID)
 }
 
+func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
+	fmt.Println("I have received a Datafile message:")
+	msg.Filename = path.Base(msg.Filename)
+	fmt.Println(*msg)
+	if conn.db == nil {
+		return
+	}
+	// TODO
+}
+
 func newMySQLConnection() {
 	if singledbconn != nil {
 		return
@@ -114,8 +138,8 @@ func newMySQLConnection() {
 			db.SetMaxIdleConns(10)
 
 			rmsg := make(chan *DatarunMessage)
-			// fmsg := make(chan datafileMessage)
-			singledbconn = &mySQLConnection{db, rmsg} // , fmsg}
+			fmsg := make(chan *DatafileMessage)
+			singledbconn = &mySQLConnection{db, rmsg, fmsg}
 		})
 }
 
@@ -146,8 +170,8 @@ func handleConnection(abort <-chan struct{}) {
 			return
 		case rmsg := <-singledbconn.datarunmsg:
 			singledbconn.handleDRMessage(rmsg)
-			// case fmsg := <-connection.datafilemsg:
-			//
+		case fmsg := <-singledbconn.datafilemsg:
+			singledbconn.handleDFMessage(fmsg)
 		}
 	}
 }

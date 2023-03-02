@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"internal/mysql"
 	"os"
 	"strings"
 	"time"
@@ -135,16 +136,22 @@ func extractFloat(line, pattern string, f *float64) bool {
 // CreateFile creates a file with filename .FileName and assigns it to .file
 // you can't write records without doing this
 func (w *Writer) CreateFile() error {
-	if w.file == nil {
-		file, err := os.Create(w.FileName)
-		if err != nil {
-			return err
-		}
-		w.file = file
-	} else {
+	if w.file != nil {
 		return errors.New("file already exists")
 	}
+	file, err := os.Create(w.FileName)
+	if err != nil {
+		return err
+	}
+	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
+	msg := mysql.DatafileMessage{
+		Filename:   w.FileName,
+		Datarun_id: 0, // TODO figure out how to do this
+		Filetype:   "LJH",
+		Starttime:  time.Now(),
+	}
+	mysql.RecordDatafile(&msg)
 	return nil
 }
 
@@ -335,6 +342,13 @@ func (w *Writer3) CreateFile() error {
 	}
 	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
+	msg := mysql.DatafileMessage{
+		Filename:   w.FileName,
+		Datarun_id: 0, // TODO figure out how to do this
+		Filetype:   "LJH3",
+		Starttime:  time.Now(),
+	}
+	mysql.RecordDatafile(&msg)
 	return nil
 }
 
