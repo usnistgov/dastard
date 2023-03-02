@@ -146,10 +146,9 @@ func (w *Writer) CreateFile() error {
 	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
 	msg := mysql.DatafileMessage{
-		Filename:   w.FileName,
-		Datarun_id: 0, // TODO figure out how to do this
-		Filetype:   "LJH",
-		Starttime:  time.Now(),
+		Filename:  w.FileName,
+		Filetype:  "LJH",
+		Starttime: time.Now(),
 	}
 	mysql.RecordDatafile(&msg)
 	return nil
@@ -343,10 +342,9 @@ func (w *Writer3) CreateFile() error {
 	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
 	msg := mysql.DatafileMessage{
-		Filename:   w.FileName,
-		Datarun_id: 0, // TODO figure out how to do this
-		Filetype:   "LJH3",
-		Starttime:  time.Now(),
+		Filename:  w.FileName,
+		Filetype:  "LJH3",
+		Starttime: time.Now(),
 	}
 	mysql.RecordDatafile(&msg)
 	return nil

@@ -218,10 +218,9 @@ func (w *Writer) CreateFile() error {
 	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
 	msg := mysql.DatafileMessage{
-		Filename:   w.fileName,
-		Datarun_id: 0, // TODO figure out how to do this
-		Filetype:   "OFF",
-		Starttime:  time.Now(),
+		Filename:  w.fileName,
+		Filetype:  "OFF",
+		Starttime: time.Now(),
 	}
 	mysql.RecordDatafile(&msg)
 	return nil

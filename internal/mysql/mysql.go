@@ -15,10 +15,12 @@ type mySQLConnection struct {
 	db          *sql.DB
 	datarunmsg  chan *DatarunMessage
 	datafilemsg chan *DatafileMessage
+	lastRunID   int64
 }
 
 var oncedbconn sync.Once
 var singledbconn *mySQLConnection // singleton object. DON'T USE outside this source file
+const sqlTimestampFormat = "2006-01-02 15:04:05"
 
 func (conn *mySQLConnection) Close() {
 	if conn.db != nil {
@@ -40,10 +42,9 @@ type DatarunMessage struct {
 
 // DatafileMessage is the information required to make an entry in the files table.
 type DatafileMessage struct {
-	Filename   string
-	Datarun_id int
-	Filetype   string
-	Starttime  time.Time
+	Filename  string
+	Filetype  string
+	Starttime time.Time
 }
 
 func RecordDatarun(msg *DatarunMessage) {
@@ -112,7 +113,12 @@ func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 	}
 
 	q := "INSERT INTO dataruns(directory,numchan,channelgroup_id,intention_id,datasource_id,ljhcreator_id,offcreator_id) VALUES(?,?,?,?,?,?,?)"
-	conn.db.Exec(q, msg.Directory, msg.Numchan, changroupID, intentionID, dsourceID, ljhID, offID)
+	conn.lastRunID = unknownID
+	if result, err := conn.db.Exec(q, msg.Directory, msg.Numchan, changroupID, intentionID, dsourceID, ljhID, offID); err == nil {
+		if datarunID, err := result.LastInsertId(); err == nil {
+			conn.lastRunID = datarunID
+		}
+	}
 }
 
 func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
@@ -124,10 +130,10 @@ func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 
 	ftypeID := insertUniqueGetID(conn.db, "ftypes", "code", msg.Filetype)
 
-	q := "INSERT INTO files(name,ftype_id,start) VALUES(?,?,?)"
+	q := "INSERT INTO files(name,datarun_id,ftype_id,start) VALUES(?,?,?,?)"
 	basename := path.Base(msg.Filename)
-	start := msg.Starttime.Local().Format("2006-01-02 15:04:05")
-	conn.db.Exec(q, basename, ftypeID, start)
+	start := msg.Starttime.Local().Format(sqlTimestampFormat)
+	conn.db.Exec(q, basename, conn.lastRunID, ftypeID, start)
 }
 
 func newMySQLConnection() {
@@ -152,7 +158,12 @@ func newMySQLConnection() {
 
 			rmsg := make(chan *DatarunMessage)
 			fmsg := make(chan *DatafileMessage)
-			singledbconn = &mySQLConnection{db, rmsg, fmsg}
+			singledbconn = &mySQLConnection{
+				db:          db,
+				datarunmsg:  rmsg,
+				datafilemsg: fmsg,
+				lastRunID:   unknownID,
+			}
 		})
 }
 
