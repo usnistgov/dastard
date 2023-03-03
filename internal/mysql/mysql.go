@@ -21,6 +21,8 @@ type mySQLConnection struct {
 var singledbconn *mySQLConnection // singleton object, not used outside this source file
 var oncedbconn sync.Once          // this Once.Do ensures we don't initialize the singledbconn twice
 const sqlTimestampFormat = "2006-01-02 15:04:05"
+const sqlType = "mysql"
+const sqlDatabase = "spectrometer"
 
 func (conn *mySQLConnection) Close() {
 	if conn.db != nil {
@@ -102,8 +104,6 @@ func insertUniqueGetID(db *sql.DB, table, field, value string) int64 {
 }
 
 func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
-	fmt.Println("I have received a DataRun message:")
-	fmt.Println(*msg)
 	if conn.db == nil {
 		return
 	}
@@ -133,13 +133,9 @@ func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 }
 
 func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
-	fmt.Println("I have received a Datafile message:")
-	fmt.Println(*msg)
 	if conn.db == nil {
 		return
 	}
-
-	ftypeID := insertUniqueGetID(conn.db, "ftypes", "code", msg.Filetype)
 
 	q := "INSERT INTO files(name,datarun_id,ftype_id,start) VALUES(?,?,?,?)"
 	directory := path.Dir(msg.Fullpath)
@@ -148,6 +144,7 @@ func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 	if datarunID == 0 {
 		datarunID = unknownID
 	}
+	ftypeID := insertUniqueGetID(conn.db, "ftypes", "code", msg.Filetype)
 	start := msg.Starttime.Local().Format(sqlTimestampFormat)
 	conn.db.Exec(q, basename, datarunID, ftypeID, start)
 }
@@ -158,8 +155,6 @@ func newMySQLConnection() {
 	}
 	oncedbconn.Do(
 		func() {
-			const sqlType = "mysql"
-			const sqlDatabase = "spectrometer"
 			sqlUsn := os.Getenv("DASTARD_MYSQL_USER")
 			sqlPass := os.Getenv("DASTARD_MYSQL_PASSWORD")
 			dataSourceName := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", sqlUsn, sqlPass, sqlDatabase)
