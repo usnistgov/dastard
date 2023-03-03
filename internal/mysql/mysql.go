@@ -15,11 +15,11 @@ type mySQLConnection struct {
 	db          *sql.DB
 	datarunmsg  chan *DatarunMessage
 	datafilemsg chan *DatafileMessage
-	lastRunID   int64
+	datarunIDs  map[string]int64 // Maps directory name to its dataruns.id value
 }
 
-var oncedbconn sync.Once
-var singledbconn *mySQLConnection // singleton object. DON'T USE outside this source file
+var singledbconn *mySQLConnection // singleton object, not used outside this source file
+var oncedbconn sync.Once          // this Once.Do ensures we don't initialize the singledbconn twice
 const sqlTimestampFormat = "2006-01-02 15:04:05"
 
 func (conn *mySQLConnection) Close() {
@@ -42,20 +42,31 @@ type DatarunMessage struct {
 
 // DatafileMessage is the information required to make an entry in the files table.
 type DatafileMessage struct {
-	Filename  string
+	Fullpath  string
 	Filetype  string
 	Starttime time.Time
 }
 
+// RecordDataRun takes a DatarunMessage and stores it in the DB (if it's open).
+// This function will block until the select statement in `handleConnection`
+// accepts the message.
+// WARNING: Don't change this blocking behavior! It is how we ensure that a datarun
+// is entered in the DB before any corresponding calls to `RecordDatafile` begin.
+// Without the blocking, there would be a race between the 2 kinds of DB entries,
+// and some datafiles would be entered without valid datarun IDs.
 func RecordDatarun(msg *DatarunMessage) {
 	if singledbconn == nil || singledbconn.datarunmsg == nil {
 		return
 	}
-	go func() {
-		singledbconn.datarunmsg <- msg
-	}()
+	singledbconn.datarunmsg <- msg
 }
 
+// RecordDatafile takes a DatafileMessage and stores it in the DB (if it's open).
+// This function will NOT block for the datafilemsg channel to be empty and emptied,
+// but will put the message on the channel at some later time via a goroutine.
+// A new datarun message can (theoretically) arrive before old datafile messages are
+// all handled. The map mySQLConnection.datarunIDs should ensure that the correct
+// datarun ID is associated with datafiles, whether from the new or old run.
 func RecordDatafile(msg *DatafileMessage) {
 	if singledbconn == nil || singledbconn.datafilemsg == nil {
 		return
@@ -113,10 +124,10 @@ func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 	}
 
 	q := "INSERT INTO dataruns(directory,numchan,channelgroup_id,intention_id,datasource_id,ljhcreator_id,offcreator_id) VALUES(?,?,?,?,?,?,?)"
-	conn.lastRunID = unknownID
+	conn.datarunIDs[msg.Directory] = unknownID
 	if result, err := conn.db.Exec(q, msg.Directory, msg.Numchan, changroupID, intentionID, dsourceID, ljhID, offID); err == nil {
 		if datarunID, err := result.LastInsertId(); err == nil {
-			conn.lastRunID = datarunID
+			conn.datarunIDs[msg.Directory] = datarunID
 		}
 	}
 }
@@ -131,9 +142,14 @@ func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 	ftypeID := insertUniqueGetID(conn.db, "ftypes", "code", msg.Filetype)
 
 	q := "INSERT INTO files(name,datarun_id,ftype_id,start) VALUES(?,?,?,?)"
-	basename := path.Base(msg.Filename)
+	directory := path.Dir(msg.Fullpath)
+	basename := path.Base(msg.Fullpath)
+	datarunID := conn.datarunIDs[directory]
+	if datarunID == 0 {
+		datarunID = unknownID
+	}
 	start := msg.Starttime.Local().Format(sqlTimestampFormat)
-	conn.db.Exec(q, basename, conn.lastRunID, ftypeID, start)
+	conn.db.Exec(q, basename, datarunID, ftypeID, start)
 }
 
 func newMySQLConnection() {
@@ -158,11 +174,12 @@ func newMySQLConnection() {
 
 			rmsg := make(chan *DatarunMessage)
 			fmsg := make(chan *DatafileMessage)
+			runIDmap := make(map[string]int64)
 			singledbconn = &mySQLConnection{
 				db:          db,
 				datarunmsg:  rmsg,
 				datafilemsg: fmsg,
-				lastRunID:   unknownID,
+				datarunIDs:  runIDmap,
 			}
 		})
 }

@@ -146,7 +146,7 @@ func (w *Writer) CreateFile() error {
 	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
 	msg := mysql.DatafileMessage{
-		Filename:  w.FileName,
+		Fullpath:  w.FileName,
 		Filetype:  "LJH",
 		Starttime: time.Now(),
 	}
@@ -342,7 +342,7 @@ func (w *Writer3) CreateFile() error {
 	w.file = file
 	w.writer = bufio.NewWriterSize(w.file, 32768)
 	msg := mysql.DatafileMessage{
-		Filename:  w.FileName,
+		Fullpath:  w.FileName,
 		Filetype:  "LJH3",
 		Starttime: time.Now(),
 	}
