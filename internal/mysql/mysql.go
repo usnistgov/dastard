@@ -57,7 +57,7 @@ func RecordDatarun(msg *DatarunMessage) {
 }
 
 func RecordDatafile(msg *DatafileMessage) {
-	if singledbconn == nil || singledbconn.datarunmsg == nil {
+	if singledbconn == nil || singledbconn.datafilemsg == nil {
 		return
 	}
 	go func() {
