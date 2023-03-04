@@ -148,7 +148,8 @@ func (w *Writer) CreateFile() error {
 	msg := mysql.DatafileMessage{
 		Fullpath:  w.FileName,
 		Filetype:  "LJH",
-		Starttime: time.Now(),
+		Timestamp: time.Now(),
+		Starting:  true,
 	}
 	mysql.RecordDatafile(&msg)
 	return nil
@@ -210,6 +211,12 @@ func (w Writer) Flush() {
 func (w Writer) Close() {
 	w.Flush()
 	w.file.Close()
+	msg := mysql.DatafileMessage{
+		Fullpath:  w.FileName,
+		Timestamp: time.Now(),
+		Starting:  false,
+	}
+	mysql.RecordDatafile(&msg)
 }
 
 // WriteRecord writes a single record to the files
@@ -328,6 +335,12 @@ func (w Writer3) Flush() {
 func (w Writer3) Close() {
 	w.Flush()
 	w.file.Close()
+	msg := mysql.DatafileMessage{
+		Fullpath:  w.FileName,
+		Timestamp: time.Now(),
+		Starting:  false,
+	}
+	mysql.RecordDatafile(&msg)
 }
 
 // CreateFile opens the LJH3 file for writing, must be called before wring RecordSlice
@@ -344,7 +357,8 @@ func (w *Writer3) CreateFile() error {
 	msg := mysql.DatafileMessage{
 		Fullpath:  w.FileName,
 		Filetype:  "LJH3",
-		Starttime: time.Now(),
+		Timestamp: time.Now(),
+		Starting:  true,
 	}
 	mysql.RecordDatafile(&msg)
 	return nil

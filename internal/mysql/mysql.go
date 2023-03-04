@@ -46,7 +46,8 @@ type DatarunMessage struct {
 type DatafileMessage struct {
 	Fullpath  string
 	Filetype  string
-	Starttime time.Time
+	Timestamp time.Time
+	Starting  bool
 }
 
 // RecordDataRun takes a DatarunMessage and stores it in the DB (if it's open).
@@ -136,7 +137,14 @@ func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 	if conn.db == nil {
 		return
 	}
+	if msg.Starting {
+		conn.handleFileStartMessage(msg)
+	} else {
+		conn.handleFileEndMessage(msg)
+	}
+}
 
+func (conn *mySQLConnection) handleFileStartMessage(msg *DatafileMessage) {
 	q := "INSERT INTO files(name,datarun_id,ftype_id,start) VALUES(?,?,?,?)"
 	directory := path.Dir(msg.Fullpath)
 	basename := path.Base(msg.Fullpath)
@@ -145,8 +153,19 @@ func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 		datarunID = unknownID
 	}
 	ftypeID := insertUniqueGetID(conn.db, "ftypes", "code", msg.Filetype)
-	start := msg.Starttime.Local().Format(sqlTimestampFormat)
+	start := msg.Timestamp.Local().Format(sqlTimestampFormat)
 	conn.db.Exec(q, basename, datarunID, ftypeID, start)
+}
+
+func (conn *mySQLConnection) handleFileEndMessage(msg *DatafileMessage) {
+	q := `UPDATE files JOIN dataruns ON datarun_id=dataruns.id
+	SET end=?, records=?
+	WHERE dataruns.directory=? AND files.name=? `
+	endtime := msg.Timestamp.Local().Format(sqlTimestampFormat)
+	nrecords := 0
+	directory := path.Dir(msg.Fullpath)
+	basename := path.Base(msg.Fullpath)
+	conn.db.Exec(q, endtime, nrecords, directory, basename)
 }
 
 func newMySQLConnection() {

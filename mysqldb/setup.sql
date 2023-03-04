@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS files (
     ftype_id   INT,
     start      TIMESTAMP,
     end        TIMESTAMP,
+    records    INT,
     size       INT,
     sha256     CHAR(64)
 );

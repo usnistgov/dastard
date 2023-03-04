@@ -203,6 +203,12 @@ func (w Writer) Flush() {
 func (w Writer) Close() {
 	w.Flush()
 	w.file.Close()
+	msg := mysql.DatafileMessage{
+		Fullpath:  w.fileName,
+		Timestamp: time.Now(),
+		Starting:  false,
+	}
+	mysql.RecordDatafile(&msg)
 }
 
 // CreateFile creates a file at w.FileName
@@ -220,7 +226,8 @@ func (w *Writer) CreateFile() error {
 	msg := mysql.DatafileMessage{
 		Fullpath:  w.fileName,
 		Filetype:  "OFF",
-		Starttime: time.Now(),
+		Timestamp: time.Now(),
+		Starting:  true,
 	}
 	mysql.RecordDatafile(&msg)
 	return nil
