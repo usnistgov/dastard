@@ -42,12 +42,15 @@ type DatarunMessage struct {
 	OFF          bool
 }
 
-// DatafileMessage is the information required to make an entry in the files table.
+// DatafileMessage signifies that a single file has been started or finished (opened or closed).
+// It holds the information required to make a new entry in the files table (if Starting=true)
+// or to update that entry with the end time and the # of records (if Starting=false).
 type DatafileMessage struct {
-	Fullpath  string
-	Filetype  string
-	Timestamp time.Time
-	Starting  bool
+	Fullpath  string    // Complete file path
+	Filetype  string    // File suffix, such as LJH, LJH3, or OFF (ignored if Starting=false)
+	Timestamp time.Time // Time of file opening or closing
+	Starting  bool      // Is this message about a file being *started*? If false, file is closing.
+	Records   int       // How many records were written to the file (ignored if Starting=true).
 }
 
 // RecordDataRun takes a DatarunMessage and stores it in the DB (if it's open).
@@ -70,6 +73,8 @@ func RecordDatarun(msg *DatarunMessage) {
 // A new datarun message can (theoretically) arrive before old datafile messages are
 // all handled. The map mySQLConnection.datarunIDs should ensure that the correct
 // datarun ID is associated with datafiles, whether from the new or old run.
+// Another (theoretical) problem is that a close-file message could be processed before
+// the corresponding start-file message. Such a case will silently lack an end time.
 func RecordDatafile(msg *DatafileMessage) {
 	if singledbconn == nil || singledbconn.datafilemsg == nil {
 		return
@@ -79,7 +84,7 @@ func RecordDatafile(msg *DatafileMessage) {
 	}()
 }
 
-const unknownID = int64(1)
+const unknownID = int64(1) // Throughout our DB, INT(1) signifies unknown enum values.
 
 // insertUniqueGetID puts `value` into `table.field` in the database `db` if not there
 // and (whether new or not) returns the id field for that row.
@@ -133,6 +138,7 @@ func (conn *mySQLConnection) handleDRMessage(msg *DatarunMessage) {
 	}
 }
 
+// handleDFMessage handles a DatafileMessage, whether for the start or end of a file.
 func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 	if conn.db == nil {
 		return
@@ -144,6 +150,8 @@ func (conn *mySQLConnection) handleDFMessage(msg *DatafileMessage) {
 	}
 }
 
+// handleFileStartMessage handles a DatafileMessage for the start of a file only.
+// It enters a new row in the files table.
 func (conn *mySQLConnection) handleFileStartMessage(msg *DatafileMessage) {
 	q := "INSERT INTO files(name,datarun_id,ftype_id,start) VALUES(?,?,?,?)"
 	directory := path.Dir(msg.Fullpath)
@@ -157,12 +165,15 @@ func (conn *mySQLConnection) handleFileStartMessage(msg *DatafileMessage) {
 	conn.db.Exec(q, basename, datarunID, ftypeID, start)
 }
 
+// handleFileEndMessage handles a DatafileMessage for the end of a file only.
+// It updates the existing row in the files table for this file (if found)
+// with the end-file timestamp and the # of records written.
 func (conn *mySQLConnection) handleFileEndMessage(msg *DatafileMessage) {
 	q := `UPDATE files JOIN dataruns ON datarun_id=dataruns.id
 	SET end=?, records=?
 	WHERE dataruns.directory=? AND files.name=? `
 	endtime := msg.Timestamp.Local().Format(sqlTimestampFormat)
-	nrecords := 0
+	nrecords := msg.Records
 	directory := path.Dir(msg.Fullpath)
 	basename := path.Base(msg.Fullpath)
 	conn.db.Exec(q, endtime, nrecords, directory, basename)

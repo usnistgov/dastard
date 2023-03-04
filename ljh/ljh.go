@@ -215,6 +215,7 @@ func (w Writer) Close() {
 		Fullpath:  w.FileName,
 		Timestamp: time.Now(),
 		Starting:  false,
+		Records:   w.RecordsWritten,
 	}
 	mysql.RecordDatafile(&msg)
 }
@@ -339,6 +340,7 @@ func (w Writer3) Close() {
 		Fullpath:  w.FileName,
 		Timestamp: time.Now(),
 		Starting:  false,
+		Records:   w.RecordsWritten,
 	}
 	mysql.RecordDatafile(&msg)
 }
