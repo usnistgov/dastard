@@ -18,6 +18,7 @@ import (
 )
 
 var githash = "githash not computed"
+var gitdate = "git date not computed"
 var buildDate = "build date not computed"
 
 // makeFileExist checks that dir/filename exists, and creates the directory
@@ -97,10 +98,11 @@ func startProblemLogger(pfname string) *log.Logger {
 }
 
 func main() {
-	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems
+	buildDate = strings.Replace(buildDate, "  ", " ", -1)
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
-	dastard.Build.Summary = fmt.Sprintf("DASTARD version %s (git commit %s)", dastard.Build.Version, githash)
+	dastard.Build.Gitdate = gitdate
+	dastard.Build.Summary = fmt.Sprintf("DASTARD version %s (git commit %s of %s)", dastard.Build.Version, githash, gitdate)
 	if host, err := os.Hostname(); err == nil {
 		dastard.Build.Host = host
 	} else {
@@ -118,6 +120,7 @@ func main() {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
 		fmt.Printf("Hostname:        %s\n", dastard.Build.Host)
 		fmt.Printf("Git commit hash: %s\n", githash)
+		fmt.Printf("Git commit date: %s\n", gitdate)
 		fmt.Printf("Build date+time: %s\n", buildDate)
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		quitImmediately = true

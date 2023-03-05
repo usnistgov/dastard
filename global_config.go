@@ -18,6 +18,8 @@ type Portnumbers struct {
 // Ports globally holds all TCP port numbers used by Dastard.
 var Ports Portnumbers
 
+const BasePort = 5500
+
 func setPortnumbers(base int) {
 	Ports.RPC = base
 	Ports.Status = base + 1
@@ -28,9 +30,10 @@ func setPortnumbers(base int) {
 
 // BuildInfo can contain compile-time information about the build
 type BuildInfo struct {
-	Version string
-	Githash string
-	Date    string
+	Version string // version stored in global_config.go
+	Githash string // 7-character git commit hash
+	Gitdate string // Date/time in the git commit
+	Date    string // Date/time of the go build command
 	Host    string
 	Summary string // A summary to enter into file database
 }
@@ -38,10 +41,11 @@ type BuildInfo struct {
 // Build is a global holding compile-time information about the build
 var Build = BuildInfo{
 	Version: "0.3.0",
-	Githash: "no git hash computed",
-	Date:    "no build date computed",
+	Githash: "no git hash entered",
+	Gitdate: "no git commit date entered",
+	Date:    "no build date entered",
 	Host:    "no host found",
-	Summary: "DASTARD Version x.y.z (git commit .......)",
+	Summary: "DASTARD Version x.y.z (git commit ....... of date time)",
 }
 
 // DastardStartTime is a global holding the time init() was run
@@ -51,7 +55,7 @@ var DastardStartTime time.Time
 var ProblemLogger *log.Logger
 
 func init() {
-	setPortnumbers(5500)
+	setPortnumbers(BasePort)
 	DastardStartTime = time.Now()
 
 	// Dastard main program will override this, but at least initialize with a sensible value

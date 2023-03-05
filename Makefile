@@ -6,11 +6,14 @@ GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 BINARY_NAME=dastard
 
-LDFLAGS=-ldflags "-X main.buildDate=$(shell date -u '+%Y-%m-%d.%H:%M:%S.%Z') -X main.githash=$(shell git rev-parse --short HEAD)"
+BUILDDATE := $(shell date '+%a, %e %b %Y %H:%M:%S %z') # +%Y- %m-%d %H:%M:%S %Z
+GITHASH := $(shell git rev-parse --short HEAD)
+GITDATE := $(shell git log -1 --format=%cD)
+LDFLAGS=-ldflags "-X 'main.buildDate=$(BUILDDATE)' -X main.githash=$(GITHASH) -X 'main.gitdate=$(GITDATE)'"
 build: $(BINARY_NAME)
 all: test build install
 
-$(BINARY_NAME): *.go cmd/dastard/dastard.go getbytes/*.go lancero/*.go ljh/*.go off/*.go packets/*.go internal/*/*.go
+$(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go getbytes/*.go lancero/*.go ljh/*.go off/*.go packets/*.go internal/*/*.go
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
 # make test needs to install deps, or Travis will fail
