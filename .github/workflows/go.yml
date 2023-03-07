@@ -31,6 +31,7 @@ jobs:
       run: go test -v ./...
       
     - name: Publish GitHub Release Artifacts
+      if: github.event_name == 'release' && github.event.action == 'created'
       uses: SierraSoftworks/gh-releases@v1.0.7
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
