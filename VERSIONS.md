@@ -2,6 +2,7 @@
 
 **0.2.17** March 2023-
 * Add Gentoo instructions; add static compilation target to Makefile (issue 302).
+* Switch to GitHub Actions for testing and deployment (issue 305).
 
 **0.2.16** February 2 2023
 * Make ROACH2 firmware for HOLMES team work (issue 297).
