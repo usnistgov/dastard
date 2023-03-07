@@ -15,26 +15,35 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.17', '1.x' ]
+
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Install deps (can we eliminate libsodium?)
       run: sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
 
-    - name: Set up Go
+    - name: Setup Go ${{ matrix.go-version }}
       uses: actions/setup-go@v3
       with:
-        go-version: 1.19
-      
+        go-version: ${{ matrix.go-version }}
+
+    # You can test your matrix by printing the current Go version
+    # (see https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go)
+    - name: Display Go version
+      run: go version
+
     - name: make build (to be static eventually)
       run: make build
-      
+
     - name: debugging, calls ls
       run: ls
-   
+
     - name: Test
       run: go test -v ./...
-      
+
     - name: Publish GitHub Release Artifacts
       if: github.event_name == 'release' && github.event.action == 'created'
       uses: SierraSoftworks/gh-releases@v1.0.7
