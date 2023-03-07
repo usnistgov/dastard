@@ -6,33 +6,35 @@ A data acquisition program for NIST transition-edge sensor (TES) microcalorimete
 ## Installation
 **Requires Go version 1.16** (released February 2021) or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.16 and LATEST (as of February 2023, Go version 1.20 is the most recent).
 
-We recommend always using the `Makefile` to build Dastard. That's not a typical go usage, but we have a very simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments that override the default values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
-```
+We recommend always using the `Makefile` to build Dastard. That's not a typical go usage, but we have a simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments to set values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
+```bash
 # To build locally and run that copy
 make build && ./dastard
 ```
 or
-```
-# To install as $HOME/go/bin/dastard
+```bash
+# To install as $(go env GOPATH)/bin/dastard, which is generally $HOME/go/bin/dastard
 make install   # implies make build
 dastard
 ```
 
 
-### Ubuntu 20, 18.04 and 16.04
+### Ubuntu 22.04, 20.04, 18.04, and (maybe?) 16.04
 
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
 simple command as sudo first; otherwise, the password entering step will screw up your multi-line paste.
-```
-# Dependencies (can skip if git is already installed)
+```bash
+# Dastard dependencies
 sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
-# install go
+
+# Install go
 sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
 sudo apt-get -y install golang-go
 
 # Install Dastard as a development copy
+# (These lines should have an equivalent "go install" like maybe "go install gitub.com/usnistgov/dastard@latest"??)
 DASTARD_DEV_PATH=$(go env GOPATH)/src/github.com/usnistgov
 mkdir -p $DASTARD_DEV_PATH
 cd $DASTARD_DEV_PATH
@@ -41,8 +43,7 @@ cd dastard
 
 # Build, then try to run the local copy
 # Using the Makefile is preferred, because it's the only way we're aware of to get the git hash and build date
-# embedded in the built binary file.
-#
+# embedded in the built binary file. Run the new binary and check its version output.
 make build && ./dastard --version
 
 # Check whether the GOPATH is in your bash path. If not, update ~/.bashrc to make it so.
@@ -55,9 +56,10 @@ make install
 dastard --version
 ```
 
-The following seem to be out-of-date and apply only to Ubuntu 16.04 LTS, but just in case they
-are useful to you, here are the old instructions.
- ```
+Be sure to add `~/go/bin` to your `PATH` environment variable, or replace `~/go` with the results of your specific result when you run `go env GOPATH`.
+
+The following seem to be out-of-date and apply only to Ubuntu 16.04 LTS, but just in case they are useful to you, here are the old instructions.
+ ```bash
 sudo add-apt-repository -y 'deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/ ./'
 cd ~/Downloads
 wget http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-stable/xUbuntu_16.04/Release.key
@@ -66,12 +68,31 @@ sudo apt-get -y update
 sudo apt-get install -y libsodium-dev libczmq-dev git
 ```
 
+### Gentoo Linux
+
+The following seemed to work on a NASA balloon flight computer in March 2023:
+```bash
+USE="static-libs -systemd" emerge --ask net-libs/zeromq dev-libs/libsodium
+emerge --ask dev-vcs/git dev-lang/go
+mkdir -p $(go env GOPATH)/bin/
+```
+
+After this, follow the Ubuntu instructions starting with "# Install Dastard as a development copy". Make sure that the `update-path.sh` script worked and properly updated your `PATH` variable. That script hasn't been tested in Gentoo, as far as I know.
+
+
 ### MacOS dependencies (Homebrew or MacPorts)
 
 As appropriate, use one of
-```brew install go pkg-config czmq libsodium```
+
+```bash
+brew install go zmq libsodium pkg-config
+```
+
 or
-```sudo port install go czmq libsodium-dev pkg-config```
+
+```bash
+sudo port install go zmq libsodium-dev pkg-config
+```
 
 
 

@@ -8,7 +8,6 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
-	"os/user"
 	"strings"
 	"testing"
 	"time"
@@ -371,11 +370,11 @@ func configRunningSourceTests(client *rpc.Client, t *testing.T) {
 // verifyConfigFile checks that path/filename exists, and creates the directory
 // and file if it doesn't.
 func verifyConfigFile(path, filename string) error {
-	u, err := user.Current()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	path = strings.Replace(path, "$HOME", u.HomeDir, 1)
+	path = strings.Replace(path, "$HOME", home, 1)
 
 	// Create directory <path>, if needed
 	_, err = os.Stat(path)
