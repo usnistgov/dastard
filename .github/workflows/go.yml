@@ -33,6 +33,8 @@ jobs:
     - name: Publish GitHub Release Artifacts
       uses: SierraSoftworks/gh-releases@v1.0.7
       with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        overwrite: 'true'
         files: |
           - cmd/dastard/dastard
 
