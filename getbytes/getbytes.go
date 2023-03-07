@@ -1,8 +1,5 @@
 // These functions use unsafe.Slice, which is available only from Go version 1.17+.
-// For go -1.16 see publish_data_slices_oldversion.go (only one of the two will be built).
-
-//go:build go1.17
-// +build go1.17
+// Dastard version 0.2.16 showed how to use conditional compilation to handle that.
 
 package getbytes
 
