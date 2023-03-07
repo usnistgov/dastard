@@ -26,11 +26,11 @@ jobs:
       with:
         go-version: 1.19
       
-    - name: make static
-      run: make static
+    - name: make build (to be static eventually)
+      run: make build
       
-    - name: debugging
-      run: ls;ls cmd;ls cmd/dastard
+    - name: debugging, calls ls
+      run: ls
    
     - name: Test
       run: go test -v ./...
