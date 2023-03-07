@@ -8,7 +8,6 @@ import (
 	"math"
 	"os"
 	"os/signal"
-	"os/user"
 	"path/filepath"
 	"sort"
 	"time"
@@ -491,11 +490,10 @@ type cringeGlobals struct {
 
 // cringeGlobalsPath calculate the path to ~/.cringe/cringeGlobals.json by expanding the ~
 func cringeGlobalsCalculatePath() string {
-	usr, err := user.Current()
+	dir, err := os.UserHomeDir()
 	if err != nil {
 		panic(err) // I don't have a plan to handle this error meaningfully, so just panic, we can always change it later if we figure out how to deal with it
 	}
-	dir := usr.HomeDir
 	path := filepath.Join(dir, ".cringe", "cringeGlobals.json")
 	// log.Println("cringeGlobalsPath", path)
 	return path
