@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.2.17** March 2023-
+* Add Gentoo instructions; add static compilation target to Makefile (issue 302).
+
 **0.2.16** February 2 2023
 * Make ROACH2 firmware for HOLMES team work (issue 297).
 * Add a veto possibility to the auto-trigger (issue 300).
