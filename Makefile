@@ -13,7 +13,8 @@ NETGO=-tags netgo
 
 .PHONY: all build install test clean run deps static
 
-LDFLAGS=-ldflags "-X main.buildDate=$(shell date -u '+%Y-%m-%d.%H:%M:%S.%Z') -X main.githash=$(shell git rev-parse --short HEAD)"
+GLOBALVARIABLES=-X main.buildDate=$(shell date -u '+%Y-%m-%d.%H:%M:%S.%Z') -X main.githash=$(shell git rev-parse --short HEAD)
+LDFLAGS=-ldflags "$(GLOBALVARIABLES)"
 build: $(BINARY_NAME)
 all: test build install
 
@@ -41,10 +42,10 @@ install: build
 # EXPERIMENTAL: build a statically linked dastard binary with "make static".
 # make static will _always_ rebuild the binary, and always with static linking
 # The magic below won't make static binaries on Mac OS X (Darwin) at this time, so error on Macs.
-STATICLDFLAGS=-ldflags "-linkmode external -extld g++ -extldflags '-static -lsodium'"
+STATICLDFLAGS=-ldflags "-linkmode external -extld g++ -extldflags '-static -lsodium' $(GLOBALVARIABLES)"
 OS_NAME := $(shell uname -s | tr A-Z a-z)
 static:
 ifeq ($(OS_NAME),darwin)
 	$(error Cannot build static binary on Mac OS)
 endif
-	$(GOBUILD) $(STATICLDFLAGS) $(LDFLAGS) $(NETGO) -o $(BINARY_NAME) cmd/dastard/dastard.go
+	$(GOBUILD) $(STATICLDFLAGS) $(NETGO) -o $(BINARY_NAME) cmd/dastard/dastard.go
