@@ -4,11 +4,13 @@
 * Runs only on Go 1.17 and later (Go 1.17 was released August 2021).
 * Working on an optional MySQL DB to register files and data runs.
 
-**0.2.17** March 2023-
+**0.2.17** March 7, 2023
 * Add Gentoo instructions; add static compilation target to Makefile (issue 302).
-* Switch to GitHub Actions for testing and deployment (issue 305).
+* Switch to GitHub Actions for testing and deployment (issue 305, 308).
+* Require Go 1.17 or higher (PR 306).
+* Remove source files that were used only for go 1.16 and earlier (issue 310).
 
-**0.2.16** February 2 2023
+**0.2.16** February 2, 2023
 * Make ROACH2 firmware for HOLMES team work (issue 297).
 * Add a veto possibility to the auto-trigger (issue 300).
 
