@@ -35,11 +35,8 @@ jobs:
     - name: Display Go version
       run: go version
 
-    - name: make build (to be static eventually)
-      run: make build
-
-    - name: debugging, calls ls
-      run: ls
+    - name: Build as "make build" (to be static eventually)
+      run: make build && ls -l
 
     - name: Test
       run: go test -v ./...
