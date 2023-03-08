@@ -25,8 +25,14 @@ jobs:
     - name: Install deps (can we eliminate libsodium?)
       run: sudo apt-get install -y libtool git gcc pkg-config
       
+    - name: Clone libzmq public repo
+      uses: GuillaumeFalourd/clone-github-repo-action@v2
+      with:
+        owner: 'zeromq'
+        repository: 'libzmq'
+          
     - name: build zmq
-      run: git clone git@github.com:zeromq/libzmq.git;cd libzmq;./autogen.sh;./configure;make
+      run: cd libzmq;./autogen.sh;./configure;make
       
     - name: install zmq
       run: make install;cd ..
