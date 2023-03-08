@@ -22,8 +22,7 @@ all: test build install
 $(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go
 	$(GOBUILD) $(LDFLAGS) $(NETGO) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
-# make test needs to install deps, or Travis will fail
-test: deps
+test:
 	$(GOFMT)
 	$(GOTEST) $(NETGO) -v ./...
 

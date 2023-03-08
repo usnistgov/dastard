@@ -1,5 +1,5 @@
 # Dastard
-[![Build Status](https://app.travis-ci.com/usnistgov/dastard.svg?branch=master)](https://app.travis-ci.com/github/usnistgov/dastard)
+[![Test+Build at GitHub Actions](https://github.com/usnistgov/dastard/actions/workflows/go.yml/badge.svg?branch=master)](https://github.com/usnistgov/dastard/actions)
 
 A data acquisition program for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
@@ -26,7 +26,7 @@ simple command as sudo first; otherwise, the password entering step will screw u
 ```bash
 # Dastard dependencies
 sudo apt-get -y update
-sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
+sudo apt-get install -y libsodium-dev libzmq3-dev git gcc pkg-config
 
 # Install go
 sudo add-apt-repository -y ppa:longsleep/golang-backports
