@@ -22,7 +22,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Install deps (can we eliminate libsodium?)
-      run: sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
+      run: sudo apt-get install -y libsodium-dev git gcc pkg-config
 
     - name: Setup Go ${{ matrix.go-version }}
       uses: actions/setup-go@v3
