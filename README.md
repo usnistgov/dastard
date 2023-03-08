@@ -26,7 +26,7 @@ simple command as sudo first; otherwise, the password entering step will screw u
 ```bash
 # Dastard dependencies
 sudo apt-get -y update
-sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
+sudo apt-get install -y libsodium-dev libzmq3-dev git gcc pkg-config
 
 # Install go
 sudo add-apt-repository -y ppa:longsleep/golang-backports
