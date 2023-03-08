@@ -1,5 +1,5 @@
 # Dastard
-[![Build Status](https://app.travis-ci.com/usnistgov/dastard.svg?branch=master)](https://app.travis-ci.com/github/usnistgov/dastard)
+[![Test+Build at GitHub Actions](https://github.com/usnistgov/dastard/actions/workflows/go.yml/badge.svg?branch=master)](https://github.com/usnistgov/dastard/actions)
 
 A data acquisition program for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
