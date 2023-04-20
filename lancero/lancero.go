@@ -90,9 +90,7 @@ func NewLancero(devnum int) (*Lancero, error) {
 	}
 	lan.device = dev
 	lan.collector = &collector{device: dev, simulated: false}
-	lan.adapter = &adapter{device: dev}
-	// lan.adapter.verbosity = 3
-	// lan.adapter.allocateRingBuffer(1<<24, 1<<23)
+	lan.adapter = &adapter{device: dev, verbosity: 3}
 	lan.ChangeRingBuffer(256000000, 128000000)
 
 	lan.adapter.status()

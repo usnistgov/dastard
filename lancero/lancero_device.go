@@ -75,7 +75,7 @@ type lanceroDevice struct {
 // possible.
 func openLanceroDevice(devnum int) (dev *lanceroDevice, err error) {
 	dev = new(lanceroDevice)
-	// dev.verbosity = 3
+	dev.verbosity = 3
 
 	// Convert device component name to a devfs path. If devnum is negative, omit
 	// it (for compatibility with older driver versions). Otherwise, append it (for
@@ -130,7 +130,7 @@ func (dev *lanceroDevice) preadUint32(file *os.File, offset int64) (uint32, erro
 	result := make([]byte, 4)
 	n, err := file.ReadAt(result, offset)
 	if n < 4 || err != nil {
-		return 0, fmt.Errorf("Could not read file %s offset: 0x%x", file.Name(), offset)
+		return 0, fmt.Errorf("could not read file %s offset: 0x%x", file.Name(), offset)
 	}
 	return binary.LittleEndian.Uint32(result[0:]), nil
 }
@@ -184,7 +184,7 @@ func (dev *lanceroDevice) pwriteUint32(file *os.File, offset int64, value uint32
 	binary.LittleEndian.PutUint32(bytes, value)
 	n, err := file.WriteAt(bytes, offset)
 	if n < 4 || err != nil {
-		return fmt.Errorf("Could not write file %s offset: 0x%x, value: 0x%x", file.Name(), offset, value)
+		return fmt.Errorf("could not write file %s offset: 0x%x, value: 0x%x", file.Name(), offset, value)
 	}
 	return nil
 }
@@ -299,8 +299,7 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 
 // Stop the cyclic SGDMA.
 func (dev *lanceroDevice) cyclicStop() error {
-	verbose := dev.verbosity >= 3
-	verbose = true
+	verbose := (dev.verbosity >= 3)
 	var BUSYFLAG uint32 = 1
 
 	// Read engine status

@@ -233,8 +233,7 @@ func (a *adapter) start(waitSeconds int) error {
 }
 
 func (a *adapter) stop() error {
-	verbose := a.verbosity >= 3
-	verbose = true
+	verbose := (a.verbosity >= 3)
 	if verbose {
 		log.Println("adapter.stop(): setting RUN | FLUSH bits.")
 	}
