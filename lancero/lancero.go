@@ -46,21 +46,21 @@ type Lanceroer interface {
 func verifyGoVersion() error {
 	ver := runtime.Version()
 	if !strings.HasPrefix(ver, "go") {
-		return fmt.Errorf("cannot detect version: runtime.Version() returned '%s' but expected it to start with go*", ver)
+		return fmt.Errorf("cannot detect Go version: runtime.Version() returned '%s' but expected it to start with go*", ver)
 	}
 
 	parts := strings.Split(ver[2:], ".")
 	if !(parts[0] == "1") || !(len(parts) > 1) {
-		return fmt.Errorf("cannot detect version: runtime.Version() returned '%s' but expected it to start with go1.*", ver)
+		return fmt.Errorf("cannot detect Go version: runtime.Version() returned '%s' but expected it to start with go1.*", ver)
 	}
 
 	minor, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return fmt.Errorf("cannot detect version: runtime.Version() returned '%s' but expected it to start with go1.<number>", ver)
+		return fmt.Errorf("cannot detect Go version: runtime.Version() returned '%s' but expected it to start with go1.<number>", ver)
 	}
 
 	if minor >= 20 {
-		return fmt.Errorf("runtime.Version() says Golang version is '%s', but we require 1.19 or lower in order to use lancero devices", ver)
+		return fmt.Errorf("runtime.Version() says Go version is '%s', but we require 1.19 or lower in order to use lancero devices", ver)
 	}
 	return nil
 }
@@ -78,7 +78,7 @@ type Lancero struct {
 // than 1 card in the computer. Usually, you'll use 0 here.
 func NewLancero(devnum int) (*Lancero, error) {
 
-	// Make sure not using Go 1.20+, b/c that's incompatible with the Lancero device
+	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
 	if err := verifyGoVersion(); err != nil {
 		panic(err)
 	}
