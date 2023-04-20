@@ -78,11 +78,6 @@ type Lancero struct {
 // than 1 card in the computer. Usually, you'll use 0 here.
 func NewLancero(devnum int) (*Lancero, error) {
 
-	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
-	if err := verifyGoVersion(); err != nil {
-		panic(err)
-	}
-
 	lan := new(Lancero)
 	dev, err := openLanceroDevice(devnum)
 	if err != nil {
@@ -128,6 +123,11 @@ func (lan *Lancero) Close() error {
 
 // StartAdapter starts the ring buffer adapter, waiting up to waitSeconds sec for it to work.
 func (lan *Lancero) StartAdapter(waitSeconds int) error {
+	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
+	if err := verifyGoVersion(); err != nil {
+		panic(err)
+	}
+
 	return lan.adapter.start(waitSeconds)
 }
 
@@ -148,6 +148,11 @@ func (lan *Lancero) CollectorConfigure(linePeriod, dataDelay int, channelMask ui
 
 // StartCollector starts the data serializer.
 func (lan *Lancero) StartCollector(simulate bool) error {
+	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
+	if err := verifyGoVersion(); err != nil {
+		panic(err)
+	}
+
 	return lan.collector.start(simulate)
 }
 
