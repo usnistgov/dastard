@@ -18,7 +18,9 @@ func main() {
 		return
 	}
 
-	err = lan.StartAdapter(2)
+	const timeoutSec = 2
+	const verbosity = 0
+	err = lan.StartAdapter(timeoutSec, verbosity)
 	defer lan.StopAdapter()
 	if err != nil {
 		log.Println("Could not start adapter: ", err)

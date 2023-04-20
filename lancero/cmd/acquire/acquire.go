@@ -165,7 +165,9 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 	}
 
 	// Start the adapter
-	err = lan.StartAdapter(2)
+	const timeoutSec = 2
+	const verbosity = 0
+	err = lan.StartAdapter(timeoutSec, verbosity)
 	if err != nil {
 		log.Println("Could not start adapter: ", err)
 		return
