@@ -34,11 +34,18 @@ sudo apt-get install -y libsodium-dev libzmq3-dev git gcc pkg-config
 sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
 sudo apt-get -y install golang-go
+go version
 
-# If you need lancero-TDM, install go 1.19
+# If you need lancero-TDM, install go 1.19,
+# then ensure that version go-1.19 is the preferred version in /usr/bin
+# If the above reports version 1.19, or if you don't need lancero-TDM, then skip what follows
+# If the above reports version 1.18 or lower, obviously change the instances of "1.19" in what follows.
 sudo apt-get -y install golang-1.19-go
-#
-# TODO: Somehow get the version go-1.19 into the path??
+pushd /usr/bin
+sudo ln -sf ../lib/go-1.19/bin/go go
+sudo ln -sf ../lib/go-1.19/bin/gofmt gofmt
+popd
+
 
 # Install Dastard as a development copy
 # (These lines should have an equivalent "go install" like maybe "go install gitub.com/usnistgov/dastard@latest"??)
