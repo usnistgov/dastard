@@ -91,7 +91,11 @@ func NewLancero(devnum int) (*Lancero, error) {
 	lan.device = dev
 	lan.collector = &collector{device: dev, simulated: false}
 	lan.adapter = &adapter{device: dev, verbosity: 3}
-	lan.ChangeRingBuffer(256000000, 128000000)
+
+	OneMB := 1024 * 1024
+	if err := lan.ChangeRingBuffer(32*OneMB, 16*OneMB); err != nil {
+		panic(err)
+	}
 
 	lan.adapter.status()
 	lan.adapter.inspect()
@@ -101,7 +105,10 @@ func NewLancero(devnum int) (*Lancero, error) {
 
 // ChangeRingBuffer re-sizes the adapter's ring buffer.
 func (lan *Lancero) ChangeRingBuffer(length, threshold int) error {
-	return lan.adapter.allocateRingBuffer(length, threshold)
+	if err := lan.adapter.allocateRingBuffer(length, threshold); err != nil {
+		panic(err)
+	}
+	return nil
 }
 
 // Close releases all resources used by this lancero device.

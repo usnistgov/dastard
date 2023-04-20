@@ -127,6 +127,9 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 	const PAGEALIGN C.size_t = 4096
 	a.freeBuffer()
 	a.buffer = C.posixMemAlign(PAGEALIGN, C.size_t(length))
+	if a.buffer == nil {
+		return fmt.Errorf("a.buffer = C.posixMemAlign returns no valid buffer")
+	}
 
 	a.stop()
 	if a.verbosity >= 3 {
