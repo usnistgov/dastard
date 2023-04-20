@@ -2,6 +2,7 @@
 
 **0.2.18** April 2023-
 * Panic if run on Go 1.20 or higher with the lancero-TDM readout (issue 315).
+* Return Lancero driver's ring buffer to 32 MB (undo issue 258); check return values, panic if needed (issue 316).
 
 **0.2.17** March 7, 2023
 * Add Gentoo instructions; add static compilation target to Makefile (issue 302).
