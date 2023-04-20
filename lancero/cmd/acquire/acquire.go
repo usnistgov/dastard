@@ -46,15 +46,15 @@ func parseOptions() error {
 
 	switch {
 	case opt.period < 16:
-		return fmt.Errorf("Line sync period (%d) must be at least 16", opt.period)
+		return fmt.Errorf("line sync period (%d) must be at least 16", opt.period)
 	case opt.period >= 1024:
-		return fmt.Errorf("Line sync period (%d) must be < 1024", opt.period)
+		return fmt.Errorf("line sync period (%d) must be < 1024", opt.period)
 	case opt.mask > 0xffff:
-		return fmt.Errorf("Line sync period (0x%x) must be < 0xffff", opt.mask)
+		return fmt.Errorf("line sync period (0x%x) must be < 0xffff", opt.mask)
 	case opt.delay < 0 || opt.delay >= 32:
-		return fmt.Errorf("Line delay (%d) must be in [0,31]", opt.delay)
+		return fmt.Errorf("line delay (%d) must be in [0,31]", opt.delay)
 	case opt.threshold < 1:
-		return fmt.Errorf("Threshold (%d) must be at least 1", opt.threshold)
+		return fmt.Errorf("threshold (%d) must be at least 1", opt.threshold)
 	case opt.threshold < 1024:
 		log.Printf("WARNING: Threshold (%d) is recommended to be at least 1024", opt.threshold)
 	}
@@ -228,7 +228,7 @@ func acquire(lan *lancero.Lancero) (bytesRead int, err error) {
 						return
 					}
 					if n != len(buffer) {
-						err = fmt.Errorf("Wrote %d bytes, expected %d", n, len(buffer))
+						err = fmt.Errorf("wrote %d bytes, expected %d", n, len(buffer))
 						return
 					}
 				}
