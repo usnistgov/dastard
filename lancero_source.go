@@ -375,7 +375,9 @@ func (device *LanceroDevice) sampleCard() error {
 		return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 	}
 
-	if err := lan.StartAdapter(2); err != nil {
+	const timeoutSeconds = 2
+	const verbosity = 3
+	if err := lan.StartAdapter(timeoutSeconds, verbosity); err != nil {
 		return fmt.Errorf("failed to start lancero (driver problem): %v", err)
 	}
 
@@ -548,8 +550,9 @@ func (ls *LanceroSource) StartRun() error {
 		}
 
 		// 2. Start the adapter and collector components in firmware
-		const Timeout int = 2 // seconds
-		if err := lan.StartAdapter(Timeout); err != nil {
+		const timeoutSeconds = 2
+		const verbosity = 0
+		if err := lan.StartAdapter(timeoutSeconds, verbosity); err != nil {
 			return fmt.Errorf("failed to start lancero (driver problem): %v", err)
 		}
 		device.adapRunning = true

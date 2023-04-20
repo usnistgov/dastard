@@ -24,7 +24,7 @@ import (
 type Lanceroer interface {
 	ChangeRingBuffer(int, int) error
 	Close() error
-	StartAdapter(int) error
+	StartAdapter(int, int) error
 	StopAdapter() error
 	CollectorConfigure(int, int, uint32, int) error
 	StartCollector(bool) error
@@ -122,12 +122,13 @@ func (lan *Lancero) Close() error {
 }
 
 // StartAdapter starts the ring buffer adapter, waiting up to waitSeconds sec for it to work.
-func (lan *Lancero) StartAdapter(waitSeconds int) error {
+func (lan *Lancero) StartAdapter(waitSeconds, verbosity int) error {
 	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
 	if err := verifyGoVersion(); err != nil {
 		panic(err)
 	}
 
+	lan.adapter.verbosity = verbosity
 	return lan.adapter.start(waitSeconds)
 }
 
