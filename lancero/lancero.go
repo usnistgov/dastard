@@ -24,7 +24,7 @@ import (
 type Lanceroer interface {
 	ChangeRingBuffer(int, int) error
 	Close() error
-	StartAdapter(int) error
+	StartAdapter(int, int) error
 	StopAdapter() error
 	CollectorConfigure(int, int, uint32, int) error
 	StartCollector(bool) error
@@ -85,10 +85,12 @@ func NewLancero(devnum int) (*Lancero, error) {
 	}
 	lan.device = dev
 	lan.collector = &collector{device: dev, simulated: false}
-	lan.adapter = &adapter{device: dev}
-	// lan.adapter.verbosity = 3
-	// lan.adapter.allocateRingBuffer(1<<24, 1<<23)
-	lan.ChangeRingBuffer(256000000, 128000000)
+	lan.adapter = &adapter{device: dev, verbosity: 3}
+
+	OneMB := 1024 * 1024
+	if err := lan.ChangeRingBuffer(32*OneMB, 16*OneMB); err != nil {
+		panic(err)
+	}
 
 	lan.adapter.status()
 	lan.adapter.inspect()
@@ -98,7 +100,10 @@ func NewLancero(devnum int) (*Lancero, error) {
 
 // ChangeRingBuffer re-sizes the adapter's ring buffer.
 func (lan *Lancero) ChangeRingBuffer(length, threshold int) error {
-	return lan.adapter.allocateRingBuffer(length, threshold)
+	if err := lan.adapter.allocateRingBuffer(length, threshold); err != nil {
+		panic(err)
+	}
+	return nil
 }
 
 // Close releases all resources used by this lancero device.
@@ -117,12 +122,13 @@ func (lan *Lancero) Close() error {
 }
 
 // StartAdapter starts the ring buffer adapter, waiting up to waitSeconds sec for it to work.
-func (lan *Lancero) StartAdapter(waitSeconds int) error {
+func (lan *Lancero) StartAdapter(waitSeconds, verbosity int) error {
 	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
 	if err := verifyGoVersion(); err != nil {
 		panic(err)
 	}
 
+	lan.adapter.verbosity = verbosity
 	return lan.adapter.start(waitSeconds)
 }
 
