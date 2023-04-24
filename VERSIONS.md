@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.2.18** April 2023-
+* Panic if run on Go 1.20 or higher with the lancero-TDM readout (issue 315).
+
 **0.2.17** March 7, 2023
 * Add Gentoo instructions; add static compilation target to Makefile (issue 302).
 * Switch to GitHub Actions for testing and deployment (issue 305, 308).

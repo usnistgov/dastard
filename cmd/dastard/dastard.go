@@ -108,6 +108,7 @@ func main() {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
 		fmt.Printf("Git commit hash: %s\n", githash)
 		fmt.Printf("Build time: %s\n", buildDate)
+		fmt.Printf("Built on go version %s\n", runtime.Version())
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		os.Exit(0)
 	}
