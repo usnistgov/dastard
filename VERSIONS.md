@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.0** May 2023-
+* Add RPC command to store raw, untriggered data to temporary npy/npz files (issue 320).
+
 **0.2.18** April 24, 2023
 * Panic if run on Go 1.20 or higher with the lancero-TDM readout (issue 315).
 * Return Lancero driver's ring buffer to 32 MB (undo issue 258); check return values, panic if needed (issue 316).

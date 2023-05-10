@@ -463,6 +463,20 @@ func TestErroringSourceRPC(t *testing.T) {
 	}
 }
 
+func TestRawDataBlock(t *testing.T) {
+	client, errClient := simpleClient()
+	if errClient != nil {
+		t.Fatal(errClient)
+	}
+	defer client.Close()
+	N := 100
+	finalname := ""
+	if err := client.Call("SourceControl.StoreRawDataBlock", &N, &finalname); err != nil {
+		t.Error(err)
+	}
+	fmt.Printf("filename: %s\n", finalname)
+}
+
 func TestMain(m *testing.M) {
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")

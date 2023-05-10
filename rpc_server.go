@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/rpc"
@@ -672,6 +673,19 @@ func (s *SourceControl) storeChannelGroups() error {
 func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	s.broadcastStatus()
 	s.clientUpdates <- ClientUpdate{"SENDALL", 0}
+	return nil
+}
+
+// StoreRawDataBlock causes a block of raw data to be stored in a temporary file.
+func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
+	fmt.Printf("We have been asked to store %d samples of raw data.\n", N)
+	file, err := ioutil.TempFile("", "dastard_rawdata_*_inprogress.npy")
+	if err != nil {
+		return err
+	}
+	finalname := strings.Replace(file.Name(), "_inprogress", "", 1)
+	*reply = finalname
+	s.clientUpdates <- ClientUpdate{"RAWDATABLOCK", finalname}
 	return nil
 }
 
