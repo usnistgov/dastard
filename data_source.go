@@ -11,6 +11,7 @@ import (
 
 	"github.com/usnistgov/dastard/getbytes"
 
+	"github.com/sbinet/npyio/npz"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -973,8 +974,40 @@ func (ds *AnySource) StopTriggerCoupling() error {
 	return ds.broker.StopTriggerCoupling()
 }
 
+type storeableDataBlock struct {
+	streams   []DataStream
+	startTime time.Time
+	Nsamples  int
+}
+
+func writeNPZData(datablock storeableDataBlock, file *os.File) error {
+	wz := npz.NewWriter(file)
+	defer wz.Close()
+	nc := uint64(len(datablock.streams))
+	if err := wz.Write("nchan", nc); err != nil {
+		return err
+	}
+	nsamp := uint64(datablock.Nsamples)
+	if err := wz.Write("nsamples", nsamp); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (ds *AnySource) StoreDataBlock(N int, file *os.File, finalName string) error {
 	// TODO: Somehow store data to this file??
+	nc := ds.Nchan()
+	streams := make([]DataStream, nc)
+	datablock := storeableDataBlock{streams: streams, startTime: time.Now(), Nsamples: N}
+
+	// TODO Wait until it's filled with N samples per channel... (how??)
+
+	// TODO: copy to a new, single slice (glue all channels into one)
+
+	// Write to npz file.
+	if err := writeNPZData(datablock, file); err != nil {
+		return err
+	}
 
 	// Close the file and rename it to the final name.
 	oldname := file.Name()

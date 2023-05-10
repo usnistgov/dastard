@@ -6,6 +6,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fabiokung/shm v0.0.0-20150728212823-2852b0d79bae
 	github.com/pebbe/zmq4 v1.2.9
+	github.com/sbinet/npyio v0.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.1
 	gonum.org/v1/gonum v0.13.0
@@ -21,7 +22,6 @@ require (
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.7 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/sbinet/npyio v0.7.0 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
