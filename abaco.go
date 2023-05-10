@@ -761,7 +761,11 @@ func (as *AbacoSource) Sample() error {
 	timeout := 2000 * time.Millisecond
 	for _, pp := range as.producers {
 		go func(pp PacketProducer) {
-			pp.start()
+			if err := pp.start(); err != nil {
+				var nopackets []*packets.Packet
+				sampleResults <- SampleResult{allpackets: nopackets, err: err}
+				return
+			}
 			p, err := pp.samplePackets(timeout)
 			sampleResults <- SampleResult{allpackets: p, err: err}
 		}(pp)
