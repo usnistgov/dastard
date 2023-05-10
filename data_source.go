@@ -980,7 +980,7 @@ type storeableDataBlock struct {
 	Nsamples  int
 }
 
-func writeNPZData(datablock storeableDataBlock, file *os.File) error {
+func writeNPZData(datablock storeableDataBlock, channelNames []string, file *os.File) error {
 	wz := npz.NewWriter(file)
 	defer wz.Close()
 	nc := uint64(len(datablock.streams))
@@ -990,6 +990,12 @@ func writeNPZData(datablock storeableDataBlock, file *os.File) error {
 	nsamp := uint64(datablock.Nsamples)
 	if err := wz.Write("nsamples", nsamp); err != nil {
 		return err
+	}
+	for i, stream := range datablock.streams {
+		data := stream.rawData
+		if err := wz.Write(channelNames[i], data); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1002,10 +1008,9 @@ func (ds *AnySource) StoreDataBlock(N int, file *os.File, finalName string) erro
 
 	// TODO Wait until it's filled with N samples per channel... (how??)
 
-	// TODO: copy to a new, single slice (glue all channels into one)
-
 	// Write to npz file.
-	if err := writeNPZData(datablock, file); err != nil {
+	if err := writeNPZData(datablock, ds.ChannelNames(), file); err != nil {
+		err := file.Close()
 		return err
 	}
 
