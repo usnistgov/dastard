@@ -83,6 +83,7 @@ type DataSource interface {
 	RunDoneDeactivate()
 	ShouldAutoRestart() bool
 	getPulseLengths() (int, int, error)
+	StoreDataBlock(int, *os.File, string) error
 }
 
 // RunDoneActivate adds one to ds.runDone, this should only be called in Start
@@ -970,6 +971,18 @@ func (ds *AnySource) ChangeGroupTrigger(turnon bool, gts *GroupTriggerState) err
 // StopTriggerCoupling turns off all trigger coupling, including all group triggers and FB/Err coupling.
 func (ds *AnySource) StopTriggerCoupling() error {
 	return ds.broker.StopTriggerCoupling()
+}
+
+func (ds *AnySource) StoreDataBlock(N int, file *os.File, finalName string) error {
+	// TODO: Somehow store data to this file??
+
+	// Close the file and rename it to the final name.
+	oldname := file.Name()
+	err := file.Close()
+	if err == nil {
+		err = os.Rename(oldname, finalName)
+	}
+	return err
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)

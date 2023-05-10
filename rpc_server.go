@@ -678,7 +678,6 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 
 // StoreRawDataBlock causes a block of raw data to be stored in a temporary file.
 func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
-	fmt.Printf("We have been asked to store %d samples of raw data.\n", N)
 	file, err := ioutil.TempFile("", "dastard_rawdata_*_inprogress.npy")
 	if err != nil {
 		return err
@@ -686,7 +685,14 @@ func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
 	finalname := strings.Replace(file.Name(), "_inprogress", "", 1)
 	*reply = finalname
 	s.clientUpdates <- ClientUpdate{"RAWDATABLOCK", finalname}
-	return nil
+	fmt.Printf("We have been asked to store %d samples of raw data to %s\n", N, finalname)
+
+	f := func() {
+		err := s.ActiveSource.StoreDataBlock(N, file, finalname)
+		s.queuedResults <- err
+	}
+	err = s.runLaterIfActive(f)
+	return err
 }
 
 // RunRPCServer sets up and runs a permanent JSON-RPC server.

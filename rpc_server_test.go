@@ -469,12 +469,21 @@ func TestRawDataBlock(t *testing.T) {
 		t.Fatal(errClient)
 	}
 	defer client.Close()
+	sourceName := "TRIANGLESOURCE"
+	okay := true
+	if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
+		t.Error(err)
+	}
 	N := 100
 	finalname := ""
 	if err := client.Call("SourceControl.StoreRawDataBlock", &N, &finalname); err != nil {
 		t.Error(err)
 	}
 	fmt.Printf("filename: %s\n", finalname)
+	dummy := ""
+	if err := client.Call("SourceControl.Stop", &dummy, &okay); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestMain(m *testing.M) {
