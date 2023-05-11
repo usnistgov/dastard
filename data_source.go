@@ -345,7 +345,7 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 }
 
 func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
-	ab := ds.archiveBlock
+	ab := &ds.archiveBlock
 	nchan := len(block.segments)
 
 	// If no segments are allocated, this is the time to set up for saving data.
@@ -368,7 +368,7 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 	}
 
 	// Ignore blocks that start earlier than ab.earliestTime.
-	seg := ab.segments[0]
+	seg := block.segments[0]
 	if seg.firstTime.Before(ab.earliestTime) {
 		return
 	}
