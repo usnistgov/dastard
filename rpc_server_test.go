@@ -500,9 +500,30 @@ func TestRawDataBlock(t *testing.T) {
 	}
 	fmt.Printf("filename: %s\n", finalname)
 	dummy := ""
-	time.Sleep(250 * time.Millisecond)
+
+	// Wait for the file to exist
+	fileExists := func(filename string) bool {
+		info, err := os.Stat(filename)
+		if os.IsNotExist(err) {
+			return false
+		}
+		return !info.IsDir()
+	}
+	timeout := time.NewTimer(time.Second)
+waitingforfile:
+	for !fileExists(finalname) {
+		select {
+		case <-timeout.C:
+			break waitingforfile
+		default:
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
 	if err := client.Call("SourceControl.Stop", &dummy, &okay); err != nil {
 		t.Error(err)
+	}
+	if !fileExists(finalname) {
+		t.Errorf("could not find archive data block file '%s'", finalname)
 	}
 }
 
