@@ -688,7 +688,7 @@ func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
 	fmt.Printf("We have been asked to store %d samples of raw data to %s\n", N, finalname)
 
 	f := func() {
-		err := s.ActiveSource.StoreDataBlock(N, file, finalname)
+		err := s.ActiveSource.ArchiveDataBlock(N, file, finalname)
 		s.queuedResults <- err
 	}
 	err = s.runLaterIfActive(f)

@@ -84,7 +84,7 @@ type DataSource interface {
 	RunDoneDeactivate()
 	ShouldAutoRestart() bool
 	getPulseLengths() (int, int, error)
-	StoreDataBlock(int, *os.File, string) error
+	ArchiveDataBlock(int, *os.File, string) error
 }
 
 // RunDoneActivate adds one to ds.runDone, this should only be called in Start
@@ -279,6 +279,16 @@ type dataBlock struct {
 	err                      error
 }
 
+// archiveableDataBlock is a dataBlock intended as a copy of the contents of 1+ consecutive dataBlock
+// objects, to be preserved and saved to a file.
+type archiveableDataBlock struct {
+	dataBlock
+	earliestTime     time.Time
+	requestedSamples int
+	complete         chan struct{}
+	active           bool
+}
+
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
@@ -294,10 +304,12 @@ type AnySource struct {
 	lastread        time.Time
 	nextFrameNum    FrameIndex // frame number for the next frame we will receive
 	processors      []*DataStreamProcessor
-	abortSelf       chan struct{}   // Signal to the core loop of active sources to stop
-	nextBlock       chan *dataBlock // Signal from the core loop that a block is ready to process
-	broker          *TriggerBroker
-	configError     error // Any error that arose when configuring the source (before Start)
+
+	abortSelf    chan struct{}        // Signal to the core loop of active sources to stop
+	nextBlock    chan *dataBlock      // Signal from the core loop that a block is ready to process
+	archiveBlock archiveableDataBlock // Used to store a section of raw data to file
+	broker       *TriggerBroker
+	configError  error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
@@ -336,9 +348,34 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 // in parallel. Returns when all segments have been processed.
 // It's more synchronous than our original plan of each dsp launching its own goroutine.
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
-	if len(ds.processors) != len(block.segments) {
-		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)",
-			len(block.segments), len(ds.processors)))
+	nchan := len(block.segments)
+	nproc := len(ds.processors)
+	if nproc != nchan {
+		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)", nchan, nproc))
+	}
+
+	// Unusual case: the archiveDataBlock is active. Handle it here.
+	if ds.archiveBlock.active {
+		ab := ds.archiveBlock
+		// TODO: if no segments allocated, do that.
+		needsInit := true // TODO: compute correctly
+		if needsInit {
+			ab.nSamp = 0
+			cap := ab.requestedSamples
+			ab.segments = make([]DataSegment, nchan)
+			for i := 0; i < ds.Nchan(); i++ {
+				ab.segments[i].rawData = make([]RawType, 0, cap)
+			}
+		}
+
+		// TODO: check that the block starts no earlier than ab.earliestTime.
+		// TODO: copy data into the aB
+
+		reachedCapacity := true // TODO: fix this
+		if reachedCapacity {
+			close(ds.archiveBlock.complete)
+			ds.archiveBlock.active = false
+		}
 	}
 
 	// We break processing data segments into 2 halves. Each half can proceed in parallel
@@ -974,24 +1011,18 @@ func (ds *AnySource) StopTriggerCoupling() error {
 	return ds.broker.StopTriggerCoupling()
 }
 
-type storeableDataBlock struct {
-	streams   []DataStream
-	startTime time.Time
-	Nsamples  int
-}
-
-func writeNPZData(datablock storeableDataBlock, channelNames []string, file *os.File) error {
+func writeNPZData(datablock archiveableDataBlock, channelNames []string, file *os.File) error {
 	wz := npz.NewWriter(file)
 	defer wz.Close()
-	nc := uint64(len(datablock.streams))
+	nc := uint64(len(datablock.segments))
 	if err := wz.Write("nchan", nc); err != nil {
 		return err
 	}
-	nsamp := uint64(datablock.Nsamples)
+	nsamp := uint64(datablock.requestedSamples)
 	if err := wz.Write("nsamples", nsamp); err != nil {
 		return err
 	}
-	for i, stream := range datablock.streams {
+	for i, stream := range datablock.segments {
 		data := stream.rawData
 		if err := wz.Write(channelNames[i], data); err != nil {
 			return err
@@ -1000,27 +1031,33 @@ func writeNPZData(datablock storeableDataBlock, channelNames []string, file *os.
 	return nil
 }
 
-func (ds *AnySource) StoreDataBlock(N int, file *os.File, finalName string) error {
-	// TODO: Somehow store data to this file??
-	nc := ds.Nchan()
-	streams := make([]DataStream, nc)
-	datablock := storeableDataBlock{streams: streams, startTime: time.Now(), Nsamples: N}
-
-	// TODO Wait until it's filled with N samples per channel... (how??)
-
-	// Write to npz file.
-	if err := writeNPZData(datablock, ds.ChannelNames(), file); err != nil {
-		err := file.Close()
-		return err
+// ArchiveDataBlock stores a minimum amount of data (`N` samples at least) for each channel,
+// in the form of a `storeableDataBlock` struct, then when it's done, writes that info
+// to the numpy-style npz file `file`. Finally, it closes that file and renames it to `finalName`.
+func (ds *AnySource) ArchiveDataBlock(N int, file *os.File, finalName string) error {
+	if ds.archiveBlock.active {
+		return fmt.Errorf("cannot start archive block, because one is already being acquired")
 	}
+	ds.archiveBlock.earliestTime = time.Now()
+	ds.archiveBlock.requestedSamples = N
+	ds.archiveBlock.complete = make(chan struct{}, 0)
+	ds.archiveBlock.active = true
 
-	// Close the file and rename it to the final name.
-	oldname := file.Name()
-	err := file.Close()
-	if err == nil {
-		err = os.Rename(oldname, finalName)
-	}
-	return err
+	// Launch this goroutine, which will execute when the ds.archiveBlock.complete channel is closed
+	go func() {
+		// When the archiveBlock is filled, write to npz file.
+		<-ds.archiveBlock.complete
+		if err := writeNPZData(ds.archiveBlock, ds.ChannelNames(), file); err != nil {
+			file.Close()
+		}
+
+		// Close the file and rename it to the final name.
+		oldname := file.Name()
+		if err := file.Close(); err == nil {
+			os.Rename(oldname, finalName)
+		}
+	}()
+	return nil
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)
