@@ -373,7 +373,7 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 		return
 	}
 
-	// copy data into the ab.segments
+	// Copy data into the ab.segments
 	ncopied := 0
 	for i := 0; i < nchan; i++ {
 		src := block.segments[i]
@@ -385,6 +385,10 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 			panic(msg)
 		}
 		ab.segments[i].rawData = append(ab.segments[i].rawData, src.rawData...)
+	}
+	etrig := block.externalTriggerRowcounts
+	if len(etrig) > 0 {
+		ab.externalTriggerRowcounts = append(ab.externalTriggerRowcounts, etrig...)
 	}
 	ab.nSamp += ncopied
 
@@ -1049,20 +1053,16 @@ func (ds *AnySource) writeNPZData(file *os.File) error {
 
 	ab := ds.archiveBlock
 	channelNames := ds.ChannelNames()
-	nc := uint64(len(ab.segments))
-	if err := wz.Write("nchan", nc); err != nil {
-		return err
-	}
-	nsamp := uint64(ab.requestedSamples)
-	if err := wz.Write("nsamples", nsamp); err != nil {
-		return err
-	}
 	for i, stream := range ab.segments {
 		data := stream.rawData
 		if err := wz.Write(channelNames[i], data); err != nil {
 			return err
 		}
 	}
+	if err := wz.Write("externalTriggerRowcounts", ab.externalTriggerRowcounts); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1076,7 +1076,7 @@ func (ds *AnySource) ArchiveDataBlock(N int, file *os.File, finalName string) er
 	ds.archiveBlock.earliestTime = time.Now()
 	ds.archiveBlock.requestedSamples = N
 	ds.archiveBlock.segments = nil
-	ds.archiveBlock.complete = make(chan struct{}, 0)
+	ds.archiveBlock.complete = make(chan struct{})
 	ds.archiveBlock.active = true
 
 	// Launch this goroutine, which will execute when the ds.archiveBlock.complete channel is closed
