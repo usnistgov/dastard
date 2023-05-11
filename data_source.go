@@ -344,6 +344,57 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 	return NPresamples, NSamples, nil
 }
 
+func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
+	ab := ds.archiveBlock
+	nchan := len(block.segments)
+
+	// If no segments are allocated, this is the time to set up for saving data.
+	if ab.segments == nil {
+		ab.nSamp = 0
+		cap := ab.requestedSamples + ab.requestedSamples/2
+		ab.segments = make([]DataSegment, nchan)
+		for i := 0; i < ds.Nchan(); i++ {
+			ab.segments[i].rawData = make([]RawType, 0, cap)
+		}
+	}
+
+	if len(ab.segments) != nchan {
+		msg := fmt.Sprintf("archiveNewDataBlock has %d segments prepared, but %d in the new block", len(ab.segments), nchan)
+		panic(msg)
+	}
+
+	if nchan > 0 {
+		panic("archiveNewDataBlock has a block with 0 segments")
+	}
+
+	// Ignore blocks that start earlier than ab.earliestTime.
+	seg := ab.segments[0]
+	if seg.firstTime.Before(ab.earliestTime) {
+		return
+	}
+
+	// copy data into the ab.segments
+	ncopied := 0
+	for i := 0; i < nchan; i++ {
+		src := block.segments[i]
+		if i == 0 {
+			ncopied = len(src.rawData)
+		}
+		if ncopied != len(src.rawData) {
+			msg := fmt.Sprintf("archiveNewDataBlock has conflicting lengths seg[0]=%d, seg[%d]=%d", ncopied, i, len(src.rawData))
+			panic(msg)
+		}
+		ab.segments[i].rawData = append(ab.segments[i].rawData, src.rawData...)
+	}
+	ab.nSamp += ncopied
+
+	requestFilled := ab.nSamp >= ab.requestedSamples
+	if requestFilled {
+		close(ab.complete)
+		ab.active = false
+	}
+}
+
 // ProcessSegments processes a single outstanding segment for each of ds.processors
 // in parallel. Returns when all segments have been processed.
 // It's more synchronous than our original plan of each dsp launching its own goroutine.
@@ -354,28 +405,9 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)", nchan, nproc))
 	}
 
-	// Unusual case: the archiveDataBlock is active. Handle it here.
+	// Sometimes the archiveDataBlock is active. Handle it here.
 	if ds.archiveBlock.active {
-		ab := ds.archiveBlock
-		// TODO: if no segments allocated, do that.
-		needsInit := true // TODO: compute correctly
-		if needsInit {
-			ab.nSamp = 0
-			cap := ab.requestedSamples
-			ab.segments = make([]DataSegment, nchan)
-			for i := 0; i < ds.Nchan(); i++ {
-				ab.segments[i].rawData = make([]RawType, 0, cap)
-			}
-		}
-
-		// TODO: check that the block starts no earlier than ab.earliestTime.
-		// TODO: copy data into the aB
-
-		reachedCapacity := true // TODO: fix this
-		if reachedCapacity {
-			close(ds.archiveBlock.complete)
-			ds.archiveBlock.active = false
-		}
+		ds.archiveNewDataBlock(block)
 	}
 
 	// We break processing data segments into 2 halves. Each half can proceed in parallel
@@ -1040,6 +1072,7 @@ func (ds *AnySource) ArchiveDataBlock(N int, file *os.File, finalName string) er
 	}
 	ds.archiveBlock.earliestTime = time.Now()
 	ds.archiveBlock.requestedSamples = N
+	ds.archiveBlock.segments = nil
 	ds.archiveBlock.complete = make(chan struct{}, 0)
 	ds.archiveBlock.active = true
 
