@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sbinet/npyio/npz"
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard/lancero"
 	"gonum.org/v1/gonum/mat"
@@ -493,9 +494,9 @@ func TestRawDataBlock(t *testing.T) {
 	if !okay {
 		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
-	N := 100
+	NblockData := 1000
 	finalname := ""
-	if err := client.Call("SourceControl.StoreRawDataBlock", &N, &finalname); err != nil {
+	if err := client.Call("SourceControl.StoreRawDataBlock", &NblockData, &finalname); err != nil {
 		t.Error(err)
 	}
 	fmt.Printf("filename: %s\n", finalname)
@@ -522,8 +523,32 @@ waitingforfile:
 	if err := client.Call("SourceControl.Stop", &dummy, &okay); err != nil {
 		t.Error(err)
 	}
-	if !fileExists(finalname) {
-		t.Errorf("could not find archive data block file '%s'", finalname)
+
+	f, err := os.Open(finalname)
+	if err != nil {
+		t.Errorf("could not find archive data block file '%s' with error %v", finalname, err)
+	}
+	defer f.Close()
+
+	for i := 0; i < simConfig.Nchan; i++ {
+		var data []uint16
+		arrayname := fmt.Sprintf("chan%d", i)
+		err = npz.Read(f, arrayname, &data)
+		if err != nil {
+			t.Errorf("could not read array %s from npz file: %+v", arrayname, err)
+		}
+		if len(data) < NblockData {
+			t.Errorf("in npz file, array %s has length %d, want at least %d", arrayname, len(data), NblockData)
+		}
+	}
+
+	// External trigger list should exist but be empty.
+	var data []int64
+	arrayname := "externalTriggerRowcounts"
+	if err = npz.Read(f, arrayname, &data); err != nil {
+		t.Errorf("could not read array %s from npz file: %+v", arrayname, err)
+	} else if len(data) > 0 {
+		t.Errorf("array %s had size %d, want 0", arrayname, len(data))
 	}
 }
 
