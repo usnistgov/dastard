@@ -363,7 +363,7 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 		panic(msg)
 	}
 
-	if nchan > 0 {
+	if nchan == 0 {
 		panic("archiveNewDataBlock has a block with 0 segments")
 	}
 
