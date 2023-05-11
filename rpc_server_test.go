@@ -469,10 +469,29 @@ func TestRawDataBlock(t *testing.T) {
 		t.Fatal(errClient)
 	}
 	defer client.Close()
-	sourceName := "TRIANGLESOURCE"
+
+	simConfig := SimPulseSourceConfig{
+		Nchan:      8,
+		SampleRate: 20000.0,
+		Pedestal:   3000.0,
+		Amplitudes: []float64{10000., 8000., 6000.},
+		Nsamp:      1000,
+	}
 	okay := true
+	err := client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
+	if !okay {
+		t.Errorf("Error on server with SourceControl.ConfigureSimPulseSource()")
+	}
+	if err != nil {
+		t.Errorf("Error calling SourceControl.ConfigureSimPulseSource(): %s", err.Error())
+	}
+
+	sourceName := "SimPulseSource"
 	if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
 		t.Error(err)
+	}
+	if !okay {
+		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
 	}
 	N := 100
 	finalname := ""
@@ -481,6 +500,7 @@ func TestRawDataBlock(t *testing.T) {
 	}
 	fmt.Printf("filename: %s\n", finalname)
 	dummy := ""
+	time.Sleep(250 * time.Millisecond)
 	if err := client.Call("SourceControl.Stop", &dummy, &okay); err != nil {
 		t.Error(err)
 	}

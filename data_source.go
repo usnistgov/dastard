@@ -1043,18 +1043,21 @@ func (ds *AnySource) StopTriggerCoupling() error {
 	return ds.broker.StopTriggerCoupling()
 }
 
-func writeNPZData(datablock archiveableDataBlock, channelNames []string, file *os.File) error {
+func (ds *AnySource) writeNPZData(file *os.File) error {
 	wz := npz.NewWriter(file)
 	defer wz.Close()
-	nc := uint64(len(datablock.segments))
+
+	ab := ds.archiveBlock
+	channelNames := ds.ChannelNames()
+	nc := uint64(len(ab.segments))
 	if err := wz.Write("nchan", nc); err != nil {
 		return err
 	}
-	nsamp := uint64(datablock.requestedSamples)
+	nsamp := uint64(ab.requestedSamples)
 	if err := wz.Write("nsamples", nsamp); err != nil {
 		return err
 	}
-	for i, stream := range datablock.segments {
+	for i, stream := range ab.segments {
 		data := stream.rawData
 		if err := wz.Write(channelNames[i], data); err != nil {
 			return err
@@ -1080,7 +1083,7 @@ func (ds *AnySource) ArchiveDataBlock(N int, file *os.File, finalName string) er
 	go func() {
 		// When the archiveBlock is filled, write to npz file.
 		<-ds.archiveBlock.complete
-		if err := writeNPZData(ds.archiveBlock, ds.ChannelNames(), file); err != nil {
+		if err := ds.writeNPZData(file); err != nil {
 			file.Close()
 		}
 

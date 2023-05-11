@@ -685,7 +685,6 @@ func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
 	finalname := strings.Replace(file.Name(), "_inprogress", "", 1)
 	*reply = finalname
 	s.clientUpdates <- ClientUpdate{"RAWDATABLOCK", finalname}
-	fmt.Printf("We have been asked to store %d samples of raw data to %s\n", N, finalname)
 
 	f := func() {
 		err := s.ActiveSource.ArchiveDataBlock(N, file, finalname)
