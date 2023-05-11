@@ -550,6 +550,19 @@ waitingforfile:
 	} else if len(data) > 0 {
 		t.Errorf("array %s had size %d, want 0", arrayname, len(data))
 	}
+	// First frame index should be as long as channels and all the same
+	arrayname = "firstFrameIndex"
+	if err = npz.Read(f, arrayname, &data); err != nil {
+		t.Errorf("could not read array %s from npz file: %+v", arrayname, err)
+	}
+	if len(data) != simConfig.Nchan {
+		t.Errorf("array %s had size %d, want %d", arrayname, len(data), simConfig.Nchan)
+	}
+	for i := 1; i < simConfig.Nchan; i++ {
+		if data[i] != data[0] {
+			t.Errorf("npz file firstFrameIndex vector not all alike: %v", data)
+		}
+	}
 }
 
 func TestMain(m *testing.M) {

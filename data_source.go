@@ -384,6 +384,10 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 			msg := fmt.Sprintf("archiveNewDataBlock has conflicting lengths seg[0]=%d, seg[%d]=%d", ncopied, i, len(src.rawData))
 			panic(msg)
 		}
+		// First time through, set first FrameIndex
+		if len(ab.segments[i].rawData) == 0 {
+			ab.segments[i].firstFrameIndex = src.firstFrameIndex
+		}
 		ab.segments[i].rawData = append(ab.segments[i].rawData, src.rawData...)
 	}
 	etrig := block.externalTriggerRowcounts
@@ -1053,13 +1057,18 @@ func (ds *AnySource) writeNPZData(file *os.File) error {
 
 	ab := ds.archiveBlock
 	channelNames := ds.ChannelNames()
+	firstFrame := make([]int64, len(ab.segments))
 	for i, stream := range ab.segments {
 		data := stream.rawData
+		firstFrame[i] = int64(stream.firstFrameIndex)
 		if err := wz.Write(channelNames[i], data); err != nil {
 			return err
 		}
 	}
 	if err := wz.Write("externalTriggerRowcounts", ab.externalTriggerRowcounts); err != nil {
+		return err
+	}
+	if err := wz.Write("firstFrameIndex", firstFrame); err != nil {
 		return err
 	}
 
