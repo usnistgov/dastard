@@ -4,10 +4,6 @@
 package lancero
 
 // #include <unistd.h>
-//
-// ssize_t readWrap(int fd, void *buf, size_t nbyte) {
-//     return read(fd, buf, nbyte);
-// }
 import "C"
 
 import (
@@ -15,9 +11,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // EnumerateLanceroDevices returns a list of lancero device numbers that exist
@@ -103,6 +103,17 @@ func openLanceroDevice(devnum int) (dev *lanceroDevice, err error) {
 		os.O_RDWR|syscall.O_NONBLOCK, 0666); err != nil {
 		dev.Close()
 		return nil, err
+	}
+
+	// Workaround for a library bug in Go 1.20 to 1.20.4 (at least).
+	// You can see that dev.FileSGDMA was supposedly opened with the O_NONBLOCK flag, but in Go 1.20
+	// it won't "take". See https://github.com/golang/go/issues/60211 for more details.
+	if strings.HasPrefix(runtime.Version(), "go1.20") {
+		fd := dev.FileSGDMA.Fd()
+		if err = syscall.SetNonblock(int(fd), true); err != nil {
+			dev.Close()
+			return nil, err
+		}
 	}
 
 	dev.validFiles = true
@@ -217,15 +228,11 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 	verbose := dev.verbosity >= 3
 	// Calling a C read operation on the SGDMA file descriptor is (apparently) how
 	// we indicate the address of our DMA ring buffer to the lancero device driver.
-	csize := C.readWrap(C.int(dev.FileSGDMA.Fd()), unsafe.Pointer(buffer), C.size_t(bufferLength))
-	n := uint32(csize)
-	// n, err := dev.FileSGDMA.Read(buffer)
-	// if err != nil {
-	//   log.Printf("Error reading SGDMA buffer %v of length %v\n", unsafe.Pointer(&buffer), len(buffer))
-	//   return err
-	// }
-	if n < bufferLength {
-		return fmt.Errorf("cyclicStart(): could not start SGDMA")
+	fd := dev.FileSGDMA.Fd()
+	gobuffer := C.GoBytes(unsafe.Pointer(buffer), C.int(bufferLength))
+	n, err := unix.Read(int(fd), gobuffer)
+	if (n < int(bufferLength)) || (err != nil) {
+		return fmt.Errorf("cyclicStart(): could not start SGDMA (n=%v, err=%v)", n, err)
 	}
 	value, err := dev.readControl(0x200)
 	if err != nil {
