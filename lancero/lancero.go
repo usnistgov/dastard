@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -41,29 +39,6 @@ type Lanceroer interface {
 // adapter (for the ring buffer)
 // collector (for the data serialization engine)
 // lanceroDevice (for the low-level register communication). This is lancero in C++
-
-// verifyGoVersion returns error if the go version is 1.20 or higher, or cannot be determined from runtime.Version()
-func verifyGoVersion() error {
-	ver := runtime.Version()
-	if !strings.HasPrefix(ver, "go") {
-		return fmt.Errorf("cannot detect Go version: runtime.Version() returned '%s' but expected it to start with go*", ver)
-	}
-
-	parts := strings.Split(ver[2:], ".")
-	if !(parts[0] == "1") || !(len(parts) > 1) {
-		return fmt.Errorf("cannot detect Go version: runtime.Version() returned '%s' but expected it to start with go1.*", ver)
-	}
-
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return fmt.Errorf("cannot detect Go version: runtime.Version() returned '%s' but expected it to start with go1.<number>", ver)
-	}
-
-	if minor >= 20 {
-		return fmt.Errorf("runtime.Version() says Go version is '%s', but we require 1.19 or lower in order to use lancero devices", ver)
-	}
-	return nil
-}
 
 // Lancero is the high-level object used to manipulate all user-space functions of
 // the Lancero device driver.
@@ -123,11 +98,6 @@ func (lan *Lancero) Close() error {
 
 // StartAdapter starts the ring buffer adapter, waiting up to waitSeconds sec for it to work.
 func (lan *Lancero) StartAdapter(waitSeconds, verbosity int) error {
-	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
-	if err := verifyGoVersion(); err != nil {
-		panic(err)
-	}
-
 	lan.adapter.verbosity = verbosity
 	return lan.adapter.start(waitSeconds)
 }
@@ -149,11 +119,6 @@ func (lan *Lancero) CollectorConfigure(linePeriod, dataDelay int, channelMask ui
 
 // StartCollector starts the data serializer.
 func (lan *Lancero) StartCollector(simulate bool) error {
-	// Panic if program was compiled with Go 1.20+, b/c that's incompatible with the Lancero device
-	if err := verifyGoVersion(); err != nil {
-		panic(err)
-	}
-
 	return lan.collector.start(simulate)
 }
 
