@@ -1,20 +1,22 @@
 # Dastard
-[![Build Status](https://app.travis-ci.com/usnistgov/dastard.svg?branch=master)](https://app.travis-ci.com/github/usnistgov/dastard)
+[![Test+Build at GitHub Actions](https://github.com/usnistgov/dastard/actions/workflows/go.yml/badge.svg?branch=master)](https://github.com/usnistgov/dastard/actions)
 
 A data acquisition program for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
 **Requires Go version 1.17** (released August 2021) or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.17 and LATEST (as of February 2023, Go version 1.20 is the most recent).
 
-We recommend always using the `Makefile` to build Dastard. That's not a typical go usage, but we have a simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments to set values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
+**Requires Go version no higher than 1.19** if you are using TDM systems with the Lancero device. We could not figure out how to make the device read correctly with Go 1.20 (as of April 20, 2023). If you run with Go 1.20+ and try to start a Lancero device, Dastard will panic. We hope and expect to fix this restriction in the future. For data sources other than Lancero, Go 1.20+ should be fine.
+
+**We recommend always using the `Makefile` to build Dastard.** That's not a typical go usage, but we have a simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments to set values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
 ```bash
 # To build locally and run that copy
 make build && ./dastard
 ```
 or
 ```bash
-# To install as $(go env GOPATH)/bin/dastard, which is generally $HOME/go/bin/dastard
-make install   # implies make build
+# To install as $(go env GOPATH)/bin/dastard, which generally means $HOME/go/bin/dastard
+make install   # also implies make build
 dastard
 ```
 
@@ -26,12 +28,24 @@ simple command as sudo first; otherwise, the password entering step will screw u
 ```bash
 # Dastard dependencies
 sudo apt-get -y update
-sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
+sudo apt-get install -y libsodium-dev libzmq3-dev git gcc pkg-config
 
 # Install go
 sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
 sudo apt-get -y install golang-go
+go version
+
+# If you need lancero-TDM, install go 1.19,
+# then ensure that version go-1.19 is the preferred version in /usr/bin
+# If the above reports version 1.19, or if you don't need lancero-TDM, then skip what follows
+# If the above reports version 1.18 or lower, obviously change the instances of "1.19" in what follows.
+sudo apt-get -y install golang-1.19-go
+pushd /usr/bin
+sudo ln -sf ../lib/go-1.19/bin/go go
+sudo ln -sf ../lib/go-1.19/bin/gofmt gofmt
+popd
+
 
 # Install Dastard as a development copy
 # (These lines should have an equivalent "go install" like maybe "go install gitub.com/usnistgov/dastard@latest"??)

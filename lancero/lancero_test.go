@@ -48,7 +48,9 @@ func testLanceroerSubroutine(lan Lanceroer, t *testing.T) (int, int, int, error)
 	// 	t.Errorf("%v", err)
 	// }
 	var nrows, ncols, linePeriod int
-	if err := lan.StartAdapter(2); err != nil {
+	const timeoutSec = 2
+	const verbosityIsIgnored = 0
+	if err := lan.StartAdapter(timeoutSec, verbosityIsIgnored); err != nil {
 		t.Error("failed to start lancero (driver problem):", err)
 	}
 	lan.InspectAdapter()

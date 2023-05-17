@@ -68,16 +68,16 @@ type LanceroSource struct {
 
 // NewLanceroSource creates a new LanceroSource.
 func NewLanceroSource() (*LanceroSource, error) {
+	devnums, err := lancero.EnumerateLanceroDevices()
+	if err != nil {
+		return nil, err
+	}
+
 	source := new(LanceroSource)
 	source.name = "Lancero"
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
 	source.channelsPerPixel = 2
-
-	devnums, err := lancero.EnumerateLanceroDevices()
-	if err != nil {
-		return source, err
-	}
 
 	for _, dnum := range devnums {
 		ld := LanceroDevice{devnum: dnum}
@@ -370,11 +370,14 @@ func (ls *LanceroSource) PrepareChannels() error {
 func (device *LanceroDevice) sampleCard() error {
 	lan := device.card
 
-	if err := lan.ChangeRingBuffer(1200000, 400000); err != nil {
+	OnePage := 4096
+	if err := lan.ChangeRingBuffer(300*OnePage, 100*OnePage); err != nil {
 		return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 	}
 
-	if err := lan.StartAdapter(2); err != nil {
+	const timeoutSeconds = 2
+	const verbosity = 3
+	if err := lan.StartAdapter(timeoutSeconds, verbosity); err != nil {
 		return fmt.Errorf("failed to start lancero (driver problem): %v", err)
 	}
 
@@ -387,15 +390,13 @@ func (device *LanceroDevice) sampleCard() error {
 	frameLength := 1
 	dataDelay := device.cardDelay
 	channelMask := device.fiberMask
-	err := lan.CollectorConfigure(linePeriod, dataDelay, channelMask, frameLength)
-
-	if err != nil {
+	if err := lan.CollectorConfigure(linePeriod, dataDelay, channelMask, frameLength); err != nil {
 		return fmt.Errorf("error in CollectorConfigure: %v", err)
 	}
 
 	const simulate bool = false
 
-	err = lan.StartCollector(simulate)
+	err := lan.StartCollector(simulate)
 	defer lan.StopCollector()
 
 	if err != nil {
@@ -438,7 +439,7 @@ func (device *LanceroDevice) sampleCard() error {
 			}
 			bytesReadSinceTimeFix0 += int64(len(b))
 			if !frameBitsHandled {
-				buffer = append(buffer, b...) // only append if framebits havent been handled, to reduce unneeded memory usage
+				buffer = append(buffer, b...) // only append if framebits haven't been handled, to reduce unneeded memory usage
 				log.Println(lancero.OdDashTX(buffer, 10))
 				q, p, n, err3 := lancero.FindFrameBits(buffer, lanceroFBOffset)
 				if err3 == nil {
@@ -528,6 +529,7 @@ func (ls *LanceroSource) StartRun() error {
 
 	// Starting the source for all active cards has 3 steps per card.
 	for _, device := range ls.active {
+
 		// 1. Resize the ring buffer to hold up to 16,384 frames
 		if device.frameSize <= 0 {
 			device.frameSize = 128 // a random guess
@@ -546,9 +548,11 @@ func (ls *LanceroSource) StartRun() error {
 		if err := lan.ChangeRingBuffer(bufsize, thresh); err != nil {
 			return fmt.Errorf("failed to change ring buffer size (driver problem): %v", err)
 		}
+
 		// 2. Start the adapter and collector components in firmware
-		const Timeout int = 2 // seconds
-		if err := lan.StartAdapter(Timeout); err != nil {
+		const timeoutSeconds = 2
+		const verbosity = 0
+		if err := lan.StartAdapter(timeoutSeconds, verbosity); err != nil {
 			return fmt.Errorf("failed to start lancero (driver problem): %v", err)
 		}
 		device.adapRunning = true
@@ -567,6 +571,7 @@ func (ls *LanceroSource) StartRun() error {
 			return fmt.Errorf("error in StartCollector: %v", err)
 		}
 		device.collRunning = true
+
 		// 3. Consume any possible fractional frames at the start of the buffer
 		const tooManyBytes int = 1000000  // shouldn't need this many bytes to SampleData
 		const tooManyIterations int = 100 // nor this many reads of the lancero

@@ -1,11 +1,10 @@
 # This workflow will build a golang project
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
 
-name: Go
+name: Go Build+Test
 
 on:
   push:
-    branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
   release:
@@ -23,7 +22,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Install deps (can we eliminate libsodium?)
-      run: sudo apt-get install -y libsodium-dev libczmq-dev git gcc pkg-config
+      run: sudo apt-get install -y libsodium-dev libzmq3-dev
 
     - name: Setup Go ${{ matrix.go-version }}
       uses: actions/setup-go@v3
@@ -36,11 +35,8 @@ jobs:
     - name: Display Go version
       run: go version
 
-    - name: make build (to be static eventually)
-      run: make build
-
-    - name: debugging, calls ls
-      run: ls
+    - name: Build as "make build" (to be static eventually)
+      run: make build && ls -l
 
     - name: Test
       run: go test -v ./...

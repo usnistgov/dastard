@@ -57,7 +57,7 @@ func (lan *NoHardware) Close() error {
 }
 
 // StartAdapter errors if already started
-func (lan *NoHardware) StartAdapter(waitSeconds int) error {
+func (lan *NoHardware) StartAdapter(waitSeconds, verbosity int) error {
 	if lan.isStarted {
 		return fmt.Errorf("NoHardware.StartAdapter: already started: id %v", lan.idNum)
 	}

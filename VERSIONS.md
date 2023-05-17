@@ -4,6 +4,14 @@
 * Runs only on Go 1.17 and later (Go 1.17 was released August 2021).
 * Working on an optional MySQL DB to register files and data runs.
 
+**0.2.19** May 2023-
+* Fix unchecked error in starting Abaco sources (issue 321).
+* Workaround for bug in Go library `os.OpenFile` (issue 324).
+
+**0.2.18** April 24, 2023
+* Panic if run on Go 1.20 or higher with the lancero-TDM readout (issue 315).
+* Return Lancero driver's ring buffer to 32 MB (undo issue 258); check return values, panic if needed (issue 316).
+
 **0.2.17** March 7, 2023
 * Add Gentoo instructions; add static compilation target to Makefile (issue 302).
 * Switch to GitHub Actions for testing and deployment (issue 305, 308).

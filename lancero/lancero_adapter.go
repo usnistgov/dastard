@@ -4,12 +4,6 @@ package lancero
 // #include <stdlib.h>
 // #include <stdio.h>
 // #include <string.h>
-//
-// char* posixMemAlign(size_t alignment, size_t size) {
-//     void *vout;
-//    ssize_t _ = posix_memalign(&vout, alignment, size);
-//     return (char *)vout;
-// }
 import "C"
 
 import (
@@ -126,7 +120,15 @@ func (a *adapter) allocateRingBuffer(length, threshold int) error {
 	a.thresholdLevel = uint32(threshold)
 	const PAGEALIGN C.size_t = 4096
 	a.freeBuffer()
-	a.buffer = C.posixMemAlign(PAGEALIGN, C.size_t(length))
+	var read_buf unsafe.Pointer
+	retval := C.posix_memalign(&read_buf, PAGEALIGN, C.size_t(length))
+	a.buffer = (*C.char)(read_buf)
+	if a.buffer == nil || retval != 0 {
+		return fmt.Errorf("a.buffer = C.posixMemAlign returns no valid buffer (retval=%v)", retval)
+	}
+	if C.size_t(uintptr(unsafe.Pointer(a.buffer)))%PAGEALIGN != 0 {
+		return fmt.Errorf("a.buffer = C.posixMemAlign returns unaligned buffer at %p", a.buffer)
+	}
 
 	a.stop()
 	if a.verbosity >= 3 {
@@ -168,10 +170,7 @@ func (a *adapter) availableBuffer() (buffer []byte, timefix time.Time, err error
 	length2 := C.int(a.writeIndex)
 	buffer = make([]byte, length1+length2)
 	C.memcpy(unsafe.Pointer(&buffer[0]), unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), C.size_t(length1))
-	// buffer = C.GoBytes(unsafe.Pointer(uintptr(unsafe.Pointer(a.buffer))+uintptr(a.readIndex)), length1+length2)
 	if length2 > 0 {
-		// log.Printf("\tjoining buffers of length %7d+%7d\n", length1, length2)
-		// buffer = append(buffer, C.GoBytes(unsafe.Pointer(a.buffer), length2)...)
 		C.memcpy(unsafe.Pointer(&buffer[length1]), unsafe.Pointer(a.buffer), C.size_t(length2))
 	}
 	return
@@ -233,8 +232,7 @@ func (a *adapter) start(waitSeconds int) error {
 }
 
 func (a *adapter) stop() error {
-	verbose := a.verbosity >= 3
-	verbose = true
+	verbose := (a.verbosity >= 3)
 	if verbose {
 		log.Println("adapter.stop(): setting RUN | FLUSH bits.")
 	}

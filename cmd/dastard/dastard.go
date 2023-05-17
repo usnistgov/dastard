@@ -122,6 +122,7 @@ func main() {
 		fmt.Printf("Git commit hash: %s\n", githash)
 		fmt.Printf("Git commit date: %s\n", gitdate)
 		fmt.Printf("Build date+time: %s\n", buildDate)
+		fmt.Printf("Built on go version %s\n", runtime.Version())
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		quitImmediately = true
 	} else {

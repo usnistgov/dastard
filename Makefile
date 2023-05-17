@@ -32,8 +32,7 @@ $(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go internal/*/*.go
 	$(GOBUILD) $(LDFLAGS) $(TAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
 
-# make test needs to install deps, or Travis will fail
-test: deps
+test:
 	$(GOFMT)
 	$(GOTEST) $(TAGS) -v ./...
 
