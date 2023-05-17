@@ -2,6 +2,7 @@
 
 **0.2.19** May 2023-
 * Fix unchecked error in starting Abaco sources (issue 321).
+* Workaround for bug in Go library `os.OpenFile` (issue 324).
 
 **0.2.18** April 24, 2023
 * Panic if run on Go 1.20 or higher with the lancero-TDM readout (issue 315).
