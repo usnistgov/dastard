@@ -4,10 +4,6 @@
 package lancero
 
 // #include <unistd.h>
-//
-// ssize_t readWrap(int fd, void *buf, size_t nbyte) {
-//     return read(fd, buf, nbyte);
-// }
 import "C"
 
 import (
@@ -231,7 +227,7 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 	// Calling a C read operation on the SGDMA file descriptor is (apparently) how
 	// we indicate the address of our DMA ring buffer to the lancero device driver.
 	fd := dev.FileSGDMA.Fd()
-	csize := C.readWrap(C.int(fd), unsafe.Pointer(buffer), C.size_t(bufferLength))
+	csize := C.read(C.int(fd), unsafe.Pointer(buffer), C.size_t(bufferLength))
 	n := uint32(csize)
 	if n < bufferLength {
 		return fmt.Errorf("cyclicStart(): could not start SGDMA")
