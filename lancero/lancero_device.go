@@ -16,8 +16,6 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // EnumerateLanceroDevices returns a list of lancero device numbers that exist
@@ -229,10 +227,10 @@ func (dev *lanceroDevice) cyclicStart(buffer *C.char, bufferLength uint32, waitS
 	// Calling a C read operation on the SGDMA file descriptor is (apparently) how
 	// we indicate the address of our DMA ring buffer to the lancero device driver.
 	fd := dev.FileSGDMA.Fd()
-	gobuffer := C.GoBytes(unsafe.Pointer(buffer), C.int(bufferLength))
-	n, err := unix.Read(int(fd), gobuffer)
-	if (n < int(bufferLength)) || (err != nil) {
-		return fmt.Errorf("cyclicStart(): could not start SGDMA (n=%v, err=%v)", n, err)
+	csize := C.read(C.int(fd), unsafe.Pointer(buffer), C.size_t(bufferLength))
+	n := uint32(csize)
+	if n < bufferLength {
+		return fmt.Errorf("cyclicStart(): could not start SGDMA")
 	}
 	value, err := dev.readControl(0x200)
 	if err != nil {
