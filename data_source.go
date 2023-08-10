@@ -11,6 +11,7 @@ import (
 
 	"github.com/usnistgov/dastard/getbytes"
 
+	"github.com/sbinet/npyio/npz"
 	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
@@ -83,6 +84,7 @@ type DataSource interface {
 	RunDoneDeactivate()
 	ShouldAutoRestart() bool
 	getPulseLengths() (int, int, error)
+	ArchiveDataBlock(int, *os.File, string) error
 }
 
 // RunDoneActivate adds one to ds.runDone, this should only be called in Start
@@ -277,6 +279,16 @@ type dataBlock struct {
 	err                      error
 }
 
+// archiveableDataBlock is a dataBlock intended as a copy of the contents of 1+ consecutive dataBlock
+// objects, to be preserved and saved to a file.
+type archiveableDataBlock struct {
+	dataBlock
+	earliestTime     time.Time
+	requestedSamples int
+	complete         chan struct{}
+	active           bool
+}
+
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
@@ -292,10 +304,12 @@ type AnySource struct {
 	lastread        time.Time
 	nextFrameNum    FrameIndex // frame number for the next frame we will receive
 	processors      []*DataStreamProcessor
-	abortSelf       chan struct{}   // Signal to the core loop of active sources to stop
-	nextBlock       chan *dataBlock // Signal from the core loop that a block is ready to process
-	broker          *TriggerBroker
-	configError     error // Any error that arose when configuring the source (before Start)
+
+	abortSelf    chan struct{}        // Signal to the core loop of active sources to stop
+	nextBlock    chan *dataBlock      // Signal from the core loop that a block is ready to process
+	archiveBlock archiveableDataBlock // Used to store a section of raw data to file
+	broker       *TriggerBroker
+	configError  error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
@@ -330,13 +344,78 @@ func (ds *AnySource) getPulseLengths() (int, int, error) {
 	return NPresamples, NSamples, nil
 }
 
+func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
+	ab := &ds.archiveBlock
+	nchan := len(block.segments)
+
+	// If no segments are allocated, this is the time to set up for saving data.
+	if ab.segments == nil {
+		ab.nSamp = 0
+		cap := ab.requestedSamples + ab.requestedSamples/2
+		ab.segments = make([]DataSegment, nchan)
+		for i := 0; i < ds.Nchan(); i++ {
+			ab.segments[i].rawData = make([]RawType, 0, cap)
+		}
+	}
+
+	if len(ab.segments) != nchan {
+		msg := fmt.Sprintf("archiveNewDataBlock has %d segments prepared, but %d in the new block", len(ab.segments), nchan)
+		panic(msg)
+	}
+
+	if nchan == 0 {
+		panic("archiveNewDataBlock has a block with 0 segments")
+	}
+
+	// Ignore blocks that start earlier than ab.earliestTime.
+	seg := block.segments[0]
+	if seg.firstTime.Before(ab.earliestTime) {
+		return
+	}
+
+	// Copy data into the ab.segments
+	ncopied := 0
+	for i := 0; i < nchan; i++ {
+		src := block.segments[i]
+		if i == 0 {
+			ncopied = len(src.rawData)
+		}
+		if ncopied != len(src.rawData) {
+			msg := fmt.Sprintf("archiveNewDataBlock has conflicting lengths seg[0]=%d, seg[%d]=%d", ncopied, i, len(src.rawData))
+			panic(msg)
+		}
+		// First time through, set first FrameIndex
+		if len(ab.segments[i].rawData) == 0 {
+			ab.segments[i].firstFrameIndex = src.firstFrameIndex
+		}
+		ab.segments[i].rawData = append(ab.segments[i].rawData, src.rawData...)
+	}
+	etrig := block.externalTriggerRowcounts
+	if len(etrig) > 0 {
+		ab.externalTriggerRowcounts = append(ab.externalTriggerRowcounts, etrig...)
+	}
+	ab.nSamp += ncopied
+
+	requestFilled := ab.nSamp >= ab.requestedSamples
+	if requestFilled {
+		close(ab.complete)
+		ab.active = false
+	}
+}
+
 // ProcessSegments processes a single outstanding segment for each of ds.processors
 // in parallel. Returns when all segments have been processed.
 // It's more synchronous than our original plan of each dsp launching its own goroutine.
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
-	if len(ds.processors) != len(block.segments) {
-		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)",
-			len(block.segments), len(ds.processors)))
+	nchan := len(block.segments)
+	nproc := len(ds.processors)
+	if nproc != nchan {
+		panic(fmt.Sprintf("Oh crap! dataBlock contains %d segments but Source has %d processors (channels)", nchan, nproc))
+	}
+
+	// Sometimes the archiveDataBlock is active. Handle it here.
+	if ds.archiveBlock.active {
+		ds.archiveNewDataBlock(block)
 	}
 
 	// We break processing data segments into 2 halves. Each half can proceed in parallel
@@ -970,6 +1049,60 @@ func (ds *AnySource) ChangeGroupTrigger(turnon bool, gts *GroupTriggerState) err
 // StopTriggerCoupling turns off all trigger coupling, including all group triggers and FB/Err coupling.
 func (ds *AnySource) StopTriggerCoupling() error {
 	return ds.broker.StopTriggerCoupling()
+}
+
+func (ds *AnySource) writeNPZData(file *os.File) error {
+	wz := npz.NewWriter(file)
+	defer wz.Close()
+
+	ab := ds.archiveBlock
+	channelNames := ds.ChannelNames()
+	firstFrame := make([]int64, len(ab.segments))
+	for i, stream := range ab.segments {
+		data := stream.rawData
+		firstFrame[i] = int64(stream.firstFrameIndex)
+		if err := wz.Write(channelNames[i], data); err != nil {
+			return err
+		}
+	}
+	if err := wz.Write("externalTriggerRowcounts", ab.externalTriggerRowcounts); err != nil {
+		return err
+	}
+	if err := wz.Write("firstFrameIndex", firstFrame); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ArchiveDataBlock stores a minimum amount of data (`N` samples at least) for each channel,
+// in the form of a `storeableDataBlock` struct, then when it's done, writes that info
+// to the numpy-style npz file `file`. Finally, it closes that file and renames it to `finalName`.
+func (ds *AnySource) ArchiveDataBlock(N int, file *os.File, finalName string) error {
+	if ds.archiveBlock.active {
+		return fmt.Errorf("cannot start archive block, because one is already being acquired")
+	}
+	ds.archiveBlock.earliestTime = time.Now()
+	ds.archiveBlock.requestedSamples = N
+	ds.archiveBlock.segments = nil
+	ds.archiveBlock.complete = make(chan struct{})
+	ds.archiveBlock.active = true
+
+	// Launch this goroutine, which will execute when the ds.archiveBlock.complete channel is closed
+	go func() {
+		// When the archiveBlock is filled, write to npz file.
+		<-ds.archiveBlock.complete
+		if err := ds.writeNPZData(file); err != nil {
+			file.Close()
+		}
+
+		// Close the file and rename it to the final name.
+		oldname := file.Name()
+		if err := file.Close(); err == nil {
+			os.Rename(oldname, finalName)
+		}
+	}()
+	return nil
 }
 
 // DataSegment is a continuous, single-channel raw data buffer, plus info about (e.g.)

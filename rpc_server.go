@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/rpc"
@@ -673,6 +674,24 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 	s.broadcastStatus()
 	s.clientUpdates <- ClientUpdate{"SENDALL", 0}
 	return nil
+}
+
+// StoreRawDataBlock causes a block of raw data to be stored in a temporary file.
+func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
+	file, err := ioutil.TempFile("", "dastard_rawdata_*_inprogress.npz")
+	if err != nil {
+		return err
+	}
+	finalname := strings.Replace(file.Name(), "_inprogress", "", 1)
+	*reply = finalname
+	s.clientUpdates <- ClientUpdate{"RAWDATABLOCK", finalname}
+
+	f := func() {
+		err := s.ActiveSource.ArchiveDataBlock(N, file, finalname)
+		s.queuedResults <- err
+	}
+	err = s.runLaterIfActive(f)
+	return err
 }
 
 // RunRPCServer sets up and runs a permanent JSON-RPC server.

@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.0** May 2023-
+* Add RPC command to store raw, untriggered data to temporary npy/npz files (issue 320).
+
 **0.2.19** May 2023-
 * Fix unchecked error in starting Abaco sources (issue 321).
 * Workaround for bug in Go library `os.OpenFile` (issue 324).
