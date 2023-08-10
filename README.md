@@ -6,8 +6,6 @@ A data acquisition program for NIST transition-edge sensor (TES) microcalorimete
 ## Installation
 **Requires Go version 1.17** (released August 2021) or higher because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.17 and LATEST (as of February 2023, Go version 1.20 is the most recent).
 
-**Requires Go version no higher than 1.19** if you are using TDM systems with the Lancero device. We could not figure out how to make the device read correctly with Go 1.20 (as of April 20, 2023). If you run with Go 1.20+ and try to start a Lancero device, Dastard will panic. We hope and expect to fix this restriction in the future. For data sources other than Lancero, Go 1.20+ should be fine.
-
 **We recommend always using the `Makefile` to build Dastard.** That's not a typical go usage, but we have a simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments to set values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
 ```bash
 # To build locally and run that copy
@@ -19,6 +17,8 @@ or
 make install   # also implies make build
 dastard
 ```
+
+**There was temporarily a problem with Go 1.20 and TDM systems** If you are using TDM systems with the Lancero device, beware that we had trouble making the device read correctly with Go 1.20 (as of April 20, 2023). This turns out to be the result of a bug in Go 1.20, surprisingly. We believe this problem was fixed in May 2023 (Dastard v0.2.19) with a workaround, but we leave this note here just in case you notice problems we didn't. Certainly, for data sources other than Lancero, Go 1.20+ will be fine.
 
 
 ### Ubuntu 22.04, 20.04, 18.04, and (maybe?) 16.04

@@ -1,12 +1,15 @@
 ## DASTARD Versions
 
-**0.3.0** February 28 2023-
-* Runs only on Go 1.17 and later (Go 1.17 was released August 2021).
+**0.3.1** February 28 2023-
 * Working on an optional MySQL DB to register files and data runs.
 
-**0.2.19** May 2023-
+**0.3.0** August 10, 2023
+* Add RPC command to store raw, untriggered data to temporary npy/npz files (issue 320).
+
+**0.2.19** May 26, 2023
 * Fix unchecked error in starting Abaco sources (issue 321).
 * Workaround for bug in Go library `os.OpenFile` (issue 324).
+* Fix fact that the workaround was yielding zeros from lancero source (issue 326).
 
 **0.2.18** April 24, 2023
 * Panic if run on Go 1.20 or higher with the lancero-TDM readout (issue 315).

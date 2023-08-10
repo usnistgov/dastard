@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sbinet/npyio/npz"
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard/lancero"
 	"gonum.org/v1/gonum/mat"
@@ -459,6 +460,107 @@ func TestErroringSourceRPC(t *testing.T) {
 		}
 		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
 			t.Error("ErroringSource.Stop: expected error for stop because already waited for source to end")
+		}
+	}
+}
+
+func TestRawDataBlock(t *testing.T) {
+	client, errClient := simpleClient()
+	if errClient != nil {
+		t.Fatal(errClient)
+	}
+	defer client.Close()
+
+	simConfig := SimPulseSourceConfig{
+		Nchan:      8,
+		SampleRate: 20000.0,
+		Pedestal:   3000.0,
+		Amplitudes: []float64{10000., 8000., 6000.},
+		Nsamp:      1000,
+	}
+	okay := true
+	err := client.Call("SourceControl.ConfigureSimPulseSource", &simConfig, &okay)
+	if !okay {
+		t.Errorf("Error on server with SourceControl.ConfigureSimPulseSource()")
+	}
+	if err != nil {
+		t.Errorf("Error calling SourceControl.ConfigureSimPulseSource(): %s", err.Error())
+	}
+
+	sourceName := "SimPulseSource"
+	if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
+		t.Error(err)
+	}
+	if !okay {
+		t.Errorf("SourceControl.Start(\"%s\") returns !okay, want okay", sourceName)
+	}
+	NblockData := 1000
+	finalname := ""
+	if err := client.Call("SourceControl.StoreRawDataBlock", &NblockData, &finalname); err != nil {
+		t.Error(err)
+	}
+	fmt.Printf("filename: %s\n", finalname)
+	dummy := ""
+
+	// Wait for the file to exist
+	fileExists := func(filename string) bool {
+		info, err := os.Stat(filename)
+		if os.IsNotExist(err) {
+			return false
+		}
+		return !info.IsDir()
+	}
+	timeout := time.NewTimer(time.Second)
+waitingforfile:
+	for !fileExists(finalname) {
+		select {
+		case <-timeout.C:
+			break waitingforfile
+		default:
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	if err := client.Call("SourceControl.Stop", &dummy, &okay); err != nil {
+		t.Error(err)
+	}
+
+	f, err := os.Open(finalname)
+	if err != nil {
+		t.Errorf("could not find archive data block file '%s' with error %v", finalname, err)
+	}
+	defer f.Close()
+
+	for i := 0; i < simConfig.Nchan; i++ {
+		var data []uint16
+		arrayname := fmt.Sprintf("chan%d", i)
+		err = npz.Read(f, arrayname, &data)
+		if err != nil {
+			t.Errorf("could not read array %s from npz file: %+v", arrayname, err)
+		}
+		if len(data) < NblockData {
+			t.Errorf("in npz file, array %s has length %d, want at least %d", arrayname, len(data), NblockData)
+		}
+	}
+
+	// External trigger list should exist but be empty.
+	var data []int64
+	arrayname := "externalTriggerRowcounts"
+	if err = npz.Read(f, arrayname, &data); err != nil {
+		t.Errorf("could not read array %s from npz file: %+v", arrayname, err)
+	} else if len(data) > 0 {
+		t.Errorf("array %s had size %d, want 0", arrayname, len(data))
+	}
+	// First frame index should be as long as channels and all the same
+	arrayname = "firstFrameIndex"
+	if err = npz.Read(f, arrayname, &data); err != nil {
+		t.Errorf("could not read array %s from npz file: %+v", arrayname, err)
+	}
+	if len(data) != simConfig.Nchan {
+		t.Errorf("array %s had size %d, want %d", arrayname, len(data), simConfig.Nchan)
+	}
+	for i := 1; i < simConfig.Nchan; i++ {
+		if data[i] != data[0] {
+			t.Errorf("npz file firstFrameIndex vector not all alike: %v", data)
 		}
 	}
 }
