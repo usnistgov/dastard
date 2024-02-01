@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.1** January 2024-
+* Process UDP packets containing external trigger information.
+
 **0.3.0** August 10, 2023
 * Add RPC command to store raw, untriggered data to temporary npy/npz files (issue 320).
 
