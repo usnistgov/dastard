@@ -611,10 +611,11 @@ type AbacoSource struct {
 	udpReceivers []*AbacoUDPReceiver
 
 	// Below here are independent of ring buffers vs UDP data sources.
-	producers   []PacketProducer
-	groups      map[GroupIndex]*AbacoGroup
-	readPeriod  time.Duration
-	buffersChan chan AbacoBuffersType
+	producers    []PacketProducer
+	groups       map[GroupIndex]*AbacoGroup
+	readPeriod   time.Duration
+	buffersChan  chan AbacoBuffersType
+	eTrigPackets []*packets.Packet // Unprocessed packets with external trigger info
 
 	unwrapOpts AbacoUnwrapOptions
 	AnySource
@@ -628,6 +629,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.udpReceivers = make([]*AbacoUDPReceiver, 0)
 	source.producers = make([]PacketProducer, 0)
 	source.groups = make(map[GroupIndex]*AbacoGroup)
+	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
 
 	// Probe for ring buffers that exist, and set up possible receivers.
@@ -741,6 +743,11 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 // distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
 func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
 	for _, p := range allpackets {
+		if p.IsExternalTrigger() {
+			as.eTrigPackets = append(as.eTrigPackets, p)
+			continue
+		}
+
 		cidx := gIndex(p)
 		as.groups[cidx].enqueuePacket(p, now)
 	}
@@ -1059,9 +1066,6 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	block := new(dataBlock)
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
-
-	// In the Lancero data this is where we scan for external triggers.
-	// That doesn't exist yet in Abaco.
 
 	// TODO: we should loop over devices here, matching devices to channels.
 	var wg sync.WaitGroup

@@ -631,7 +631,7 @@ func TestExtTriggerPackets(t *testing.T) {
 		// spew.Dump(h.shape)
 		// spew.Dump(h.offset)
 		// spew.Dump(h.timestamp)
-		// spew.Dump(h.Data)
+		// spew.Dump(h.format.wordlen, h.format.dtype)
 		// fmt.Println("figfig", h.ReadValue(0))
 	}
 }
