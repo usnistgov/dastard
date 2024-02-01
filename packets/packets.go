@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"reflect"
 
@@ -356,7 +355,7 @@ func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
 	if overhang > 0 {
 		padsize := int64(stride - overhang)
 		// _, err = data.Seek(int64(padsize), io.SeekCurrent); err != nil {
-		if _, err = io.CopyN(ioutil.Discard, data, padsize); err != nil {
+		if _, err = io.CopyN(io.Discard, data, padsize); err != nil {
 			return nil, err
 		}
 	}
