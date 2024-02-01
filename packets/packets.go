@@ -25,11 +25,13 @@ type Packet struct {
 	// Expected TLV objects. If 0 or 2+ examples, this cannot be processed
 	format    *headPayloadFormat
 	shape     *headPayloadShape
-	offset    headChannelOffset
 	timestamp *PacketTimestamp
 
 	// Optional TLV objects.
 	payloadLabel   PayloadLabel
+	offset         headChannelOffset
+	explicitOffset bool
+
 	// Any other TLV objects.
 	otherTLV []interface{}
 
@@ -193,8 +195,9 @@ func (p *Packet) ReadValue(sample int) int {
 		return int(d[sample])
 	case []int64:
 		return int(d[sample])
+	default:
+		panic("Oh no! Type of d is not known in Packet.ReadValue()")
 	}
-	return 0
 }
 
 // NewData adds data to the packet, and creates the format and shape TLV items to match.
@@ -228,7 +231,7 @@ func (p *Packet) NewData(data interface{}, dims []int16) error {
 		p.payloadLength = uint16(pfmt.wordlen * len(d))
 		p.Data = d
 	default:
-		return fmt.Errorf("Could not handle Packet.NewData of type %v", reflect.TypeOf(d))
+		return fmt.Errorf("could not handle Packet.NewData of type %v", reflect.TypeOf(d))
 	}
 	p.format = pfmt
 	p.headerLength += 8
@@ -404,7 +407,7 @@ func byteSwap(vectorIn interface{}) error {
 		return byteSwap2(b, 8)
 
 	default:
-		return fmt.Errorf("Cannot byte swap object of type %T", v)
+		return fmt.Errorf("cannot byte swap object of type %T", v)
 	}
 	return nil
 }
@@ -422,7 +425,7 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 	p.headerLength = hdr[1]
 	p.payloadLength = binary.BigEndian.Uint16(hdr[2:])
 	if p.headerLength < MINLENGTH {
-		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
+		return nil, fmt.Errorf("header length is %d, expect at least %d", p.headerLength, MINLENGTH)
 	}
 	p.packetLength = int(p.headerLength) + int(p.payloadLength)
 
@@ -430,7 +433,7 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 	p.sourceID = binary.BigEndian.Uint32(hdr[8:])
 	p.sequenceNumber = binary.BigEndian.Uint32(hdr[12:])
 	if magic != packetMAGIC {
-		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, packetMAGIC)
+		return nil, fmt.Errorf("magic was 0x%x, want 0x%x", magic, packetMAGIC)
 	}
 
 	tlvdata := make([]byte, p.headerLength-MINLENGTH)
@@ -446,6 +449,7 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 		switch val := tlv.(type) {
 		case headChannelOffset:
 			p.offset = val
+			p.explicitOffset = true
 		case *headPayloadShape:
 			p.shape = val
 		case *headPayloadFormat:
@@ -488,7 +492,7 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 				p.Data = result
 
 			default:
-				return nil, fmt.Errorf("Did not know how to read type %v", p.format.dtype)
+				return nil, fmt.Errorf("did not know how to read type %v", p.format.dtype)
 			}
 			if p.format.endian == binary.BigEndian {
 				if err = byteSwap(p.Data); err != nil {
@@ -659,7 +663,7 @@ func parseTLV(data []byte) (result []interface{}, err error) {
 				case 'Q':
 					err = pfmt.addDataComponent(reflect.Uint64, 8)
 				default:
-					return result, fmt.Errorf("Unknown data format character '%c' in format '%s'",
+					return result, fmt.Errorf("unknown data format character '%c' in format '%s'",
 						c, pfmt.rawfmt)
 				}
 				if err != nil {
