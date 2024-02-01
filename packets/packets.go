@@ -104,16 +104,7 @@ func (p *Packet) Frames() int {
 		}
 	}
 
-	switch d := p.Data.(type) {
-	case []int16:
-		return len(d) / nchan
-	case []int32:
-		return len(d) / nchan
-	case []int64:
-		return len(d) / nchan
-	default:
-		return 0
-	}
+	return int(p.payloadLength) / (p.format.wordlen * nchan)
 }
 
 // SequenceNumber returns the packet's internal sequenceNumber
