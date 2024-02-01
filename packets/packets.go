@@ -133,6 +133,14 @@ func (p *Packet) Timestamp() *PacketTimestamp {
 	return nil
 }
 
+// IsExternalTrigger tests a packet for whether it (appears to) contain external trigger timestamps
+func (p *Packet) IsExternalTrigger() bool {
+	if p.explicitOffset {
+		return false
+	}
+	return p.payloadLabel == "value,active,t"
+}
+
 // SetTimestamp puts timestamp `ts` into the header.
 func (p *Packet) SetTimestamp(ts *PacketTimestamp) error {
 	if p.timestamp == nil {

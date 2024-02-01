@@ -8,7 +8,6 @@ import (
 	"os"
 	"reflect"
 	"testing"
-	// "github.com/davecgh/go-spew/spew"
 )
 
 func TestByteSwap(t *testing.T) {
@@ -596,6 +595,44 @@ func TestExamplePackets(t *testing.T) {
 		// loc, _ := f.Seek(0, 1)
 		// fmt.Printf("Read packet %4d  of size %4d  fmt %s now at byte %8d\n", i,
 		// 	h.packetLength, h.format.rawfmt, loc)
+	}
+}
+
+func TestExtTriggerPackets(t *testing.T) {
+	datasource := "../testData/timer_packets.bin"
+	f, err := os.Open(datasource)
+	if err != nil {
+		t.Errorf("could not open %s", datasource)
+	}
+	defer f.Close()
+	expect_offset := []headChannelOffset{0, 0, 0, 0x3000}
+	isExtTrig := []bool{true, true, true, false}
+
+	for i := 0; ; i++ {
+		h, err := ReadPacket(f)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		} else if err != nil {
+			t.Errorf("could not read header from %s: %v", datasource, err)
+		}
+		if h.offset != expect_offset[i] {
+			t.Errorf("header channel offset %d, want 0", h.offset)
+		}
+		if h.IsExternalTrigger() != isExtTrig[i] {
+			t.Errorf("IsExternalTrigger() %t, want %t", h.IsExternalTrigger(), isExtTrig[i])
+		}
+		// loc, _ := f.Seek(0, 1)
+		// fmt.Printf("Read packet %4d  of size %4d  fmt %s now at byte %8d\n", i,
+		// 	h.packetLength, h.format.rawfmt, loc)
+		// fmt.Println(h.Frames(), h.Length(), h.SequenceNumber())
+		// spew.Dump(h)
+		// spew.Dump(h.offset)
+		// spew.Dump(h.payloadLabel)
+		// spew.Dump(h.shape)
+		// spew.Dump(h.offset)
+		// spew.Dump(h.timestamp)
+		// spew.Dump(h.Data)
+		// fmt.Println("figfig", h.ReadValue(0))
 	}
 }
 
