@@ -28,6 +28,8 @@ type Packet struct {
 	offset    headChannelOffset
 	timestamp *PacketTimestamp
 
+	// Optional TLV objects.
+	payloadLabel   PayloadLabel
 	// Any other TLV objects.
 	otherTLV []interface{}
 
@@ -41,16 +43,16 @@ const maxPACKETLENGTH int = 8192
 
 // TLV types
 const (
-	tlvNULL           = byte(0)
-	tlvTAG            = byte(0x09)
-	tlvTIMESTAMP      = byte(0x11)
-	tlvCOUNTER        = byte(0x12)
-	tlvTIMESTAMPUNIT  = byte(0x13)
-	tlvFORMAT         = byte(0x21)
-	tlvSHAPE          = byte(0x22)
-	tlvCHANOFFSET     = byte(0x23)
-	tlvUNKNOWNMYSTERY = byte(0x29)
-	tlvINVALID        = byte(0xff)
+	tlvNULL          = byte(0)
+	tlvTAG           = byte(0x09)
+	tlvTIMESTAMP     = byte(0x11)
+	tlvCOUNTER       = byte(0x12)
+	tlvTIMESTAMPUNIT = byte(0x13)
+	tlvFORMAT        = byte(0x21)
+	tlvSHAPE         = byte(0x22)
+	tlvCHANOFFSET    = byte(0x23)
+	tlvPAYLOADLABEL  = byte(0x29)
+	tlvINVALID       = byte(0xff)
 )
 
 // NewPacket generates a new packet with the given facts. No data are configured or stored.
@@ -450,6 +452,8 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 			p.format = val
 		case *PacketTimestamp:
 			p.timestamp = val
+		case PayloadLabel:
+			p.payloadLabel = val
 		default:
 			p.otherTLV = append(p.otherTLV, val)
 		}
@@ -511,6 +515,9 @@ type PacketTimestamp struct {
 
 // PacketTag represents a data type tag.
 type PacketTag uint32
+
+// PayloadLabel represents the label (field names) for a payload's data section
+type PayloadLabel string
 
 // MakeTimestamp creates a `PacketTimestamp` from data
 func MakeTimestamp(x uint16, y uint32, rate float64) *PacketTimestamp {
@@ -681,6 +688,10 @@ func parseTLV(data []byte) (result []interface{}, err error) {
 				return result, fmt.Errorf("channel offset TLV contains padding %du, want 0", pad)
 			}
 			result = append(result, offset)
+
+		case tlvPAYLOADLABEL:
+			label := PayloadLabel(string(data[2:int(tlvsize)]))
+			result = append(result, label)
 
 		default:
 			// Ignore the remainder of the TLV
