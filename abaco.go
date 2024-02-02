@@ -1094,13 +1094,17 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 	return as.nextBlock
 }
 
-func (as *AbacoSource) writeExternalTriggers() {
+func (as *AbacoSource) extractExternalTriggers() []int64 {
+	externalTriggers := make([]int64, 0)
 	for _, p := range as.eTrigPackets {
 		// These packets have form (u32, u32, u64) repeating, but we don't care about the first 2.
 		// So treat AS IF they were (u64, 64) repeating.
 		fmt.Printf("\nExternal trigger packet found:\n")
 		spew.Dump(*p)
 		fmt.Printf("Packet sequence: %d\n", p.SequenceNumber())
+
+		key0 := as.groupKeysSorted[0]
+		grp0 := as.groups[key0]
 		outlength := p.Frames()
 		switch d := p.Data.(type) {
 		case []byte:
@@ -1110,15 +1114,17 @@ func (as *AbacoSource) writeExternalTriggers() {
 				v := (u64data[i] >> 32) & 0xffffffff
 				a := u64data[i] & 0xffffffff
 				t := u64data[i+1]
-				key0 := as.groupKeysSorted[0]
-				fc := as.groups[key0].frameCountFromTimestamp(t)
+				fc := int64(grp0.frameCountFromTimestamp(t))
 				fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
+				externalTriggers = append(externalTriggers, fc)
 			}
 		default:
-			fmt.Println("Oh crap, wrong type in writeExternalTriggers")
+			fmt.Println("Oh crap, wrong type in extractExternalTriggers")
 		}
 	}
+	// Remove all queued eTrigPackets
 	as.eTrigPackets = as.eTrigPackets[:0]
+	return externalTriggers
 }
 
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
@@ -1134,8 +1140,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
 
-	// Here we write external trigger info to the relevant queue
-	as.writeExternalTriggers()
+	// Here we find external triggers from the queue of relevant packets
+	externalTriggers := as.extractExternalTriggers()
 
 	// TODO: we should loop over devices here, matching devices to channels.
 	var wg sync.WaitGroup
@@ -1170,6 +1176,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	if delay > 100*time.Millisecond {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(as.buffersChan), cap(as.buffersChan), now.Sub(firstTime))
 	}
+	block.externalTriggerRowcounts = externalTriggers
 
 	return block
 }
