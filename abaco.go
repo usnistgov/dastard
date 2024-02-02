@@ -1098,14 +1098,18 @@ func (as *AbacoSource) writeExternalTriggers() {
 	for _, p := range as.eTrigPackets {
 		// These packets have form (u32, u32, u64) repeating, but we don't care about the first 2.
 		// So treat AS IF they were (u64, 64) repeating.
+		fmt.Printf("\nExternal trigger packet found:\n")
 		spew.Dump(*p)
+		fmt.Printf("Packet sequence: %d\n", p.SequenceNumber())
 		outlength := p.Frames()
 		switch d := p.Data.(type) {
 		case []byte:
 			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), outlength)
 			packets.ByteSwap(u64data)
 			for i := 0; i < len(u64data); i += 2 {
-				fmt.Printf("0x%8x 0x%8x\n", u64data[i], u64data[i+1])
+				v := (u64data[i] >> 32) & 0xffffffff
+				a := u64data[i] & 0xffffffff
+				fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x\n", v, a, u64data[i+1])
 			}
 		default:
 			fmt.Println("Oh crap, wrong type in writeExternalTriggers")
