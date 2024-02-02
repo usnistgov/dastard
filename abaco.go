@@ -1108,9 +1108,9 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 		outlength := p.Frames()
 		switch d := p.Data.(type) {
 		case []byte:
-			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), outlength)
+			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), 2*outlength)
 			packets.ByteSwap(u64data)
-			for i := 0; i < len(u64data); i += 2 {
+			for i := 0; i < 2*outlength; i += 2 {
 				v := (u64data[i] >> 32) & 0xffffffff
 				a := u64data[i] & 0xffffffff
 				t := u64data[i+1]
