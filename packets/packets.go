@@ -378,7 +378,7 @@ func byteSwap2(b []byte, nb int) error {
 	return nil
 }
 
-func byteSwap(vectorIn interface{}) error {
+func ByteSwap(vectorIn interface{}) error {
 	switch v := vectorIn.(type) {
 	case []uint8:
 	case []int8:
@@ -493,7 +493,7 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 				return nil, fmt.Errorf("did not know how to read type %v", p.format.dtype)
 			}
 			if p.format.endian == binary.BigEndian {
-				if err = byteSwap(p.Data); err != nil {
+				if err = ByteSwap(p.Data); err != nil {
 					return nil, err
 				}
 			}

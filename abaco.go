@@ -1103,6 +1103,7 @@ func (as *AbacoSource) writeExternalTriggers() {
 		switch d := p.Data.(type) {
 		case []byte:
 			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), outlength)
+			packets.ByteSwap(u64data)
 			for i := 0; i < len(u64data); i += 2 {
 				fmt.Printf("0x%8x 0x%8x\n", u64data[i], u64data[i+1])
 			}

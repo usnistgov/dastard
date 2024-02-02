@@ -17,13 +17,13 @@ func TestByteSwap(t *testing.T) {
 	v2b := []int32{0x04030201, 0x0d0c0b0a, 0x1fff0000}
 	v3a := []int64{0x0102030405060708, 0x08090a0b0c0d0e0f, 0x0123456789abcd0f}
 	v3b := []int64{0x0807060504030201, 0x0f0e0d0c0b0a0908, 0x0fcdab8967452301}
-	if err := byteSwap(v1a); err != nil {
+	if err := ByteSwap(v1a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v1a, err)
 	}
-	if err := byteSwap(v2a); err != nil {
+	if err := ByteSwap(v2a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v2a, err)
 	}
-	if err := byteSwap(v3a); err != nil {
+	if err := ByteSwap(v3a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v3a, err)
 	}
 	for i, v := range v1a {
@@ -41,7 +41,7 @@ func TestByteSwap(t *testing.T) {
 			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v3b, i, v, v3b[i])
 		}
 	}
-	if err := byteSwap([]float64{2.5, 3.5}); err == nil {
+	if err := ByteSwap([]float64{2.5, 3.5}); err == nil {
 		t.Errorf("byteSwap([]float64) should error, did not.")
 	}
 }
