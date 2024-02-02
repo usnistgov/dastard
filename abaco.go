@@ -1110,7 +1110,8 @@ func (as *AbacoSource) writeExternalTriggers() {
 				v := (u64data[i] >> 32) & 0xffffffff
 				a := u64data[i] & 0xffffffff
 				t := u64data[i+1]
-				fc := as.groups[0].frameCountFromTimestamp(t)
+				key0 := as.groupKeysSorted[0]
+				fc := as.groups[key0].frameCountFromTimestamp(t)
 				fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
 			}
 		default:
