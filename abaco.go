@@ -1109,7 +1109,9 @@ func (as *AbacoSource) writeExternalTriggers() {
 			for i := 0; i < len(u64data); i += 2 {
 				v := (u64data[i] >> 32) & 0xffffffff
 				a := u64data[i] & 0xffffffff
-				fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x\n", v, a, u64data[i+1])
+				t := u64data[i+1]
+				fc := as.groups[0].frameCountFromTimestamp(t)
+				fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
 			}
 		default:
 			fmt.Println("Oh crap, wrong type in writeExternalTriggers")
