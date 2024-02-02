@@ -1101,7 +1101,7 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 		// So treat AS IF they were (u64, 64) repeating.
 		fmt.Printf("\nExternal trigger packet found:\n")
 		spew.Dump(*p)
-		fmt.Printf("Packet sequence: %d\n", p.SequenceNumber())
+		fmt.Printf("Packet sequence: %d   Num frames: %d\n", p.SequenceNumber(), p.Frames())
 
 		key0 := as.groupKeysSorted[0]
 		grp0 := as.groups[key0]
