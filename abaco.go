@@ -30,6 +30,13 @@ func gIndex(p *packets.Packet) GroupIndex {
 	return GroupIndex{Firstchan: offset, Nchan: nchan}
 }
 
+// FrameTimingCorrespondence tracks how we convert timestamps to FrameIndex
+type FrameTimingCorrepondence struct {
+	CountsPerFrame uint64
+	LastTimestamp  packets.PacketTimestamp
+	LastFrameCount FrameIndex
+}
+
 //------------------------------------------------------------------------------------------------
 
 // AbacoGroup represents a channel group, a set of consecutively numbered
@@ -43,6 +50,7 @@ type AbacoGroup struct {
 	lasttime   time.Time
 	seqnumsync uint32 // Global sequence number is referenced to this group's seq number at seqnumsync
 	lastSN     uint32
+	FrameTimingCorrepondence
 }
 
 // AbacoUnwrapOptions contains options to control phase unwrapping.
@@ -92,6 +100,23 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign)
 	}
 	return g
+}
+
+// updateFrameTiming will update the group's `FrameTimingCorrespondence` info,
+// as long as the packet has a valid timestamp, and the frameIdx is greater than any
+// previously seen. (Otherwise, return without effect.)
+func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameIndex) {
+	ts := p.Timestamp()
+	if ts == nil {
+		return
+	}
+	deltaTs := ts.T - group.LastTimestamp.T
+	if frameIdx <= group.LastFrameCount || deltaTs == 0 {
+		return
+	}
+	group.CountsPerFrame = deltaTs / uint64(frameIdx-group.LastFrameCount)
+	group.LastTimestamp = *ts
+	group.LastFrameCount = frameIdx
 }
 
 func (group *AbacoGroup) enqueuePacket(p *packets.Packet, now time.Time) {
@@ -749,7 +774,9 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 		}
 
 		cidx := gIndex(p)
-		as.groups[cidx].enqueuePacket(p, now)
+		grp := as.groups[cidx]
+		grp.enqueuePacket(p, now)
+		grp.updateFrameTiming(p, as.nextFrameNum)
 	}
 }
 
@@ -1100,6 +1127,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	if delay > 100*time.Millisecond {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(as.buffersChan), cap(as.buffersChan), now.Sub(firstTime))
 	}
+
+	// Here we move external trigger info to the relevant queue
 
 	return block
 }
