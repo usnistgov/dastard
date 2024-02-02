@@ -1111,6 +1111,7 @@ func (as *AbacoSource) writeExternalTriggers() {
 			fmt.Println("Oh crap, wrong type in writeExternalTriggers")
 		}
 	}
+	as.eTrigPackets = as.eTrigPackets[:0]
 }
 
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
