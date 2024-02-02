@@ -11,7 +11,9 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/fabiokung/shm"
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
@@ -1089,6 +1091,24 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 	return as.nextBlock
 }
 
+func (as *AbacoSource) writeExternalTriggers() {
+	for _, p := range as.eTrigPackets {
+		// These packets have form (u32, u32, u64) repeating, but we don't care about the first 2.
+		// So treat AS IF they were (u64, 64) repeating.
+		spew.Dump(*p)
+		outlength := p.Frames()
+		switch d := p.Data.(type) {
+		case []byte:
+			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), outlength)
+			for i := 0; i < len(u64data); i += 2 {
+				fmt.Printf("0x%8x 0x%8x\n", u64data[i], u64data[i+1])
+			}
+		default:
+			fmt.Println("Oh crap, wrong type in writeExternalTriggers")
+		}
+	}
+}
+
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
@@ -1101,6 +1121,9 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	block := new(dataBlock)
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
+
+	// Here we write external trigger info to the relevant queue
+	as.writeExternalTriggers()
 
 	// TODO: we should loop over devices here, matching devices to channels.
 	var wg sync.WaitGroup
@@ -1135,8 +1158,6 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	if delay > 100*time.Millisecond {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(as.buffersChan), cap(as.buffersChan), now.Sub(firstTime))
 	}
-
-	// Here we move external trigger info to the relevant queue
 
 	return block
 }
