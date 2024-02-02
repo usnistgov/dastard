@@ -826,6 +826,9 @@ func (as *AbacoSource) Sample() error {
 		}
 		// Create new AbacoGroup for each GroupIndex seen
 		for _, p := range results.allpackets {
+			if p.IsExternalTrigger() {
+				continue
+			}
 			cidx := gIndex(p)
 			if _, ok := as.groups[cidx]; !ok {
 				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapOpts)
