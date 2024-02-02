@@ -119,6 +119,14 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	group.LastFrameCount = frameIdx
 }
 
+// frameCountFromTimestamp uses the group.FrameTimingCorrespondence data to
+// convert a timestamp in raw Abaco clock counts to a FrameIndex
+func (group *AbacoGroup) frameCountFromTimestamp(timestamp uint64) FrameIndex {
+	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
+	deltaF := deltaTs / int64(group.CountsPerFrame)
+	return FrameIndex(int64(group.LastFrameCount) + deltaF)
+}
+
 func (group *AbacoGroup) enqueuePacket(p *packets.Packet, now time.Time) {
 	group.queue = append(group.queue, p)
 	group.lasttime = now
