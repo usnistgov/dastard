@@ -11,13 +11,14 @@ import (
 
 // RoachDevice represents a single ROACH device producing data by UDP packets
 type RoachDevice struct {
-	host   string        // in the form: "127.0.0.1:56789"
-	rate   float64       // Sampling rate (not reported by the device)
-	period time.Duration // Sampling period = 1/rate
-	nchan  int
-	conn   *net.UDPConn // active UDP connection
-	nextS  FrameIndex
-	unwrap []*PhaseUnwrapper
+	host       string        // in the form: "127.0.0.1:56789"
+	rate       float64       // Sampling rate (not reported by the device)
+	period     time.Duration // Sampling period = 1/rate
+	nchan      int
+	conn       *net.UDPConn // active UDP connection
+	nextS      FrameIndex
+	unwrapOpts AbacoUnwrapOptions
+	unwrap     []*PhaseUnwrapper
 }
 
 // RoachSource represents multiple ROACH devices
@@ -107,9 +108,9 @@ func (dev *RoachDevice) samplePacket() error {
 	dev.nextS = FrameIndex(header.Nsamp) + FrameIndex(header.Sampnum)
 	dev.nchan = int(header.Nchan)
 	dev.unwrap = make([]*PhaseUnwrapper, dev.nchan)
-	biaslevel := 0
-	pulseSign := +1
-	invertData := false
+	biaslevel := dev.unwrapOpts.calcBiasLevel()
+	pulseSign := dev.unwrapOpts.PulseSign
+	invertData := false // not implemented for ROACH at this time
 	for i := range dev.unwrap {
 		const enable = true
 		const resetAfter = 20000
@@ -321,6 +322,7 @@ func (rs *RoachSource) StartRun() error {
 type RoachSourceConfig struct {
 	HostPort []string
 	Rates    []float64
+	AbacoUnwrapOptions
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
@@ -330,6 +332,11 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 	if rs.sourceState != Inactive {
 		return fmt.Errorf("cannot Configure a RoachSource if it's not Inactive")
 	}
+
+	if err := config.AbacoUnwrapOptions.isvalid(); err != nil {
+		return err
+	}
+
 	n := len(config.HostPort)
 	nr := len(config.Rates)
 	if n != nr {
@@ -343,6 +350,7 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 		if err != nil {
 			return err
 		}
+		dev.unwrapOpts = config.AbacoUnwrapOptions
 		rs.active = append(rs.active, dev)
 	}
 	for i, dev := range rs.active {

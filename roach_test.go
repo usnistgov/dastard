@@ -88,6 +88,10 @@ func TestRoachDevice(t *testing.T) {
 	if err != nil {
 		t.Errorf("NewRoachDevice returned %v", err)
 	}
+	dev.unwrapOpts.PulseSign = +1
+	dev.unwrapOpts.Bias = false
+	dev.unwrapOpts.RescaleRaw = true
+	dev.unwrapOpts.Unwrap = true
 	time.Sleep(50 * time.Millisecond)
 	err = dev.samplePacket()
 	if err != nil {
@@ -143,6 +147,10 @@ func TestRoachSource(t *testing.T) {
 	config := RoachSourceConfig{
 		HostPort: []string{host},
 		Rates:    []float64{40000.0, 50000.0}, // 2 Rates will be an error
+		AbacoUnwrapOptions: AbacoUnwrapOptions{
+			PulseSign: +1,
+			Unwrap:    false,
+		},
 	}
 	err = rs.Configure(&config)
 	if err == nil {
