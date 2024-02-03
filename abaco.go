@@ -11,6 +11,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/fabiokung/shm"
 	"github.com/usnistgov/dastard/packets"
@@ -30,6 +31,13 @@ func gIndex(p *packets.Packet) GroupIndex {
 	return GroupIndex{Firstchan: offset, Nchan: nchan}
 }
 
+// FrameTimingCorrespondence tracks how we convert timestamps to FrameIndex
+type FrameTimingCorrepondence struct {
+	CountsPerFrame uint64
+	LastTimestamp  packets.PacketTimestamp
+	LastFrameCount FrameIndex
+}
+
 //------------------------------------------------------------------------------------------------
 
 // AbacoGroup represents a channel group, a set of consecutively numbered
@@ -43,6 +51,7 @@ type AbacoGroup struct {
 	lasttime   time.Time
 	seqnumsync uint32 // Global sequence number is referenced to this group's seq number at seqnumsync
 	lastSN     uint32
+	FrameTimingCorrepondence
 }
 
 // AbacoUnwrapOptions contains options to control phase unwrapping.
@@ -105,6 +114,31 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign, invert)
 	}
 	return g
+}
+
+// updateFrameTiming will update the group's `FrameTimingCorrespondence` info,
+// as long as the packet has a valid timestamp, and the frameIdx is greater than any
+// previously seen. (Otherwise, return without effect.)
+func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameIndex) {
+	ts := p.Timestamp()
+	if ts == nil {
+		return
+	}
+	deltaTs := ts.T - group.LastTimestamp.T
+	if frameIdx <= group.LastFrameCount || deltaTs == 0 {
+		return
+	}
+	group.CountsPerFrame = deltaTs / uint64(frameIdx-group.LastFrameCount)
+	group.LastTimestamp = *ts
+	group.LastFrameCount = frameIdx
+}
+
+// frameCountFromTimestamp uses the group.FrameTimingCorrespondence data to
+// convert a timestamp in raw Abaco clock counts to a FrameIndex
+func (group *AbacoGroup) frameCountFromTimestamp(timestamp uint64) FrameIndex {
+	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
+	deltaF := deltaTs / int64(group.CountsPerFrame)
+	return FrameIndex(int64(group.LastFrameCount) + deltaF)
 }
 
 func (group *AbacoGroup) enqueuePacket(p *packets.Packet, now time.Time) {
@@ -624,10 +658,11 @@ type AbacoSource struct {
 	udpReceivers []*AbacoUDPReceiver
 
 	// Below here are independent of ring buffers vs UDP data sources.
-	producers   []PacketProducer
-	groups      map[GroupIndex]*AbacoGroup
-	readPeriod  time.Duration
-	buffersChan chan AbacoBuffersType
+	producers    []PacketProducer
+	groups       map[GroupIndex]*AbacoGroup
+	readPeriod   time.Duration
+	buffersChan  chan AbacoBuffersType
+	eTrigPackets []*packets.Packet // Unprocessed packets with external trigger info
 
 	unwrapOpts AbacoUnwrapOptions
 	AnySource
@@ -641,6 +676,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.udpReceivers = make([]*AbacoUDPReceiver, 0)
 	source.producers = make([]PacketProducer, 0)
 	source.groups = make(map[GroupIndex]*AbacoGroup)
+	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
 
 	// Probe for ring buffers that exist, and set up possible receivers.
@@ -754,8 +790,15 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 // distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
 func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
 	for _, p := range allpackets {
+		if p.IsExternalTrigger() {
+			as.eTrigPackets = append(as.eTrigPackets, p)
+			continue
+		}
+
 		cidx := gIndex(p)
-		as.groups[cidx].enqueuePacket(p, now)
+		grp := as.groups[cidx]
+		grp.enqueuePacket(p, now)
+		grp.updateFrameTiming(p, as.nextFrameNum)
 	}
 }
 
@@ -795,6 +838,9 @@ func (as *AbacoSource) Sample() error {
 		}
 		// Create new AbacoGroup for each GroupIndex seen
 		for _, p := range results.allpackets {
+			if p.IsExternalTrigger() {
+				continue
+			}
 			cidx := gIndex(p)
 			if _, ok := as.groups[cidx]; !ok {
 				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapOpts)
@@ -1060,6 +1106,39 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 	return as.nextBlock
 }
 
+func (as *AbacoSource) extractExternalTriggers() []int64 {
+	externalTriggers := make([]int64, 0)
+	for _, p := range as.eTrigPackets {
+		// These packets have form (u32, u32, u64) repeating, but we don't care about the first 2.
+		// So it's simplest to treat AS IF they were (u64, 64) repeating.
+		// fmt.Printf("\nExternal trigger packet found:\n")
+		// spew.Dump(*p)
+		// fmt.Printf("Packet sequence: %d   Num frames: %d\n", p.SequenceNumber(), p.Frames())
+
+		key0 := as.groupKeysSorted[0]
+		grp0 := as.groups[key0]
+		outlength := p.Frames()
+		switch d := p.Data.(type) {
+		case []byte:
+			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), 2*outlength)
+			packets.ByteSwap(u64data)
+			for i := 0; i < 2*outlength; i += 2 {
+				// v := (u64data[i] >> 32) & 0xffffffff
+				// a := u64data[i] & 0xffffffff
+				t := u64data[i+1]
+				fc := int64(grp0.frameCountFromTimestamp(t))
+				// fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
+				externalTriggers = append(externalTriggers, fc)
+			}
+		default:
+			fmt.Println("Oh crap, wrong type in extractExternalTriggers")
+		}
+	}
+	// Remove all queued eTrigPackets
+	as.eTrigPackets = as.eTrigPackets[:0]
+	return externalTriggers
+}
+
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
@@ -1073,8 +1152,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
 
-	// In the Lancero data this is where we scan for external triggers.
-	// That doesn't exist yet in Abaco.
+	// Here we find external triggers from the queue of relevant packets
+	externalTriggers := as.extractExternalTriggers()
 
 	// TODO: we should loop over devices here, matching devices to channels.
 	var wg sync.WaitGroup
@@ -1109,6 +1188,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 	if delay > 100*time.Millisecond {
 		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(as.buffersChan), cap(as.buffersChan), now.Sub(firstTime))
 	}
+	block.externalTriggerRowcounts = externalTriggers
 
 	return block
 }

@@ -2,6 +2,7 @@
 
 **0.3.1** February 2024-
 * Add configuration to invert an arbitrary subset of Abaco channels (issue 330).
+* Process UDP packets containing external trigger information (issue 331).
 
 **0.3.0** August 10, 2023
 * Add RPC command to store raw, untriggered data to temporary npy/npz files (issue 320).

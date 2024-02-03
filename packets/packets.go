@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"reflect"
 
@@ -25,8 +24,12 @@ type Packet struct {
 	// Expected TLV objects. If 0 or 2+ examples, this cannot be processed
 	format    *headPayloadFormat
 	shape     *headPayloadShape
-	offset    headChannelOffset
 	timestamp *PacketTimestamp
+
+	// Optional TLV objects.
+	payloadLabel   PayloadLabel
+	offset         headChannelOffset
+	explicitOffset bool
 
 	// Any other TLV objects.
 	otherTLV []interface{}
@@ -41,16 +44,16 @@ const maxPACKETLENGTH int = 8192
 
 // TLV types
 const (
-	tlvNULL           = byte(0)
-	tlvTAG            = byte(0x09)
-	tlvTIMESTAMP      = byte(0x11)
-	tlvCOUNTER        = byte(0x12)
-	tlvTIMESTAMPUNIT  = byte(0x13)
-	tlvFORMAT         = byte(0x21)
-	tlvSHAPE          = byte(0x22)
-	tlvCHANOFFSET     = byte(0x23)
-	tlvUNKNOWNMYSTERY = byte(0x29)
-	tlvINVALID        = byte(0xff)
+	tlvNULL          = byte(0)
+	tlvTAG           = byte(0x09)
+	tlvTIMESTAMP     = byte(0x11)
+	tlvCOUNTER       = byte(0x12)
+	tlvTIMESTAMPUNIT = byte(0x13)
+	tlvFORMAT        = byte(0x21)
+	tlvSHAPE         = byte(0x22)
+	tlvCHANOFFSET    = byte(0x23)
+	tlvPAYLOADLABEL  = byte(0x29)
+	tlvINVALID       = byte(0xff)
 )
 
 // NewPacket generates a new packet with the given facts. No data are configured or stored.
@@ -101,16 +104,7 @@ func (p *Packet) Frames() int {
 		}
 	}
 
-	switch d := p.Data.(type) {
-	case []int16:
-		return len(d) / nchan
-	case []int32:
-		return len(d) / nchan
-	case []int64:
-		return len(d) / nchan
-	default:
-		return 0
-	}
+	return int(p.payloadLength) / (p.format.wordlen * nchan)
 }
 
 // SequenceNumber returns the packet's internal sequenceNumber
@@ -127,6 +121,14 @@ func (p *Packet) Timestamp() *PacketTimestamp {
 		return tsCopy
 	}
 	return nil
+}
+
+// IsExternalTrigger tests a packet for whether it (appears to) contain external trigger timestamps
+func (p *Packet) IsExternalTrigger() bool {
+	if p.explicitOffset {
+		return false
+	}
+	return p.payloadLabel == "value,active,t"
 }
 
 // SetTimestamp puts timestamp `ts` into the header.
@@ -191,8 +193,9 @@ func (p *Packet) ReadValue(sample int) int {
 		return int(d[sample])
 	case []int64:
 		return int(d[sample])
+	default:
+		panic("Oh no! Type of d is not known in Packet.ReadValue()")
 	}
-	return 0
 }
 
 // NewData adds data to the packet, and creates the format and shape TLV items to match.
@@ -226,7 +229,7 @@ func (p *Packet) NewData(data interface{}, dims []int16) error {
 		p.payloadLength = uint16(pfmt.wordlen * len(d))
 		p.Data = d
 	default:
-		return fmt.Errorf("Could not handle Packet.NewData of type %v", reflect.TypeOf(d))
+		return fmt.Errorf("could not handle Packet.NewData of type %v", reflect.TypeOf(d))
 	}
 	p.format = pfmt
 	p.headerLength += 8
@@ -343,7 +346,7 @@ func ReadPacketPlusPad(data io.Reader, stride int) (p *Packet, err error) {
 	if overhang > 0 {
 		padsize := int64(stride - overhang)
 		// _, err = data.Seek(int64(padsize), io.SeekCurrent); err != nil {
-		if _, err = io.CopyN(ioutil.Discard, data, padsize); err != nil {
+		if _, err = io.CopyN(io.Discard, data, padsize); err != nil {
 			return nil, err
 		}
 	}
@@ -375,7 +378,7 @@ func byteSwap2(b []byte, nb int) error {
 	return nil
 }
 
-func byteSwap(vectorIn interface{}) error {
+func ByteSwap(vectorIn interface{}) error {
 	switch v := vectorIn.(type) {
 	case []uint8:
 	case []int8:
@@ -402,7 +405,7 @@ func byteSwap(vectorIn interface{}) error {
 		return byteSwap2(b, 8)
 
 	default:
-		return fmt.Errorf("Cannot byte swap object of type %T", v)
+		return fmt.Errorf("cannot byte swap object of type %T", v)
 	}
 	return nil
 }
@@ -420,7 +423,7 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 	p.headerLength = hdr[1]
 	p.payloadLength = binary.BigEndian.Uint16(hdr[2:])
 	if p.headerLength < MINLENGTH {
-		return nil, fmt.Errorf("Header length is %d, expect at least %d", p.headerLength, MINLENGTH)
+		return nil, fmt.Errorf("header length is %d, expect at least %d", p.headerLength, MINLENGTH)
 	}
 	p.packetLength = int(p.headerLength) + int(p.payloadLength)
 
@@ -428,7 +431,7 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 	p.sourceID = binary.BigEndian.Uint32(hdr[8:])
 	p.sequenceNumber = binary.BigEndian.Uint32(hdr[12:])
 	if magic != packetMAGIC {
-		return nil, fmt.Errorf("Magic was 0x%x, want 0x%x", magic, packetMAGIC)
+		return nil, fmt.Errorf("magic was 0x%x, want 0x%x", magic, packetMAGIC)
 	}
 
 	tlvdata := make([]byte, p.headerLength-MINLENGTH)
@@ -444,12 +447,15 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 		switch val := tlv.(type) {
 		case headChannelOffset:
 			p.offset = val
+			p.explicitOffset = true
 		case *headPayloadShape:
 			p.shape = val
 		case *headPayloadFormat:
 			p.format = val
 		case *PacketTimestamp:
 			p.timestamp = val
+		case PayloadLabel:
+			p.payloadLabel = val
 		default:
 			p.otherTLV = append(p.otherTLV, val)
 		}
@@ -484,10 +490,10 @@ func ReadPacket(data io.Reader) (p *Packet, err error) {
 				p.Data = result
 
 			default:
-				return nil, fmt.Errorf("Did not know how to read type %v", p.format.dtype)
+				return nil, fmt.Errorf("did not know how to read type %v", p.format.dtype)
 			}
 			if p.format.endian == binary.BigEndian {
-				if err = byteSwap(p.Data); err != nil {
+				if err = ByteSwap(p.Data); err != nil {
 					return nil, err
 				}
 			}
@@ -511,6 +517,9 @@ type PacketTimestamp struct {
 
 // PacketTag represents a data type tag.
 type PacketTag uint32
+
+// PayloadLabel represents the label (field names) for a payload's data section
+type PayloadLabel string
 
 // MakeTimestamp creates a `PacketTimestamp` from data
 func MakeTimestamp(x uint16, y uint32, rate float64) *PacketTimestamp {
@@ -652,7 +661,7 @@ func parseTLV(data []byte) (result []interface{}, err error) {
 				case 'Q':
 					err = pfmt.addDataComponent(reflect.Uint64, 8)
 				default:
-					return result, fmt.Errorf("Unknown data format character '%c' in format '%s'",
+					return result, fmt.Errorf("unknown data format character '%c' in format '%s'",
 						c, pfmt.rawfmt)
 				}
 				if err != nil {
@@ -681,6 +690,10 @@ func parseTLV(data []byte) (result []interface{}, err error) {
 				return result, fmt.Errorf("channel offset TLV contains padding %du, want 0", pad)
 			}
 			result = append(result, offset)
+
+		case tlvPAYLOADLABEL:
+			label := PayloadLabel(string(data[2:int(tlvsize)]))
+			result = append(result, label)
 
 		default:
 			// Ignore the remainder of the TLV

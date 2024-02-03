@@ -499,7 +499,7 @@ func TestRawDataBlock(t *testing.T) {
 	if err := client.Call("SourceControl.StoreRawDataBlock", &NblockData, &finalname); err != nil {
 		t.Error(err)
 	}
-	fmt.Printf("filename: %s\n", finalname)
+	// fmt.Printf("filename: %s\n", finalname)
 	dummy := ""
 
 	// Wait for the file to exist

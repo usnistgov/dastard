@@ -570,7 +570,8 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFrameIndex int) error {
 // HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
 // with the number of external triggers observed
 func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) error {
-	if ds.writingState.externalTriggerFileBufferedWriter == nil && len(externalTriggerRowcounts) > 0 &&
+	if ds.writingState.externalTriggerFileBufferedWriter == nil &&
+		len(externalTriggerRowcounts) > 0 &&
 		ds.writingState.ExternalTriggerFilename != "" {
 		// setup external trigger file if neccesary
 		var err error
@@ -586,7 +587,7 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 		}
 	}
 	ds.writingState.externalTriggerNumberObserved += len(externalTriggerRowcounts)
-	if ds.writingState.externalTriggerFileBufferedWriter != nil {
+	if ds.writingState.externalTriggerFileBufferedWriter != nil && len(externalTriggerRowcounts) > 0 {
 		_, err := ds.writingState.externalTriggerFileBufferedWriter.Write(getbytes.FromSliceInt64(externalTriggerRowcounts))
 		if err != nil {
 			return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
