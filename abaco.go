@@ -1098,7 +1098,7 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 	externalTriggers := make([]int64, 0)
 	for _, p := range as.eTrigPackets {
 		// These packets have form (u32, u32, u64) repeating, but we don't care about the first 2.
-		// So treat AS IF they were (u64, 64) repeating.
+		// So it's simplest to treat AS IF they were (u64, 64) repeating.
 		fmt.Printf("\nExternal trigger packet found:\n")
 		spew.Dump(*p)
 		fmt.Printf("Packet sequence: %d   Num frames: %d\n", p.SequenceNumber(), p.Frames())
