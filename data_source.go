@@ -588,9 +588,11 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 		}
 	}
 	ds.writingState.externalTriggerNumberObserved += len(externalTriggerRowcounts)
-	if ds.writingState.externalTriggerFileBufferedWriter != nil {
+	if ds.writingState.externalTriggerFileBufferedWriter != nil && len(externalTriggerRowcounts) > 0 {
 		fmt.Printf("Writing the following %d external triggers:\n", len(externalTriggerRowcounts))
 		spew.Dump(externalTriggerRowcounts)
+		fmt.Println("Testing:")
+		spew.Dump(getbytes.FromSliceInt64(externalTriggerRowcounts)[:16])
 		_, err := ds.writingState.externalTriggerFileBufferedWriter.Write(getbytes.FromSliceInt64(externalTriggerRowcounts))
 		if err != nil {
 			return fmt.Errorf("cannot write to externalTriggerFileBufferedWriter, err %v", err)
