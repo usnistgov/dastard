@@ -137,6 +137,9 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 // convert a timestamp in raw Abaco clock counts to a FrameIndex
 func (group *AbacoGroup) frameCountFromTimestamp(timestamp uint64) FrameIndex {
 	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
+	if group.CountsPerFrame == 0 {
+		return 0
+	}
 	deltaF := deltaTs / int64(group.CountsPerFrame)
 	return FrameIndex(int64(group.LastFrameCount) + deltaF)
 }
