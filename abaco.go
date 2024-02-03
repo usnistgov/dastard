@@ -1110,11 +1110,11 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), 2*outlength)
 			packets.ByteSwap(u64data)
 			for i := 0; i < 2*outlength; i += 2 {
-				v := (u64data[i] >> 32) & 0xffffffff
-				a := u64data[i] & 0xffffffff
+				// v := (u64data[i] >> 32) & 0xffffffff
+				// a := u64data[i] & 0xffffffff
 				t := u64data[i+1]
 				fc := int64(grp0.frameCountFromTimestamp(t))
-				fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
+				// fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
 				externalTriggers = append(externalTriggers, fc)
 			}
 		default:
