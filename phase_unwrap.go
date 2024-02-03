@@ -2,7 +2,8 @@ package dastard
 
 import "fmt"
 
-// PhaseUnwrapper makes phase values continous by adding integers as needed
+// PhaseUnwrapper makes phase values continous by adding integers multiples of 2π phase as needed.
+// It also optionally inverts channels' data.
 type PhaseUnwrapper struct {
 	lastVal       uint16
 	offset        uint16
@@ -16,10 +17,13 @@ type PhaseUnwrapper struct {
 	resetOffset   uint16
 	signMask      RawType // Mask off the upper bits of raw: effect = convert signed->unsigned.
 	enable        bool    // are we even unwrapping at all?
+	invertData    bool    // do we invert all samples from this channel?
 }
 
 // NewPhaseUnwrapper creates a new PhaseUnwrapper object
-func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int) *PhaseUnwrapper {
+func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int,
+	invertData bool) *PhaseUnwrapper {
+
 	// Subtle point here: if no bits are to be dropped, then it makes no sense to perform
 	// phase unwrapping. When lowBitsToDrop==0, we cannot allow enable==true (because where would you
 	// put the bits set in the unwrapping process when there are no dropped bits?)
@@ -40,6 +44,7 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 	u.lowBitsToDrop = lowBitsToDrop
 	u.signMask = ^(RawType(0xffff) << fractionBits)
 	u.enable = enable
+	u.invertData = invertData
 
 	if lowBitsToDrop > 0 && enable {
 		u.twoPi = uint16(1) << (fractionBits - lowBitsToDrop)
@@ -66,6 +71,14 @@ func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel,
 
 // UnwrapInPlace unwraps in place
 func (u *PhaseUnwrapper) UnwrapInPlace(data *[]RawType) {
+
+	// Invert raw data for all channels that require it, before all other operations.
+	if u.invertData {
+		for i, rawVal := range *data {
+			(*data)[i] = rawVal ^ 0xffff
+		}
+	}
+
 	drop := u.lowBitsToDrop
 	if drop == 0 {
 		return
