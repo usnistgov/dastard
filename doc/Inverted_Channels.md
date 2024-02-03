@@ -2,29 +2,19 @@
 
 In February 2024, for the HEATES experiment at J-PARC, we needed the ability in software to invert the sign of an arbitrary subset of channels ([issue #330](https://github.com/usnistgov/dastard/issues/330)).
 
-This is now available in Dastard through the `AbacoUnwrapOptions` configuration object, specifically the `InvertChan` slice. However! We do not plan to allow these values to be set from the Dastard Commander GUI. That would add complexity to the typical case and risk people setting values in an unwanted way. How can you set channels to be in this list?
+This is now available in Dastard through the `AbacoUnwrapOptions` configuration object, specifically the `InvertChan` slice. How can you set channels to be in this list?
 
-## Method 1: change the Dastard configuration file
+## Method 1: use the dastard-commander GUI
 
-Look in `~/.dastard/config.yaml` for the abaco configuration. For instance:
+In the main window, under the Data Sources tab, if you select Abaco µMUX as the source type, you can find a large text edit box labeled Inverted Channels. This box is generally disabled (cannot be edited). If you want to add or remove channels from the inverted-channels list, you first need to enable the box. You can find the control in the Expert menu. Select the menu item `Change Inverted Chans` to enable editing in the Inverted Channels text box.
 
-```
-abaco:
-    activecards: []
-    availablecards: []
-    hostportudp: []
-    abacounwrapoptions:
-        rescaleraw: false
-        unwrap: true
-        bias: false
-        resetafter: 20000
-        pulsesign: 0
-        invertchan: []
-```
+When you Start Data for an Abaco source, this list is "normalized":
+* Words are split by whitespace and/or commas.
+* Words are converted to integers (or ignored when they cannot be).
+* Duplicates are removed.
+* The numbers are sorted.
 
-While Dastard is NOT running, you can change this configuration file and expect the changes to persist, unless modified by commands from the GUI. With Dastard stopped, find the `invertchan: []` entry, and fill the square brackets with a comma-separated list of channels that you want inverted.
-
-This change should be preserved across runs of Dastard.
+Then the normalized list is sent to the Dastard server (and used to change the entries in the text edit box). At this, the `Change Inverted Chans` expert menu item becomes un-checked. This is intended as a way to make it difficult to change the list of inverted channels (because it will not need frequent changes).
 
 ## Method 2: send an RPC request to a running Dastard.
 
