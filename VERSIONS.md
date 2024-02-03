@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.3.1** February 2024-
+**0.3.1** February 3, 2024
 * Add configuration to invert an arbitrary subset of Abaco channels (issue 330).
 * Process UDP packets containing external trigger information (issue 331).
 * Add configuration to allow biased unwrapping with Roach (issue 328).
