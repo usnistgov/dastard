@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/rpc"
@@ -678,7 +677,7 @@ func (s *SourceControl) SendAllStatus(dummy *string, reply *bool) error {
 
 // StoreRawDataBlock causes a block of raw data to be stored in a temporary file.
 func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
-	file, err := ioutil.TempFile("", "dastard_rawdata_*_inprogress.npz")
+	file, err := os.CreateTemp("", "dastard_rawdata_*_inprogress.npz")
 	if err != nil {
 		return err
 	}

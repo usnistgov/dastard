@@ -8,7 +8,6 @@ import (
 	"os"
 	"reflect"
 	"testing"
-	// "github.com/davecgh/go-spew/spew"
 )
 
 func TestByteSwap(t *testing.T) {
@@ -18,13 +17,13 @@ func TestByteSwap(t *testing.T) {
 	v2b := []int32{0x04030201, 0x0d0c0b0a, 0x1fff0000}
 	v3a := []int64{0x0102030405060708, 0x08090a0b0c0d0e0f, 0x0123456789abcd0f}
 	v3b := []int64{0x0807060504030201, 0x0f0e0d0c0b0a0908, 0x0fcdab8967452301}
-	if err := byteSwap(v1a); err != nil {
+	if err := ByteSwap(v1a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v1a, err)
 	}
-	if err := byteSwap(v2a); err != nil {
+	if err := ByteSwap(v2a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v2a, err)
 	}
-	if err := byteSwap(v3a); err != nil {
+	if err := ByteSwap(v3a); err != nil {
 		t.Errorf("byteSwap(%T) error: %v", v3a, err)
 	}
 	for i, v := range v1a {
@@ -42,7 +41,7 @@ func TestByteSwap(t *testing.T) {
 			t.Errorf("byteSwap(%T) v[%d]=0x%x, want 0x%x", v3b, i, v, v3b[i])
 		}
 	}
-	if err := byteSwap([]float64{2.5, 3.5}); err == nil {
+	if err := ByteSwap([]float64{2.5, 3.5}); err == nil {
 		t.Errorf("byteSwap([]float64) should error, did not.")
 	}
 }
@@ -596,6 +595,44 @@ func TestExamplePackets(t *testing.T) {
 		// loc, _ := f.Seek(0, 1)
 		// fmt.Printf("Read packet %4d  of size %4d  fmt %s now at byte %8d\n", i,
 		// 	h.packetLength, h.format.rawfmt, loc)
+	}
+}
+
+func TestExtTriggerPackets(t *testing.T) {
+	datasource := "../testData/timer_packets.bin"
+	f, err := os.Open(datasource)
+	if err != nil {
+		t.Errorf("could not open %s", datasource)
+	}
+	defer f.Close()
+	expect_offset := []headChannelOffset{0, 0, 0, 0x3000}
+	isExtTrig := []bool{true, true, true, false}
+
+	for i := 0; ; i++ {
+		h, err := ReadPacket(f)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		} else if err != nil {
+			t.Errorf("could not read header from %s: %v", datasource, err)
+		}
+		if h.offset != expect_offset[i] {
+			t.Errorf("header channel offset %d, want 0", h.offset)
+		}
+		if h.IsExternalTrigger() != isExtTrig[i] {
+			t.Errorf("IsExternalTrigger() %t, want %t", h.IsExternalTrigger(), isExtTrig[i])
+		}
+		// loc, _ := f.Seek(0, 1)
+		// fmt.Printf("Read packet %4d  of size %4d  fmt %s now at byte %8d\n", i,
+		// 	h.packetLength, h.format.rawfmt, loc)
+		// fmt.Println(h.Frames(), h.Length(), h.SequenceNumber())
+		// spew.Dump(h)
+		// spew.Dump(h.offset)
+		// spew.Dump(h.payloadLabel)
+		// spew.Dump(h.shape)
+		// spew.Dump(h.offset)
+		// spew.Dump(h.timestamp)
+		// spew.Dump(h.format.wordlen, h.format.dtype)
+		// fmt.Println("figfig", h.ReadValue(0))
 	}
 }
 

@@ -110,14 +110,10 @@ active. Some RPC requests are handled immediately. Others are queued up to be ac
 phase in the data handling cycle, to prevent race conditions. The following can be handled immediately:
 
 - `Start()`: an argument says which of the 5 source types to activate. (Fails if any source is active.)
-- `Stop()`:
-signals the active source to stop. (Fails if none is active.)
-- `ConfigureMixFraction()`: configure the TDM
-mix if the Lancero source is active (errors otherwise).
-- `ReadComment()`: reads the `comment.txt` file.
-Errors if no source is active, writing is not on, or the comment file cannot be read.
-- `SendAllStatus()`:
-broadcast complete Dastard state information to any active clients (such as Dastard-commander).
+- `Stop()`: signals the active source to stop. (Fails if none is active.)
+- `ConfigureMixFraction()`: configure the TDM mix if the Lancero source is active (errors otherwise).
+- `ReadComment()`: reads the `comment.txt` file. Errors if no source is active, writing is not on, or the comment file cannot be read.
+- `SendAllStatus()`: broadcast complete Dastard state information to any active clients (such as Dastard-commander).
 
 The following can be handled immediately, but only if the corresponding source is not running:
 - `ConfigureLanceroSource()`
