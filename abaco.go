@@ -47,11 +47,12 @@ type AbacoGroup struct {
 
 // AbacoUnwrapOptions contains options to control phase unwrapping.
 type AbacoUnwrapOptions struct {
-	RescaleRaw bool // are we rescaling (left-shifting) the raw data? If not, the rest is ignored
-	Unwrap     bool // are we even unwrapping at all?
-	Bias       bool // should the unwrapping be biased?
-	ResetAfter int  // reset the phase unwrap offset back to 0 after this many samples (≈auto-relock)
-	PulseSign  int  // direction data will go when pulse arrives, used to calculate bias level
+	RescaleRaw bool  // are we rescaling (left-shifting) the raw data? If not, the rest is ignored
+	Unwrap     bool  // are we even unwrapping at all?
+	Bias       bool  // should the unwrapping be biased?
+	ResetAfter int   // reset the phase unwrap offset back to 0 after this many samples (≈auto-relock)
+	PulseSign  int   // direction data will go when pulse arrives, used to calculate bias level
+	InvertChan []int // invert channels with these numbers before unwrapping phase
 }
 
 func (u AbacoUnwrapOptions) isvalid() error {
@@ -87,9 +88,21 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
+
+	isInverted := func(channum int) bool {
+		for _, ic := range opt.InvertChan {
+			if channum == ic {
+				return true
+			}
+		}
+		return false
+	}
+
 	for i := range g.unwrap {
+		channum := i + index.Firstchan
+		invert := isInverted(channum)
 		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, bitsToDrop, opt.Unwrap,
-			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign)
+			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign, invert)
 	}
 	return g
 }
