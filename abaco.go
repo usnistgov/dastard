@@ -18,6 +18,11 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
+const abacoPseudoRowRate = 64 // The external triggers will be resolved this much finer than the frame rate
+// That is, we are writing external trigger info at a rate that we'd call the "row rate" in a TDM system.
+// So we write the data as if Abaco data sources had a 64-row readout, but all we mean by that is that
+// they are being resolved at 64x finer time steps than the frame rate.
+
 const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
 const abacoBitsToDrop = 4
 
@@ -33,9 +38,9 @@ func gIndex(p *packets.Packet) GroupIndex {
 
 // FrameTimingCorrespondence tracks how we convert timestamps to FrameIndex
 type FrameTimingCorrepondence struct {
-	CountsPerFrame uint64
-	LastTimestamp  packets.PacketTimestamp
-	LastFrameCount FrameIndex
+	CountsPerRow  uint64
+	LastTimestamp packets.PacketTimestamp
+	LastRowCount  FrameIndex
 }
 
 //------------------------------------------------------------------------------------------------
@@ -125,23 +130,25 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 		return
 	}
 	deltaTs := ts.T - group.LastTimestamp.T
-	if frameIdx <= group.LastFrameCount || deltaTs == 0 {
+	if frameIdx <= group.LastRowCount || deltaTs == 0 {
 		return
 	}
-	group.CountsPerFrame = deltaTs / uint64(frameIdx-group.LastFrameCount)
+	newRowCount := frameIdx * abacoPseudoRowRate
+	deltaRow := newRowCount - group.LastRowCount
+	group.CountsPerRow = deltaTs / uint64(deltaRow)
 	group.LastTimestamp = *ts
-	group.LastFrameCount = frameIdx
+	group.LastRowCount = newRowCount
 }
 
-// frameCountFromTimestamp uses the group.FrameTimingCorrespondence data to
+// rowCountFromTimestamp uses the group.FrameTimingCorrespondence data to
 // convert a timestamp in raw Abaco clock counts to a FrameIndex
-func (group *AbacoGroup) frameCountFromTimestamp(timestamp uint64) FrameIndex {
-	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
-	if group.CountsPerFrame == 0 {
+func (group *AbacoGroup) rowCountFromTimestamp(timestamp uint64) FrameIndex {
+	if group.CountsPerRow == 0 {
 		return 0
 	}
-	deltaF := deltaTs / int64(group.CountsPerFrame)
-	return FrameIndex(int64(group.LastFrameCount) + deltaF)
+	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
+	deltaF := deltaTs / int64(group.CountsPerRow)
+	return FrameIndex(int64(group.LastRowCount) + deltaF)
 }
 
 func (group *AbacoGroup) enqueuePacket(p *packets.Packet, now time.Time) {
@@ -681,6 +688,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.groups = make(map[GroupIndex]*AbacoGroup)
 	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
+	source.rowFrameRatio = abacoPseudoRowRate
 
 	// Probe for ring buffers that exist, and set up possible receivers.
 	deviceCodes, err := enumerateAbacoRings()
@@ -1129,7 +1137,7 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 				// v := (u64data[i] >> 32) & 0xffffffff
 				// a := u64data[i] & 0xffffffff
 				t := u64data[i+1]
-				fc := int64(grp0.frameCountFromTimestamp(t))
+				fc := int64(grp0.rowCountFromTimestamp(t))
 				// fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
 				externalTriggers = append(externalTriggers, fc)
 			}

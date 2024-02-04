@@ -93,6 +93,7 @@ func NewLanceroSource() (*LanceroSource, error) {
 	if source.ncards == 0 && len(devnums) > 0 {
 		return source, fmt.Errorf("could not open any of /dev/lancero_user*, though devnums %v exist", devnums)
 	}
+
 	return source, nil
 }
 
@@ -340,6 +341,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 	thisColFirstCnum := cnum - ls.chanSepColumns
 	ls.groupKeysSorted = make([]GroupIndex, 0)
 	for _, device := range ls.active {
+		ls.rowFrameRatio = device.nrows
 		if ls.chanSepCards > 0 {
 			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
 			thisColFirstCnum = cnum - ls.chanSepColumns
