@@ -304,6 +304,7 @@ type AnySource struct {
 	lastread        time.Time
 	nextFrameNum    FrameIndex // frame number for the next frame we will receive
 	processors      []*DataStreamProcessor
+	rowFrameRatio   int // ratio of row rate to frame rate (for ext trigger purposes)
 
 	abortSelf    chan struct{}        // Signal to the core loop of active sources to stop
 	nextBlock    chan *dataBlock      // Signal from the core loop that a block is ready to process
@@ -581,7 +582,9 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 		}
 		ds.writingState.externalTriggerFileBufferedWriter = bufio.NewWriter(ds.writingState.externalTriggerFile)
 		// write header
-		_, err1 := ds.writingState.externalTriggerFileBufferedWriter.WriteString("# external trigger rowcounts as int64 binary data follows, rowcounts = framecounts*nrow+row\n")
+		msg := fmt.Sprintf("# external trigger rowcounts as int64 binary data follows, "+
+			"rowcounts = framecounts*nrow+row (nrow=%4d)\n", ds.rowFrameRatio)
+		_, err1 := ds.writingState.externalTriggerFileBufferedWriter.WriteString(msg)
 		if err1 != nil {
 			return fmt.Errorf("cannot write header to externalTriggerFileBufferedWriter, err %v", err)
 		}
