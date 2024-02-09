@@ -84,12 +84,55 @@ type ServerStatus struct {
 	// TODO: maybe bytes/sec data rate...?
 }
 
+// AsciiBouncer supplies a cute one-line ASCII art to show at the Dastard terminal
+// that Dastard is still alive (the old way was to fill the terminal with ugly messages).
+type AsciiBouncer struct {
+	width     int
+	xposition int
+	direction int
+}
+
+func (b *AsciiBouncer) move() {
+	b.xposition += b.direction
+	if b.direction == 0 {
+		b.direction = 1
+	}
+	if b.width <= 0 {
+		b.width = 20
+	}
+
+	if b.xposition >= b.width {
+		b.xposition = b.width - 2
+		b.direction = -1
+	} else if b.xposition < 0 {
+		b.xposition = 1
+		b.direction = 1
+	}
+}
+
+func (b *AsciiBouncer) String() string {
+	b.move()
+	var s strings.Builder
+	s.WriteString("Dastard status [")
+	s.WriteString(strings.Repeat(".", b.xposition))
+	s.WriteString("|-*-|")
+	if b.xposition < b.width {
+		s.WriteString(strings.Repeat(".", b.width-b.xposition))
+	}
+	s.WriteRune(']')
+	// Now backspace over every character, so any following printout overwrites this line
+	nchar := s.Len()
+	s.WriteString(strings.Repeat("\b", nchar))
+	return s.String()
+}
+
 // Heartbeat is the info sent in the regular heartbeat to clients
 type Heartbeat struct {
-	Running    bool
-	Time       float64
-	HWactualMB float64 // raw data received from hardware
-	DataMB     float64 // raw data processed (may exceed HWactualMB if missing data were filled in)
+	Running      bool
+	Time         float64
+	HWactualMB   float64 // raw data received from hardware
+	DataMB       float64 // raw data processed (may exceed HWactualMB if missing data were filled in)
+	AsciiBouncer         // include the features of an AsciiBounder
 }
 
 // FactorArgs holds the arguments to a Multiply operation (for testing!).
@@ -607,6 +650,10 @@ func (s *SourceControl) broadcastHeartbeat() {
 	s.totalData.Time = 0
 }
 
+func (s *SourceControl) terminalHeartbeat() {
+	fmt.Print(s.totalData.String())
+}
+
 func (s *SourceControl) broadcastStatus() {
 	s.handlePossibleStoppedSource()
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
@@ -787,11 +834,16 @@ func RunRPCServer(portrpc int, block bool) {
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
+		// Broadcast whenever the broadcastTicker fires
+		// Update ASCII art at terminal whenever terminalTicker fires
+		broadcastTicker := time.NewTicker(2 * time.Second)
+		terminalTicker := time.NewTicker(250 * time.Millisecond)
 		for {
 			select {
-			case <-ticker.C:
+			case <-broadcastTicker.C:
 				sourceControl.broadcastHeartbeat()
+			case <-terminalTicker.C:
+				sourceControl.terminalHeartbeat()
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.HWactualMB += h.HWactualMB
 				sourceControl.totalData.DataMB += h.DataMB
