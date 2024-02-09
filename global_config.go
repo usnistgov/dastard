@@ -46,10 +46,14 @@ var DastardStartTime time.Time
 // ProblemLogger will log warning messages to a file
 var ProblemLogger *log.Logger
 
+// UpdateLogger will log client updates to a file
+var UpdateLogger *log.Logger
+
 func init() {
 	setPortnumbers(5500)
 	DastardStartTime = time.Now()
 
 	// Dastard main program will override this, but at least initialize with a sensible value
 	ProblemLogger = log.New(os.Stderr, "", log.LstdFlags)
+	UpdateLogger = log.New(os.Stdout, "", log.LstdFlags)
 }

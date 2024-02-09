@@ -84,12 +84,55 @@ type ServerStatus struct {
 	// TODO: maybe bytes/sec data rate...?
 }
 
+// AsciiBouncer supplies a cute one-line ASCII art to show at the Dastard terminal
+// that Dastard is still alive (the old way was to fill the terminal with ugly messages).
+type AsciiBouncer struct {
+	width     int
+	xposition int
+	direction int
+}
+
+func (b *AsciiBouncer) move() {
+	b.xposition += b.direction
+	if b.direction == 0 {
+		b.direction = 1
+	}
+	if b.width <= 0 {
+		b.width = 20
+	}
+
+	if b.xposition >= b.width {
+		b.xposition = b.width - 2
+		b.direction = -1
+	} else if b.xposition < 0 {
+		b.xposition = 1
+		b.direction = 1
+	}
+}
+
+func (b *AsciiBouncer) String() string {
+	b.move()
+	var s strings.Builder
+	s.WriteString("Dastard status [")
+	s.WriteString(strings.Repeat(".", b.xposition))
+	s.WriteString("|-*-|")
+	if b.xposition < b.width {
+		s.WriteString(strings.Repeat(".", b.width-b.xposition))
+	}
+	s.WriteRune(']')
+	// Now backspace over every character, so any following printout overwrites this line
+	nchar := s.Len()
+	s.WriteString(strings.Repeat("\b", nchar))
+	return s.String()
+}
+
 // Heartbeat is the info sent in the regular heartbeat to clients
 type Heartbeat struct {
-	Running    bool
-	Time       float64
-	HWactualMB float64 // raw data received from hardware
-	DataMB     float64 // raw data processed (may exceed HWactualMB if missing data were filled in)
+	Running      bool
+	Time         float64
+	HWactualMB   float64 // raw data received from hardware
+	DataMB       float64 // raw data processed (may exceed HWactualMB if missing data were filled in)
+	AsciiBouncer         // include the features of an AsciiBounder
 }
 
 // FactorArgs holds the arguments to a Multiply operation (for testing!).
@@ -105,53 +148,53 @@ func (s *SourceControl) Multiply(args *FactorArgs, reply *int) error {
 
 // ConfigureTriangleSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureTriangleSource(args *TriangleSourceConfig, reply *bool) error {
-	log.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
+	UpdateLogger.Printf("ConfigureTriangleSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.triangle.Configure(args)
 	s.clientUpdates <- ClientUpdate{"TRIANGLE", args}
 	*reply = (err == nil)
-	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
+	UpdateLogger.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.triangle.nchan, s.triangle.sampleRate)
 	return err
 }
 
 // ConfigureSimPulseSource configures the source of simulated pulses.
 func (s *SourceControl) ConfigureSimPulseSource(args *SimPulseSourceConfig, reply *bool) error {
-	log.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
+	UpdateLogger.Printf("ConfigureSimPulseSource: %d chan, rate=%.3f\n", args.Nchan, args.SampleRate)
 	err := s.simPulses.Configure(args)
 	s.clientUpdates <- ClientUpdate{"SIMPULSE", args}
 	*reply = (err == nil)
-	log.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
+	UpdateLogger.Printf("Result is okay=%t and state={%d chan, rate=%.3f}\n", *reply, s.simPulses.nchan, s.simPulses.sampleRate)
 	return err
 }
 
 // ConfigureLanceroSource configures the lancero cards.
 func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply *bool) error {
-	log.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
+	UpdateLogger.Printf("ConfigureLanceroSource: mask 0x%4.4x  active cards: %v\n", args.FiberMask, args.ActiveCards)
 	err := s.lancero.Configure(args)
 	// Remember any errors for later, when we try to start the source.
 	s.lancero.configError = err
 	s.clientUpdates <- ClientUpdate{"LANCERO", args}
 	*reply = (err == nil)
-	log.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMHz, s.lancero.ncards)
+	UpdateLogger.Printf("Result is okay=%t and state={%d MHz clock, %d cards}\n", *reply, s.lancero.clockMHz, s.lancero.ncards)
 	return err
 }
 
 // ConfigureAbacoSource configures the Abaco cards.
 func (s *SourceControl) ConfigureAbacoSource(args *AbacoSourceConfig, reply *bool) error {
-	log.Printf("ConfigureAbacoSource: \n")
+	UpdateLogger.Printf("ConfigureAbacoSource: \n")
 	err := s.abaco.Configure(args)
 	s.clientUpdates <- ClientUpdate{"ABACO", args}
 	*reply = (err == nil)
-	log.Printf("Result is okay=%t\n", *reply)
+	UpdateLogger.Printf("Result is okay=%t\n", *reply)
 	return err
 }
 
 // ConfigureRoachSource configures the abaco cards.
 func (s *SourceControl) ConfigureRoachSource(args *RoachSourceConfig, reply *bool) error {
-	log.Printf("ConfigureRoachSource: \n")
+	UpdateLogger.Printf("ConfigureRoachSource: \n")
 	err := s.roach.Configure(args)
 	s.clientUpdates <- ClientUpdate{"ROACH", args}
 	*reply = (err == nil)
-	log.Printf("Result is okay=%t\n", *reply)
+	UpdateLogger.Printf("Result is okay=%t\n", *reply)
 	return err
 }
 
@@ -204,7 +247,7 @@ func (s *SourceControl) ConfigureTriggers(state *FullTriggerState, reply *bool) 
 		}
 		state.TriggerState.EMTState = newEMTState
 	}
-	log.Printf("Got ConfigureTriggers: %v", spew.Sdump(state))
+	UpdateLogger.Printf("Got ConfigureTriggers: %v", spew.Sdump(state))
 	f := func() {
 		err := s.ActiveSource.ChangeTriggerState(state)
 		s.broadcastTriggerState()
@@ -262,7 +305,7 @@ type SizeObject struct {
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
 	*reply = false // handle the case that sizes fails the validation tests and we return early
-	log.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
+	UpdateLogger.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if !s.isSourceActive {
 		return fmt.Errorf("no source is active")
 	}
@@ -607,6 +650,10 @@ func (s *SourceControl) broadcastHeartbeat() {
 	s.totalData.Time = 0
 }
 
+func (s *SourceControl) terminalHeartbeat() {
+	fmt.Print(s.totalData.String())
+}
+
 func (s *SourceControl) broadcastStatus() {
 	s.handlePossibleStoppedSource()
 	s.clientUpdates <- ClientUpdate{"STATUS", s.status}
@@ -640,7 +687,6 @@ func (s *SourceControl) broadcastMixState(mix []float64) {
 func (s *SourceControl) broadcastChannelNames() {
 	if s.isSourceActive && s.status.Running {
 		configs := s.ActiveSource.ChannelNames()
-		// log.Printf("chanNames: %v\n", configs)
 		s.clientUpdates <- ClientUpdate{"CHANNELNAMES", configs}
 	}
 }
@@ -715,7 +761,7 @@ func RunRPCServer(portrpc int, block bool) {
 	var okay bool
 	var spc SimPulseSourceConfig
 	spc.SampleRate = 1000.0
-	log.Printf("Dastard is using config file %s\n", viper.ConfigFileUsed())
+	log.Printf("Dastard config file: %s\n", viper.ConfigFileUsed())
 	err = viper.UnmarshalKey("simpulse", &spc)
 	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
 		spc.Nchan = 1
@@ -788,11 +834,16 @@ func RunRPCServer(portrpc int, block bool) {
 
 	// Regularly broadcast a "heartbeat" containing data rate to all clients
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
+		// Broadcast whenever the broadcastTicker fires
+		// Update ASCII art at terminal whenever terminalTicker fires
+		broadcastTicker := time.NewTicker(2 * time.Second)
+		terminalTicker := time.NewTicker(250 * time.Millisecond)
 		for {
 			select {
-			case <-ticker.C:
+			case <-broadcastTicker.C:
 				sourceControl.broadcastHeartbeat()
+			case <-terminalTicker.C:
+				sourceControl.terminalHeartbeat()
 			case h := <-sourceControl.heartbeats:
 				sourceControl.totalData.HWactualMB += h.HWactualMB
 				sourceControl.totalData.DataMB += h.DataMB
@@ -821,7 +872,7 @@ func RunRPCServer(portrpc int, block bool) {
 			if conn, err := listener.Accept(); err != nil {
 				panic("accept error: " + err.Error())
 			} else {
-				log.Printf("new connection established\n")
+				log.Printf("New client connection established\n")
 				go func() { // this is equivalent to ServeCodec, except all requests from a single connection
 					// are handled SYNCHRONOUSLY, so sourceControl doesn't need a lock
 					// requests from multiple connections are still asynchronous, but we could add slice of
@@ -849,4 +900,6 @@ func RunRPCServer(portrpc int, block bool) {
 	<-interruptCatcher
 	dummy := "dummy"
 	sourceControl.Stop(&dummy, &okay)
+	// Recover from the AsciiBouncer repeatedly repainting the terminal by printing a newline
+	fmt.Println()
 }
