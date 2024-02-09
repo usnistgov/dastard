@@ -42,7 +42,7 @@ func NewNoHardware(ncols int, nrows int, linePeriod int) (*NoHardware, error) {
 	return &lan, nil
 }
 
-// ChangeRingBuffer doesnt error
+// ChangeRingBuffer doesn't error
 func (lan *NoHardware) ChangeRingBuffer(length, threshold int) error {
 	return nil
 }
