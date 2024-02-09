@@ -107,10 +107,11 @@ func TestBadVersionNumbers(t *testing.T) {
 
 func TestWriter(t *testing.T) {
 	w := Writer{FileName: "writertest.ljh",
-		Samples:      100,
-		Presamples:   50,
-		NumberOfRows: 2,
-		RowNum:       1}
+		Samples:           100,
+		Presamples:        50,
+		SubframeDivisions: 2,
+		SubframeOffset:    1,
+	}
 	err := w.CreateFile()
 	if err != nil {
 		t.Errorf("file creation error: %v", err)
