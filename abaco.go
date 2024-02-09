@@ -18,10 +18,11 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-const abacoSubsampleDivisions = 64 // The external triggers will be resolved this much finer than the frame rate
-// That is, we are writing external trigger info at a clock rate that we'd call the "row rate" in a TDM system.
-// So we write the ext trigger data as if Abaco data sources had a 64-row readout, but all we mean by that is
-// that they are being resolved at 64x finer time steps than the frame rate.
+const abacoSubframeDivisions = 64 // The external triggers will be resolved this much finer than the frame rate
+// We are writing external trigger info at a clock rate finer than the frame rate, the "subframe" rate.
+// In TDM systems the subframe rate was equal to the row rate, thus historical usage has conflated the two.
+// For the Abaco it's arbitrary how finely we divide frames, but even at the lowest frame rate, 64 subdivisions
+// seems adequate.
 
 const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
 const abacoBitsToDrop = 4
@@ -38,7 +39,7 @@ func gIndex(p *packets.Packet) GroupIndex {
 
 // FrameTimingCorrespondence tracks how we convert timestamps to FrameIndex
 type FrameTimingCorrepondence struct {
-	SubframeRate      uint64 // Ratio of timestamp rate to subframe rate
+	SubframeDivisions uint64 // Ratio of subframe rate to timestamp rate
 	LastTimestamp     packets.PacketTimestamp
 	LastSubframeCount FrameIndex
 }
@@ -129,7 +130,7 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	if ts == nil {
 		return
 	}
-	newSubframeCount := frameIdx * abacoSubsampleDivisions
+	newSubframeCount := frameIdx * abacoSubframeDivisions
 	deltaSubframe := newSubframeCount - group.LastSubframeCount
 	deltaTs := ts.T - group.LastTimestamp.T
 	// There will be transient nonsense if the timestamp.Rate changes. I think the best
@@ -138,22 +139,22 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	group.LastTimestamp = *ts
 	group.LastSubframeCount = newSubframeCount
 	if deltaSubframe <= 0 || deltaTs == 0 || unequalRates {
-		group.SubframeRate = 0
+		group.SubframeDivisions = 0
 		return
 	}
-	group.SubframeRate = deltaTs / uint64(deltaSubframe)
+	group.SubframeDivisions = deltaTs / uint64(deltaSubframe)
 }
 
 // subframeCountFromTimestamp uses the group.FrameTimingCorrespondence data to
 // convert a timestamp (in raw Abaco clock counts) to a FrameIndex
 func (group *AbacoGroup) subframeCountFromTimestamp(timestamp uint64) FrameIndex {
-	if group.SubframeRate == 0 {
+	if group.SubframeDivisions == 0 {
 		return 0
 	}
 	// This will be in error if the two timestamps have unequal Rates, but
 	// that problem should be rare and go away as soon as new Rate is reused.
 	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
-	deltaF := deltaTs / int64(group.SubframeRate)
+	deltaF := deltaTs / int64(group.SubframeDivisions)
 	return FrameIndex(int64(group.LastSubframeCount) + deltaF)
 }
 
@@ -694,7 +695,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.groups = make(map[GroupIndex]*AbacoGroup)
 	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
-	source.subframeDivisions = abacoSubsampleDivisions
+	source.subframeDivisions = abacoSubframeDivisions
 
 	// Probe for ring buffers that exist, and set up possible receivers.
 	deviceCodes, err := enumerateAbacoRings()

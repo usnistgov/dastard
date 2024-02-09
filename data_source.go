@@ -584,7 +584,8 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 		ds.writingState.externalTriggerFileBufferedWriter = bufio.NewWriter(ds.writingState.externalTriggerFile)
 		// write header
 		msg := fmt.Sprintf("# external trigger rowcounts as int64 binary data follows, "+
-			"rowcounts = framecounts*nrow+row (nrow=%4d)\n", ds.subframeDivisions)
+			"subframeCounts = frameCounts*subframeDivisions+subframeOffset (subframeDivisions=%4d)\n",
+			ds.subframeDivisions)
 		_, err1 := ds.writingState.externalTriggerFileBufferedWriter.WriteString(msg)
 		if err1 != nil {
 			return fmt.Errorf("cannot write header to externalTriggerFileBufferedWriter, err %v", err)

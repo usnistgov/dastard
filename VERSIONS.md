@@ -2,7 +2,7 @@
 
 **0.3.2** February 2024-
 * Make external trigger resolution 64x finer (issue 335).
-* Add subframe info to LJH and OFF headers (issue 337).
+* Add subframe info to LJH and OFF headers; use subframe language throughout code (issue 337).
 
 **0.3.1** February 3, 2024
 * Add configuration to invert an arbitrary subset of Abaco channels (issue 330).

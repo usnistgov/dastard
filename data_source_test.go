@@ -191,19 +191,17 @@ func TestWritingFiles(t *testing.T) {
 		t.Error("Stop did not result in !HasLJH3")
 	}
 
-	if true { // block prevents variable from persisting (what variable?)
-		fileContents, err2 := os.ReadFile(experimentStateFilename)
-		fileContentsStr := string(fileContents)
-		if err2 != nil {
-			t.Error(err2)
-		}
-		expectFileContentsStr := "# unix time in nanoseconds, state label\n1538424162462127037, START\n1538174046828690465, AQ7\n1538424428433771969, STOP\n"
-		if !strings.HasPrefix(fileContentsStr, "# unix time in nanoseconds, state label\n") ||
-			!strings.Contains(fileContentsStr, ", START\n") ||
-			!strings.Contains(fileContentsStr, ", AQ7\n") ||
-			!strings.HasSuffix(fileContentsStr, ", STOP\n") ||
-			len(expectFileContentsStr) != len(fileContentsStr) {
-			t.Errorf("have\n%v\nwant (except timestamps should disagree)\n%v\n", fileContentsStr, expectFileContentsStr)
-		}
+	fileContents, err2 := os.ReadFile(experimentStateFilename)
+	fileContentsStr := string(fileContents)
+	if err2 != nil {
+		t.Error(err2)
+	}
+	expectFileContentsStr := "# unix time in nanoseconds, state label\n1538424162462127037, START\n1538174046828690465, AQ7\n1538424428433771969, STOP\n"
+	if !strings.HasPrefix(fileContentsStr, "# unix time in nanoseconds, state label\n") ||
+		!strings.Contains(fileContentsStr, ", START\n") ||
+		!strings.Contains(fileContentsStr, ", AQ7\n") ||
+		!strings.HasSuffix(fileContentsStr, ", STOP\n") ||
+		len(expectFileContentsStr) != len(fileContentsStr) {
+		t.Errorf("have\n%v\nwant (except timestamps should disagree)\n%v\n", fileContentsStr, expectFileContentsStr)
 	}
 }

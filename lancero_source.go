@@ -345,7 +345,15 @@ func (ls *LanceroSource) PrepareChannels() error {
 		// For Lancero sources, subframeDivisions = the number of rows.
 		// For sources with multiple LanceroDevice objects, its meaning is ambiguous, but we'll
 		// take the max value of all numbers of rows and hope for the best.
-		ls.subframeDivisions = max(device.nrows, ls.subframeDivisions)
+		if ls.subframeDivisions == 0 {
+			ls.subframeDivisions = device.nrows
+		} else if ls.subframeDivisions != device.nrows {
+			// If you have 2+ LanceroDevice objects with unequal row counts, then subframe timing stops
+			// making sense. We need to fail, and fix code later if that weird case is ever actually needed.
+			msg := fmt.Errorf("could not PrepareChannels; LanceroDevices with nrows = %d and %d cannot co-exist",
+				ls.subframeDivisions, device.nrows)
+			return msg
+		}
 		if ls.chanSepCards > 0 {
 			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
 			thisColFirstCnum = cnum - ls.chanSepColumns
