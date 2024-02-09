@@ -54,6 +54,7 @@ type Writer struct {
 	Presamples                int
 	Samples                   int
 	FramesPerSample           int
+	SubframeDivisions         int
 	Timebase                  float64
 	TimestampOffset           time.Time
 	NumberOfRows              int
@@ -69,6 +70,7 @@ type Writer struct {
 	ChannelNumberMatchingName int
 	ColumnNum                 int
 	RowNum                    int
+	SubframeOffset            int
 	PixelXPosition            int
 	PixelYPosition            int
 	PixelName                 string
@@ -176,17 +178,21 @@ Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
 Number of samples per point: %d
+Subframe divisions: %d
 Timestamp offset (s): %.6f
 Server Start Time: %s
 First Record Time: %s
+Subframe offset: %d
 Pixel X Position: %d
 Pixel Y Position: %d
 Pixel Name: %s
 Timebase: %e
 #End of Header
 `, w.DastardVersion, w.GitHash, w.SourceName, rowColText, w.NumberOfChans,
-		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.Presamples, w.Samples, w.FramesPerSample,
-		timestamp, starttime, firstrec, w.PixelXPosition, w.PixelYPosition, w.PixelName, w.Timebase,
+		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.Presamples, w.Samples,
+		w.FramesPerSample, w.SubframeDivisions,
+		timestamp, starttime, firstrec, w.SubframeOffset,
+		w.PixelXPosition, w.PixelYPosition, w.PixelName, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
@@ -237,8 +243,10 @@ type Writer3 struct {
 	Timebase                   float64
 	NumberOfRows               int
 	NumberOfColumns            int
+	SubframeDivisions          int
 	Row                        int
 	Column                     int
+	SubframeOffset             int
 	HeaderWritten              bool
 	FileName                   string
 	RecordsWritten             int
@@ -249,10 +257,12 @@ type Writer3 struct {
 
 // HeaderTDM contains info about TDM readout for placing in an LJH3 header
 type HeaderTDM struct {
-	NumberOfRows    int
-	NumberOfColumns int
-	Row             int
-	Column          int
+	NumberOfRows      int
+	NumberOfColumns   int
+	SubframeDivisions int
+	Row               int
+	Column            int
+	SubframeOffset    int
 }
 
 // Header is used to format the LJH3 json header
@@ -269,8 +279,13 @@ func (w *Writer3) WriteHeader() error {
 		return errors.New("header already written")
 	}
 	h := Header{Frameperiod: w.Timebase, Format: "LJH3", FormatVersion: "3.0.0",
-		TDM: HeaderTDM{NumberOfRows: w.NumberOfRows, NumberOfColumns: w.NumberOfColumns,
-			Row: w.Row, Column: w.Column}}
+		TDM: HeaderTDM{NumberOfRows: w.NumberOfRows,
+			NumberOfColumns:   w.NumberOfColumns,
+			SubframeDivisions: w.SubframeDivisions,
+			Row:               w.Row,
+			Column:            w.Column,
+			SubframeOffset:    w.SubframeOffset,
+		}}
 	s, err := json.MarshalIndent(h, "", "    ")
 	if err != nil {
 		panic("MarshallIndent error")
@@ -364,7 +379,6 @@ header:
 		case extract(line, "Digitized Word Size in Bytes: %d", &r.WordSize):
 		case extract(line, "Presamples: %d", &r.Presamples):
 		case extract(line, "Total Samples: %d", &r.Samples):
-		case extract(line, "Channel: %d", &r.ChannelIndex):
 		case extract(line, "Channel: %d", &r.ChannelIndex):
 		case extractFloat(line, "Timestamp offset (s): %f", &r.TimestampOffset):
 		case extractFloat(line, "Timebase: %f", &r.Timebase):
