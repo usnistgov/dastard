@@ -62,6 +62,7 @@ type LanceroSource struct {
 	chanSepColumns           int            // Channel separation between columns (or 0 to indicate number sequentially)
 	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	externalTriggerLastState bool
+	mixedRowCounts           bool
 	previousLastSampleTime   time.Time
 	AnySource
 }
@@ -349,10 +350,9 @@ func (ls *LanceroSource) PrepareChannels() error {
 			ls.subframeDivisions = device.nrows
 		} else if ls.subframeDivisions != device.nrows {
 			// If you have 2+ LanceroDevice objects with unequal row counts, then subframe timing stops
-			// making sense. We need to fail, and fix code later if that weird case is ever actually needed.
-			msg := fmt.Errorf("could not PrepareChannels; LanceroDevices with nrows = %d and %d cannot co-exist",
-				ls.subframeDivisions, device.nrows)
-			return msg
+			// making sense. We need to remember to fail if any external triggers arrive in that case;
+			// we'll fix code later if that weird case is ever actually needed.
+			ls.mixedRowCounts = true
 		}
 		if ls.chanSepCards > 0 {
 			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
@@ -853,6 +853,11 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 			v := datacopies[channelIndex][frame]
 			externalTriggerState := (v & 0x02) == 0x02 // external trigger bit is 2nd least significant bit in feedback (odd channelIndex)
 			if externalTriggerState && !ls.externalTriggerLastState {
+				if ls.mixedRowCounts {
+					panic("We cannot accurately time external triggers when 2+ LanceroDevices have unequal #s of rows")
+					// Todo: if this panic ever happens, we'd need to add code to track subframe timing PER DEVICE, rather
+					// than at the level of the overall LanceroSource. That would suck, so don't solve it unless needed.
+				}
 				externalTriggerRowcounts = append(externalTriggerRowcounts, (int64(frame)+int64(ls.nextFrameNum))*int64(nrows)+int64(row))
 			}
 			ls.externalTriggerLastState = externalTriggerState
