@@ -47,13 +47,17 @@ func (dp *DataPublisher) Flush() {
 // SetOFF adds an OFF writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
 func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
 	Timebase float64, TimestampOffset time.Time,
-	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
+	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
 	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
 	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string, pixel Pixel) {
-	ReadoutInfo := off.TimeDivisionMultiplexingInfo{NumberOfRows: NumberOfRows,
-		NumberOfColumns: NumberOfColumns,
-		NumberOfChans:   NumberOfChans,
-		ColumnNum:       colNum, RowNum: rowNum}
+	ReadoutInfo := off.TimeDivisionMultiplexingInfo{
+		NumberOfRows:      NumberOfRows,
+		NumberOfColumns:   NumberOfColumns,
+		NumberOfChans:     NumberOfChans,
+		SubframeDivisions: SubframeDivisions,
+		ColumnNum:         colNum,
+		RowNum:            rowNum,
+		SubframeOffset:    SubframeOffset}
 	PixelInfo := off.PixelInfo{XPosition: pixel.X, YPosition: pixel.Y, Name: pixel.Name}
 	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
 		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo)
@@ -78,12 +82,17 @@ func (dp *DataPublisher) RemoveOFF() {
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
 func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
-	NumberOfRows int, NumberOfColumns int, FileName string) {
-	w := ljh.Writer3{ChannelIndex: ChannelIndex,
-		Timebase:        Timebase,
-		NumberOfRows:    NumberOfRows,
-		NumberOfColumns: NumberOfColumns,
-		FileName:        FileName}
+	NumberOfRows, NumberOfColumns, SubframeDivisions, SubframeOffset int,
+	FileName string) {
+	w := ljh.Writer3{
+		ChannelIndex:      ChannelIndex,
+		Timebase:          Timebase,
+		NumberOfRows:      NumberOfRows,
+		NumberOfColumns:   NumberOfColumns,
+		SubframeDivisions: SubframeDivisions,
+		SubframeOffset:    SubframeOffset,
+		FileName:          FileName,
+	}
 	dp.LJH3 = &w
 	dp.WritingPaused = false
 	dp.numberWritten = 0
@@ -106,7 +115,7 @@ func (dp *DataPublisher) RemoveLJH3() {
 // SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
 func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
 	Timebase float64, TimestampOffset time.Time,
-	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
+	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
 	FileName, sourceName, chanName string, ChannelNumberMatchingName int, pixel Pixel) {
 	w := ljh.Writer{ChannelIndex: ChannelIndex,
 		Presamples:                Presamples,
@@ -117,6 +126,7 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 		NumberOfRows:              NumberOfRows,
 		NumberOfColumns:           NumberOfColumns,
 		NumberOfChans:             NumberOfChans,
+		SubframeDivisions:         SubframeDivisions,
 		FileName:                  FileName,
 		DastardVersion:            Build.Version,
 		GitHash:                   Build.Githash,
@@ -125,6 +135,7 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 		SourceName:                sourceName,
 		ColumnNum:                 colNum,
 		RowNum:                    rowNum,
+		SubframeOffset:            SubframeOffset,
 		PixelXPosition:            pixel.X,
 		PixelYPosition:            pixel.Y,
 		PixelName:                 pixel.Name,

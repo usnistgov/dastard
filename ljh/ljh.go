@@ -17,9 +17,9 @@ import (
 
 // PulseRecord is the interface for individual pulse records
 type PulseRecord struct {
-	TimeCode int64
-	RowCount int64
-	Pulse    []uint16
+	TimeCode      int64
+	SubframeCount int64
+	Pulse         []uint16
 }
 
 // VersionCode enumerates the LJH file version numbers.
@@ -54,6 +54,7 @@ type Writer struct {
 	Presamples                int
 	Samples                   int
 	FramesPerSample           int
+	SubframeDivisions         int
 	Timebase                  float64
 	TimestampOffset           time.Time
 	NumberOfRows              int
@@ -69,6 +70,7 @@ type Writer struct {
 	ChannelNumberMatchingName int
 	ColumnNum                 int
 	RowNum                    int
+	SubframeOffset            int
 	PixelXPosition            int
 	PixelYPosition            int
 	PixelName                 string
@@ -172,6 +174,8 @@ Number of channels: %d
 Channel name: %s
 Channel: %d
 ChannelIndex (in dastard): %d
+Subframe divisions: %d
+Subframe offset: %d
 Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
@@ -185,8 +189,10 @@ Pixel Name: %s
 Timebase: %e
 #End of Header
 `, w.DastardVersion, w.GitHash, w.SourceName, rowColText, w.NumberOfChans,
-		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.Presamples, w.Samples, w.FramesPerSample,
-		timestamp, starttime, firstrec, w.PixelXPosition, w.PixelYPosition, w.PixelName, w.Timebase,
+		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.SubframeDivisions, w.SubframeOffset,
+		w.Presamples, w.Samples, w.FramesPerSample,
+		timestamp, starttime, firstrec,
+		w.PixelXPosition, w.PixelYPosition, w.PixelName, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)
 	w.HeaderWritten = true
@@ -208,15 +214,14 @@ func (w Writer) Close() {
 
 // WriteRecord writes a single record to the files
 // timestamp should be a posix timestamp in microseconds
-// rowcount is framecount*number_of_rows+row_number for TDM or TDM-like (eg CDM) data,
-// rowcount=framecount for uMux data
+// subframeCount is framecount*subframeDivisions + subframeOffset
 // return error if data is wrong length (w.Samples is correct length)
 func (w *Writer) WriteRecord(framecount int64, timestamp int64, data []uint16) error {
 	if len(data) != w.Samples {
 		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
-	rowcount := framecount*int64(w.NumberOfRows) + int64(w.RowNum)
-	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
+	subframeCount := framecount*int64(w.SubframeDivisions) + int64(w.SubframeOffset)
+	if _, err := w.writer.Write(getbytes.FromInt64(subframeCount)); err != nil {
 		return err
 	}
 	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {
@@ -237,8 +242,10 @@ type Writer3 struct {
 	Timebase                   float64
 	NumberOfRows               int
 	NumberOfColumns            int
+	SubframeDivisions          int
 	Row                        int
 	Column                     int
+	SubframeOffset             int
 	HeaderWritten              bool
 	FileName                   string
 	RecordsWritten             int
@@ -249,10 +256,12 @@ type Writer3 struct {
 
 // HeaderTDM contains info about TDM readout for placing in an LJH3 header
 type HeaderTDM struct {
-	NumberOfRows    int
-	NumberOfColumns int
-	Row             int
-	Column          int
+	NumberOfRows      int
+	NumberOfColumns   int
+	SubframeDivisions int
+	Row               int
+	Column            int
+	SubframeOffset    int
 }
 
 // Header is used to format the LJH3 json header
@@ -269,8 +278,13 @@ func (w *Writer3) WriteHeader() error {
 		return errors.New("header already written")
 	}
 	h := Header{Frameperiod: w.Timebase, Format: "LJH3", FormatVersion: "3.0.0",
-		TDM: HeaderTDM{NumberOfRows: w.NumberOfRows, NumberOfColumns: w.NumberOfColumns,
-			Row: w.Row, Column: w.Column}}
+		TDM: HeaderTDM{NumberOfRows: w.NumberOfRows,
+			NumberOfColumns:   w.NumberOfColumns,
+			SubframeDivisions: w.SubframeDivisions,
+			Row:               w.Row,
+			Column:            w.Column,
+			SubframeOffset:    w.SubframeOffset,
+		}}
 	s, err := json.MarshalIndent(h, "", "    ")
 	if err != nil {
 		panic("MarshallIndent error")
@@ -365,7 +379,6 @@ header:
 		case extract(line, "Presamples: %d", &r.Presamples):
 		case extract(line, "Total Samples: %d", &r.Samples):
 		case extract(line, "Channel: %d", &r.ChannelIndex):
-		case extract(line, "Channel: %d", &r.ChannelIndex):
 		case extractFloat(line, "Timestamp offset (s): %f", &r.TimestampOffset):
 		case extractFloat(line, "Timebase: %f", &r.Timebase):
 
@@ -408,7 +421,7 @@ header:
 func (r *Reader) NextPulse() (*PulseRecord, error) {
 	pr := new(PulseRecord)
 	pr.Pulse = make([]uint16, r.Samples)
-	if err := binary.Read(r.file, binary.LittleEndian, &pr.RowCount); err != nil {
+	if err := binary.Read(r.file, binary.LittleEndian, &pr.SubframeCount); err != nil {
 		return nil, err
 	}
 	if err := binary.Read(r.file, binary.LittleEndian, &pr.TimeCode); err != nil {

@@ -292,19 +292,20 @@ type archiveableDataBlock struct {
 // AnySource implements features common to any object that implements
 // DataSource, including the output channels and the abort channel.
 type AnySource struct {
-	nchan           int           // how many channels to provide
-	name            string        // what kind of source is this?
-	chanNames       []string      // one name per channel
-	chanNumbers     []int         // names have format "prefixNumber", this is the number
-	rowColCodes     []RowColCode  // one RowColCode per channel
-	groupKeysSorted []GroupIndex  // sorted slice of channel group information
-	voltsPerArb     []float32     // the physical units per arb, one per channel
-	sampleRate      float64       // samples per second
-	samplePeriod    time.Duration // time per sample
-	lastread        time.Time
-	nextFrameNum    FrameIndex // frame number for the next frame we will receive
-	processors      []*DataStreamProcessor
-	rowFrameRatio   int // ratio of row rate to frame rate (for ext trigger purposes)
+	nchan             int           // how many channels to provide
+	name              string        // what kind of source is this?
+	chanNames         []string      // one name per channel
+	chanNumbers       []int         // names have format "prefixNumber", this is the number
+	rowColCodes       []RowColCode  // one RowColCode per channel
+	subframeOffsets   []int         // subframe time delay per channel
+	subframeDivisions int           // number of subframe divisions per frame
+	groupKeysSorted   []GroupIndex  // sorted slice of channel group information
+	voltsPerArb       []float32     // the physical units per arb, one per channel
+	sampleRate        float64       // samples per second
+	samplePeriod      time.Duration // time per sample
+	lastread          time.Time
+	nextFrameNum      FrameIndex // frame number for the next frame we will receive
+	processors        []*DataStreamProcessor
 
 	abortSelf    chan struct{}        // Signal to the core loop of active sources to stop
 	nextBlock    chan *dataBlock      // Signal from the core loop that a block is ready to process
@@ -583,7 +584,8 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 		ds.writingState.externalTriggerFileBufferedWriter = bufio.NewWriter(ds.writingState.externalTriggerFile)
 		// write header
 		msg := fmt.Sprintf("# external trigger rowcounts as int64 binary data follows, "+
-			"rowcounts = framecounts*nrow+row (nrow=%4d)\n", ds.rowFrameRatio)
+			"subframeCounts = frameCounts*subframeDivisions+subframeOffset (subframeDivisions=%4d)\n",
+			ds.subframeDivisions)
 		_, err1 := ds.writingState.externalTriggerFileBufferedWriter.WriteString(msg)
 		if err1 != nil {
 			return fmt.Errorf("cannot write header to externalTriggerFileBufferedWriter, err %v", err)
@@ -751,20 +753,23 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		if config.WriteLJH22 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, DastardStartTime, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
+				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
-				timebase, DastardStartTime, nrows, ncols, ds.nchan, rowNum, colNum, filename,
+				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
+				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
 				dsp.modelDescription, pixel)
 			channelsWithOff++
 		}
 		if config.WriteLJH3 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
-			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, filename)
+			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, ds.subframeDivisions,
+				ds.subframeOffsets[i], filename)
 		}
 	}
 	return ds.writingState.Start(filenamePattern, path)
@@ -868,9 +873,11 @@ func (ds *AnySource) PrepareChannels() error {
 
 	ds.chanNames = make([]string, ds.nchan)
 	ds.chanNumbers = make([]int, ds.nchan)
+	ds.subframeOffsets = make([]int, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
 		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
 		ds.chanNumbers[i] = i
+		ds.subframeOffsets[i] = 0
 	}
 	return nil
 }

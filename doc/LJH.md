@@ -29,23 +29,29 @@ This line indicates that the file is based on format described here.
 Save File Format Version: 2.2.0
 Software Version: DASTARD version 0.2.15
 Software Git Hash: 85ab821
-Data source: Abaco
+Data source: Lancero
 ```
 
-These lines uniquely identify the exact format, so the interpreting program can adapt. While the first line should be sufficient for this purpose, the second and third lines take in the possibility that a particular program may have a bug. The interpreting program may be aware of this bug and compensate. The Data source is meant for later human reference.
+These lines uniquely identify the exact format, so the interpreting program can adapt. While the first line should be sufficient for this purpose, the second and third lines take in the possibility that a particular program may have a bug. The interpreting program may be aware of this bug and compensate. The Data source is meant for later human reference: values include Abaco, Lancero, and Roach.
 
 ```
-Number of rows: 74
+Number of rows: 32
 Number of columns: 1
-Row number (from 0-73 inclusive): 12
+Row number (from 0-31 inclusive): 12
 Column number (from 0-0 inclusive): 0
-Number of channels: 74
+Number of channels: 32
 Channel name: chan12
 Channel: 12
 ChannelIndex (in dastard): 12
+Subframe divisions: 32
+Subframe offset: 12
 ```
 
 Dastard inserts this information to help downstream analysis tools understand the array being used when this file was acquired. 
+
+In February 2024, we added the Subframe divisions/offset tags. 
+* _Subframe divisions_ indicates the speed of the subframe counter, which is used for timing external triggers. It will be the row rate/frame rate ratio (i.e., the number of rows) for Lancero sources, and some arbitrary multiplier like 64 for other sources. 
+* _Subframe offset_ means how many subframe divisions delayed is THIS channel w.r.t. the frame clock. It will be the row number for Lancero sources, and 0 for other sources that read all channels simultaneously.
 
 ```
 Digitized Word Size in Bytes: 2
@@ -125,7 +131,7 @@ If you read an LJH file until the characters `#End of Header`, then the remainde
 Each record starts with a 16-byte time marker. The record's waveform data consists of the next L*M bytes, where L is the number of samples (`Total Samples:` value from the header) and M is the number of bytes per sample (`Digitized Word Size in Bytes:` from the header). M is always 2 bytes per sample, in practice.
 * The full record's length is **16+L*M** .
 * All values in the data record are little endian.
-* The first 8-byte word is the row counter. It counts the number of _row_ times read out since the server started. If the server has to resynchronize on the raw data, then the row counter will be incremented by an _estimate_ to account for the time missed.
+* The first 8-byte word is the subframe counter. It counts the number of _subframe_ divisions read out since the server started. If the server has to resynchronize on the raw data, then the subframe counter will be incremented by an _estimate_ to account for the time missed.
 * The second 8-byte word is the POSIX microsecond time, i.e., the time in microseconds since 1 January 1970 00:00 UT. (Warning: this will overflow in 292,226 years if you interpret it as a signed number.)
 * The next L words (of M bytes each) are the data record, as a signed or unsigned integer. (Typically, we use signed for the TDM error signal and unsigned for the TDM feedback, and unsigned for µMUX data.)
 

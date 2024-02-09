@@ -174,6 +174,8 @@ func (sps *SimPulseSource) Configure(config *SimPulseSourceConfig) error {
 	sps.nchan = config.Nchan
 	sps.sampleRate = config.SampleRate
 	sps.samplePeriod = time.Duration(roundint(1e9 / sps.sampleRate))
+	// As a simple test of LJH file-writing rules, give non-trivial subframe divisions
+	sps.subframeDivisions = sps.nchan
 
 	nsizes := len(config.Amplitudes)
 	sps.cycleLen = nsizes * config.Nsamp
@@ -220,6 +222,10 @@ func (sps *SimPulseSource) Sample() error {
 
 // StartRun launches the repeated loop that generates Triangle data.
 func (sps *SimPulseSource) StartRun() error {
+	// As a quick test of LJH files, give non-trivial subframe offsets
+	for i := 0; i < sps.nchan; i++ {
+		sps.subframeOffsets[i] = i
+	}
 	go func() {
 		log.Printf("starting SimPulseSource with cycleLen %v, nchan %v, timeperbuf %v\n",
 			sps.cycleLen, sps.nchan, sps.timeperbuf)

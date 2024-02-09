@@ -115,11 +115,13 @@ type CreationInfo struct {
 
 // TimeDivisionMultiplexingInfo stores info related to tdm readout for printing to the file header, aids with json formatting
 type TimeDivisionMultiplexingInfo struct {
-	NumberOfRows    int
-	NumberOfColumns int
-	NumberOfChans   int
-	ColumnNum       int
-	RowNum          int
+	NumberOfRows      int
+	NumberOfColumns   int
+	NumberOfChans     int
+	SubframeDivisions int
+	ColumnNum         int
+	RowNum            int
+	SubframeOffset    int
 }
 
 // HeaderWritten returns true if header has been written.

@@ -49,8 +49,8 @@ func TestRead(t *testing.T) {
 		if pr.TimeCode != tc {
 			t.Errorf("r.NextPulse().TimeCode = %d, want %d", pr.TimeCode, tc)
 		}
-		if pr.RowCount != expectedRC[i] {
-			t.Errorf("r.NextPulse().RowCount = %d, want %d", pr.RowCount, expectedRC[i])
+		if pr.SubframeCount != expectedRC[i] {
+			t.Errorf("r.NextPulse().SubframeCount = %d, want %d", pr.SubframeCount, expectedRC[i])
 		}
 	}
 	_, err = r.NextPulse()
@@ -107,10 +107,11 @@ func TestBadVersionNumbers(t *testing.T) {
 
 func TestWriter(t *testing.T) {
 	w := Writer{FileName: "writertest.ljh",
-		Samples:      100,
-		Presamples:   50,
-		NumberOfRows: 2,
-		RowNum:       1}
+		Samples:           100,
+		Presamples:        50,
+		SubframeDivisions: 2,
+		SubframeOffset:    1,
+	}
 	err := w.CreateFile()
 	if err != nil {
 		t.Errorf("file creation error: %v", err)
@@ -164,10 +165,10 @@ func TestWriter(t *testing.T) {
 	if record.TimeCode != 127 {
 		t.Errorf("WriterTest, TimeCode Wrong, have %v, wand %v", record.TimeCode, 127)
 	}
-	// WriteRecord accepts a framecount of 8888888 here, but we write the Rowcount 8888888*2+1=17777777
+	// WriteRecord accepts a framecount of 8888888 here, but we write the SubframeCount 8888888*2+1=17777777
 	// w.NumberOfRows = 2, w.RowNum = 1
-	if record.RowCount != 17777777 {
-		t.Errorf("WriterTest, RowCount Wrong, have %v, want %v", record.RowCount, 17777777)
+	if record.SubframeCount != 17777777 {
+		t.Errorf("WriterTest, SubframeCount Wrong, have %v, want %v", record.SubframeCount, 17777777)
 	}
 	w.SourceName = "Lancero"
 	w.WriteHeader(time.Now())
