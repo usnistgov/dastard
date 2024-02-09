@@ -17,9 +17,9 @@ import (
 
 // PulseRecord is the interface for individual pulse records
 type PulseRecord struct {
-	TimeCode int64
-	RowCount int64
-	Pulse    []uint16
+	TimeCode      int64
+	SubframeCount int64
+	Pulse         []uint16
 }
 
 // VersionCode enumerates the LJH file version numbers.
@@ -214,15 +214,14 @@ func (w Writer) Close() {
 
 // WriteRecord writes a single record to the files
 // timestamp should be a posix timestamp in microseconds
-// rowcount is framecount*number_of_rows+row_number for TDM or TDM-like (eg CDM) data,
-// rowcount=framecount for uMux data
+// subframeCount is framecount*subframeDivisions + subframeOffset
 // return error if data is wrong length (w.Samples is correct length)
 func (w *Writer) WriteRecord(framecount int64, timestamp int64, data []uint16) error {
 	if len(data) != w.Samples {
 		return fmt.Errorf("ljh incorrect number of samples, have %v, want %v", len(data), w.Samples)
 	}
-	rowcount := framecount*int64(w.NumberOfRows) + int64(w.RowNum)
-	if _, err := w.writer.Write(getbytes.FromInt64(rowcount)); err != nil {
+	subframeCount := framecount*int64(w.SubframeDivisions) + int64(w.SubframeOffset)
+	if _, err := w.writer.Write(getbytes.FromInt64(subframeCount)); err != nil {
 		return err
 	}
 	if _, err := w.writer.Write(getbytes.FromInt64(timestamp)); err != nil {
@@ -422,7 +421,7 @@ header:
 func (r *Reader) NextPulse() (*PulseRecord, error) {
 	pr := new(PulseRecord)
 	pr.Pulse = make([]uint16, r.Samples)
-	if err := binary.Read(r.file, binary.LittleEndian, &pr.RowCount); err != nil {
+	if err := binary.Read(r.file, binary.LittleEndian, &pr.SubframeCount); err != nil {
 		return nil, err
 	}
 	if err := binary.Read(r.file, binary.LittleEndian, &pr.TimeCode); err != nil {

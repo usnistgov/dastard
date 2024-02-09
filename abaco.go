@@ -19,9 +19,9 @@ import (
 )
 
 const abacoSubsampleDivisions = 64 // The external triggers will be resolved this much finer than the frame rate
-// That is, we are writing external trigger info at a rate that we'd call the "row rate" in a TDM system.
-// So we write the data as if Abaco data sources had a 64-row readout, but all we mean by that is that
-// they are being resolved at 64x finer time steps than the frame rate.
+// That is, we are writing external trigger info at a clock rate that we'd call the "row rate" in a TDM system.
+// So we write the ext trigger data as if Abaco data sources had a 64-row readout, but all we mean by that is
+// that they are being resolved at 64x finer time steps than the frame rate.
 
 const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
 const abacoBitsToDrop = 4
@@ -38,9 +38,9 @@ func gIndex(p *packets.Packet) GroupIndex {
 
 // FrameTimingCorrespondence tracks how we convert timestamps to FrameIndex
 type FrameTimingCorrepondence struct {
-	CountsPerRow  uint64
-	LastTimestamp packets.PacketTimestamp
-	LastRowCount  FrameIndex
+	SubframeRate      uint64 // Ratio of timestamp rate to subframe rate
+	LastTimestamp     packets.PacketTimestamp
+	LastSubframeCount FrameIndex
 }
 
 //------------------------------------------------------------------------------------------------
@@ -129,26 +129,32 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	if ts == nil {
 		return
 	}
+	newSubframeCount := frameIdx * abacoSubsampleDivisions
+	deltaSubframe := newSubframeCount - group.LastSubframeCount
 	deltaTs := ts.T - group.LastTimestamp.T
-	if frameIdx <= group.LastRowCount || deltaTs == 0 {
+	// There will be transient nonsense if the timestamp.Rate changes. I think the best
+	// approach is set subframe rate to 0. After the next (consistent) timestamp, it will recover.
+	unequalRates := ts.Rate != group.LastTimestamp.Rate
+	group.LastTimestamp = *ts
+	group.LastSubframeCount = newSubframeCount
+	if deltaSubframe <= 0 || deltaTs == 0 || unequalRates {
+		group.SubframeRate = 0
 		return
 	}
-	newRowCount := frameIdx * abacoSubsampleDivisions
-	deltaRow := newRowCount - group.LastRowCount
-	group.CountsPerRow = deltaTs / uint64(deltaRow)
-	group.LastTimestamp = *ts
-	group.LastRowCount = newRowCount
+	group.SubframeRate = deltaTs / uint64(deltaSubframe)
 }
 
-// rowCountFromTimestamp uses the group.FrameTimingCorrespondence data to
-// convert a timestamp in raw Abaco clock counts to a FrameIndex
-func (group *AbacoGroup) rowCountFromTimestamp(timestamp uint64) FrameIndex {
-	if group.CountsPerRow == 0 {
+// subframeCountFromTimestamp uses the group.FrameTimingCorrespondence data to
+// convert a timestamp (in raw Abaco clock counts) to a FrameIndex
+func (group *AbacoGroup) subframeCountFromTimestamp(timestamp uint64) FrameIndex {
+	if group.SubframeRate == 0 {
 		return 0
 	}
+	// This will be in error if the two timestamps have unequal Rates, but
+	// that problem should be rare and go away as soon as new Rate is reused.
 	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
-	deltaF := deltaTs / int64(group.CountsPerRow)
-	return FrameIndex(int64(group.LastRowCount) + deltaF)
+	deltaF := deltaTs / int64(group.SubframeRate)
+	return FrameIndex(int64(group.LastSubframeCount) + deltaF)
 }
 
 func (group *AbacoGroup) enqueuePacket(p *packets.Packet, now time.Time) {
@@ -1138,7 +1144,7 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 				// v := (u64data[i] >> 32) & 0xffffffff
 				// a := u64data[i] & 0xffffffff
 				t := u64data[i+1]
-				fc := int64(grp0.rowCountFromTimestamp(t))
+				fc := int64(grp0.subframeCountFromTimestamp(t))
 				// fmt.Printf("val 0x%8x  active 0x%8x  T 0x%16x    frameIndex %7d\n", v, a, t, fc)
 				externalTriggers = append(externalTriggers, fc)
 			}
