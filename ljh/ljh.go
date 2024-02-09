@@ -174,24 +174,24 @@ Number of channels: %d
 Channel name: %s
 Channel: %d
 ChannelIndex (in dastard): %d
+Subframe divisions: %d
+Subframe offset: %d
 Digitized Word Size In Bytes: 2
 Presamples: %d
 Total Samples: %d
 Number of samples per point: %d
-Subframe divisions: %d
 Timestamp offset (s): %.6f
 Server Start Time: %s
 First Record Time: %s
-Subframe offset: %d
 Pixel X Position: %d
 Pixel Y Position: %d
 Pixel Name: %s
 Timebase: %e
 #End of Header
 `, w.DastardVersion, w.GitHash, w.SourceName, rowColText, w.NumberOfChans,
-		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.Presamples, w.Samples,
-		w.FramesPerSample, w.SubframeDivisions,
-		timestamp, starttime, firstrec, w.SubframeOffset,
+		w.ChanName, w.ChannelNumberMatchingName, w.ChannelIndex, w.SubframeDivisions, w.SubframeOffset,
+		w.Presamples, w.Samples, w.FramesPerSample,
+		timestamp, starttime, firstrec,
 		w.PixelXPosition, w.PixelYPosition, w.PixelName, w.Timebase,
 	)
 	_, err := w.writer.WriteString(s)

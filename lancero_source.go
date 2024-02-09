@@ -63,7 +63,6 @@ type LanceroSource struct {
 	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	externalTriggerLastState bool
 	previousLastSampleTime   time.Time
-	maxNumRows               int
 	AnySource
 }
 
@@ -343,7 +342,10 @@ func (ls *LanceroSource) PrepareChannels() error {
 	thisColFirstCnum := cnum - ls.chanSepColumns
 	ls.groupKeysSorted = make([]GroupIndex, 0)
 	for _, device := range ls.active {
-		ls.maxNumRows = max(device.nrows, ls.maxNumRows)
+		// For Lancero sources, subframeDivisions = the number of rows.
+		// For sources with multiple LanceroDevice objects, its meaning is ambiguous, but we'll
+		// take the max value of all numbers of rows and hope for the best.
+		ls.subframeDivisions = max(device.nrows, ls.subframeDivisions)
 		if ls.chanSepCards > 0 {
 			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
 			thisColFirstCnum = cnum - ls.chanSepColumns
@@ -370,10 +372,6 @@ func (ls *LanceroSource) PrepareChannels() error {
 		}
 	}
 	return nil
-}
-
-func (ls *LanceroSource) subframeDivisions() int {
-	return ls.maxNumRows
 }
 
 func (device *LanceroDevice) sampleCard() error {

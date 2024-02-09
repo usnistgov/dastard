@@ -18,7 +18,7 @@ import (
 	"github.com/usnistgov/dastard/ringbuffer"
 )
 
-const abacoPseudoRowRate = 64 // The external triggers will be resolved this much finer than the frame rate
+const abacoSubsampleDivisions = 64 // The external triggers will be resolved this much finer than the frame rate
 // That is, we are writing external trigger info at a rate that we'd call the "row rate" in a TDM system.
 // So we write the data as if Abaco data sources had a 64-row readout, but all we mean by that is that
 // they are being resolved at 64x finer time steps than the frame rate.
@@ -133,7 +133,7 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	if frameIdx <= group.LastRowCount || deltaTs == 0 {
 		return
 	}
-	newRowCount := frameIdx * abacoPseudoRowRate
+	newRowCount := frameIdx * abacoSubsampleDivisions
 	deltaRow := newRowCount - group.LastRowCount
 	group.CountsPerRow = deltaTs / uint64(deltaRow)
 	group.LastTimestamp = *ts
@@ -688,6 +688,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.groups = make(map[GroupIndex]*AbacoGroup)
 	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
+	source.subframeDivisions = abacoSubsampleDivisions
 
 	// Probe for ring buffers that exist, and set up possible receivers.
 	deviceCodes, err := enumerateAbacoRings()
@@ -713,12 +714,6 @@ func NewAbacoSource() (*AbacoSource, error) {
 // Delete closes the ring buffers for all AbacoRings.
 func (as *AbacoSource) Delete() {
 	as.closeDevices()
-}
-
-// subframeDivisions is the ratio of subframe rate to frame rate (for external trigger purposes)
-// Specific sources can override this
-func (as *AbacoSource) subframeDivisions() int {
-	return abacoPseudoRowRate
 }
 
 // AbacoSourceConfig holds the arguments needed to call AbacoSource.Configure by RPC.

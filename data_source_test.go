@@ -190,7 +190,8 @@ func TestWritingFiles(t *testing.T) {
 	if ds.processors[0].DataPublisher.HasLJH3() {
 		t.Error("Stop did not result in !HasLJH3")
 	}
-	if true { // prevent variable from persisting
+
+	if true { // block prevents variable from persisting (what variable?)
 		fileContents, err2 := os.ReadFile(experimentStateFilename)
 		fileContentsStr := string(fileContents)
 		if err2 != nil {
