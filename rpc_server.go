@@ -900,4 +900,6 @@ func RunRPCServer(portrpc int, block bool) {
 	<-interruptCatcher
 	dummy := "dummy"
 	sourceControl.Stop(&dummy, &okay)
+	// Recover from the AsciiBouncer repeatedly repainting the terminal by printing a newline
+	fmt.Println()
 }
