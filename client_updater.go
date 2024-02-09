@@ -56,7 +56,7 @@ func publish(pubSocket *zmq4.Socket, update ClientUpdate, message []byte) {
 		return
 	}
 	if _, ok := nologMessages[tag]; !ok {
-		log.Printf("SEND %v %v\n\tmessage body: %v\n", tag, updateType, string(message))
+		UpdateLogger.Printf("SEND %v %v\n-> message body: %v\n", tag, updateType, string(message))
 	}
 	// Send the 2-part message to all subscribers (clients).
 	// If there are errors, retry up to `maxSendAttempts` times with a sleep between.

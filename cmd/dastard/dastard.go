@@ -77,7 +77,7 @@ func setupViper() error {
 	return nil
 }
 
-func startProblemLogger(pfname string) *log.Logger {
+func startLogger(pfname string) *log.Logger {
 	probFile, err := os.OpenFile(pfname, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		msg := fmt.Sprintf("Could not open log file '%s'", pfname)
@@ -87,8 +87,8 @@ func startProblemLogger(pfname string) *log.Logger {
 	probLogger.SetOutput(&lumberjack.Logger{
 		Filename:   pfname,
 		MaxSize:    10,   // megabytes after which new file is created
-		MaxBackups: 5,    // number of backups
-		MaxAge:     365,  // days
+		MaxBackups: 4,    // number of backups
+		MaxAge:     180,  // days
 		Compress:   true, // whether to gzip the backups
 	})
 	return probLogger
@@ -123,13 +123,19 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	// Start logging problems to a log file.
-	logname, err := makeFileExist("$HOME/.dastard/logs", "problems.log")
+	// Start logging problems and updates to 2 log files.
+	problemname, err := makeFileExist("$HOME/.dastard/logs", "problems.log")
 	if err != nil {
 		panic(err)
 	}
-	dastard.ProblemLogger = startProblemLogger(logname)
-	fmt.Printf("Logging problems to %s\n\n", logname)
+	logname, err := makeFileExist("$HOME/.dastard/logs", "updates.log")
+	if err != nil {
+		panic(err)
+	}
+	dastard.ProblemLogger = startLogger(problemname)
+	dastard.UpdateLogger = startLogger(logname)
+	fmt.Printf("Logging problems       to %s\n", problemname)
+	fmt.Printf("Logging client updates to %s\n\n", logname)
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
