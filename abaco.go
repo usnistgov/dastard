@@ -688,7 +688,6 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.groups = make(map[GroupIndex]*AbacoGroup)
 	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
-	source.rowFrameRatio = abacoPseudoRowRate
 
 	// Probe for ring buffers that exist, and set up possible receivers.
 	deviceCodes, err := enumerateAbacoRings()
@@ -714,6 +713,12 @@ func NewAbacoSource() (*AbacoSource, error) {
 // Delete closes the ring buffers for all AbacoRings.
 func (as *AbacoSource) Delete() {
 	as.closeDevices()
+}
+
+// subframeDivisions is the ratio of subframe rate to frame rate (for external trigger purposes)
+// Specific sources can override this
+func (as *AbacoSource) subframeDivisions() int {
+	return abacoPseudoRowRate
 }
 
 // AbacoSourceConfig holds the arguments needed to call AbacoSource.Configure by RPC.
@@ -917,6 +922,7 @@ func (as *AbacoSource) PrepareChannels() error {
 	// as rows 0...g.nchan-1.
 	as.chanNames = make([]string, 0, as.nchan)
 	as.chanNumbers = make([]int, 0, as.nchan)
+	as.subframeOffsets = make([]int, as.nchan) // all zeros for Abaco sources
 	as.rowColCodes = make([]RowColCode, 0, as.nchan)
 	ncol := len(as.groups)
 	for col, g := range as.groupKeysSorted {

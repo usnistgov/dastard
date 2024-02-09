@@ -63,6 +63,7 @@ type LanceroSource struct {
 	currentMix               chan []float64 // allows ConfigureMixFraction to return the currentMix race free
 	externalTriggerLastState bool
 	previousLastSampleTime   time.Time
+	maxNumRows               int
 	AnySource
 }
 
@@ -336,12 +337,13 @@ func (ls *LanceroSource) PrepareChannels() error {
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	ls.chanNames = make([]string, ls.nchan)
 	ls.chanNumbers = make([]int, ls.nchan)
+	ls.subframeOffsets = make([]int, ls.nchan)
 	index := 0
 	cnum := ls.firstRowChanNum
 	thisColFirstCnum := cnum - ls.chanSepColumns
 	ls.groupKeysSorted = make([]GroupIndex, 0)
 	for _, device := range ls.active {
-		ls.rowFrameRatio = device.nrows
+		ls.maxNumRows = max(device.nrows, ls.maxNumRows)
 		if ls.chanSepCards > 0 {
 			cnum = device.devnum*ls.chanSepCards + ls.firstRowChanNum
 			thisColFirstCnum = cnum - ls.chanSepColumns
@@ -356,6 +358,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 			for row := 0; row < device.nrows; row++ {
 				ls.chanNames[index] = fmt.Sprintf("err%d", cnum)
 				ls.chanNumbers[index] = cnum
+				ls.subframeOffsets[index] = row
 				ls.rowColCodes[index] = rcCode(row, col, device.nrows, device.ncols)
 				index++
 				ls.chanNames[index] = fmt.Sprintf("chan%d", cnum)
@@ -367,6 +370,10 @@ func (ls *LanceroSource) PrepareChannels() error {
 		}
 	}
 	return nil
+}
+
+func (ls *LanceroSource) subframeDivisions() int {
+	return ls.maxNumRows
 }
 
 func (device *LanceroDevice) sampleCard() error {

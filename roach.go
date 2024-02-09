@@ -377,6 +377,7 @@ func (rs *RoachSource) PrepareChannels() error {
 	// Number channels starting at zero.
 	rs.chanNames = make([]string, 0, rs.nchan)
 	rs.chanNumbers = make([]int, 0, rs.nchan)
+	rs.subframeOffsets = make([]int, rs.nchan) // All zero for Roach source
 	rs.rowColCodes = make([]RowColCode, 0, rs.nchan)
 	rs.groupKeysSorted = make([]GroupIndex, 0)
 	ncol := 1

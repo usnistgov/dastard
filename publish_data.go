@@ -47,13 +47,17 @@ func (dp *DataPublisher) Flush() {
 // SetOFF adds an OFF writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
 func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
 	Timebase float64, TimestampOffset time.Time,
-	NumberOfRows, NumberOfColumns, NumberOfChans, rowNum, colNum int,
+	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
 	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
 	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string, pixel Pixel) {
-	ReadoutInfo := off.TimeDivisionMultiplexingInfo{NumberOfRows: NumberOfRows,
-		NumberOfColumns: NumberOfColumns,
-		NumberOfChans:   NumberOfChans,
-		ColumnNum:       colNum, RowNum: rowNum}
+	ReadoutInfo := off.TimeDivisionMultiplexingInfo{
+		NumberOfRows:      NumberOfRows,
+		NumberOfColumns:   NumberOfColumns,
+		NumberOfChans:     NumberOfChans,
+		SubframeDivisions: SubframeDivisions,
+		ColumnNum:         colNum,
+		RowNum:            rowNum,
+		SubframeOffset:    SubframeOffset}
 	PixelInfo := off.PixelInfo{XPosition: pixel.X, YPosition: pixel.Y, Name: pixel.Name}
 	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
 		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo)

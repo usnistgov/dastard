@@ -102,7 +102,7 @@ func TestPublishData(t *testing.T) {
 	nsamples := 4
 	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
 	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
-	dp.SetOFF(0, 0, 0, 1, 1, time.Now(), 1, 1, 1, 1, 1, "testData/TestPublishData.off", "sourceName",
+	dp.SetOFF(0, 0, 0, 1, 1, time.Now(), 1, 1, 1, 1, 1, 1, 1, "testData/TestPublishData.off", "sourceName",
 		"chanName", 1, projectors, basis, "ModelDescription", Pixel{})
 	if err := dp.PublishData(records); err != nil {
 		t.Error(err)
