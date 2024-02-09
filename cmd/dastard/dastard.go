@@ -112,7 +112,8 @@ func main() {
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		os.Exit(0)
 	}
-	fmt.Printf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
+	banner := fmt.Sprintf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
+	fmt.Print(banner)
 
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
@@ -136,6 +137,7 @@ func main() {
 	dastard.UpdateLogger = startLogger(logname)
 	fmt.Printf("Logging problems       to %s\n", problemname)
 	fmt.Printf("Logging client updates to %s\n\n", logname)
+	dastard.UpdateLogger.Printf("\n\n\n\n%s", banner)
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
