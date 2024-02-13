@@ -39,9 +39,9 @@ func gIndex(p *packets.Packet) GroupIndex {
 
 // FrameTimingCorrespondence tracks how we convert timestamps to FrameIndex
 type FrameTimingCorrepondence struct {
-	SubframeDivisions uint64 // Ratio of subframe rate to timestamp rate
-	LastTimestamp     packets.PacketTimestamp
-	LastSubframeCount FrameIndex
+	TimestampCountsPerSubframe uint64 // Ratio of timestamp rate to subframe division rate
+	LastFirmwareTimestamp      packets.PacketTimestamp
+	LastSubframeCount          FrameIndex
 }
 
 //------------------------------------------------------------------------------------------------
@@ -132,29 +132,30 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	}
 	newSubframeCount := frameIdx * abacoSubframeDivisions
 	deltaSubframe := newSubframeCount - group.LastSubframeCount
-	deltaTs := ts.T - group.LastTimestamp.T
+	deltaTs := ts.T - group.LastFirmwareTimestamp.T
 	// There will be transient nonsense if the timestamp.Rate changes. I think the best
 	// approach is set subframe rate to 0. After the next (consistent) timestamp, it will recover.
-	unequalRates := ts.Rate != group.LastTimestamp.Rate
-	group.LastTimestamp = *ts
+	unequalRates := ts.Rate != group.LastFirmwareTimestamp.Rate
+	group.LastFirmwareTimestamp = *ts
 	group.LastSubframeCount = newSubframeCount
 	if deltaSubframe <= 0 || deltaTs == 0 || unequalRates {
-		group.SubframeDivisions = 0
+		group.TimestampCountsPerSubframe = 0
 		return
 	}
-	group.SubframeDivisions = deltaTs / uint64(deltaSubframe)
+	group.TimestampCountsPerSubframe = deltaTs / uint64(deltaSubframe)
 }
 
 // subframeCountFromTimestamp uses the group.FrameTimingCorrespondence data to
 // convert a timestamp (in raw Abaco clock counts) to a FrameIndex
-func (group *AbacoGroup) subframeCountFromTimestamp(timestamp uint64) FrameIndex {
-	if group.SubframeDivisions == 0 {
+func (group *AbacoGroup) subframeCountFromTimestamp(firmwareTimestamp uint64) FrameIndex {
+	if group.TimestampCountsPerSubframe == 0 {
 		return 0
 	}
 	// This will be in error if the two timestamps have unequal Rates, but
-	// that problem should be rare and go away as soon as new Rate is reused.
-	deltaTs := int64(timestamp) - int64(group.LastTimestamp.T)
-	deltaF := deltaTs / int64(group.SubframeDivisions)
+	// we don't have that info on a per-timestamp basis. And anyway,
+	// that problem should be rare and go away as soon as new Rate is established.
+	deltaTs := int64(firmwareTimestamp) - int64(group.LastFirmwareTimestamp.T)
+	deltaF := deltaTs / int64(group.TimestampCountsPerSubframe)
 	return FrameIndex(int64(group.LastSubframeCount) + deltaF)
 }
 
@@ -1142,6 +1143,7 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 			u64data := unsafe.Slice((*uint64)(unsafe.Pointer(&d[0])), 2*outlength)
 			packets.ByteSwap(u64data)
 			for i := 0; i < 2*outlength; i += 2 {
+				// At the moment, the first two int32 values are ignored. (Don't even know what they mean.)
 				// v := (u64data[i] >> 32) & 0xffffffff
 				// a := u64data[i] & 0xffffffff
 				t := u64data[i+1]
