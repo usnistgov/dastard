@@ -965,7 +965,7 @@ type AbacoBuffersType struct {
 
 func (as *AbacoSource) readerMainLoop() {
 	defer close(as.buffersChan)
-	const timeoutPeriod = 5 * time.Second
+	const timeoutPeriod = 20 * time.Second
 	timeout := time.NewTimer(timeoutPeriod)
 	defer timeout.Stop()
 	ticker := time.NewTicker(as.readPeriod)
@@ -985,6 +985,7 @@ awaitmoredata:
 			return
 
 		case <-ticker.C:
+			Println("readerMainLoop ticker.C")
 			// read from the UDP port or ring buffer
 			var lastSampleTime time.Time
 			var droppedFrames int
@@ -1064,7 +1065,7 @@ awaitmoredata:
 				fmt.Println("timeDiff in abaco reader", timeDiff)
 			}
 			as.lastread = lastSampleTime
-
+			Println("readerMainLoop len(as.buffersChan) == cap(as.buffersChan)")
 			if len(as.buffersChan) == cap(as.buffersChan) {
 				msg := fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan))
 				fmt.Printf("Panic! %s\n", msg)
@@ -1094,6 +1095,7 @@ awaitmoredata:
 // TODO: if there are any configuations that can change mid-run (analogous to Mix
 // for Lancero), we'll also want to handle those changes in this loop.
 func (as *AbacoSource) getNextBlock() chan *dataBlock {
+	Println("getNextBlock 1")
 	panicTime := time.Duration(cap(as.buffersChan)) * as.readPeriod
 	go func() {
 		for {
@@ -1102,6 +1104,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 				panic(fmt.Sprintf("timeout, no data from Abaco after %v / readPeriod is %v", panicTime, as.readPeriod))
 
 			case buffersMsg, ok := <-as.buffersChan:
+				Println("getNextBlock goroutine 1")
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
 					if err := as.closeDevices(); err != nil {
@@ -1114,15 +1117,19 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 				}
 
 				// as.buffersChan contained valid data, so act on it.
+				Println("getNextBlock goroutine 2")
 				block := as.distributeData(buffersMsg)
+				Println("getNextBlock goroutine 3")
 				as.nextBlock <- block
 				if block.err != nil {
 					close(as.nextBlock)
 				}
+				Println("getNextBlock goroutine 4")
 				return
 			}
 		}
 	}()
+
 	return as.nextBlock
 }
 
@@ -1161,6 +1168,7 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 }
 
 func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
+	Println("distributeDate 1")
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
@@ -1197,6 +1205,8 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 		}(channelIndex)
 	}
 	wg.Wait()
+	Println("distributeDate after wg.Wait()")
+
 	as.nextFrameNum += FrameIndex(framesUsed)
 	if as.heartbeats != nil {
 		pmb := float64(buffersMsg.totalBytes) / 1e6
