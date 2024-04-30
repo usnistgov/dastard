@@ -488,16 +488,21 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 			dsp.Flush()
 		}
 	}
+	fmt.Println("ProcessSegments after flush")
+
 	ds.readCounter++
 	flushDuration := time.Since(tStart)
 	if flushDuration > 50*time.Millisecond {
 		log.Println("flushDuration", flushDuration)
 	}
+	fmt.Println("ProcessSegments lkjlkj")
 
+	fmt.Println("ProcessSegments before numberWritten")
 	numberWritten := make([]int, ds.nchan)
 	for i, dsp := range ds.processors {
 		numberWritten[i] = dsp.numberWritten
 	}
+	fmt.Println("ProcessSegments before handleExternalTriggers")
 	if err := ds.HandleExternalTriggers(block.externalTriggerRowcounts); err != nil {
 		return err
 	}
