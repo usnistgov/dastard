@@ -177,7 +177,6 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 		// 1. Handle RPC requests to change data processing parameters (e.g. trigger).
 		// 2. Handle new data and process it.
 		select {
-			fmt.Println("CoreLoop select")
 
 		// Handle RPC requests
 		case request := <-queuedRequests:
