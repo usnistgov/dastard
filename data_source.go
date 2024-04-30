@@ -172,6 +172,7 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 	nextBlock := ds.getNextBlock()
 
 	for {
+		fmt.Println("CoreLoop for 1")
 		// Use select to interleave 2 activities that should NOT be done concurrently:
 		// 1. Handle RPC requests to change data processing parameters (e.g. trigger).
 		// 2. Handle new data and process it.
@@ -180,25 +181,27 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 		// Handle RPC requests
 		case request := <-queuedRequests:
 			request()
+			fmt.Println("CoreLoop requests")
 
 		// Handle data, or recognize the end of data
 		case block, ok := <-nextBlock:
 			if !ok {
 				// nextBlock was closed in the data production loop when abortSelf was closed
-				log.Println("nextBlock channel was closed; stopping the source normally")
+				fmt.Println("nextBlock channel was closed; stopping the source normally")
 				return
 
 			} else if block.err != nil {
 				// errors in block indicate a problem with source: need to close down
-				log.Printf("nextBlock received Error; stopping source: %s\n", block.err.Error())
+				fmt.Printf("nextBlock received Error; stopping source: %s\n", block.err.Error())
 				return
 			}
 			if err := ds.ProcessSegments(block); err != nil {
-				log.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
+				fmt.Printf("AnySource.ProcessSegments returns Error; stopping source: %s\n", err.Error())
 				panic("Panic to stop source when processSegments errors. This seems to keep the Lancero working better than stopping the source")
 			}
 			// In some sources, ds.getNextBlock has to be called again to initiate the next
 			// data acquisition step (Lancero, specifically).
+			fmt.Println("CoreLoop ds.getNextBlock()")
 			nextBlock = ds.getNextBlock()
 		}
 	}

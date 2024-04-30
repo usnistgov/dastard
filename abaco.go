@@ -1099,6 +1099,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 	panicTime := time.Duration(cap(as.buffersChan)) * as.readPeriod
 	go func() {
 		for {
+			fmt.Println("getNextBlock goroutine loop")
 			select {
 			case <-time.After(panicTime):
 				panic(fmt.Sprintf("timeout, no data from Abaco after %v / readPeriod is %v", panicTime, as.readPeriod))
@@ -1113,6 +1114,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 						as.nextBlock <- block
 					}
 					close(as.nextBlock)
+					fmt.Println("getNextBlock goroutine 4")
 					return
 				}
 
