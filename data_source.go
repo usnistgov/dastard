@@ -177,14 +177,16 @@ func CoreLoop(ds DataSource, queuedRequests chan func()) {
 		// 1. Handle RPC requests to change data processing parameters (e.g. trigger).
 		// 2. Handle new data and process it.
 		select {
+			fmt.Println("CoreLoop select")
 
 		// Handle RPC requests
 		case request := <-queuedRequests:
-			request()
 			fmt.Println("CoreLoop requests")
+			request()
 
 		// Handle data, or recognize the end of data
 		case block, ok := <-nextBlock:
+			fmt.Println("CoreLoop 1")
 			if !ok {
 				// nextBlock was closed in the data production loop when abortSelf was closed
 				fmt.Println("nextBlock channel was closed; stopping the source normally")
@@ -412,6 +414,7 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 // in parallel. Returns when all segments have been processed.
 // It's more synchronous than our original plan of each dsp launching its own goroutine.
 func (ds *AnySource) ProcessSegments(block *dataBlock) error {
+	fmt.Println("ProcessSegments 1")
 	nchan := len(block.segments)
 	nproc := len(ds.processors)
 	if nproc != nchan {
@@ -420,6 +423,7 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 
 	// Sometimes the archiveDataBlock is active. Handle it here.
 	if ds.archiveBlock.active {
+		fmt.Println("ProcessSegments bpp")
 		ds.archiveNewDataBlock(block)
 	}
 
@@ -439,6 +443,8 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		}(dsp)
 	}
 	wg.Wait()
+	fmt.Println("ProcessSegments after wg.Wait()")
+
 
 	// Build a map to hold triggerList for each channel index, and then ask the TriggerBroker
 	// to compute the corresponding slice of secondary trigger FrameIndex values for each
@@ -467,6 +473,8 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		}
 	}
 	wg.Wait()
+	fmt.Println("ProcessSegments after wg.Wait() 2")
+
 
 	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
 	// and once every 20 reads, flush the output files (but do the files out of phase, so it's not
@@ -494,6 +502,8 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 	if err := ds.HandleExternalTriggers(block.externalTriggerRowcounts); err != nil {
 		return err
 	}
+	fmt.Println("ProcessSegments after handleExternalTriggers")
+
 
 	// all segments will have the same value for droppedFrames and firstFrameIndex, so we just look at the first segment here
 	if err := ds.HandleDataDrop(block.segments[0].droppedFrames, int(block.segments[0].firstFrameIndex)); err != nil {
@@ -507,6 +517,8 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		default:
 		}
 	}
+	fmt.Println("ProcessSegments done")
+
 	return nil
 }
 

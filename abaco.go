@@ -1099,13 +1099,13 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 	panicTime := time.Duration(cap(as.buffersChan)) * as.readPeriod
 	go func() {
 		for {
-			fmt.Println("getNextBlock goroutine loop")
+			// fmt.Println("getNextBlock goroutine loop")
 			select {
 			case <-time.After(panicTime):
 				panic(fmt.Sprintf("timeout, no data from Abaco after %v / readPeriod is %v", panicTime, as.readPeriod))
 
 			case buffersMsg, ok := <-as.buffersChan:
-				fmt.Println("getNextBlock goroutine 1")
+				// fmt.Println("getNextBlock goroutine 1")
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
 					if err := as.closeDevices(); err != nil {
@@ -1114,19 +1114,19 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 						as.nextBlock <- block
 					}
 					close(as.nextBlock)
-					fmt.Println("getNextBlock goroutine 4")
+					// fmt.Println("getNextBlock goroutine 4")
 					return
 				}
 
 				// as.buffersChan contained valid data, so act on it.
-				fmt.Println("getNextBlock goroutine 2")
+				// fmt.Println("getNextBlock goroutine 2")
 				block := as.distributeData(buffersMsg)
-				fmt.Println("getNextBlock goroutine 3")
+				// fmt.Println("getNextBlock goroutine 3")
 				as.nextBlock <- block
 				if block.err != nil {
 					close(as.nextBlock)
 				}
-				fmt.Println("getNextBlock goroutine 4")
+				// fmt.Println("getNextBlock goroutine 4")
 				return
 			}
 		}
