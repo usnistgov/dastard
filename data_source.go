@@ -484,9 +484,9 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		segment.processed = true
 		dsp.TrimStream()
 
-		if (idx+ds.readCounter)%20 == 0 {
-			dsp.Flush()
-		}
+		// if (idx+ds.readCounter)%20 == 0 {
+		// 	dsp.Flush()
+		// }
 	}
 	fmt.Println("ProcessSegments after flush")
 
@@ -591,12 +591,17 @@ func (ds *AnySource) HandleDataDrop(droppedFrames, firstFrameIndex int) error {
 // HandleExternalTriggers writes external trigger to a file, creates that file if neccesary, and sends out messages
 // with the number of external triggers observed
 func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) error {
+	// fmt.Println("HandleExternalTriggers 1")
 	if ds.writingState.externalTriggerFileBufferedWriter == nil &&
 		len(externalTriggerRowcounts) > 0 &&
 		ds.writingState.ExternalTriggerFilename != "" {
+		// fmt.Println("HandleExternalTriggers inside if")
+
 		// setup external trigger file if neccesary
 		var err error
 		ds.writingState.externalTriggerFile, err = os.Create(ds.writingState.ExternalTriggerFilename)
+		// fmt.Println("HandleExternalTriggers after os.Create")
+
 		if err != nil {
 			return fmt.Errorf("cannot create ExternalTriggerFile, %v", err)
 		}
@@ -619,6 +624,8 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 	}
 	select { // occasionally flush and send message about number of observed external triggers
 	case <-ds.writingState.externalTriggerTicker.C:
+		// fmt.Println("HandleExternalTriggers ticker")
+
 		if ds.writingState.externalTriggerFileBufferedWriter != nil {
 			err := ds.writingState.externalTriggerFileBufferedWriter.Flush()
 			if err != nil {
