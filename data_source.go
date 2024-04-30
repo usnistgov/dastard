@@ -474,9 +474,9 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		segment.processed = true
 		dsp.TrimStream()
 
-		if (idx+ds.readCounter)%20 == 0 {
-			dsp.Flush()
-		}
+		// if (idx+ds.readCounter)%20 == 0 {
+		// 	dsp.Flush()
+		// }
 	}
 	ds.readCounter++
 	flushDuration := time.Since(tStart)
