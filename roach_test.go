@@ -40,7 +40,7 @@ func newBuffer(nchan, nsamp uint16, sampnum uint64) []byte {
 	return buf.Bytes()
 }
 
-func publishRoachPackets(port int, nchan uint16, value uint16) (closer chan struct{}, err error) {
+func publishRoachPackets(port int, nchan uint16) (closer chan struct{}, err error) {
 
 	host := fmt.Sprintf("127.0.0.1:%d", port)
 	raddr, err := net.ResolveUDPAddr("udp", host)
@@ -77,7 +77,7 @@ func TestRoachDevice(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60001
 	var nchan uint16 = 40
-	packetSourceCloser, err := publishRoachPackets(port, nchan, 0xbeef)
+	packetSourceCloser, err := publishRoachPackets(port, nchan)
 	defer close(packetSourceCloser)
 	if err != nil {
 		t.Errorf("publishRoachPackets returned %v", err)
@@ -132,7 +132,7 @@ func TestRoachSource(t *testing.T) {
 	// Start generating Roach packets, until closer is closed.
 	port := 60005
 	var nchan uint16 = 40
-	packetSourceCloser, err := publishRoachPackets(port, nchan, 0xbeef)
+	packetSourceCloser, err := publishRoachPackets(port, nchan)
 	defer close(packetSourceCloser)
 
 	if err != nil {

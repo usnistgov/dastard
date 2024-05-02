@@ -242,11 +242,11 @@ func testAnalyzeCheck(t *testing.T, rec *DataRecord, expect RTExpect, name strin
 
 func testAnalyzePretrigCheck(t *testing.T, rec *DataRecord, expect RTExpect, name string) {
 	if math.Abs(rec.pretrigMean-expect.pretrigMean) > 1e-7 && !(math.IsNaN(rec.pretrigMean) && math.IsNaN(expect.pretrigMean)) {
-		t.Errorf("Pretrigger mean = %v, want %v", rec.pretrigMean, expect.pretrigMean)
+		t.Errorf("%s: Pretrigger mean = %v, want %v", name, rec.pretrigMean, expect.pretrigMean)
 		t.Logf("%v\n", rec)
 	}
 	if math.Abs(rec.pretrigDelta-expect.pretrigDelta) > 1e-7 && !(math.IsNaN(rec.pretrigDelta) && math.IsNaN(expect.pretrigDelta)) {
-		t.Errorf("Pretrigger delta = %v, want %v", rec.pretrigDelta, expect.pretrigDelta)
+		t.Errorf("%s: Pretrigger delta = %v, want %v", name, rec.pretrigDelta, expect.pretrigDelta)
 		t.Logf("%v\n", rec)
 	}
 }
