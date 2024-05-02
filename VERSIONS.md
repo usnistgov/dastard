@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.3** May 2024-
+* Make publisher more responsive: don't block data processors waiting on disk flush.
+
 **0.3.2** February 9, 2024
 * Make external trigger resolution 64x finer (issue 335).
 * Add subframe info to LJH and OFF headers; use subframe language throughout code (issue 337).
