@@ -3,18 +3,16 @@ package asyncbufio
 import (
 	"bufio"
 	"io"
-	"sync"
 	"time"
 )
 
 // Writer provides asynchronous writing to an underlying io.Writer using buffered channels.
 type Writer struct {
-	writer        *bufio.Writer  // Buffered writer: this does the writing
-	flushNow      chan struct{}  // Channel to signal the underlying writer to flush itself
-	flushComplete chan struct{}  // Channel to signal underlying writer flush is complete
-	databuffer    chan []byte    // Channel to hold data before writing it
-	flushInterval time.Duration  // Interval for flushing the writer periodically
-	doneWriting   sync.WaitGroup // WaitGroup to synchronize end of writing
+	writer        *bufio.Writer // Buffered writer: this does the writing
+	flushNow      chan struct{} // Channel to signal the underlying writer to flush itself
+	flushComplete chan struct{} // Channel to signal underlying writer flush is complete
+	databuffer    chan []byte   // Channel to hold data before writing it
+	flushInterval time.Duration // Interval for flushing the writer periodically
 }
 
 // NewWriter creates a new Writer instance.
@@ -27,7 +25,6 @@ func NewWriter(w io.Writer, bufferSize int, flushInterval time.Duration) *Writer
 		flushInterval: flushInterval, // Set the flush interval
 	}
 
-	aw.doneWriting.Add(1)
 	go aw.writeLoop()
 	return aw
 }
@@ -59,34 +56,30 @@ func (aw *Writer) Flush() error {
 // It is possible to cause a panic by calling Write(p) or Flush() after Close()--we don't
 // test for that case.
 func (aw *Writer) Close() {
-	close(aw.flushNow)    // Closing the flushNow channel signals the writeLoop to exit
-	aw.doneWriting.Wait() // Wait until writing is complete
+	close(aw.flushNow) // Closing the flushNow channel signals the writeLoop to exit
+	<-aw.flushComplete // Wait until writing is complete
 }
 
 // writeLoop is a goroutine that continuously moves data from the buffer to the writer.
 func (aw *Writer) writeLoop() {
-	defer aw.doneWriting.Done() // Decrement WaitGroup when writing is complete
-
 	ticker := time.NewTicker(aw.flushInterval) // Ticker to flush periodically
 	defer ticker.Stop()                        // Stop the ticker when the writeLoop exits
 
 	for {
-		breakFromLoop := false
 		select {
 		case data := <-aw.databuffer:
 			aw.writer.Write(data) // Write data from the buffer to the writer
 
 		case _, ok := <-aw.flushNow:
-			breakFromLoop = !ok
 			aw.flush()
 			// Signal whoever requested this that flushing is done
 			aw.flushComplete <- struct{}{}
+			if !ok {
+				return
+			}
 
 		case <-ticker.C:
 			aw.flush()
-		}
-		if breakFromLoop {
-			return
 		}
 	}
 }
