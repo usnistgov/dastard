@@ -212,7 +212,9 @@ func (w Writer) Flush() {
 
 // Close closes the file, it flushes the bufio.Writer first
 func (w Writer) Close() {
-	w.Flush()
+	if w.writer != nil {
+		w.writer.Close()
+	}
 	w.file.Close()
 }
 

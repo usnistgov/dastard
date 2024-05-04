@@ -219,6 +219,9 @@ func (w Writer) Flush() {
 
 // Close closes the associated file, no more records can be written after this
 func (w Writer) Close() {
+	if w.writer != nil {
+		w.writer.Close()
+	}
 	w.file.Close()
 }
 
@@ -344,7 +347,9 @@ func (w Writer3) Flush() {
 
 // Close closes the LJH3 file
 func (w Writer3) Close() {
-	w.Flush()
+	if w.writer != nil {
+		w.writer.Close()
+	}
 	w.file.Close()
 }
 
