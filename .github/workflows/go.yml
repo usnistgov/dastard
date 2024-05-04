@@ -39,7 +39,7 @@ jobs:
       run: make build && ls -l
 
     - name: Test
-      run: go test -v ./...
+      run: go test -timeout 30s -v ./...
 
     - name: Publish GitHub Release Artifacts
       if: github.event_name == 'release' && github.event.action == 'created'
