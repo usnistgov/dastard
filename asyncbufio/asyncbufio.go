@@ -42,6 +42,11 @@ func (aw *Writer) Write(p []byte) (int, error) {
 	}
 }
 
+// WriteString writes a string to the buffer for later writing (with an annoying copy--sorry!)
+func (aw *Writer) WriteString(s string) (int, error) {
+	return aw.Write([]byte(s))
+}
+
 // Flush flushes any remaining data in the buffer to the underlying writer.
 // Blocks until the flush is complete.
 func (aw *Writer) Flush() error {

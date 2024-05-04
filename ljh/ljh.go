@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/usnistgov/dastard/asyncbufio"
 	"github.com/usnistgov/dastard/getbytes"
 )
 
@@ -76,7 +77,7 @@ type Writer struct {
 	PixelName                 string
 
 	file   *os.File
-	writer *bufio.Writer
+	writer *asyncbufio.Writer
 }
 
 // OpenReader returns an active LJH file reader, or an error.
@@ -146,7 +147,8 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
-	w.writer = bufio.NewWriterSize(w.file, 32768)
+	bw := bufio.NewWriterSize(w.file, 32768)
+	w.writer = asyncbufio.NewWriter(bw, 1000, time.Second)
 	return nil
 }
 
@@ -208,7 +210,6 @@ func (w Writer) Flush() {
 
 // Close closes the associated file, no more records can be written after this
 func (w Writer) Close() {
-	w.Flush()
 	w.file.Close()
 }
 
