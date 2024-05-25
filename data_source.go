@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -626,18 +627,18 @@ func makeDirectory(basepath string) (string, error) {
 		return "", fmt.Errorf("BasePath is the empty string")
 	}
 	today := time.Now().Format("20060102")
-	todayDir := fmt.Sprintf("%s/%s", basepath, today)
+	todayDir := filepath.Join(basepath, today)
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
 		return "", err
 	}
 	for i := 0; i < 10000; i++ {
-		thisDir := fmt.Sprintf("%s/%4.4d", todayDir, i)
+		thisDir := filepath.Join(todayDir, fmt.Sprintf("%4.4d", i))
 		_, err := os.Stat(thisDir)
 		if os.IsNotExist(err) {
 			if err2 := os.MkdirAll(thisDir, 0755); err2 != nil {
 				return "", err
 			}
-			return fmt.Sprintf("%s/%s_run%4.4d_%%s.%%s", thisDir, today, i), nil
+			return filepath.Join(thisDir, fmt.Sprintf("%s_run%4.4d_%%s.%%s", today, i)), nil
 		}
 	}
 	return "", fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)

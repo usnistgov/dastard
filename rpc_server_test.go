@@ -8,6 +8,7 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -251,7 +252,7 @@ func TestServer(t *testing.T) {
 	// Check that comment.txt file exists and has a newline appended
 	if true { // prevent variables from persisting
 		date := time.Now().Format("20060102")
-		fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
+		fname := filepath.Join(path, date, "0000", "comment.txt")
 		file, err0 := os.Open(fname)
 		if err0 != nil {
 			t.Errorf("Could not open comment file %q", fname)
@@ -269,7 +270,7 @@ func TestServer(t *testing.T) {
 	// Check that experiment_state file exists
 	if true { // prevent variables from persisting
 		date := time.Now().Format("20060102")
-		fname := fmt.Sprintf("%s/%s/0000/%s_run0000_experiment_state.txt", path, date, date)
+		fname := filepath.Join(path, date, "0000", fmt.Sprintf("%s_run0000_experiment_state.txt", date))
 		file, err0 := os.Open(fname)
 		if err0 != nil {
 			t.Error(err0)
@@ -390,7 +391,7 @@ func verifyConfigFile(path, filename string) error {
 	}
 
 	// Create an empty file path/filename, if it doesn't exist.
-	fullname := fmt.Sprintf("%s/%s", path, filename)
+	fullname := filepath.Join(path, filename)
 	_, err = os.Stat(fullname)
 	if os.IsNotExist(err) {
 		f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
