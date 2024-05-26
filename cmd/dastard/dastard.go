@@ -64,16 +64,16 @@ func setupViper() error {
 	if err != nil { // Handle errors reading the config file
 		fmt.Printf("Error finding User Home Dir: %s\n", err)
 	}
-	path := filepath.Join(HOME, ".dastard")
+	dotDastard := filepath.Join(HOME, ".dastard")
 	const filename string = "config"
 	const suffix string = ".yaml"
-	if _, err := makeFileExist(path, filename+suffix); err != nil {
+	if _, err := makeFileExist(dotDastard, filename+suffix); err != nil {
 		return err
 	}
 
 	viper.SetConfigName(filename)
 	viper.AddConfigPath(filepath.FromSlash("/etc/dastard"))
-	viper.AddConfigPath(path)
+	viper.AddConfigPath(dotDastard)
 	viper.AddConfigPath(".")
 	err = viper.ReadInConfig() // Find and read the config file
 	if err != nil {            // Handle errors reading the config file
@@ -130,11 +130,16 @@ func main() {
 	}
 
 	// Start logging problems and updates to 2 log files.
-	problemname, err := makeFileExist("$HOME/.dastard/logs", "problems.log")
+	HOME, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)
 	}
-	logname, err := makeFileExist("$HOME/.dastard/logs", "updates.log")
+	logdir := filepath.Join(HOME, ".dastard", "logs")
+	problemname, err := makeFileExist(logdir, "problems.log")
+	if err != nil {
+		panic(err)
+	}
+	logname, err := makeFileExist(logdir, "updates.log")
 	if err != nil {
 		panic(err)
 	}
