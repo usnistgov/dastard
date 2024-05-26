@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strings"
@@ -59,7 +60,11 @@ func makeFileExist(dir, filename string) (string, error) {
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
 
-	const path string = "$HOME/.dastard"
+	HOME, err := os.UserHomeDir()
+	if err != nil { // Handle errors reading the config file
+		fmt.Printf("Error finding User Home Dir: %s\n", err)
+	}
+	path := filepath.Join(HOME, ".dastard")
 	const filename string = "config"
 	const suffix string = ".yaml"
 	if _, err := makeFileExist(path, filename+suffix); err != nil {
@@ -67,11 +72,11 @@ func setupViper() error {
 	}
 
 	viper.SetConfigName(filename)
-	viper.AddConfigPath("/etc/dastard")
+	viper.AddConfigPath(filepath.FromSlash("/etc/dastard"))
 	viper.AddConfigPath(path)
 	viper.AddConfigPath(".")
-	err := viper.ReadInConfig() // Find and read the config file
-	if err != nil {             // Handle errors reading the config file
+	err = viper.ReadInConfig() // Find and read the config file
+	if err != nil {            // Handle errors reading the config file
 		return fmt.Errorf("error reading config file: %s", err)
 	}
 	return nil
