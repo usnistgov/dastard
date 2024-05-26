@@ -73,7 +73,7 @@ func TestServer(t *testing.T) {
 	var okay bool
 
 	// Test Map service
-	fname := "maps/ar14_30rows_map.cfg"
+	fname := filepath.Join("maps", "ar14_30rows_map.cfg")
 	err = client.Call("MapServer.Load", &fname, &okay)
 	if err != nil {
 		t.Errorf("Error calling MapServer.Load(): %s", err.Error())
