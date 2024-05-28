@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/viper"
 )
@@ -15,11 +17,15 @@ func main() {
 	viper.SetDefault("Verbose", false)
 
 	viper.SetConfigName("testconfig")
-	viper.AddConfigPath("/etc/dastard")
-	viper.AddConfigPath("$HOME/.dastard")
+	viper.AddConfigPath(filepath.FromSlash("/etc/dastard"))
+	HOME, err := os.UserHomeDir()
+	if err != nil { // Handle errors reading the config file
+		fmt.Printf("Error finding User Home Dir: %s\n", err)
+	}
+	viper.AddConfigPath(filepath.Join(HOME, ".dastard"))
 	viper.AddConfigPath(".")
-	err := viper.ReadInConfig() // Find and read the config file
-	if err != nil {             // Handle errors reading the config file
+	err = viper.ReadInConfig() // Find and read the config file
+	if err != nil {            // Handle errors reading the config file
 		fmt.Printf("Error reading config file: %s \n", err)
 	}
 

@@ -2,6 +2,7 @@ package dastard
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -37,7 +38,7 @@ func TestWriteControl(t *testing.T) {
 		t.Errorf("WriteControl request Start with no valid filetype should fail, but didn't")
 	}
 	config.WriteLJH22 = true
-	config.Path = "/notvalid/because/permissions"
+	config.Path = filepath.FromSlash("/notvalid/because/permissions")
 	if err := ds.WriteControl(config); err == nil {
 		t.Errorf("WriteControl request Start with nonvalid path should fail, but didn't")
 	}

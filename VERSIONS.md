@@ -2,6 +2,7 @@
 
 **0.3.3** May 2024-
 * Make publisher more responsive: don't block data processors waiting on disk flush.
+* Construct all file paths using `path/filepath` to get OS-specific details right (issue 342).
 
 **0.3.2** February 9, 2024
 * Make external trigger resolution 64x finer (issue 335).

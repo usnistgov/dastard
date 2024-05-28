@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -575,7 +576,7 @@ func TestFullPackets(t *testing.T) {
 }
 
 func TestExamplePackets(t *testing.T) {
-	datasource := "../testData/test1.bin"
+	datasource := filepath.Join("..", "testData", "test1.bin")
 	f, err := os.Open(datasource)
 	if err != nil {
 		t.Errorf("could not open %s", datasource)
@@ -599,7 +600,7 @@ func TestExamplePackets(t *testing.T) {
 }
 
 func TestExtTriggerPackets(t *testing.T) {
-	datasource := "../testData/timer_packets.bin"
+	datasource := filepath.Join("..", "testData", "timer_packets.bin")
 	f, err := os.Open(datasource)
 	if err != nil {
 		t.Errorf("could not open %s", datasource)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -50,7 +51,8 @@ func main() {
 	writers := make([]*Writer, numberOfChannels)
 	abortChan := make(chan struct{})
 	for i := range writers {
-		writers[i] = &Writer{FileName: fmt.Sprintf("%v/%v.ljh", dirname, i)}
+		fname := filepath.Join(dirname, fmt.Sprintf("%v.ljh", i))
+		writers[i] = &Writer{FileName: fname}
 	}
 	go func() {
 		signalChan := make(chan os.Signal)

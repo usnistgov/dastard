@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,6 +12,9 @@ import (
 )
 
 func TestPublishData(t *testing.T) {
+	ljh2Testfile := filepath.Join("testData", "TestPublishData.ljh")
+	ljh3Testfile := filepath.Join("testData", "TestPublishData.ljh3")
+	offTestfile := filepath.Join("testData", "TestPublishData.off")
 
 	dp := DataPublisher{}
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
@@ -22,7 +26,7 @@ func TestPublishData(t *testing.T) {
 	}
 	startTime := time.Now()
 	dp.SetLJH22(1, 4, len(d), 1, 1, startTime, 8, 1, 16, 8, 3, 0, 3,
-		"testData/TestPublishData.ljh", "testSource", "chanX", 1, Pixel{})
+		ljh2Testfile, "testSource", "chanX", 1, Pixel{})
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
@@ -77,7 +81,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("HasPubSummaries() true, want false")
 	}
 
-	dp.SetLJH3(0, 0, 0, 0, 0, 0, "testData/TestPublishData.ljh3")
+	dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
 	if err := dp.PublishData(records); err != nil {
 		t.Error("failed to publish record")
 	}
@@ -102,7 +106,7 @@ func TestPublishData(t *testing.T) {
 	nsamples := 4
 	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
 	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
-	dp.SetOFF(0, 0, 0, 1, 1, time.Now(), 1, 1, 1, 1, 1, 1, 1, "testData/TestPublishData.off", "sourceName",
+	dp.SetOFF(0, 0, 0, 1, 1, time.Now(), 1, 1, 1, 1, 1, 1, 1, offTestfile, "sourceName",
 		"chanName", 1, projectors, basis, "ModelDescription", Pixel{})
 	if err := dp.PublishData(records); err != nil {
 		t.Error(err)
@@ -181,6 +185,9 @@ func TestRawTypeToX(t *testing.T) {
 }
 
 func BenchmarkPublish(b *testing.B) {
+	ljh2Testfile := filepath.Join("testData", "TestPublishData.ljh")
+	ljh3Testfile := filepath.Join("testData", "TestPublishData.ljh3")
+
 	d := make([]RawType, 1000)
 	rec := &DataRecord{data: d, presamples: 4}
 	records := make([]*DataRecord, 1)
@@ -216,7 +223,7 @@ func BenchmarkPublish(b *testing.B) {
 	})
 	b.Run("PubLJH3", func(b *testing.B) {
 		dp := DataPublisher{}
-		dp.SetLJH3(0, 0, 0, 0, 0, 0, "testData/TestPublishData.ljh3")
+		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
 		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})
@@ -227,9 +234,9 @@ func BenchmarkPublish(b *testing.B) {
 		dp.SetPubSummaries()
 		defer dp.RemovePubSummaries()
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0, 0, 0,
-			"testData/TestPublishData.ljh", "testSource", "chanX", 1, Pixel{})
+			ljh2Testfile, "testSource", "chanX", 1, Pixel{})
 		defer dp.RemoveLJH22()
-		dp.SetLJH3(0, 0, 0, 0, 0, 0, "testData/TestPublishData.ljh3")
+		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
 		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})

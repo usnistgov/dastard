@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -27,7 +28,7 @@ func EnumerateLanceroDevices() (devices []int, err error) {
 	for id := 0; id < MAXDEVICES; id++ {
 		good := true
 		for _, name := range names {
-			fullname := fmt.Sprintf("/dev/lancero_%s%d", name, id)
+			fullname := filepath.FromSlash(fmt.Sprintf("/dev/lancero_%s%d", name, id))
 			info, err := os.Stat(fullname)
 			if err != nil {
 				if os.IsNotExist(err) {
@@ -80,9 +81,9 @@ func openLanceroDevice(devnum int) (dev *lanceroDevice, err error) {
 	// compatibility with the driver that supports multiple PCIe cards per computer).
 	fname := func(name string) string {
 		if devnum < 0 {
-			return fmt.Sprintf("/dev/lancero_%s", name)
+			return filepath.FromSlash(fmt.Sprintf("/dev/lancero_%s", name))
 		}
-		return fmt.Sprintf("/dev/lancero_%s%d", name, devnum)
+		return filepath.FromSlash(fmt.Sprintf("/dev/lancero_%s%d", name, devnum))
 	}
 
 	if dev.FileUser, err = os.OpenFile(fname("user"), os.O_RDWR, 0666); err != nil {

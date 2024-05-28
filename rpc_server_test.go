@@ -8,6 +8,7 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -72,7 +73,7 @@ func TestServer(t *testing.T) {
 	var okay bool
 
 	// Test Map service
-	fname := "maps/ar14_30rows_map.cfg"
+	fname := filepath.Join("maps", "ar14_30rows_map.cfg")
 	err = client.Call("MapServer.Load", &fname, &okay)
 	if err != nil {
 		t.Errorf("Error calling MapServer.Load(): %s", err.Error())
@@ -251,7 +252,7 @@ func TestServer(t *testing.T) {
 	// Check that comment.txt file exists and has a newline appended
 	if true { // prevent variables from persisting
 		date := time.Now().Format("20060102")
-		fname := fmt.Sprintf("%s/%s/0000/comment.txt", path, date)
+		fname := filepath.Join(path, date, "0000", "comment.txt")
 		file, err0 := os.Open(fname)
 		if err0 != nil {
 			t.Errorf("Could not open comment file %q", fname)
@@ -269,7 +270,7 @@ func TestServer(t *testing.T) {
 	// Check that experiment_state file exists
 	if true { // prevent variables from persisting
 		date := time.Now().Format("20060102")
-		fname := fmt.Sprintf("%s/%s/0000/%s_run0000_experiment_state.txt", path, date, date)
+		fname := filepath.Join(path, date, "0000", fmt.Sprintf("%s_run0000_experiment_state.txt", date))
 		file, err0 := os.Open(fname)
 		if err0 != nil {
 			t.Error(err0)
@@ -390,7 +391,7 @@ func verifyConfigFile(path, filename string) error {
 	}
 
 	// Create an empty file path/filename, if it doesn't exist.
-	fullname := fmt.Sprintf("%s/%s", path, filename)
+	fullname := filepath.Join(path, filename)
 	_, err = os.Stat(fullname)
 	if os.IsNotExist(err) {
 		f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
@@ -407,7 +408,11 @@ func verifyConfigFile(path, filename string) error {
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
 
-	const path string = "$HOME/.dastard"
+	HOME, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(HOME, ".dastard")
 	const filename string = "testconfig"
 	const suffix string = ".yaml"
 	if err := verifyConfigFile(path, filename+suffix); err != nil {
@@ -417,8 +422,8 @@ func setupViper() error {
 	viper.SetConfigName(filename)
 	viper.AddConfigPath(path)
 	viper.AddConfigPath(".")
-	err := viper.ReadInConfig() // Find and read the config file
-	if err != nil {             // Handle errors reading the config file
+	err = viper.ReadInConfig() // Find and read the config file
+	if err != nil {            // Handle errors reading the config file
 		return fmt.Errorf("error reading config file: %s", err)
 	}
 
@@ -427,12 +432,11 @@ func setupViper() error {
 	// The steps of 10 ensures that, in the 1/1000 chance of ports overlapping, at least
 	// the overlap is between two ports of the same type. (Seems like the least confusing
 	// way to have bad luck.)
-	rand.Seed(time.Now().UnixNano())
 	portoffset := 10 * rand.Intn(1000)
 	setPortnumbers(30000 + portoffset)
 
 	// Write output files in a temporary file
-	ws := WritingState{BasePath: "/tmp"}
+	ws := WritingState{BasePath: os.TempDir()}
 	viper.Set("writing", &ws)
 
 	// Check config saving.
@@ -576,7 +580,7 @@ func TestMain(m *testing.M) {
 	lancero.SetLogOutput(f)
 
 	// set global cringeGlobalsPath to point to test file
-	cringeGlobalsPath = "lancero/test_data/cringeGlobals.json"
+	cringeGlobalsPath = filepath.Join("lancero", "test_data", "cringeGlobals.json")
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {

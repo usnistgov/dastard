@@ -1,9 +1,12 @@
 package dastard
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestMap(t *testing.T) {
-	fname := "maps/ar14_30rows_map.cfg"
+	fname := filepath.Join("maps", "ar14_30rows_map.cfg")
 	m, err := readMap(fname)
 	if err != nil {
 		t.Fatalf("Could not read map %q: %v", fname, err)
