@@ -4,7 +4,7 @@
 A data acquisition program for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
-**Requires Go version 1.16 or higher** (released February 2021) because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.16 and LATEST (as of February 2023, Go version 1.20 is the most recent).
+**Requires Go version 1.17 or higher** (released August 2021) because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.17 and _stable_ (as of May 2024, Go version 1.22.3 is the most recent stable version).
 
 **We recommend always using the `Makefile` to build Dastard.** That's not a typical go usage, but we have a simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments to set values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
 ```bash
@@ -18,7 +18,7 @@ make install   # also implies make build
 dastard
 ```
 
-**There was temporarily a problem with Go 1.20 and TDM systems** If you are using TDM systems with the Lancero device, beware that we had trouble making the device read correctly with Go 1.20 (as of April 20, 2023). This turns out to be the result of a bug in Go 1.20, surprisingly. We believe this problem was fixed in May 2023 (Dastard v0.2.19) with a workaround, but we leave this note here just in case you notice problems we didn't. Certainly, for data sources other than Lancero, Go 1.20+ will be fine.
+**There was temporarily a problem with Go 1.20 and TDM systems** If you are using TDM systems with the Lancero device, beware that we had trouble making the device read correctly with Go 1.20 (as of April 20, 2023). This turns out to be the result of a bug in Go 1.20, surprisingly. We believe this problem was fixed in May 2023 (Dastard v0.2.19) with a workaround, but we leave this note here just in case you notice problems we didn't. Also, it should be fixed in Go 1.21. Certainly, for data sources other than Lancero, we are unaware of _any_ Go versions that cause problems.
 
 
 ### Ubuntu 22.04, 20.04, 18.04, and (maybe?) 16.04
