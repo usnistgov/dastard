@@ -12,8 +12,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/usnistgov/dastard/asyncbufio"
 	"github.com/usnistgov/dastard/getbytes"
 )
+
+// The buffer size (bytes) of the bufio.Writer that buffers disk output
+const BUFIOSIZE = 65536
+
+// The capacity of unprocessed pulse records before even the "asynchronous" writes will block.
+const WRITECHANCAPACITY = 1000
+
+// Flush the ouputfile regularly at this interval
+const FLUSHINTERVAL = 3 * time.Second
 
 // PulseRecord is the interface for individual pulse records
 type PulseRecord struct {
@@ -76,7 +86,7 @@ type Writer struct {
 	PixelName                 string
 
 	file   *os.File
-	writer *bufio.Writer
+	writer *asyncbufio.Writer
 }
 
 // OpenReader returns an active LJH file reader, or an error.
@@ -146,7 +156,8 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
-	w.writer = bufio.NewWriterSize(w.file, 32768)
+	bw := bufio.NewWriterSize(w.file, BUFIOSIZE)
+	w.writer = asyncbufio.NewWriter(bw, WRITECHANCAPACITY, FLUSHINTERVAL)
 	return nil
 }
 
@@ -208,7 +219,9 @@ func (w Writer) Flush() {
 
 // Close closes the associated file, no more records can be written after this
 func (w Writer) Close() {
-	w.Flush()
+	if w.writer != nil {
+		w.writer.Close()
+	}
 	w.file.Close()
 }
 
@@ -251,7 +264,7 @@ type Writer3 struct {
 	RecordsWritten             int
 
 	file   *os.File
-	writer *bufio.Writer
+	writer *asyncbufio.Writer
 }
 
 // HeaderTDM contains info about TDM readout for placing in an LJH3 header
@@ -334,7 +347,9 @@ func (w Writer3) Flush() {
 
 // Close closes the LJH3 file
 func (w Writer3) Close() {
-	w.Flush()
+	if w.writer != nil {
+		w.writer.Close()
+	}
 	w.file.Close()
 }
 
@@ -348,7 +363,8 @@ func (w *Writer3) CreateFile() error {
 		return err
 	}
 	w.file = file
-	w.writer = bufio.NewWriterSize(w.file, 32768)
+	bw := bufio.NewWriterSize(w.file, BUFIOSIZE)
+	w.writer = asyncbufio.NewWriter(bw, WRITECHANCAPACITY, FLUSHINTERVAL)
 	return nil
 }
 

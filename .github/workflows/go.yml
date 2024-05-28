@@ -19,13 +19,13 @@ jobs:
         go-version: [ '1.17', 'stable' ]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install deps (can we eliminate libsodium?)
       run: sudo apt-get install -y libsodium-dev libzmq3-dev
 
     - name: Setup Go ${{ matrix.go-version }}
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go-version }}
         cache: true
@@ -39,7 +39,7 @@ jobs:
       run: make build && ls -l
 
     - name: Test
-      run: go test -v ./...
+      run: go test -timeout 30s -v ./...
 
     - name: Publish GitHub Release Artifacts
       if: github.event_name == 'release' && github.event.action == 'created'

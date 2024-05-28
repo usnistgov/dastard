@@ -21,9 +21,19 @@ import (
 	"os"
 	"time"
 
+	"github.com/usnistgov/dastard/asyncbufio"
 	"github.com/usnistgov/dastard/getbytes"
 	"gonum.org/v1/gonum/mat"
 )
+
+// The buffer size (bytes) of the bufio.Writer that buffers disk output
+const BUFIOSIZE = 65536
+
+// The capacity of unprocessed pulse records before even the "asynchronous" writes will block.
+const WRITECHANCAPACITY = 1000
+
+// Flush the ouputfile regularly at this interval
+const FLUSHINTERVAL = 3 * time.Second
 
 // Writer writes OFF files
 type Writer struct {
@@ -46,7 +56,7 @@ type Writer struct {
 	fileName       string
 	headerWritten  bool
 	file           *os.File
-	writer         *bufio.Writer
+	writer         *asyncbufio.Writer
 }
 
 // NewWriter creates a new OFF writer. No file is created until the first call to WriteRecord
@@ -202,7 +212,9 @@ func (w Writer) Flush() {
 
 // Close closes the file, it flushes the bufio.Writer first
 func (w Writer) Close() {
-	w.Flush()
+	if w.writer != nil {
+		w.writer.Close()
+	}
 	w.file.Close()
 }
 
@@ -218,6 +230,7 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
-	w.writer = bufio.NewWriterSize(w.file, 32768)
+	bw := bufio.NewWriterSize(w.file, BUFIOSIZE)
+	w.writer = asyncbufio.NewWriter(bw, WRITECHANCAPACITY, FLUSHINTERVAL)
 	return nil
 }

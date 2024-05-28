@@ -199,58 +199,69 @@ func (dp *DataPublisher) RemovePubSummaries() {
 	dp.PubSummariesChan = nil
 }
 
-// PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member
+// PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member.
+// The first step is to publish the full record and/or a record summary to the relevant ZMQ ports.
+// The second is to store the records into any active LJH22, LJH3, and/or OFF writers.
 func (dp *DataPublisher) PublishData(records []*DataRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	// Publish the records to the ZMQ ports for full records and/or record summaries.
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
 	}
 	if dp.HasPubSummaries() {
 		dp.PubSummariesChan <- records
 	}
+
+	// If writing is paused or there are no active file outputs, then we are done publishing.
 	if dp.WritingPaused {
 		return nil
 	}
 	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
 		return nil
 	}
+
+	// If we get here, there is one or more output active.
+	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
+	// is already opened and has a header written.
 	if dp.HasLJH22() {
-		for _, record := range records {
-			if !dp.LJH22.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
-				// if the file doesn't exists yet, create it and write header
-				err := dp.LJH22.CreateFile()
-				if err != nil {
-					return err
-				}
-				dp.LJH22.WriteHeader(record.trigTime)
+		if !dp.LJH22.HeaderWritten {
+			err := dp.LJH22.CreateFile()
+			if err != nil {
+				return err
 			}
+			t0 := records[0].trigTime
+			dp.LJH22.WriteHeader(t0)
+		}
+		for _, record := range records {
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
 	if dp.HasLJH3() {
-		for _, record := range records {
-			if !dp.LJH3.HeaderWritten { // MATTER doesn't create ljh files until at least one record exists, let us do the same
-				// if the file doesn't exists yet, create it and write header
-				err := dp.LJH3.CreateFile()
-				if err != nil {
-					return err
-				}
-				dp.LJH3.WriteHeader()
+		if !dp.LJH3.HeaderWritten {
+			err := dp.LJH3.CreateFile()
+			if err != nil {
+				return err
 			}
+			dp.LJH3.WriteHeader()
+		}
+		for _, record := range records {
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
 	if dp.HasOFF() {
-		for _, record := range records {
-			if !dp.OFF.HeaderWritten() { // MATTER doesn't create ljh files until at least one record exists, let us do the same
-				// if the file doesn't exists yet, create it and write header
-				err := dp.OFF.CreateFile()
-				if err != nil {
-					return err
-				}
-				dp.OFF.WriteHeader()
+		if !dp.OFF.HeaderWritten() {
+			err := dp.OFF.CreateFile()
+			if err != nil {
+				return err
 			}
+			dp.OFF.WriteHeader()
+		}
+		for _, record := range records {
 			modelCoefs := make([]float32, len(record.modelCoefs))
 			for i, v := range record.modelCoefs {
 				modelCoefs[i] = float32(v)
