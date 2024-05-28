@@ -4,7 +4,12 @@
 A data acquisition program for NIST transition-edge sensor (TES) microcalorimeters. Designed to replace the earlier programs `ndfb_server` and `matter` (see their [bitbucket repository](https://bitbucket.org/nist_microcal/nasa_daq)).
 
 ## Installation
-**Requires Go version 1.17 or higher** (released August 2021) because [gonum](http://gonum.org/v1/gonum/mat) requires it. Dastard is tested automatically on versions 1.17 and _stable_ (as of May 2024, Go version 1.22.3 is the most recent stable version).
+
+### Golang 1.21 is required
+
+**Dastad requires Go version 1.21 or higher** (released August 2023) because [gonum-v1 v0.15](http://gonum.org/v1/gonum/mat) and other depdencies require it. Dastard is tested automatically on versions 1.21 and _stable_ (as of May 2024, Go version 1.22.3 is the most recent stable version).
+- If you need to run Go versions 1.17, 1.18, 1.19, or 1.20: [Dastard version 0.3.3](https://github.com/usnistgov/dastard/releases/tag/v0.3.3) is the last version compatible with them.
+- If you need to run Go version 1.16: [Dastard version 0.2.16](https://github.com/usnistgov/dastard/releases/tag/v0.2.16) is the last version compatible with it.
 
 **We recommend always using the `Makefile` to build Dastard.** That's not a typical go usage, but we have a simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments to set values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
 ```bash
@@ -107,8 +112,6 @@ or
 ```bash
 sudo port install go zmq libsodium-dev pkg-config
 ```
-
-
 
 ### Also install these companion programs
 
