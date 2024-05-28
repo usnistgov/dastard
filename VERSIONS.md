@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.4** May 2024-
+* Update all package dependencies (issue 347).
+
 **0.3.3** May 28, 2024
 * Make publisher more responsive: don't block data processors waiting on disk flush.
 * Construct all file paths using `path/filepath` to get OS-specific details right (issue 342).
