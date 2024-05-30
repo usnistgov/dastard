@@ -2,6 +2,7 @@
 
 **0.3.4** May 2024-
 * Update all package dependencies (issue 347).
+* Send which types of files are active in the report about writing data (issue 343).
 
 **0.3.3** May 28, 2024
 * Make publisher more responsive: don't block data processors waiting on disk flush.

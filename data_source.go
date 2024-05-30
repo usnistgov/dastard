@@ -645,8 +645,8 @@ func makeDirectory(basepath string) (string, error) {
 }
 
 // WriteControl changes the data writing start/stop/pause/unpause state
-// For WriteLJH22 == true and/or WriteLJH3 == true all channels will have writing enabled
-// For WriteOFF == true, only chanels with projectors set will have writing enabled
+// For (WriteLJH22 == true) and/or (WriteLJH3 == true), all channels will have writing enabled
+// For (WriteOFF == true), only chanels with projectors set will have writing enabled
 func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	requestStr := strings.ToUpper(config.Request)
 	switch {
@@ -773,7 +773,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				ds.subframeOffsets[i], filename)
 		}
 	}
-	return ds.writingState.Start(filenamePattern, path)
+	return ds.writingState.Start(filenamePattern, path, config)
 }
 
 // ComputeWritingState returns a partial copy of the writingState
