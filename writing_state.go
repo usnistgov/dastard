@@ -14,6 +14,9 @@ type WritingState struct {
 	Paused                            bool
 	BasePath                          string
 	FilenamePattern                   string
+	WriteLJH22                        bool // which file formats are active
+	WriteOFF                          bool
+	WriteLJH3                         bool
 	experimentStateFile               *os.File
 	ExperimentStateFilename           string
 	ExperimentStateLabel              string
@@ -54,16 +57,22 @@ func (ws *WritingState) ComputeState() *WritingState {
 	copyState.ExperimentStateLabelUnixNano = ws.ExperimentStateLabelUnixNano
 	copyState.ExternalTriggerFilename = ws.ExternalTriggerFilename
 	copyState.externalTriggerNumberObserved = ws.externalTriggerNumberObserved
+	copyState.WriteLJH22 = ws.WriteLJH22
+	copyState.WriteLJH3 = ws.WriteLJH3
+	copyState.WriteOFF = ws.WriteOFF
 	return &copyState
 }
 
 // Start will set the WritingState to begin writing
-func (ws *WritingState) Start(filenamePattern, path string) error {
+func (ws *WritingState) Start(filenamePattern, path string, config *WriteControlConfig) error {
 	ws.Lock()
 	defer ws.Unlock()
 	ws.Active = true
 	ws.Paused = false
 	ws.BasePath = path
+	ws.WriteLJH22 = config.WriteLJH22
+	ws.WriteLJH3 = config.WriteLJH3
+	ws.WriteOFF = config.WriteOFF
 	ws.FilenamePattern = filenamePattern
 	ws.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	ws.ExternalTriggerFilename = fmt.Sprintf(filenamePattern, "external_trigger", "bin")
