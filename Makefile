@@ -15,12 +15,12 @@ NETGO=-tags netgo
 .PHONY: all build install test clean run deps static
 
 GLOBALVARIABLES=-X main.buildDate=$(shell date -u '+%Y-%m-%d.%H:%M:%S.%Z') -X main.githash=$(shell git rev-parse --short HEAD)
-LDFLAGS=-ldflags "$(GLOBALVARIABLES)"
+GOLINKFLAGS=-ldflags "$(GLOBALVARIABLES)"
 build: $(BINARY_NAME)
 all: test build install
 
 $(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go
-	$(GOBUILD) $(LDFLAGS) $(NETGO) -o $(BINARY_NAME) cmd/dastard/dastard.go
+	$(GOBUILD) $(GOLINKFLAGS) $(NETGO) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
 test:
 	$(GOFMT)
