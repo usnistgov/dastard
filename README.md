@@ -7,9 +7,11 @@ A data acquisition program for NIST transition-edge sensor (TES) microcalorimete
 
 ### Golang 1.21 is required
 
-**Dastad requires Go version 1.21 or higher** (released August 2023) because [gonum-v1 v0.15](http://gonum.org/v1/gonum/mat) and other depdencies require it. Dastard is tested automatically on versions 1.21 and _stable_ (as of May 2024, Go version 1.22.3 is the most recent stable version).
-- If you need to run Go versions 1.17, 1.18, 1.19, or 1.20: [Dastard version 0.3.3](https://github.com/usnistgov/dastard/releases/tag/v0.3.3) is the last version compatible with them.
+**Dastad requires Go version 1.21 or higher** (released August 2023) because [gonum-v1 v0.15](http://gonum.org/v1/gonum/mat) and other depdencies require it. Dastard is tested automatically on versions 1.21 and _stable_, [the most recent stable version](https://github.com/actions/go-versions/blob/main/versions-manifest.json) (as of August 21, 2024, that means Go version 1.23.0).
+- If you need to run Go version 1.20: don't. There was a bug in a filesystem handling library that renders Go 1.20 incompatible with our TDM systems specifically. If you are _not_ using TDM and insist on Go 1.20, follow the instructions for Go 1.19.
+- If you need to run Go versions 1.17, 1.18, 1.19: [Dastard version 0.3.3](https://github.com/usnistgov/dastard/releases/tag/v0.3.3) is the last version compatible with them.
 - If you need to run Go version 1.16: [Dastard version 0.2.16](https://github.com/usnistgov/dastard/releases/tag/v0.2.16) is the last version compatible with it.
+- If you need to run Go version 1.15 or earlier: you are on your own to find a compatible Dastard.
 
 **We recommend always using the `Makefile` to build Dastard.** That's not a typical go usage, but we have a simple trick built into the `Makefile` that allows it to execute `go build` with linker arguments to set values of two global variables. By this step, we are able to get the git hash and the build date of the current version to be known inside Dastard. Hooray! The lesson is always use one of the following:
 ```bash
@@ -23,7 +25,7 @@ make install   # also implies make build
 dastard
 ```
 
-**There was temporarily a problem with Go 1.20 and TDM systems** If you are using TDM systems with the Lancero device, beware that we had trouble making the device read correctly with Go 1.20 (as of April 20, 2023). This turns out to be the result of a bug in Go 1.20, surprisingly. We believe this problem was fixed in May 2023 (Dastard v0.2.19) with a workaround, but we leave this note here just in case you notice problems we didn't. Also, it should be fixed in Go 1.21. Certainly, for data sources other than Lancero, we are unaware of _any_ Go versions that cause problems.
+**There was a problem with Go version 1.20 and TDM systems** If you are using TDM systems with the Lancero device, beware that we had trouble making the device read correctly with Go 1.20 (as of April 20, 2023). This turns out to be the result of a bug in Go 1.20, surprisingly. We believe this problem was worked around in May 2023 (Dastard v0.2.19) AND completely fixed with Go 1.21+. We leave this note here just in case you notice TDM problems that we didn't.
 
 
 ### Ubuntu 22.04, 20.04, 18.04, and (maybe?) 16.04
@@ -40,17 +42,6 @@ sudo add-apt-repository -y ppa:longsleep/golang-backports
 sudo apt-get -y update
 sudo apt-get -y install golang-go
 go version
-
-# If you need lancero-TDM, install go 1.19,
-# then ensure that version go-1.19 is the preferred version in /usr/bin
-# If the above reports version 1.19, or if you don't need lancero-TDM, then skip what follows
-# If the above reports version 1.18 or lower, obviously change the instances of "1.19" in what follows.
-sudo apt-get -y install golang-1.19-go
-pushd /usr/bin
-sudo ln -sf ../lib/go-1.19/bin/go go
-sudo ln -sf ../lib/go-1.19/bin/gofmt gofmt
-popd
-
 
 # Install Dastard as a development copy
 # (These lines should have an equivalent "go install" like maybe "go install gitub.com/usnistgov/dastard@latest"??)
