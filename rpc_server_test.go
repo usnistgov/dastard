@@ -390,16 +390,17 @@ func verifyConfigFile(path, filename string) error {
 		}
 	}
 
-	// Create an empty file path/filename, if it doesn't exist.
+	// If it exists, delete it. Then create an empty file path/filename.
 	fullname := filepath.Join(path, filename)
 	_, err = os.Stat(fullname)
-	if os.IsNotExist(err) {
-		f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
-		if err != nil {
-			return err
-		}
-		f.Close()
+	if !os.IsNotExist(err) {
+		os.Remove(fullname)
 	}
+	f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
+	if err != nil {
+		return err
+	}
+	f.Close()
 	return nil
 }
 
@@ -566,6 +567,13 @@ waitingforfile:
 		if data[i] != data[0] {
 			t.Errorf("npz file firstFrameIndex vector not all alike: %v", data)
 		}
+	}
+}
+
+func TestNoConfigFile(t *testing.T) {
+	// Find config file, creating it if needed, and read it.
+	if err := setupViper(); err != nil {
+		panic(err)
 	}
 }
 
