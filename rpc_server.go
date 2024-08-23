@@ -305,15 +305,18 @@ type SizeObject struct {
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
 	*reply = false // handle the case that sizes fails the validation tests and we return early
-	UpdateLogger.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if !s.isSourceActive {
 		return fmt.Errorf("no source is active")
 	}
+	if sizes.Nsamp <= 0 || sizes.Npre <= 0 {
+		return fmt.Errorf("cannot ConfigurePulseLengths with non-positive values: %v", sizes)
+	}
+	UpdateLogger.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if s.status.Npresamp == sizes.Npre && s.status.Nsamples == sizes.Nsamp {
 		return nil // no change requested
 	}
 	if s.ActiveSource.WritingIsActive() {
-		return fmt.Errorf("Stop writing before changing record lengths")
+		return fmt.Errorf("stop writing before changing record lengths")
 	}
 
 	f := func() {
