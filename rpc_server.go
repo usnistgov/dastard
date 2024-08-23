@@ -814,6 +814,17 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 
 	err = viper.UnmarshalKey("status", &sourceControl.status)
+	// Set some defaults that won't cause problems down the line.
+	status := &sourceControl.status
+	if status.Npresamp <= 0 {
+		status.Npresamp = 400
+	}
+	if status.Nsamples <= status.Npresamp {
+		status.Nsamples = 2 * status.Npresamp
+	}
+	if status.SamplePeriod <= 0 {
+		status.SamplePeriod = 10 * time.Microsecond
+	}
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle
 	sourceControl.isSourceActive = false

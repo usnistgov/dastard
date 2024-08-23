@@ -69,15 +69,6 @@ func TestServer(t *testing.T) {
 	if now := viper.Get("currenttime"); now == nil {
 		t.Errorf("viper.Get(\"currenttime\") returns nil")
 	}
-	sourceControl := NewSourceControl()
-	if err = viper.UnmarshalKey("status", &sourceControl.status); err != nil {
-		t.Errorf("viper.UnmarshalKey(\"status\") returns nil")
-	}
-	if sourceControl.status.Nsamples == 0 {
-		t.Errorf("viper[status] has Nsamples=0")
-	} else if sourceControl.status.Npresamp == 0 {
-		t.Errorf("viper[status] has Npresamples=0")
-	}
 
 	var okay bool
 
