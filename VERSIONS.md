@@ -1,9 +1,10 @@
 ## DASTARD Versions
 
-**0.3.4** May 2024-
+**0.3.4** August 23, 2024
 * Update all package dependencies (issue 347).
 * Send which types of files are active in the report about writing data (issue 343).
 * Rename bad Makefile variable `LDFLAGS` -> `GOLINKFLAGS` (issue 350).
+* When no config file exists, set `Nsamples` to a nonzero value, preventing some crashes (issues 355, 356).
 
 **0.3.3** May 28, 2024
 * Make publisher more responsive: don't block data processors waiting on disk flush.

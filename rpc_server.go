@@ -744,6 +744,10 @@ func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
 // (The intention is that block=true in normal operation, but false for certain tests.)
 func RunRPCServer(portrpc int, block bool) {
 	// Set up objects to handle remote calls
+
+	// Set up source control. Later, we will try to use `viper.UnmarshallKey("status"...)' to fill
+	// it with stored values from ~/.dastard/config.yaml. But in the absence of stored values, we
+	// need to set some reasonable defaults, including non-zero values of Nsamples and Npresamples.
 	sourceControl := NewSourceControl()
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = clientMessageChan
