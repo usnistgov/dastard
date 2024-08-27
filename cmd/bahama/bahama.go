@@ -14,6 +14,9 @@ import (
 
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
+	"log"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 )
 
 const packetAlign = 8192 // Packets go into the ring buffer at this stride (bytes)
@@ -50,6 +53,27 @@ type BahamaControl struct {
 	noiselevel float64
 	samplerate float64
 	dropfrac   float64
+	host       string
+	cancel     chan os.Signal
+	Pulse      PulseParams
+	Sawtooth   SawtoothParams
+	Sinusoid   SinusoidParams
+}
+
+type PulseParams struct {
+    Amplitudes []float64
+    Width      int
+}
+
+type SawtoothParams struct {
+    Amplitude float64
+    Period    int
+}
+
+type SinusoidParams struct {
+    Amplitude float64
+    Frequency float64
+    Phase     float64
 }
 
 // Report prints the Bahama configuration to the terminal.
@@ -111,6 +135,20 @@ func (control *BahamaControl) Report() {
 	}
 	fmt.Printf("Data will be the sum of these source types: %s.\n", strings.Join(sources, "+"))
 	fmt.Println("Type Ctrl-C to stop generating Abaco-style data.")
+
+	if control.pulses {
+        fmt.Printf("Pulse amplitudes: %v\n", control.Pulse.Amplitudes)
+        fmt.Printf("Pulse width: %d\n", control.Pulse.Width)
+    }
+	if control.sawtooth {
+        fmt.Printf("Sawtooth amplitude: %.2f\n", control.Sawtooth.Amplitude)
+        fmt.Printf("Sawtooth period: %d\n", control.Sawtooth.Period)
+    }
+    if control.sinusoid {
+        fmt.Printf("Sinusoid amplitude: %.2f\n", control.Sinusoid.Amplitude)
+        fmt.Printf("Sinusoid frequency: %.2f\n", control.Sinusoid.Frequency)
+        fmt.Printf("Sinusoid phase: %.2f\n", control.Sinusoid.Phase)
+    }
 }
 
 // interleavePackets takes packets from the N channels `inchans` and puts them onto `outchan` in a
@@ -198,29 +236,29 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 			d[i+Nchan*j] = offset
 		}
 		if control.sinusoid {
-			freq := (float64(cnum+1) * 2 * math.Pi) / float64(Nsamp)
-			amplitude := 8000.0
+			freq := control.Sinusoid.Frequency * 2 * math.Pi / float64(Nsamp)
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(amplitude * math.Sin(freq*float64(j)))
+				d[i+Nchan*j] += int16(control.Sinusoid.Amplitude * math.Sin(freq*float64(j) + control.Sinusoid.Phase * float64(i)))
 			}
 		}
 		if control.sawtooth {
 			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(j % 5000)
+				d[i+Nchan*j] += int16(control.Sawtooth.Amplitude * float64(j%control.Sawtooth.Period) / float64(control.Sawtooth.Period))
 			}
 		}
 		if control.pulses {
-			amplitude := 5000.0 + 100.0*float64(cnum)
-			// "Crosstalk" mode means odd-number channels have 2% the signal size.
-			if control.crosstalk && i%2 == 1 {
-				amplitude *= 0.02
-			}
-			scale := amplitude * 2.116
-			for j := 0; j < Nsamp/4; j++ {
-				pulsevalue := int16(scale * (math.Exp(-float64(j)/1200.0) - math.Exp(-float64(j)/300.0)))
-				// Same pulse repeats 4x
-				for k := 0; k < 4; k++ {
-					d[i+Nchan*(j+k*(Nsamp/4))] += pulsevalue
+			amplitudes := control.Pulse.Amplitudes
+			width := control.Pulse.Width
+			numAmplitudes := len(amplitudes)
+			for j := 0; j < width; j++ {
+				for k := 0; k < int(Nsamp/width); k++ {
+					amplitude := amplitudes[k%numAmplitudes]
+					if control.crosstalk && i%2 == 1 {
+						amplitude *= 0.02
+					}
+					scale := amplitude * 2.598
+					pulsevalue := int16(scale * (math.Exp(-30.0*float64(j)/(3.0*float64(width))) - math.Exp(-30.0*float64(j)/float64(width))))
+					d[i+Nchan*(j+k*width)] += pulsevalue
 				}
 			}
 		}
@@ -229,7 +267,16 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 				d[i+Nchan*j] += int16(randsource.NormFloat64() * control.noiselevel)
 			}
 		}
-
+		// Print 100 values of d, but only every Nchan'th value
+		fmt.Println("Sample values for channel", i)
+		for j := 0; j < 100*Nchan && j+i < len(d); j += Nchan {
+			fmt.Printf("%d ", d[j+i])
+			if (j/Nchan+1)%10 == 0 {
+				fmt.Println()
+			}
+		}
+		
+		fmt.Println()
 		// Abaco data only records the lowest N bits.
 		// Wrap the 16-bit data properly into [0, (2^N)-1]
 		// As of Jan 2021, this became N=16, so no "wrapping" needed.
@@ -314,8 +361,8 @@ func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 }
 
 // udpwriter is called once per data source (i.e., per UDP port producing data)
-func udpwriter(portnum int, packetchan chan []byte) error {
-	hostname := fmt.Sprintf("localhost:%d", portnum)
+func udpwriter(portnum int, packetchan chan []byte, host string) error {
+	hostname := fmt.Sprintf("%s:%d", host, portnum)
 	addr, err := net.ResolveUDPAddr("udp", hostname)
 	if err != nil {
 		return err
@@ -357,6 +404,127 @@ func coerceFloat(f *float64, minval, maxval float64) {
 	}
 }
 
+// BahamaControlUpdate carries the parameters that can be updated during runtime
+type BahamaControlUpdate struct {
+    Noiselevel float64
+    Samplerate float64
+    Dropfrac   float64
+    Crosstalk  bool
+    Sawtooth   bool
+    Pulses     bool
+    Sinusoid   bool
+}
+
+// ConfigureBahama updates the BahamaControl fields with the provided values
+func (control *BahamaControl) ConfigureBahama(args *BahamaControlUpdate, reply *bool) error {
+    control.noiselevel = args.Noiselevel
+    if args.Samplerate > 0 {
+        control.samplerate = args.Samplerate
+    }
+    if args.Dropfrac >= 0 && args.Dropfrac <= 1 {
+        control.dropfrac = args.Dropfrac
+    }
+    control.crosstalk = args.Crosstalk
+    control.sawtooth = args.Sawtooth
+    control.pulses = args.Pulses
+    control.sinusoid = args.Sinusoid
+
+    // Ensure at least one data source is active
+    if !(control.noiselevel > 0 || control.sawtooth || control.pulses || control.sinusoid) {
+        control.sawtooth = true
+    }
+
+    control.Report()
+    *reply = true
+    return nil
+}
+
+// ConfigurePulses updates the pulse parameters
+func (control *BahamaControl) ConfigurePulses(args *PulseParams, reply *bool) error {
+    control.Pulse = *args
+    control.pulses = true
+    control.Report()
+    *reply = true
+    return nil
+}
+
+// ConfigureSawtooth updates the sawtooth parameters
+func (control *BahamaControl) ConfigureSawtooth(args *SawtoothParams, reply *bool) error {
+    control.Sawtooth = *args
+    control.sawtooth = true
+    control.Report()
+    *reply = true
+    return nil
+}
+
+// ConfigureSinusoid updates the sinusoid parameters
+func (control *BahamaControl) ConfigureSinusoid(args *SinusoidParams, reply *bool) error {
+    control.Sinusoid = *args
+    control.sinusoid = true
+    control.Report()
+    *reply = true
+    return nil
+}
+
+// Start runs generateAndPublishData
+func (control *BahamaControl) Start(dummy *string, reply *bool) error {
+    if control.cancel != nil {
+        return fmt.Errorf("data generation is already running")
+    }
+    control.cancel = make(chan os.Signal, 1)
+    go generateAndPublishData(*control, control.cancel)
+    *reply = true
+    return nil
+}
+
+// Stop stops data generation and publishing
+func (control *BahamaControl) Stop(dummy *string, reply *bool) error {
+    if control.cancel == nil {
+        return fmt.Errorf("no data generation is running")
+    }
+    close(control.cancel)
+    control.cancel = nil
+    *reply = true
+    return nil
+}
+
+// RunRPCServer sets up and runs a permanent JSON-RPC server for Bahama
+func RunRPCServer(portrpc int, control *BahamaControl) {
+    server := rpc.NewServer()
+    if err := server.Register(control); err != nil {
+        log.Fatal("Error registering RPC server:", err)
+    }
+
+    server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+    port := fmt.Sprintf(":%d", portrpc)
+    listener, err := net.Listen("tcp", port)
+    if err != nil {
+        log.Fatal("Listen error:", err)
+    }
+
+    log.Printf("RPC server listening on port %d\n", portrpc)
+
+    for {
+        if conn, err := listener.Accept(); err != nil {
+            log.Fatal("Accept error:", err)
+        } else {
+            log.Printf("New client connection established\n")
+            go func() {
+                codec := jsonrpc.NewServerCodec(conn)
+                for {
+                    err := server.ServeRequest(codec)
+                    if err != nil {
+                        log.Printf("Error serving request: %v", err)
+                        break
+                    }
+                    log.Printf("Served a request successfully")
+                }
+                log.Printf("Client connection closed")
+            }()
+        }
+    }
+}
+
 func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per source, 4-512 allowed")
@@ -375,6 +543,15 @@ func main() {
 	interleave := flag.Bool("interleave", false, "Whether to interleave channel groups' packets regularly")
 	stagger := flag.Bool("stagger", false, "Whether to stagger channel groups' packets so each gets 'ahead' of the others")
 	droppct := flag.Float64("droppct", 0.0, "Drop this percentage of packets")
+	host := flag.String("host", "localhost", "Hostname or IP address to send UDP packets to")
+	portrpc := flag.Int("rpc", 5555, "RPC server port")
+	pulseAmplitude := flag.Float64("pulseamp", 1000.0, "Amplitude of pulses (can be overridden by RPC)")
+	pulseWidth := flag.Int("pulsewidth", 100, "Width of pulses")
+	sawtoothAmplitude := flag.Float64("sawamp", 1000.0, "Amplitude of sawtooth wave")
+	sawtoothPeriod := flag.Int("sawperiod", 1000, "Period of sawtooth wave")
+	sinusoidAmplitude := flag.Float64("sineamp", 1000.0, "Amplitude of sinusoid wave")
+	sinusoidFrequency := flag.Float64("sinefreq", 1.0, "Frequency of sinusoid wave")
+	sinusoidPhase := flag.Float64("sinephase", 0.0, "Phase of sinusoid wave")
 	flag.Usage = func() {
 		fmt.Println("BAHAMA, the Basic Abaco Hardware Artificial Message Assembler")
 		fmt.Println("Usage:")
@@ -422,12 +599,33 @@ func main() {
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses, crosstalk: *crosstalk,
 		sinusoid: *usesine, noiselevel: *noiselevel,
-		samplerate: *samplerate, dropfrac: (*droppct) / 100.0}
+		samplerate: *samplerate, dropfrac: (*droppct) / 100.0, host: *host, cancel: nil,
+		Pulse: PulseParams{
+			Amplitudes: []float64{*pulseAmplitude},
+			Width:      *pulseWidth,
+		},
+		Sawtooth: SawtoothParams{
+			Amplitude: *sawtoothAmplitude,
+			Period:    *sawtoothPeriod,
+		},
+		Sinusoid: SinusoidParams{
+			Amplitude: *sinusoidAmplitude,
+			Frequency: *sinusoidFrequency,
+			Phase:     *sinusoidPhase,
+		},
+	}
 
 	control.Report()
 
-	cancel := make(chan os.Signal)
-	generateAndPublishData(control, cancel)
+	// Start the RPC server
+	go RunRPCServer(*portrpc, &control)
+
+	// Wait for interrupt signal
+	interruptChan := make(chan os.Signal, 1)
+	signal.Notify(interruptChan, os.Interrupt, syscall.SIGTERM)
+	<-interruptChan
+
+	fmt.Println("\nReceived interrupt signal. Shutting down...")
 }
 
 func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
@@ -438,8 +636,8 @@ func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 		defer close(packetchan)
 		if control.udp {
 			portnum := (control.port) + cardnum
-			if err := udpwriter(portnum, packetchan); err != nil {
-				fmt.Printf("udpwriter(%d,...) failed: %v\n", portnum, err)
+			if err := udpwriter(portnum, packetchan, control.host); err != nil {
+				fmt.Printf("udpwriter(%d, %s, ...) failed: %v\n", portnum, control.host, err)
 				continue
 			}
 		} else {
