@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"sync"
 
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
@@ -37,6 +38,7 @@ func clearRings(nclear int) error {
 // BahamaControl carries all the free parameters of the data generator
 type BahamaControl struct {
 	Nchan      int
+	Nsamp 	   int
 	Ngroups    int
 	Nsources   int
 	Chan0      int // channel number of first channel
@@ -58,6 +60,10 @@ type BahamaControl struct {
 	Pulse      PulseParams
 	Sawtooth   SawtoothParams
 	Sinusoid   SinusoidParams
+	generatedData []int16
+	generatedDataShort []int16
+	dataMutex     sync.RWMutex
+	publisherRunning bool
 }
 
 type PulseParams struct {
@@ -79,6 +85,7 @@ type SinusoidParams struct {
 // Report prints the Bahama configuration to the terminal.
 func (control *BahamaControl) Report() {
 	fmt.Println("Samples per second:       ", control.samplerate)
+	fmt.Println("Nsamp:                    ", control.Nsamp)
 	fmt.Printf("Drop packets randomly:     %.2f%%\n", 100.0*control.dropfrac)
 	if control.udp {
 		fmt.Println("Generating UDP packets on port ", control.port)
@@ -189,9 +196,116 @@ func interleavePackets(outchan chan []byte, inchans []chan []byte, stagger bool)
 	close(outchan)
 }
 
-func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel chan os.Signal, control BahamaControl) error {
+func generateData(control *BahamaControl) error {
 	// Data will play on infinite repeat with this many samples and this repeat period:
-	const Nsamp = 40000 // This many samples before data repeats itself
+	// This many samples before data repeats itself
+	// fmt.Printf("Breaking data into %d bursts with %d values each, burst time %v\n", nbursts, BurstNvalues, burstTime)
+
+	Nchan := (1 + (control.Nchan-1)/control.Ngroups)
+	ShortNchan := control.Nchan % control.Ngroups
+	Nsamp := control.Nsamp
+	randsource := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Raw data that will go into packets
+	d := make([]int16, Nchan * Nsamp)
+	ds := make([]int16, ShortNchan * Nsamp)
+	for i := 0; i < Nchan; i++ {
+		cnum := i
+		offset := int16(cnum * 1000)
+		for j := 0; j < Nsamp; j++ {
+			d[i+Nchan*j] = offset
+			if i < ShortNchan {
+				ds[i + ShortNchan*j] = offset
+			}
+		}
+		if control.sinusoid {
+			freq := control.Sinusoid.Frequency * 2 * math.Pi / float64(Nsamp)
+			for j := 0; j < Nsamp; j++ {
+				sinvalue := int16(control.Sinusoid.Amplitude * math.Sin(freq*float64(j) + control.Sinusoid.Phase * float64(i)))
+				d[i+Nchan*j] += sinvalue
+				if i < ShortNchan {
+					ds[i + ShortNchan*j] += sinvalue
+				}			}
+		}
+		if control.sawtooth {
+			for j := 0; j < Nsamp; j++ {
+				sawvalue := int16(control.Sawtooth.Amplitude * float64(j%control.Sawtooth.Period) / float64(control.Sawtooth.Period))
+				d[i+Nchan*j] += sawvalue
+				if i < ShortNchan {
+					ds[i + ShortNchan*j] += sawvalue
+				}
+			}
+		}
+		if control.pulses {
+			amplitudes := control.Pulse.Amplitudes
+			width := control.Pulse.Width
+			numAmplitudes := len(amplitudes)
+			for j := 0; j < width; j++ {
+				for k := 0; k < int(Nsamp/width); k++ {
+					amplitude := amplitudes[k%numAmplitudes]
+					if control.crosstalk && i%2 == 1 {
+						amplitude *= 0.02
+					}
+					scale := amplitude * 2.598
+					pulsevalue := int16(scale * (math.Exp(-30.0*float64(j)/(3.0*float64(width))) - math.Exp(-30.0*float64(j)/float64(width))))
+					d[i+Nchan*(j+k*width)] += pulsevalue
+					if i < ShortNchan {
+						ds[i + ShortNchan*(j + k*width)] += pulsevalue
+					}
+				}
+			}
+		}
+		if control.noiselevel > 0.0 {
+			for j := 0; j < Nsamp; j++ {
+				noisevalue := int16(randsource.NormFloat64() * control.noiselevel)
+				d[i+Nchan*j] += noisevalue
+				if i < ShortNchan {
+					ds[i + ShortNchan*j] += noisevalue
+				}
+			}
+		}
+		// Print 100 values of d, but only every Nchan'th value
+		fmt.Println("Sample values for channel", i)
+		for j := 0; j < 100*Nchan && j+i < len(d); j += Nchan {
+			fmt.Printf("%d ", d[j+i])
+			if (j/Nchan+1)%10 == 0 {
+				fmt.Println()
+			}
+		}
+		
+		fmt.Println()
+		// Abaco data only records the lowest N bits.
+		// Wrap the 16-bit data properly into [0, (2^N)-1]
+		// As of Jan 2021, this became N=16, so no "wrapping" needed.
+	}
+	control.dataMutex.Lock()
+    control.generatedData = d
+	control.generatedDataShort = ds
+    control.dataMutex.Unlock()
+	return nil
+}
+
+func regenerateData(control *BahamaControl) error {
+    if err := generateData(control); err != nil {
+        return err
+    }
+    fmt.Println("Data regenerated successfully")
+    return nil
+}
+
+func (control *BahamaControl) RegenerateData(dummy *struct{}, reply *bool) error {
+    err := regenerateData(control)
+	*reply = (err == nil)
+	return err
+}
+
+func publishData(Nchan, firstchanOffset int, packetchan chan []byte, cancel chan os.Signal, control *BahamaControl) error {
+	// Data will play on infinite repeat with this many samples and this repeat period:
+	control.publisherRunning = true
+    defer func() { control.publisherRunning = false }()
+
+	BaseNchan := (1 + (control.Nchan-1)/control.Ngroups)
+	Nsamp := control.Nsamp
 	sampleRate := control.samplerate
 	periodns := float64(Nsamp) / sampleRate * 1e9
 	repeatTime := time.Duration(periodns+0.5) * time.Nanosecond // Repeat data with this period
@@ -211,7 +325,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		nbursts = 1
 	}
 	burstTime := repeatTime / time.Duration(nbursts)
-	TotalNvalues := Nchan * Nsamp // one rep has this many values
+	TotalNvalues := Nsamp * Nchan // one rep has this many values
 	BurstNvalues := TotalNvalues / nbursts
 	BurstNvalues -= BurstNvalues % valuesPerPacket // bursts should have integer number of packets
 	for BurstNvalues*nbursts < TotalNvalues {      // last burst should be shorter, not longer than the others.
@@ -227,72 +341,24 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	initSeqNum := uint32(randsource.Intn(10000))
 	packet := packets.NewPacket(version, sourceID, initSeqNum, firstchanOffset)
 
-	// Raw data that will go into packets
-	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
-		cnum := i + firstchanOffset
-		offset := int16(cnum * 1000)
-		for j := 0; j < Nsamp; j++ {
-			d[i+Nchan*j] = offset
-		}
-		if control.sinusoid {
-			freq := control.Sinusoid.Frequency * 2 * math.Pi / float64(Nsamp)
-			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(control.Sinusoid.Amplitude * math.Sin(freq*float64(j) + control.Sinusoid.Phase * float64(i)))
-			}
-		}
-		if control.sawtooth {
-			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(control.Sawtooth.Amplitude * float64(j%control.Sawtooth.Period) / float64(control.Sawtooth.Period))
-			}
-		}
-		if control.pulses {
-			amplitudes := control.Pulse.Amplitudes
-			width := control.Pulse.Width
-			numAmplitudes := len(amplitudes)
-			for j := 0; j < width; j++ {
-				for k := 0; k < int(Nsamp/width); k++ {
-					amplitude := amplitudes[k%numAmplitudes]
-					if control.crosstalk && i%2 == 1 {
-						amplitude *= 0.02
-					}
-					scale := amplitude * 2.598
-					pulsevalue := int16(scale * (math.Exp(-30.0*float64(j)/(3.0*float64(width))) - math.Exp(-30.0*float64(j)/float64(width))))
-					d[i+Nchan*(j+k*width)] += pulsevalue
-				}
-			}
-		}
-		if control.noiselevel > 0.0 {
-			for j := 0; j < Nsamp; j++ {
-				d[i+Nchan*j] += int16(randsource.NormFloat64() * control.noiselevel)
-			}
-		}
-		// Print 100 values of d, but only every Nchan'th value
-		fmt.Println("Sample values for channel", i)
-		for j := 0; j < 100*Nchan && j+i < len(d); j += Nchan {
-			fmt.Printf("%d ", d[j+i])
-			if (j/Nchan+1)%10 == 0 {
-				fmt.Println()
-			}
-		}
-		
-		fmt.Println()
-		// Abaco data only records the lowest N bits.
-		// Wrap the 16-bit data properly into [0, (2^N)-1]
-		// As of Jan 2021, this became N=16, so no "wrapping" needed.
-		FractionBits := 16
-		if FractionBits < 16 {
-			for j := 0; j < Nsamp; j++ {
-				raw := d[i+Nchan*j]
-				d[i+Nchan*j] = raw % (1 << FractionBits)
-			}
-		}
-	}
 
 	dims := []int16{int16(Nchan)}
 	timer := time.NewTicker(burstTime)
 	timeCounter := uint64(0)
+
+
 	for {
+		var d []int16
+		control.dataMutex.RLock()
+	
+		if Nchan < BaseNchan {
+			d = control.generatedDataShort
+		} else {
+			d = control.generatedData
+		}
+	
+		control.dataMutex.RUnlock()
+
 		for burstnum := 0; burstnum < nbursts; burstnum++ {
 			select {
 			case <-cancel:
@@ -325,6 +391,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		}
 	}
 }
+
 
 func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
 	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
@@ -409,14 +476,19 @@ type BahamaControlUpdate struct {
     Noiselevel float64
     Samplerate float64
     Dropfrac   float64
+	NSamples   int
     Crosstalk  bool
     Sawtooth   bool
-    Pulses     bool
+    Pulse     bool
     Sinusoid   bool
 }
 
 // ConfigureBahama updates the BahamaControl fields with the provided values
 func (control *BahamaControl) ConfigureBahama(args *BahamaControlUpdate, reply *bool) error {
+	if args.NSamples > 0 {
+		control.Nsamp = args.NSamples
+	}
+
     control.noiselevel = args.Noiselevel
     if args.Samplerate > 0 {
         control.samplerate = args.Samplerate
@@ -426,14 +498,13 @@ func (control *BahamaControl) ConfigureBahama(args *BahamaControlUpdate, reply *
     }
     control.crosstalk = args.Crosstalk
     control.sawtooth = args.Sawtooth
-    control.pulses = args.Pulses
+    control.pulses = args.Pulse
     control.sinusoid = args.Sinusoid
 
     // Ensure at least one data source is active
     if !(control.noiselevel > 0 || control.sawtooth || control.pulses || control.sinusoid) {
         control.sawtooth = true
     }
-
     control.Report()
     *reply = true
     return nil
@@ -472,7 +543,7 @@ func (control *BahamaControl) Start(dummy *string, reply *bool) error {
         return fmt.Errorf("data generation is already running")
     }
     control.cancel = make(chan os.Signal, 1)
-    go generateAndPublishData(*control, control.cancel)
+    go generateAndPublishData(control, control.cancel)
     *reply = true
     return nil
 }
@@ -528,6 +599,7 @@ func RunRPCServer(portrpc int, control *BahamaControl) {
 func main() {
 	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per source, 4-512 allowed")
+	nsamp := flag.Int("nsamp", 10000, "Number of samples per channel")
 	ring := flag.Bool("ring", false, "Data into shared memory ring buffers instead of UDP packets (default false)")
 	nsource := flag.Int("nsource", 1, "Number of sources (UDP clients or ring buffers), 1-4 allowed")
 	chan0 := flag.Int("firstchan", 0, "Channel number of the first channel (default 0)")
@@ -543,7 +615,7 @@ func main() {
 	interleave := flag.Bool("interleave", false, "Whether to interleave channel groups' packets regularly")
 	stagger := flag.Bool("stagger", false, "Whether to stagger channel groups' packets so each gets 'ahead' of the others")
 	droppct := flag.Float64("droppct", 0.0, "Drop this percentage of packets")
-	host := flag.String("host", "localhost", "Hostname or IP address to send UDP packets to")
+	host := flag.String("host", "0.0.0.0", "Hostname or IP address to bind to (use 0.0.0.0 for all interfaces)")
 	portrpc := flag.Int("rpc", 5555, "RPC server port")
 	pulseAmplitude := flag.Float64("pulseamp", 1000.0, "Amplitude of pulses (can be overridden by RPC)")
 	pulseWidth := flag.Int("pulsewidth", 100, "Width of pulses")
@@ -576,6 +648,12 @@ func main() {
 		}
 	}
 
+	// Ensure nsamp is greater than 0
+	if *nsamp <= 0 {
+		*nsamp = 10000 // Set a default value if nsamp is not positive
+		fmt.Println("Warning: nsamp must be positive. Setting to default value of 10000.")
+	}
+
 	// Compute the size of each ring buffer. Let it be big enough to hold 0.5 seconds of data
 	// or 500 packets, and be a multiple of packetAlign.
 	ringlasts := 0.5 // seconds
@@ -593,7 +671,7 @@ func main() {
 		*usepulses = true
 	}
 
-	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
+	control := BahamaControl{Nchan: *nchan, Nsamp: *nsamp, Ngroups: *ngroups,
 		Nsources: *nsource, udp: udp, port: *port,
 		Chan0: *chan0, chanGaps: *changaps, ringsize: ringsize,
 		stagger: *stagger, interleave: *interleave,
@@ -628,9 +706,14 @@ func main() {
 	fmt.Println("\nReceived interrupt signal. Shutting down...")
 }
 
-func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
+func generateAndPublishData(control *BahamaControl, cancel chan os.Signal) {
 	signal.Notify(cancel, os.Interrupt, syscall.SIGTERM)
 	ch0 := control.Chan0
+
+	if err := generateData(control); err != nil {
+        fmt.Printf("Initial data generation failed: %v\n", err)
+        return
+    }
 	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
 		defer close(packetchan)
@@ -660,8 +743,8 @@ func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 				stage1pchans = append(stage1pchans, pchan)
 			}
 			go func(nchan, chan0 int, pchan chan []byte) {
-				if err := generateData(nchan, chan0, pchan, cancel, control); err != nil {
-					fmt.Printf("generateData() failed: %v\n", err)
+				if err := publishData(nchan, chan0, pchan, cancel, control); err != nil {
+					fmt.Printf("publishData() failed: %v\n", err)
 				}
 			}(nch, ch0, pchan)
 			ch0 += nch + control.chanGaps
