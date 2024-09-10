@@ -201,6 +201,7 @@ func generateData(control *BahamaControl) error {
 	// This many samples before data repeats itself
 	// fmt.Printf("Breaking data into %d bursts with %d values each, burst time %v\n", nbursts, BurstNvalues, burstTime)
 
+	fmt.Println("Generating Data")
 	Nchan := (1 + (control.Nchan-1)/control.Ngroups)
 	ShortNchan := control.Nchan % control.Ngroups
 	Nsamp := control.Nsamp
@@ -265,15 +266,7 @@ func generateData(control *BahamaControl) error {
 			}
 		}
 		// Print 100 values of d, but only every Nchan'th value
-		fmt.Println("Sample values for channel", i)
-		for j := 0; j < 100*Nchan && j+i < len(d); j += Nchan {
-			fmt.Printf("%d ", d[j+i])
-			if (j/Nchan+1)%10 == 0 {
-				fmt.Println()
-			}
-		}
 		
-		fmt.Println()
 		// Abaco data only records the lowest N bits.
 		// Wrap the 16-bit data properly into [0, (2^N)-1]
 		// As of Jan 2021, this became N=16, so no "wrapping" needed.
@@ -479,7 +472,7 @@ type BahamaControlUpdate struct {
 	NSamples   int
     Crosstalk  bool
     Sawtooth   bool
-    Pulse     bool
+    Pulse      bool
     Sinusoid   bool
 }
 
@@ -697,6 +690,11 @@ func main() {
 
 	// Start the RPC server
 	go RunRPCServer(*portrpc, &control)
+	// Start generating and publishing data
+	control.cancel = make(chan os.Signal, 1)
+	go generateAndPublishData(&control, control.cancel)
+
+	fmt.Println("Started generating and publishing data. Use RPC to control or Ctrl-C to stop.")
 
 	// Wait for interrupt signal
 	interruptChan := make(chan os.Signal, 1)
