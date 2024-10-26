@@ -19,7 +19,7 @@ func TestPublishData(t *testing.T) {
 	dp := DataPublisher{}
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4, modelCoefs: make([]float64, 3)}
-	records := []*DataRecord{rec, rec, rec}
+	records := []*DataRecord{rec, rec, rec, nil}
 
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
