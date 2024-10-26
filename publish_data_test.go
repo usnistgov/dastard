@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -20,6 +21,8 @@ func TestPublishData(t *testing.T) {
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4, modelCoefs: make([]float64, 3)}
 	records := []*DataRecord{rec, rec, rec, nil}
+	// Any errors in the triggering calcultion produce nil values for a record; remove them
+	records = slices.DeleteFunc(records, func(r *DataRecord) bool { return r == nil })
 
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
@@ -34,7 +37,7 @@ func TestPublishData(t *testing.T) {
 		t.Fail()
 	}
 	if dp.numberWritten != 3 {
-		t.Errorf("expected PublishData to increment numberWritten with LJH22 enabled")
+		t.Errorf("expected PublishData numberWritten with LJH22 enabled, (want %d, found %d)", 3, dp.numberWritten)
 	}
 	if !dp.HasLJH22() {
 		t.Error("HasLJH22() false, want true")
@@ -89,7 +92,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("wrong number of RecordsWritten, want 3, have", dp.LJH3.RecordsWritten)
 	}
 	if dp.numberWritten != 3 {
-		t.Errorf("expected PublishedData to increment numberWritten")
+		t.Errorf("expected PublishedData to increment numberWritten, (want %d, found %d)", 3, dp.numberWritten)
 	}
 	if !dp.HasLJH3() {
 		t.Error("HasLJH3() false, want true")
@@ -115,7 +118,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("wrong number of RecordsWritten, want 3, have", dp.OFF.RecordsWritten())
 	}
 	if dp.numberWritten != 3 {
-		t.Errorf("expected PublishedData to increment numberWritten")
+		t.Errorf("expected PublishedData to increment numberWritten (want %d, found %d)", 3, dp.numberWritten)
 	}
 	if !dp.HasOFF() {
 		t.Error("HasOFF() false, want true")

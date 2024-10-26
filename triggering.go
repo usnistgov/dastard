@@ -3,6 +3,7 @@ package dastard
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"time"
 )
@@ -265,6 +266,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 		// pulses. We have found little need for this approach and leave this comment as a
 		// placeholder in case we ever want to add it.
 	}
+
+	// Any errors in the triggering calculation produce nil values for a record; remove them now.
+	records = slices.DeleteFunc(records, func(r *DataRecord) bool { return r == nil })
 
 	// Step 2: store the last trigger for the next invocation of TriggerData
 	if len(records) > 0 {
