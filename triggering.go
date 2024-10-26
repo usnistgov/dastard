@@ -48,8 +48,9 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(i int, NPresamples int,
 	data := make([]RawType, NSamples)
 	stream := dsp.stream
 	if i < NPresamples {
-		fmt.Printf("We are about to panic, with i=%d, NPre=%d, NSamp=%d\n",
+		fmt.Printf("We would panic, except for returning nil, with i=%d, NPre=%d, NSamp=%d\n",
 			i, NPresamples, NSamples)
+		return nil
 	}
 	copy(data, stream.rawData[i-NPresamples:i+NSamples-NPresamples])
 	tf := stream.firstFrameIndex + FrameIndex(i)
