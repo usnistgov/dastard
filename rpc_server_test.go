@@ -128,7 +128,7 @@ func TestServer(t *testing.T) {
 	sizes := SizeObject{Nsamp: 800, Npre: 200}
 	err = client.Call("SourceControl.ConfigurePulseLengths", &sizes, &okay)
 	if err != nil {
-		t.Logf(err.Error())
+		t.Log(err.Error())
 		t.Errorf("Error calling SourceControl.ConfigurePulseLengths(%v)", sizes)
 	}
 	if !okay {
@@ -138,7 +138,7 @@ func TestServer(t *testing.T) {
 
 	err = client.Call("SourceControl.Stop", sourceName, &okay)
 	if err != nil {
-		t.Logf(err.Error())
+		t.Log(err.Error())
 		t.Errorf("Error calling SourceControl.Stop(%s)", sourceName)
 	}
 	if !okay {
