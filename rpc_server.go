@@ -305,15 +305,18 @@ type SizeObject struct {
 // ConfigurePulseLengths is the RPC-callable service to change pulse record sizes.
 func (s *SourceControl) ConfigurePulseLengths(sizes SizeObject, reply *bool) error {
 	*reply = false // handle the case that sizes fails the validation tests and we return early
-	UpdateLogger.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if !s.isSourceActive {
 		return fmt.Errorf("no source is active")
 	}
+	if sizes.Nsamp <= 0 || sizes.Npre <= 0 {
+		return fmt.Errorf("cannot ConfigurePulseLengths with non-positive values: %v", sizes)
+	}
+	UpdateLogger.Printf("ConfigurePulseLengths: %d samples (%d pre)\n", sizes.Nsamp, sizes.Npre)
 	if s.status.Npresamp == sizes.Npre && s.status.Nsamples == sizes.Nsamp {
 		return nil // no change requested
 	}
 	if s.ActiveSource.WritingIsActive() {
-		return fmt.Errorf("Stop writing before changing record lengths")
+		return fmt.Errorf("stop writing before changing record lengths")
 	}
 
 	f := func() {
@@ -744,6 +747,10 @@ func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
 // (The intention is that block=true in normal operation, but false for certain tests.)
 func RunRPCServer(portrpc int, block bool) {
 	// Set up objects to handle remote calls
+
+	// Set up source control. Later, we will try to use `viper.UnmarshallKey("status"...)' to fill
+	// it with stored values from ~/.dastard/config.yaml. But in the absence of stored values, we
+	// need to set some reasonable defaults, including non-zero values of Nsamples and Npresamples.
 	sourceControl := NewSourceControl()
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = clientMessageChan
@@ -810,6 +817,17 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 
 	err = viper.UnmarshalKey("status", &sourceControl.status)
+	// Set some defaults that won't cause problems down the line.
+	status := &sourceControl.status
+	if status.Npresamp <= 0 {
+		status.Npresamp = 400
+	}
+	if status.Nsamples <= status.Npresamp {
+		status.Nsamples = 2 * status.Npresamp
+	}
+	if status.SamplePeriod <= 0 {
+		status.SamplePeriod = 10 * time.Microsecond
+	}
 	sourceControl.status.Running = false
 	sourceControl.ActiveSource = sourceControl.triangle
 	sourceControl.isSourceActive = false
