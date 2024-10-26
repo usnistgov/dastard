@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.5** October, 2024-
+* Fix crashes when rate is high and a packet is dropped (issue 360).
+
 **0.3.4** August 23, 2024
 * Update all package dependencies (issue 347).
 * Send which types of files are active in the report about writing data (issue 343).
