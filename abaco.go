@@ -812,6 +812,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 
 // distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
 func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
+	frameTimeUpdated := false
 	for _, p := range allpackets {
 		if p.IsExternalTrigger() {
 			as.eTrigPackets = append(as.eTrigPackets, p)
@@ -821,7 +822,10 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 		cidx := gIndex(p)
 		grp := as.groups[cidx]
 		grp.enqueuePacket(p, now)
-		grp.updateFrameTiming(p, as.nextFrameNum)
+		if !frameTimeUpdated {
+			grp.updateFrameTiming(p, as.nextFrameNum)
+			frameTimeUpdated = true
+		}
 	}
 }
 
