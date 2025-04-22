@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.5** April 22, 2025
+* Fix bug that was writing zeros for the external trigger (issue 362).
+
 **0.3.4** August 23, 2024
 * Update all package dependencies (issue 347).
 * Send which types of files are active in the report about writing data (issue 343).
