@@ -137,11 +137,9 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	// approach is to ignore. After the next (consistent) timestamp, it will recover.
 	group.LastFirmwareTimestamp = *ts
 	group.LastSubframeCount = newSubframeCount
-	if deltaSubframe <= 0 || deltaTs == 0 {
-		group.TimestampCountsPerSubframe = 0
-		return
+	if deltaSubframe > 0 {
+		group.TimestampCountsPerSubframe = deltaTs / uint64(deltaSubframe)
 	}
-	group.TimestampCountsPerSubframe = deltaTs / uint64(deltaSubframe)
 }
 
 // subframeCountFromTimestamp uses the group.FrameTimingCorrespondence data to
