@@ -134,11 +134,16 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	newSubframeCount := frameIdx * abacoSubframeDivisions
 	deltaSubframe := newSubframeCount - group.LastSubframeCount
 	deltaTs := ts.T - group.LastFirmwareTimestamp.T
+	spew.Dump(p)
+	spew.Dump(group.LastFirmwareTimestamp)
 	if deltaSubframe <= 0 || deltaTs == 0 {
-		spew.Dump(p)
-		spew.Dump(group.LastFirmwareTimestamp)
+		println("No change in timing. Return without updates.")
 		return
 	}
+	println("Change in timing")
+	spew.Dump(ts)
+	spew.Dump(newSubframeCount)
+	spew.Dump(deltaTs)
 	// There will be transient nonsense if the timestamp.Rate changes. I think the best
 	// approach is to proceed heedless of the nonsense.
 	// After the next (consistent) timestamp, it will recover.
