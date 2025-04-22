@@ -137,7 +137,8 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 		return
 	}
 	// There will be transient nonsense if the timestamp.Rate changes. I think the best
-	// approach is set subframe rate to 0. After the next (consistent) timestamp, it will recover.
+	// approach is to proceed heedless of the nonsense.
+	// After the next (consistent) timestamp, it will recover.
 	group.LastFirmwareTimestamp = *ts
 	group.LastSubframeCount = newSubframeCount
 	group.TimestampCountsPerSubframe = deltaTs / uint64(deltaSubframe)
