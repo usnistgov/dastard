@@ -13,7 +13,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/fabiokung/shm"
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
@@ -134,20 +133,17 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	newSubframeCount := frameIdx * abacoSubframeDivisions
 	deltaSubframe := newSubframeCount - group.LastSubframeCount
 	deltaTs := ts.T - group.LastFirmwareTimestamp.T
-	spew.Dump(p)
-	spew.Dump(group.LastFirmwareTimestamp)
-	spew.Dump(deltaTs)
+
+	// It is perfectly normal for this to be called dozens of times in a row with identical
+	// values of `FrameIndex`, yielding `deltaSubFrame == 0`. In such cases, we have effectively
+	// no new information about frame timing, so return without effect (also helps us avoid a
+	// divide-by-zero error).
 	if deltaSubframe <= 0 || deltaTs == 0 {
-		println("No change in timing. Return without updates.")
 		return
 	}
-	println("Change in timing")
-	spew.Dump(ts)
-	spew.Dump(newSubframeCount)
-	spew.Dump(deltaTs)
-	// There will be transient nonsense if the timestamp.Rate changes. I think the best
-	// approach is to proceed heedless of the nonsense.
-	// After the next (consistent) timestamp, it will recover.
+
+	// There will be transient nonsense in (rare) cases where the timestamp.Rate changes. I think the
+	// best approach is to proceed. After the next (consistent) timestamp, it will recover.
 	group.LastFirmwareTimestamp = *ts
 	group.LastSubframeCount = newSubframeCount
 	group.TimestampCountsPerSubframe = deltaTs / uint64(deltaSubframe)
