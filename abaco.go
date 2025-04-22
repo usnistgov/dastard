@@ -136,6 +136,7 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	deltaTs := ts.T - group.LastFirmwareTimestamp.T
 	spew.Dump(p)
 	spew.Dump(group.LastFirmwareTimestamp)
+	spew.Dump(deltaTs)
 	if deltaSubframe <= 0 || deltaTs == 0 {
 		println("No change in timing. Return without updates.")
 		return
