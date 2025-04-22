@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/fabiokung/shm"
 	"github.com/usnistgov/dastard/packets"
 	"github.com/usnistgov/dastard/ringbuffer"
@@ -134,6 +135,8 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	deltaSubframe := newSubframeCount - group.LastSubframeCount
 	deltaTs := ts.T - group.LastFirmwareTimestamp.T
 	if deltaSubframe <= 0 || deltaTs == 0 {
+		spew.Dump(p)
+		spew.Dump(group.LastFirmwareTimestamp)
 		return
 	}
 	// There will be transient nonsense if the timestamp.Rate changes. I think the best
