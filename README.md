@@ -28,7 +28,7 @@ dastard
 **There was a problem with Go version 1.20 and TDM systems** If you are using TDM systems with the Lancero device, beware that we had trouble making the device read correctly with Go 1.20 (as of April 20, 2023). This turns out to be the result of a bug in Go 1.20, surprisingly. We believe this problem was worked around in May 2023 (Dastard v0.2.19) AND completely fixed with Go 1.21+. We leave this note here just in case you notice TDM problems that we didn't.
 
 
-### Ubuntu 22.04, 20.04, 18.04, and (maybe?) 16.04
+### Ubuntu 24.04, 22.04, 20.04, 18.04, and (maybe?) 16.04
 
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
 simple command as sudo first; otherwise, the password entering step will screw up your multi-line paste.
@@ -92,16 +92,16 @@ After this, follow the Ubuntu instructions starting with "# Install Dastard as a
 
 ### MacOS dependencies (Homebrew or MacPorts)
 
-As appropriate, use one of
+As appropriate, use either for Homebrew:
 
 ```bash
 brew install go zmq libsodium pkg-config
 ```
 
-or
+or for MacPorts (updated 2 May 2025):
 
 ```bash
-sudo port install go zmq libsodium-dev pkg-config
+sudo port install go go-tools go-devel zmq libsodium-dev pkgconfig
 ```
 
 ### Also install these companion programs
