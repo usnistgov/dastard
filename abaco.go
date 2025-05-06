@@ -1197,7 +1197,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 				framePeriod:     as.samplePeriod,
 				firstFrameIndex: as.nextFrameNum,
 				firstTime:       firstTime,
-				signed:          true,
+				signed:          false,
 				droppedFrames:   buffersMsg.droppedFrames,
 			}
 			block.segments[channelIndex] = seg
