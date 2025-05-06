@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.6** May 6, 2025-
+* Make Abaco data be considered unsigned (issue 364).
+
 **0.3.5** April 22, 2025
 * Fix bug that was writing zeros for the external trigger (issue 362).
 
