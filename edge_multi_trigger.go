@@ -14,6 +14,7 @@ type EMTBackwardCompatibleRPCFields struct {
 	EdgeMultiNoise                   bool
 	EdgeMultiMakeShortRecords        bool
 	EdgeMultiMakeContaminatedRecords bool
+	EdgeMultiMakeSingleRecords       bool
 	EdgeMultiDisableZeroThreshold    bool
 	EdgeMultiLevel                   int32
 	EdgeMultiVerifyNMonotone         int
@@ -34,6 +35,8 @@ func (b EMTBackwardCompatibleRPCFields) toEMTState() (EMTState, error) {
 	}
 	if b.EdgeMultiMakeContaminatedRecords {
 		s.mode = EMTRecordsTwoFullLength
+	} else if b.EdgeMultiMakeSingleRecords {
+		s.mode = EMTRecordsOneFullLength
 	} else if b.EdgeMultiMakeShortRecords {
 		s.mode = EMTRecordsVariableLength
 	} else {
