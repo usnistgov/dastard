@@ -133,15 +133,19 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 	newSubframeCount := frameIdx * abacoSubframeDivisions
 	deltaSubframe := newSubframeCount - group.LastSubframeCount
 	deltaTs := ts.T - group.LastFirmwareTimestamp.T
-	// There will be transient nonsense if the timestamp.Rate changes. I think the best
-	// approach is set subframe rate to 0. After the next (consistent) timestamp, it will recover.
-	unequalRates := ts.Rate != group.LastFirmwareTimestamp.Rate
-	group.LastFirmwareTimestamp = *ts
-	group.LastSubframeCount = newSubframeCount
-	if deltaSubframe <= 0 || deltaTs == 0 || unequalRates {
-		group.TimestampCountsPerSubframe = 0
+
+	// It is perfectly normal for this to be called dozens of times in a row with identical
+	// values of `FrameIndex`, yielding `deltaSubFrame == 0`. In such cases, we have effectively
+	// no new information about frame timing, so return without effect (also helps us avoid a
+	// divide-by-zero error).
+	if deltaSubframe <= 0 || deltaTs == 0 {
 		return
 	}
+
+	// There will be transient nonsense in (rare) cases where the timestamp.Rate changes. I think the
+	// best approach is to proceed. After the next (consistent) timestamp, it will recover.
+	group.LastFirmwareTimestamp = *ts
+	group.LastSubframeCount = newSubframeCount
 	group.TimestampCountsPerSubframe = deltaTs / uint64(deltaSubframe)
 }
 
@@ -808,6 +812,7 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 
 // distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
 func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
+	frameTimeUpdated := false
 	for _, p := range allpackets {
 		if p.IsExternalTrigger() {
 			as.eTrigPackets = append(as.eTrigPackets, p)
@@ -817,7 +822,10 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 		cidx := gIndex(p)
 		grp := as.groups[cidx]
 		grp.enqueuePacket(p, now)
-		grp.updateFrameTiming(p, as.nextFrameNum)
+		if !frameTimeUpdated {
+			grp.updateFrameTiming(p, as.nextFrameNum)
+			frameTimeUpdated = true
+		}
 	}
 }
 
@@ -1189,7 +1197,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 				framePeriod:     as.samplePeriod,
 				firstFrameIndex: as.nextFrameNum,
 				firstTime:       firstTime,
-				signed:          true,
+				signed:          false,
 				droppedFrames:   buffersMsg.droppedFrames,
 			}
 			block.segments[channelIndex] = seg
