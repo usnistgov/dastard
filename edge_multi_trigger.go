@@ -253,6 +253,7 @@ const (
 	EMTRecordsTwoFullLength      EMTMode = iota // Generate two full-length records even if they overlap.
 	EMTRecordsVariableLength                    // Generate a variable-length record when triggers are too close together.
 	EMTRecordsFullLengthIsolated                // Generate no records when triggers are too close together.
+	EMTRecordsOneFullLength                     // Generate a single record when triggers are too close together.
 )
 
 // t index of previous trigger
@@ -271,8 +272,13 @@ func edgeMultiShouldRecord(t, u, v FrameIndex, npreIn, nsampIn int32, mode EMTMo
 		return RecordSpec{-1, -1, -1}, false
 	}
 	if mode == EMTRecordsVariableLength {
-		// always make a record, but dont overlap with neighboring triggers
+		// always make a record, but don't overlap with neighboring triggers
 		return RecordSpec{u, npre, npre + npost}, true
+	} else if mode == EMTRecordsOneFullLength {
+		// always make a record, but don't overlap with neighboring triggers
+		if u-t >= FrameIndex(nsampIn) {
+			return RecordSpec{u, npreIn, nsampIn}, true
+		}
 	} else if mode == EMTRecordsTwoFullLength {
 		// always make a record, overlap with neighboring records
 		return RecordSpec{u, npreIn, nsampIn}, true
