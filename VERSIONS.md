@@ -2,6 +2,7 @@
 
 **0.3.6** May 6, 2025-
 * Make Abaco data be considered unsigned (issue 364).
+* Add feature where EMT retrigger can create one record, not just 0 or 2 records (issue 366).
 
 **0.3.5** April 22, 2025
 * Fix bug that was writing zeros for the external trigger (issue 362).
