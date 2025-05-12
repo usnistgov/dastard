@@ -1,7 +1,6 @@
 package dastard
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -274,7 +273,7 @@ func TestErroringSource(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		// 	// start the source, wait for it to end due to error, repeat
 		if err := Start(ds, nil, 256, 1024); err != nil {
-			t.Fatalf(fmt.Sprintf("Could not start ErroringSource: i=%v, err=%v", i, err))
+			t.Fatalf("Could not start ErroringSource: i=%v, err=%v", i, err)
 		}
 		es.RunDoneWait()
 		if ds.Running() {

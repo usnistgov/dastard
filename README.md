@@ -7,7 +7,7 @@ A data acquisition program for NIST transition-edge sensor (TES) microcalorimete
 
 ### Golang 1.21 is required
 
-**Dastad requires Go version 1.21 or higher** (released August 2023) because [gonum-v1 v0.15](http://gonum.org/v1/gonum/mat) and other depdencies require it. Dastard is tested automatically on versions 1.21 and _stable_, [the most recent stable version](https://github.com/actions/go-versions/blob/main/versions-manifest.json) (as of August 21, 2024, that means Go version 1.23.0).
+**Dastard requires Go version 1.21 or higher** (released August 2023) because [gonum-v1 v0.15](http://gonum.org/v1/gonum/mat) and other depdencies require it. Dastard is tested automatically on versions 1.21 and _stable_, [the most recent stable version](https://github.com/actions/go-versions/blob/main/versions-manifest.json) (as of August 21, 2024, that means Go version 1.23.0).
 - If you need to run Go version 1.20: don't. There was a bug in a filesystem handling library that renders Go 1.20 incompatible with our TDM systems specifically. If you are _not_ using TDM and insist on Go 1.20, follow the instructions for Go 1.19.
 - If you need to run Go versions 1.17, 1.18, 1.19: [Dastard version 0.3.3](https://github.com/usnistgov/dastard/releases/tag/v0.3.3) is the last version compatible with them.
 - If you need to run Go version 1.16: [Dastard version 0.2.16](https://github.com/usnistgov/dastard/releases/tag/v0.2.16) is the last version compatible with it.

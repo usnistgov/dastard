@@ -3,6 +3,7 @@
 **0.3.6** May 6, 2025-
 * Make Abaco data be considered unsigned (issue 364).
 * Panic at a point where it's easier to explain why, if 2 abaco groups find unequal sample rates (issue 359).
+* Fix crashes when rate is high and a packet is dropped (issue 360).
 
 **0.3.5** April 22, 2025
 * Fix bug that was writing zeros for the external trigger (issue 362).
