@@ -87,7 +87,14 @@ func TestEdgeMultiParts1(t *testing.T) {
 				nmonotone: 1, npre: 2, nsamp: 4},
 			[]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4},
 				{firstRisingFrameIndex: 7, npre: 2, nsamp: 4}},
-			"edgeMultiComputeAppendRecordSpecs: 2 records should yield two full-length records",
+			"edgeMultiComputeAppendRecordSpecs: 2 records should yield two full-length records with TwoFullLength",
+		},
+		{
+			[]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			EMTState{threshold: 1, mode: EMTRecordsOneFullLength,
+				nmonotone: 1, npre: 2, nsamp: 4},
+			[]RecordSpec{{firstRisingFrameIndex: 4, npre: 2, nsamp: 4}},
+			"edgeMultiComputeAppendRecordSpecs: 2 records should yield one full-length records with OneFullLength",
 		},
 		{
 			[]RawType{0, 0, 0, 0, 10, 20, 0, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
