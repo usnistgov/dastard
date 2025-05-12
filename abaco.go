@@ -857,6 +857,7 @@ func (as *AbacoSource) Sample() error {
 	// Now sort the packets received into the right AbacoGroups
 	as.nchan = 0
 	as.groups = make(map[GroupIndex]*AbacoGroup)
+	allRates := []float64{}
 	for range as.producers {
 		results := <-sampleResults
 		now := time.Now()
@@ -872,9 +873,20 @@ func (as *AbacoSource) Sample() error {
 			if _, ok := as.groups[cidx]; !ok {
 				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapOpts)
 				as.nchan += cidx.Nchan
+				allRates = append(allRates, as.groups[cidx].sampleRate)
 			}
 		}
 		as.distributePackets(results.allpackets, now)
+	}
+
+	// Verify that no two groups have unequal sample rates
+	if len(allRates) > 1 {
+		for _, r := range allRates {
+			if math.Abs(r - allRates[0]) > 1 {
+				fmt.Printf("Channel groups have unequal sample rates: %v\n", allRates)
+				panic("Two channel groups have unequal sample rates. Dastard does not support this.")
+			}
+		}
 	}
 
 	// Verify that no channel # appears in 2 groups.

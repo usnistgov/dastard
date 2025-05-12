@@ -1,7 +1,9 @@
 package dastard
 
 import (
+	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"time"
 )
@@ -45,6 +47,11 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(i int, NPresamples int,
 
 	data := make([]RawType, NSamples)
 	stream := dsp.stream
+	if i < NPresamples {
+		fmt.Printf("We would panic, except for returning nil, with i=%d, NPre=%d, NSamp=%d\n",
+			i, NPresamples, NSamples)
+		return nil
+	}
 	copy(data, stream.rawData[i-NPresamples:i+NSamples-NPresamples])
 	tf := stream.firstFrameIndex + FrameIndex(i)
 	tt := stream.TimeOf(i)
@@ -260,6 +267,9 @@ func (dsp *DataStreamProcessor) TriggerData() (records []*DataRecord) {
 		// pulses. We have found little need for this approach and leave this comment as a
 		// placeholder in case we ever want to add it.
 	}
+
+	// Any errors in the triggering calculation produce nil values for a record; remove them now.
+	records = slices.DeleteFunc(records, func(r *DataRecord) bool { return r == nil })
 
 	// Step 2: store the last trigger for the next invocation of TriggerData
 	if len(records) > 0 {
