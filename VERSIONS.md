@@ -2,7 +2,7 @@
 
 **0.3.6** May 6, 2025-
 * Make Abaco data be considered unsigned (issue 364).
-* Add feature where EMT retrigger can create one record, not just 0 or 2 records (issue 366).
+* Panic at a point where it's easier to explain why, if 2 abaco groups find unequal sample rates (issue 359).
 * Fix crashes when rate is high and a packet is dropped (issue 360).
 
 **0.3.5** April 22, 2025
