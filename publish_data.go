@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"internal/ljh"
+	"internal/off"
 
 	"github.com/usnistgov/dastard/getbytes"
-	"github.com/usnistgov/dastard/off"
 	"gonum.org/v1/gonum/mat"
 
 	"github.com/pebbe/zmq4"

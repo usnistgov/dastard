@@ -3,6 +3,7 @@ module github.com/usnistgov/dastard
 go 1.24.3
 
 replace internal/ljh => ./internal/ljh
+replace internal/off => ./internal/off
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
@@ -13,6 +14,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	gonum.org/v1/gonum v0.16.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
+	internal/ljh v0.0.0-00010101000000-000000000000
+	internal/off v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -32,5 +35,4 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	internal/ljh v0.0.0-00010101000000-000000000000 // indirect
 )
