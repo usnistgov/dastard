@@ -21,8 +21,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/usnistgov/dastard/asyncbufio"
 	"github.com/usnistgov/dastard/getbytes"
+	"github.com/usnistgov/dastard/internal/asyncbufio"
 	"gonum.org/v1/gonum/mat"
 )
 
