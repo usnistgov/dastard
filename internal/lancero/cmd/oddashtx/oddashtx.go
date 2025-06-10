@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/usnistgov/dastard/lancero"
+	"github.com/usnistgov/dastard/internal/lancero"
 )
 
 func main() {

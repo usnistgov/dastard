@@ -14,8 +14,8 @@ import (
 	"unsafe"
 
 	"github.com/fabiokung/shm"
+	"github.com/usnistgov/dastard/internal/ringbuffer"
 	"github.com/usnistgov/dastard/packets"
-	"github.com/usnistgov/dastard/ringbuffer"
 )
 
 const abacoSubframeDivisions = 64 // The external triggers will be resolved this much finer than the frame rate
@@ -882,7 +882,7 @@ func (as *AbacoSource) Sample() error {
 	// Verify that no two groups have unequal sample rates
 	if len(allRates) > 1 {
 		for _, r := range allRates {
-			if math.Abs(r - allRates[0]) > 1 {
+			if math.Abs(r-allRates[0]) > 1 {
 				fmt.Printf("Channel groups have unequal sample rates: %v\n", allRates)
 				panic("Two channel groups have unequal sample rates. Dastard does not support this.")
 			}

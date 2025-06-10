@@ -22,7 +22,9 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install deps (can we eliminate libsodium?)
-      run: sudo apt-get install -y libsodium-dev libzmq3-dev
+      run: |
+        sudo apt-get --yes update
+        sudo apt-get --yes install libsodium-dev libzmq3-dev
 
     - name: Setup Go ${{ matrix.go-version }}
       uses: actions/setup-go@v5
@@ -35,7 +37,7 @@ jobs:
     - name: Display Go version
       run: go version
 
-    - name: Build as "make build" (to be static eventually)
+    - name: Build with "make build" (to automate linking in correct build date and git hash)
       run: make build && ls -l
 
     - name: Test

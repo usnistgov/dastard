@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/usnistgov/dastard/lancero"
+	"github.com/usnistgov/dastard/internal/lancero"
 )
 
 // LanceroDevice represents one lancero device.

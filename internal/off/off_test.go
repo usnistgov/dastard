@@ -2,18 +2,17 @@ package off
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"testing"
 
 	"gonum.org/v1/gonum/mat"
 )
 
-func matPrint(X mat.Matrix, t *testing.T) {
-	fa := mat.Formatted(X, mat.Prefix(""), mat.Squeeze())
-	t.Logf("%v\n", fa)
-	fmt.Println(fa)
-}
+// func matPrint(X mat.Matrix, t *testing.T) {
+// 	fa := mat.Formatted(X, mat.Prefix(""), mat.Squeeze())
+// 	t.Logf("%v\n", fa)
+// 	fmt.Println(fa)
+// }
 
 func TestOff(t *testing.T) {
 

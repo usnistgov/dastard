@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/usnistgov/dastard/lancero"
+	"github.com/usnistgov/dastard/internal/lancero"
 )
 
 // TestChannelOrder checks the map from channel to readout numbering

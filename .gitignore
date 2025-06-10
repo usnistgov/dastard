@@ -21,11 +21,14 @@ __debug_bin
 cmd/dastard/dastard
 lancero/cmd/acquire/acquire
 lancero/cmd/oddashtx/oddashtx
+
+# Some test files
 dastardtestlogfile
-*.ljh
-*.ljh3
+writertest.ljh*
+TestPublishData.ljh*
 tstfile
 *.off
+
 dastard
 !dastard/
 .idea

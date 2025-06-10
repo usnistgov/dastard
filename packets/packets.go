@@ -8,7 +8,7 @@ import (
 	"math"
 	"reflect"
 
-	"github.com/usnistgov/dastard/getbytes"
+	"github.com/usnistgov/dastard/internal/getbytes"
 )
 
 // Packet represents the header of an Abaco data packet
