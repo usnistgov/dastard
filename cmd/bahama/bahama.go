@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/usnistgov/dastard/internal/ringbuffer"
 	"github.com/usnistgov/dastard/packets"
-	"github.com/usnistgov/dastard/ringbuffer"
 )
 
 const packetAlign = 8192 // Packets go into the ring buffer at this stride (bytes)
