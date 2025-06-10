@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/usnistgov/dastard/getbytes"
 	"github.com/usnistgov/dastard/internal/asyncbufio"
+	"github.com/usnistgov/dastard/internal/getbytes"
 )
 
 // The buffer size (bytes) of the bufio.Writer that buffers disk output
