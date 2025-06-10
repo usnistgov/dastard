@@ -214,6 +214,7 @@ Timebase: %e
 func (w Writer) Flush() {
 	if w.writer != nil {
 		w.writer.Flush()
+		w.file.Sync()
 	}
 }
 

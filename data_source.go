@@ -463,8 +463,8 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 				}(dsp, flist)
 			}
 		}
+		wg.Wait()
 	}
-	wg.Wait()
 
 	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
 	// and once every 20 reads, flush the output files (but do the files out of phase, so it's not
@@ -476,9 +476,14 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		dsp.TrimStream()
 
 		if (idx+ds.readCounter)%20 == 0 {
-			dsp.Flush()
+			wg.Add(1)
+			go func(dsp *DataStreamProcessor) {
+				defer wg.Done()
+				dsp.Flush()
+			}(dsp) // call all Flush() concurrently
 		}
 	}
+	wg.Wait()
 	ds.readCounter++
 	flushDuration := time.Since(tStart)
 	if flushDuration > 50*time.Millisecond {
