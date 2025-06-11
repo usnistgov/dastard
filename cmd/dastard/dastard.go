@@ -17,6 +17,7 @@ import (
 )
 
 var githash = "githash not computed"
+var gitdate = "git date not computed"
 var buildDate = "build date not computed"
 
 // makeFileExist checks that dir/filename exists, and creates the directory
@@ -103,11 +104,19 @@ func main() {
 	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
+	dastard.Build.Gitdate = gitdate
+	dastard.Build.Summary = fmt.Sprintf("DASTARD version %s (git commit %s of %s)", dastard.Build.Version, githash, gitdate)
+	if host, err := os.Hostname(); err == nil {
+		dastard.Build.Host = host
+	} else {
+		dastard.Build.Host = "host not detected"
+	}
 
 	printVersion := flag.Bool("version", false, "print version and quit")
-	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
-	memprofile := flag.String("memprofile", "", "write memory profile to this file")
+	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to given file")
+	memprofile := flag.String("memprofile", "", "write memory profile to given file")
 	flag.Parse()
+	quitImmediately := false
 
 	if *printVersion {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
@@ -115,8 +124,13 @@ func main() {
 		fmt.Printf("Build time: %s\n", buildDate)
 		fmt.Printf("Built on go version %s\n", runtime.Version())
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
+		quitImmediately = true
+	}
+
+	if quitImmediately {
 		os.Exit(0)
 	}
+
 	banner := fmt.Sprintf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
 	fmt.Print(banner)
 
@@ -158,16 +172,23 @@ func main() {
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 	close(abort)
+	writeMemoryProfile(memprofile)
+}
 
-	if *memprofile != "" {
-		f, err := os.Create(*memprofile)
-		if err != nil {
-			log.Fatal("could not create memory profile: ", err)
-		}
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			log.Fatal("could not write memory profile: ", err)
-		}
+// writeMemoryProfile writes the memory use profile to the indicated file.
+// If `memprofile` points to an empty string, do not write.
+func writeMemoryProfile(memprofile *string) {
+	if *memprofile == "" {
+		return
+	}
+
+	f, err := os.Create(*memprofile)
+	if err != nil {
+		log.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+	runtime.GC()    // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Fatal("could not write memory profile: ", err)
 	}
 }

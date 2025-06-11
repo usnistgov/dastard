@@ -14,7 +14,11 @@ NETGO=-tags netgo
 
 .PHONY: all build install test clean run deps static
 
-GLOBALVARIABLES=-X main.buildDate=$(shell date -u '+%Y-%m-%d.%H:%M:%S.%Z') -X main.githash=$(shell git rev-parse --short HEAD)
+BUILDDATE := $(shell date '+%a, %e %b %Y %H:%M:%S %z')
+GITHASH := $(shell git rev-parse --short HEAD)
+GITDATE := $(shell git log -1 --format=%cD)
+
+GLOBALVARIABLES=-X 'main.buildDate=$(BUILDDATE)' -X main.githash=$(GITHASH) -X 'main.gitdate=$(GITDATE)'
 GOLINKFLAGS=-ldflags "$(GLOBALVARIABLES)"
 build: $(BINARY_NAME)
 all: test build install
