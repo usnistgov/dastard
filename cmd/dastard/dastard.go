@@ -116,6 +116,7 @@ func main() {
 
 	printVersion := flag.Bool("version", false, "print version and quit")
 	pingdb := flag.Bool("ping-db", false, "connect to ClickHouse DB, test with a ping, and quit")
+	nodb := flag.Bool("no-db", false, "run without making a ClickHouse DB connection (will override a dbrequired: true in config.yaml file)")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to given file")
 	memprofile := flag.String("memprofile", "", "write memory profile to given file")
 	flag.Parse()
@@ -175,20 +176,29 @@ func main() {
 	}
 
 	abort := make(chan struct{})
-	db := dastarddb.StartDBConnection(abort)
-	dbrequired := viper.GetBool("DBRequired")
-	if db.IsConnected() {
-		viper.Set("DBRequired", true)
-	} else if dbrequired {
-		msg := "Oh crap. Cannot connect to database"
-		panic(msg)
-	}
+	db := handleDBConnection(*nodb, abort)
 
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 	close(abort)
 	db.Wait()
 	writeMemoryProfile(memprofile)
+}
+
+func handleDBConnection(nodb bool, abort chan struct{}) *dastarddb.DastardDBConnection {
+	if nodb {
+		fmt.Println("-no-db flag used: deliberately NOT connecting to ClickHouse DB")
+		return dastarddb.DummyDBConnection()
+	}
+	db := dastarddb.StartDBConnection(abort)
+	dbrequired := viper.GetBool("DBRequired")
+	if db.IsConnected() {
+		viper.Set("DBRequired", true)
+	} else if dbrequired {
+		msg := "Cannot connect to database. Run with `-no-db` cmd-line argument,\n\tor set dbrequired: false in ~/.dastard/config.yaml"
+		panic(msg)
+	}
+	return db
 }
 
 // writeMemoryProfile writes the memory use profile to the indicated file.

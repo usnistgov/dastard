@@ -34,7 +34,7 @@ type DastardDBConnection struct {
 const databaseName = "dastard" // official SQL name of the database
 
 func (db *DastardDBConnection) IsConnected() bool {
-	return (db.err == nil) && (db.conn != nil)
+	return (db != nil) && (db.conn != nil) && (db.err == nil)
 }
 
 func PingServer() error {
@@ -56,6 +56,11 @@ func StartDBConnection(abort <-chan struct{}) *DastardDBConnection {
 	conn.logActivity()
 	go conn.handleConnection(abort)
 	return conn
+}
+
+func DummyDBConnection() *DastardDBConnection {
+	db := &DastardDBConnection{}
+	return db
 }
 
 func createDBConnection() *DastardDBConnection {
