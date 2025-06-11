@@ -25,7 +25,8 @@ func TestConnection(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	rows, err := conn.connection.Query(ctx, "SELECT name, toString(uuid) as uuid_str FROM system.tables LIMIT 10")
+	// rows, err := conn.db.Query(ctx, "SELECT name, toString(uuid) as uuid_str FROM system.tables LIMIT 10")
+	rows, err := conn.db.Query(ctx, "SHOW TABLES")
 	if err != nil {
 		log.Fatal(err)
 	}

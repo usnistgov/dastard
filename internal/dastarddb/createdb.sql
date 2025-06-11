@@ -21,14 +21,9 @@ CREATE TABLE IF NOT EXISTS dastardactivity (
     `server_start` DateTime64(6),
     `server_end`   DateTime64(6),
 )
-    ENGINE = MergeTree()
+    ENGINE = ReplacingMergeTree()
     PRIMARY KEY (id)
     COMMENT 'Each row represents one invocation of Dastard';
-
-INSERT into dastardactivity (id, hostname, numCPUs, server_start) VALUES
-    (generateULID(), 'dummyhostA', 8, now64(6));
-INSERT into dastardactivity (id, hostname, numCPUs, server_start) VALUES
-    (generateULID(), 'dummyhostB', 12, now64(6));
 
 SELECT * from dastardactivity ORDER BY id;
 

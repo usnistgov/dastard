@@ -6,6 +6,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.36.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/fabiokung/shm v0.0.0-20150728212823-2852b0d79bae
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pebbe/zmq4 v1.4.0
 	github.com/sbinet/npyio v0.9.0
 	github.com/spf13/viper v1.20.1

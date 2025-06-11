@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -169,9 +170,11 @@ func main() {
 	}
 
 	abort := make(chan struct{})
+	dastarddb.StartDBConnection(abort)
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 	close(abort)
+	dastarddb.Wait()
 	writeMemoryProfile(memprofile)
 }
 
