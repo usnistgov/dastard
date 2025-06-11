@@ -23,7 +23,7 @@ GOLINKFLAGS=-ldflags "$(GLOBALVARIABLES)"
 build: $(BINARY_NAME)
 all: test build install
 
-$(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go
+$(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go internal/*/*.go
 	$(GOBUILD) $(GOLINKFLAGS) $(NETGO) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
 test:
