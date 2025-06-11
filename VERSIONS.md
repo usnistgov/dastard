@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.4.0** June 10, 2025-
+* Build in (optional) use of a ClickHouse database to store run+channel info.
+
 **0.3.7** June 9, 2025- 
 * Reorganize the sub-modules to live in "internal" (so their API isn't exposed outside Dastard).
 * Synchronize disk writes occasionally, and in parallel across multiple channels (issues 353, 354).
