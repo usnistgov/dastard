@@ -61,6 +61,7 @@ func makeFileExist(dir, filename string) (string, error) {
 // files and the filename and suffix. Sets some defaults.
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
+	viper.SetDefault("DBRequired", false)
 
 	HOME, err := os.UserHomeDir()
 	if err != nil { // Handle errors reading the config file
@@ -114,10 +115,10 @@ func main() {
 	}
 
 	printVersion := flag.Bool("version", false, "print version and quit")
+	pingdb := flag.Bool("ping-db", false, "connect to ClickHouse DB, test with a ping, and quit")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to given file")
 	memprofile := flag.String("memprofile", "", "write memory profile to given file")
 	flag.Parse()
-	quitImmediately := false
 
 	if *printVersion {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
@@ -125,10 +126,14 @@ func main() {
 		fmt.Printf("Build time: %s\n", buildDate)
 		fmt.Printf("Built on go version %s\n", runtime.Version())
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
-		quitImmediately = true
+		os.Exit(0)
 	}
 
-	if quitImmediately {
+	if *pingdb {
+		if err := dastarddb.PingServer(); err != nil {
+			fmt.Println("Could not ping DB server: ", err)
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 
@@ -170,11 +175,19 @@ func main() {
 	}
 
 	abort := make(chan struct{})
-	dastarddb.StartDBConnection(abort)
+	db := dastarddb.StartDBConnection(abort)
+	dbrequired := viper.GetBool("DBRequired")
+	if db.IsConnected() {
+		viper.Set("DBRequired", true)
+	} else if dbrequired {
+		msg := "Oh crap. Cannot connect to database"
+		panic(msg)
+	}
+
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 	close(abort)
-	dastarddb.Wait()
+	db.Wait()
 	writeMemoryProfile(memprofile)
 }
 

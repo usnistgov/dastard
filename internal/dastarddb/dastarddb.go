@@ -14,30 +14,52 @@ import (
 	"github.com/usnistgov/dastard"
 )
 
+type dber interface {
+	PingServer()
+	IsConnected() bool
+	Disconnect()
+	Wait()
+	logActivity()
+	handleConnection(<-chan struct{})
+}
+
 type DastardDBConnection struct {
-	conn clickhouse.Conn
-	err  error
+	conn          clickhouse.Conn
+	err           error
+	abort         <-chan struct{}
+	activityEntry DastardActivityMessage
 	sync.WaitGroup
 }
 
-var singledbconn *DastardDBConnection // singleton object, not used outside this source file
-var oncedbconn sync.Once              // this Once object ensures we initialize the singledbconn only once
-const databaseName = "dastard"        // official SQL name of the database
+const databaseName = "dastard" // official SQL name of the database
 
-var activityEntry DastardActivityMessage
-
-func IsConnected() bool {
-	return (singledbconn.err == nil) && (singledbconn.conn != nil)
+func (db *DastardDBConnection) IsConnected() bool {
+	return (db.err == nil) && (db.conn != nil)
 }
 
-func StartDBConnection(abort <-chan struct{}) {
-	oncedbconn.Do(createDBConnection)
-	logActivity()
-	go handleConnection(abort)
+func PingServer() error {
+	db := createDBConnection()
+	if !db.IsConnected() {
+		return fmt.Errorf("Database is not connected")
+	}
+	v, err := db.conn.ServerVersion()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("ClickHouse server is alive. Version:\n%s\n", v)
+	db.conn.Close()
+	return nil
 }
 
-func createDBConnection() {
-	activityEntry = DastardActivityMessage{
+func StartDBConnection(abort <-chan struct{}) *DastardDBConnection {
+	conn := createDBConnection()
+	conn.logActivity()
+	go conn.handleConnection(abort)
+	return conn
+}
+
+func createDBConnection() *DastardDBConnection {
+	activityEntry := DastardActivityMessage{
 		ID:        ulid.Make().String(),
 		Hostname:  dastard.Build.Host,
 		Githash:   dastard.Build.Githash,
@@ -47,11 +69,7 @@ func createDBConnection() {
 		Start:     time.Now(),
 	}
 
-	singledbconn = &DastardDBConnection{
-		conn: nil,
-		err:  nil,
-	}
-	singledbconn.Add(1)
+	db := &DastardDBConnection{}
 	dbUser := os.Getenv("DASTARD_DB_USER")
 	dbPass := os.Getenv("DASTARD_DB_PASSWORD")
 	auth := clickhouse.Auth{
@@ -77,16 +95,20 @@ func createDBConnection() {
 	ctx := context.Background()
 	conn, err := clickhouse.Open(&opt)
 	if err != nil {
-		singledbconn.err = err
-		return
+		db.err = err
+		return db
 	}
-	singledbconn.conn = conn
+	db.conn = conn
+	db.activityEntry = activityEntry
+	db.Add(1)
+
+	// Ping the server at the DB connection.
 	if err = conn.Ping(ctx); err != nil {
 		if exception, ok := err.(*clickhouse.Exception); ok {
 			fmt.Printf("Exception [%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
 		}
-		singledbconn.err = err
-		return
+		db.err = err
+		return db
 	}
 
 	// db.SetConnMaxLifetime(time.Minute * 3)
@@ -96,37 +118,39 @@ func createDBConnection() {
 	// rmsg := make(chan *DatarunMessage)
 	// fmsg := make(chan *DatafileMessage)
 	// runIDmap := make(map[string]int64)
+	return db
 }
 
-func logActivity() {
-	if !IsConnected() {
+func (db *DastardDBConnection) logActivity() {
+	if !db.IsConnected() {
 		return
 	}
-	batch, err := singledbconn.conn.PrepareBatch(context.Background(), "INSERT INTO dastardactivity")
+	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO dastardactivity")
 	if err != nil {
-		singledbconn.err = err
+		db.err = err
 		return
 	}
 	defer batch.Close()
+	ae := db.activityEntry
 	err = batch.Append(
-		activityEntry.ID, activityEntry.Hostname, activityEntry.Githash, activityEntry.Version,
-		activityEntry.GoVersion, activityEntry.CPUs, activityEntry.Start, activityEntry.End)
+		ae.ID, ae.Hostname, ae.Githash, ae.Version,
+		ae.GoVersion, ae.CPUs, ae.Start, ae.End)
 	if err != nil {
 		fmt.Println("Error raised on batch.Append! ", err)
-		singledbconn.err = err
+		db.err = err
 	}
 	err = batch.Send()
 	if err != nil {
 		fmt.Println("Error raised on batch.Send! ", err)
-		singledbconn.err = err
+		db.err = err
 	}
 }
 
-func handleConnection(abort <-chan struct{}) {
+func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 	for {
 		select {
 		case <-abort:
-			Disconnect()
+			db.Disconnect()
 			return
 			// case rmsg := <-singledbconn.datarunmsg:
 			// 	singledbconn.handleDRMessage(rmsg)
@@ -136,15 +160,8 @@ func handleConnection(abort <-chan struct{}) {
 	}
 }
 
-func Disconnect() {
-	activityEntry.End = time.Now()
-	logActivity()
-	singledbconn.Done()
-}
-
-func Wait() {
-	if IsConnected() {
-		singledbconn.Wait()
-		singledbconn.conn = nil
-	}
+func (db *DastardDBConnection) Disconnect() {
+	db.activityEntry.End = time.Now()
+	db.logActivity()
+	db.Done()
 }
