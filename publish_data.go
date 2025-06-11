@@ -13,8 +13,8 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
-// DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
-// in each call to PublishData
+// DataPublisher contains many optional methods for publishing data; any methods that are non-nil
+// will be used in each call to PublishData.
 type DataPublisher struct {
 	PubRecordsChan   chan []*DataRecord
 	PubSummariesChan chan []*DataRecord
@@ -22,16 +22,16 @@ type DataPublisher struct {
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
 	WritingPaused    bool
-	numberWritten    int // integrates up the total number written, reset any time writing starts or stops
+	numberWritten    int // integrates up the total number written; reset any time writing starts or stops
 }
 
-// SetPause changes the paused state to the given value of pause
+// SetPause changes the paused state to the value of `pause`
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.WritingPaused = pause
 	dp.Flush()
 }
 
-// Flush calls Flush for each writer that has a Flush command (LJH22, LJH3, OFF)
+// Flush calls Flush for each active writer that has a Flush command (LJH22, LJH3, OFF)
 func (dp *DataPublisher) Flush() {
 	if dp.HasLJH22() {
 		dp.LJH22.Flush()
@@ -65,7 +65,7 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 	dp.numberWritten = 0
 }
 
-// HasOFF returns true if OFF is non-nil, eg if writing to OFF is occuring
+// HasOFF returns true if OFF is non-nil; used to decide if writing to OFF should occur
 func (dp *DataPublisher) HasOFF() bool {
 	return dp.OFF != nil
 }
@@ -112,12 +112,14 @@ func (dp *DataPublisher) RemoveLJH3() {
 	dp.numberWritten = 0
 }
 
-// SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
-func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
-	Timebase float64, TimestampOffset time.Time,
+// SetLJH22 adds an LJH22 writer to dp.
+// The Writer.file attribute is nil and will be instantiated upon next call to dp.WriteRecord
+func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
+	FramesPerSample int, Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
 	FileName, sourceName, chanName string, ChannelNumberMatchingName int, pixel Pixel) {
-	w := ljh.Writer{ChannelIndex: ChannelIndex,
+	w := ljh.Writer{
+		ChannelIndex:              ChannelIndex,
 		Presamples:                Presamples,
 		Samples:                   Samples,
 		FramesPerSample:           FramesPerSample,
@@ -145,12 +147,12 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 	dp.numberWritten = 0
 }
 
-// HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
+// HasLJH22 returns true if LJH22 is non-nil; used to decide if writing to LJH22 should occur
 func (dp *DataPublisher) HasLJH22() bool {
 	return dp.LJH22 != nil
 }
 
-// RemoveLJH22 closes existing LJH22 file and assign .LJH22=nil
+// RemoveLJH22 closes existing LJH22 file and assigns .LJH22=nil
 func (dp *DataPublisher) RemoveLJH22() {
 	if dp.LJH22 != nil {
 		dp.LJH22.Close()
@@ -199,7 +201,9 @@ func (dp *DataPublisher) RemovePubSummaries() {
 	dp.PubSummariesChan = nil
 }
 
-// PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member.
+// PublishData publishes each record in the slice `records` onto each
+// active specific publisher, including the ZMQ record port, the ZMQ
+// summary port, and the 3 possible disk file types (LJH22, LJH3, OFF).
 // The first step is to publish the full record and/or a record summary to the relevant ZMQ ports.
 // The second is to store the records into any active LJH22, LJH3, and/or OFF writers.
 func (dp *DataPublisher) PublishData(records []*DataRecord) error {
@@ -330,7 +334,10 @@ func messageRecords(rec *DataRecord) [][]byte {
 
 	const headerVersion = uint8(0)
 	dataType := uint8(3)
-	if rec.signed { // DataSegment.signed is set deep within a source, then dsp.signed is set equal to DataSegment.signed in process data, then DataRecord.signed is set equal to dsp.signed upon record generation
+	// DataSegment.signed is set deep within a source,
+	// then dsp.signed is set equal to DataSegment.signed in process data,
+	// then DataRecord.signed is set equal to dsp.signed when record is generated.
+	if rec.signed {
 		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
@@ -358,8 +365,8 @@ var PubRecordsChan chan []*DataRecord
 var PubSummariesChan chan []*DataRecord
 
 // configurePubRecordsSocket should be run exactly one time.
-// It initializes PubFeederChan and launches a goroutine
-// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs.
+// It initializes PubRecordsChan and launches a goroutine
+// that reads from PubRecordsChan and publishes records on a ZMQ PUB socket at port PortTrigs.
 // This way even if goroutines in different threads want to publish records, they all use the same
 // zmq port. The goroutine can be stopped by closing PubRecordsChan.
 func configurePubRecordsSocket() error {
