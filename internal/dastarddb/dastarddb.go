@@ -15,7 +15,6 @@ import (
 )
 
 type dber interface {
-	PingServer()
 	IsConnected() bool
 	Disconnect()
 	Wait()
@@ -60,6 +59,7 @@ func StartDBConnection(abort <-chan struct{}) *DastardDBConnection {
 
 func DummyDBConnection() *DastardDBConnection {
 	db := &DastardDBConnection{}
+	db.Add(1)
 	return db
 }
 
@@ -152,6 +152,7 @@ func (db *DastardDBConnection) logActivity() {
 }
 
 func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
+	defer db.Done()
 	for {
 		select {
 		case <-abort:
@@ -166,7 +167,8 @@ func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 }
 
 func (db *DastardDBConnection) Disconnect() {
-	db.activityEntry.End = time.Now()
-	db.logActivity()
-	db.Done()
+	if db.IsConnected() {
+		db.activityEntry.End = time.Now()
+		db.logActivity()
+	}
 }

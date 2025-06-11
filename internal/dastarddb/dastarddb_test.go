@@ -1,41 +1,28 @@
 package dastarddb
 
 import (
-	"context"
-	"log"
 	"testing"
-
-	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-func TestConnection(t *testing.T) {
-	auth := clickhouse.Auth{
-		Database: "default",
-		Username: "default",
-		Password: "",
-	}
-	opt :=
-		clickhouse.Options{
-			Addr: []string{"localhost:9000"},
-			Auth: auth,
-		}
-	conn, err := Connect(&opt)
-	if err != nil {
-		t.Error(err)
-	}
+// How to test a module that hits a real database?
+// There are conflicting philosophies here, but for now, we are going
+// to test only the unconnected "connection".
 
-	ctx := context.Background()
-	// rows, err := conn.db.Query(ctx, "SELECT name, toString(uuid) as uuid_str FROM system.tables LIMIT 10")
-	rows, err := conn.db.Query(ctx, "SHOW TABLES")
-	if err != nil {
-		log.Fatal(err)
-	}
+// func TestConnection(t *testing.T) {
+// 	PingServer()
+// }
 
-	for rows.Next() {
-		var name, uuid string
-		if err := rows.Scan(&name, &uuid); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("name: %s, uuid: %s", name, uuid)
+func TestDummyConnection(t *testing.T) {
+	conn := DummyDBConnection()
+	if conn.IsConnected() {
+		t.Error("Dummy connection IsConected()=true, want false")
 	}
+	abort := make(chan struct{})
+	go conn.handleConnection(abort)
+	conn.logActivity()
+	if conn.err != nil {
+		t.Error("Dummy connection logActivity() set error ", conn.err)
+	}
+	close(abort)
+	conn.Wait()
 }
