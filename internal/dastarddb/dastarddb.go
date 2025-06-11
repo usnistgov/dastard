@@ -5,13 +5,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/oklog/ulid/v2"
-	"github.com/usnistgov/dastard"
 )
 
 type dber interface {
@@ -26,7 +23,7 @@ type DastardDBConnection struct {
 	conn          clickhouse.Conn
 	err           error
 	abort         <-chan struct{}
-	activityEntry DastardActivityMessage
+	activityEntry *DastardActivityMessage
 	sync.WaitGroup
 }
 
@@ -50,8 +47,9 @@ func PingServer() error {
 	return nil
 }
 
-func StartDBConnection(abort <-chan struct{}) *DastardDBConnection {
+func StartDBConnection(activity *DastardActivityMessage, abort <-chan struct{}) *DastardDBConnection {
 	conn := createDBConnection()
+	conn.activityEntry = activity
 	conn.logActivity()
 	go conn.handleConnection(abort)
 	return conn
@@ -64,15 +62,6 @@ func DummyDBConnection() *DastardDBConnection {
 }
 
 func createDBConnection() *DastardDBConnection {
-	activityEntry := DastardActivityMessage{
-		ID:        ulid.Make().String(),
-		Hostname:  dastard.Build.Host,
-		Githash:   dastard.Build.Githash,
-		Version:   dastard.Build.Version,
-		GoVersion: runtime.Version(),
-		CPUs:      runtime.NumCPU(),
-		Start:     time.Now(),
-	}
 
 	db := &DastardDBConnection{}
 	dbUser := os.Getenv("DASTARD_DB_USER")
@@ -104,7 +93,6 @@ func createDBConnection() *DastardDBConnection {
 		return db
 	}
 	db.conn = conn
-	db.activityEntry = activityEntry
 	db.Add(1)
 
 	// Ping the server at the DB connection.

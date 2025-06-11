@@ -10,7 +10,9 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
 	"github.com/usnistgov/dastard/internal/dastarddb"
@@ -190,7 +192,16 @@ func handleDBConnection(nodb bool, abort chan struct{}) *dastarddb.DastardDBConn
 		fmt.Println("-no-db flag used: deliberately NOT connecting to ClickHouse DB")
 		return dastarddb.DummyDBConnection()
 	}
-	db := dastarddb.StartDBConnection(abort)
+	activity := &dastarddb.DastardActivityMessage{
+		ID:        ulid.Make().String(),
+		Hostname:  dastard.Build.Host,
+		Githash:   dastard.Build.Githash,
+		Version:   dastard.Build.Version,
+		GoVersion: runtime.Version(),
+		CPUs:      runtime.NumCPU(),
+		Start:     time.Now(),
+	}
+	db := dastarddb.StartDBConnection(activity, abort)
 	dbrequired := viper.GetBool("DBRequired")
 	if db.IsConnected() {
 		viper.Set("DBRequired", true)
