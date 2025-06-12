@@ -45,3 +45,16 @@ type SensorMessage struct {
 	ChanName    string
 	IsError     bool
 }
+
+// FileMessage is the information required to make an entry in the files table.
+// End, Records, Size, and SHA256 can't be filled in until the file closes.
+type FileMessage struct {
+	SensorID string
+	Filename string
+	Filetype string
+	Start    time.Time
+	End      time.Time
+	Records  int
+	Size     int
+	SHA256   string
+}

@@ -26,6 +26,7 @@ type DastardDBConnection struct {
 	activityEntry *DastardActivityMessage
 	datarunmsg    chan *DatarunMessage
 	sensormsg     chan *SensorMessage
+	filemsg       chan *FileMessage
 	sync.WaitGroup
 }
 
@@ -112,8 +113,7 @@ func createDBConnection() *DastardDBConnection {
 
 	db.datarunmsg = make(chan *DatarunMessage)
 	db.sensormsg = make(chan *SensorMessage)
-	// fmsg := make(chan *DatafileMessage)
-	// runIDmap := make(map[string]int64)
+	db.filemsg = make(chan *FileMessage)
 	return db
 }
 
@@ -153,6 +153,8 @@ func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 			db.handleDRMessage(rmsg)
 		case smsg := <-db.sensormsg:
 			db.handleSensorMessage(smsg)
+		case fmsg := <-db.filemsg:
+			db.handleFileMessage(fmsg)
 		}
 	}
 }
@@ -191,6 +193,13 @@ func (db *DastardDBConnection) RecordSensors(msg *SensorMessage) {
 		return
 	}
 	go func() { db.sensormsg <- msg }()
+}
+
+func (db *DastardDBConnection) RecordFile(msg *FileMessage) {
+	if !db.IsConnected() || msg == nil {
+		return
+	}
+	go func() { db.filemsg <- msg }()
 }
 
 func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
@@ -234,6 +243,32 @@ func (db *DastardDBConnection) handleSensorMessage(m *SensorMessage) {
 	err = batch.Append(
 		m.ID, m.DatarunID, m.DateRunCode, m.RowNum, m.ColNum,
 		m.ChanNum, m.ChanIndex, m.ChanName, m.IsError,
+	)
+
+	if err != nil {
+		fmt.Println("Error raised on batch.Append! ", err)
+		db.err = err
+	}
+	err = batch.Send()
+	if err != nil {
+		fmt.Println("Error raised on batch.Send! ", err)
+		db.err = err
+	}
+}
+
+func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
+	if !db.IsConnected() {
+		return
+	}
+	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO files")
+	if err != nil {
+		db.err = err
+		return
+	}
+	defer batch.Close()
+	err = batch.Append(
+		m.SensorID, m.Filename, m.Filetype, m.Start, m.End,
+		m.Records, m.Size, m.SHA256,
 	)
 
 	if err != nil {

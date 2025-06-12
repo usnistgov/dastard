@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS files (
     `start`           DateTime64(6),
     `end`             DateTime64(6),
     `records`         UInt32,
-    `size_bytes`      UInt32,
+    `size`            UInt32 COMMENT 'file size in bytes',
     `sha256`          FixedString(64),
 )
     ENGINE = ReplacingMergeTree()

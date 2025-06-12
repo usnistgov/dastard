@@ -777,8 +777,9 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		fps := 1
 		var pixel Pixel
 
+		sensorID := ulid.Make().String()
 		dsp.sensormsg = dastarddb.SensorMessage{
-			ID:          ulid.Make().String(),
+			ID:          sensorID,
 			DatarunID:   ds.drecmsg.ID,
 			DateRunCode: dateruncode,
 			RowNum:      rowNum,
@@ -799,10 +800,14 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		}
 		if config.WriteLJH22 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
+			msg := dastarddb.FileMessage{
+				SensorID: sensorID,
+				Filename: filename,
+			}
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
 				rowNum, colNum, ds.subframeOffsets[i], filename,
-				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
+				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel, &msg)
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")

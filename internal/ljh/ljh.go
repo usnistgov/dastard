@@ -4,15 +4,18 @@ package ljh
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/usnistgov/dastard/internal/asyncbufio"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 )
 
@@ -85,8 +88,10 @@ type Writer struct {
 	PixelYPosition            int
 	PixelName                 string
 
-	file   *os.File
-	writer *asyncbufio.Writer
+	DB          *dastarddb.DastardDBConnection
+	FileMessage *dastarddb.FileMessage
+	file        *os.File
+	writer      *asyncbufio.Writer
 }
 
 // OpenReader returns an active LJH file reader, or an error.
@@ -163,6 +168,13 @@ func (w *Writer) CreateFile() error {
 
 // WriteHeader writes a header to .file, returns err from WriteString
 func (w *Writer) WriteHeader(firstRecord time.Time) error {
+	if w.FileMessage != nil && w.DB != nil {
+		w.FileMessage.Filename = w.FileName
+		w.FileMessage.Filetype = "LJH22"
+		w.FileMessage.Start = time.Now()
+		w.DB.RecordFile(w.FileMessage)
+	}
+
 	starttime := w.TimestampOffset.Format("02 Jan 2006, 15:04:05 MST")
 	timestamp := float64(w.TimestampOffset.UnixNano()) / 1e9
 	firstrec := firstRecord.Format("02 Jan 2006, 15:04:05 MST")
@@ -223,7 +235,33 @@ func (w Writer) Close() {
 	if w.writer != nil {
 		w.writer.Close()
 	}
-	w.file.Close()
+	if w.file != nil {
+		w.file.Close()
+		m := w.FileMessage
+		m.End = time.Now()
+		m.Records = w.RecordsWritten
+		m.Size, m.SHA256 = compute_size_sha256(w.FileName)
+		w.DB.RecordFile(m)
+	}
+}
+
+func compute_size_sha256(fname string) (size int, sha string) {
+	sha = "unknown"
+	file, err := os.Open(fname)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	if info, err := file.Stat(); err == nil {
+		size = int(info.Size())
+	}
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return
+	}
+
+	return size, fmt.Sprintf("%x", hash.Sum(nil))
 }
 
 // WriteRecord writes a single record to the files

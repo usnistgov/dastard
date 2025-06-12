@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 	"github.com/usnistgov/dastard/internal/ljh"
 	"github.com/usnistgov/dastard/internal/off"
@@ -117,7 +118,8 @@ func (dp *DataPublisher) RemoveLJH3() {
 func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 	FramesPerSample int, Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
-	FileName, sourceName, chanName string, ChannelNumberMatchingName int, pixel Pixel) {
+	FileName, sourceName, chanName string, ChannelNumberMatchingName int, pixel Pixel,
+	filemsg *dastarddb.FileMessage) {
 	w := ljh.Writer{
 		ChannelIndex:              ChannelIndex,
 		Presamples:                Presamples,
@@ -141,6 +143,8 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 		PixelXPosition:            pixel.X,
 		PixelYPosition:            pixel.Y,
 		PixelName:                 pixel.Name,
+		FileMessage:               filemsg,
+		DB:                        DB,
 	}
 	dp.LJH22 = &w
 	dp.WritingPaused = false
