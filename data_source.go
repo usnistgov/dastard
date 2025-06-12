@@ -728,12 +728,12 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				len(config.MapInternalOnly.Pixels), ds.nchan/ds.channelsPerPixel, ds.nchan, ds.channelsPerPixel)}
 		}
 	}
-	path := ds.writingState.BasePath
+	basepath := ds.writingState.BasePath
 	if len(config.Path) > 0 {
-		path = config.Path
+		basepath = config.Path
 	}
 	var err error
-	filenamePattern, err := makeDirectory(path)
+	filenamePattern, err := makeDirectory(basepath)
 	if err != nil {
 		return fmt.Errorf("could not make directory: %s", err.Error())
 	}
@@ -778,7 +778,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				ds.subframeOffsets[i], filename)
 		}
 	}
-	return ds.writingState.Start(filenamePattern, path, config)
+	return ds.writingState.Start(filenamePattern, basepath, config)
 }
 
 // ComputeWritingState returns a partial copy of the writingState
