@@ -20,13 +20,10 @@ type DastardActivityMessage struct {
 type DatarunMessage struct {
 	ID          string
 	DastardID   string
-	DataRunCode string
+	DateRunCode string
 	Intention   string
 	DataSource  string
 	Directory   string
-	isTDM       bool
-	Nrows       int
-	Ncols       int
 	Nchannels   int
 	NPresamples int
 	NSamples    int

@@ -34,8 +34,6 @@ CREATE TABLE IF NOT EXISTS dataruns (
     `intention`       LowCardinality(String) DEFAULT 'unknown',
     `datasource`      LowCardinality(String) DEFAULT 'unknown',
     `directory`       String DEFAULT 'unknown',
-    `number_rows`     UInt32 NULL Comment 'Number of TDM rows, or NULL for µMUX',
-    `number_columns`  UInt32 NULL Comment 'Number of TDM columns, or NULL for µMUX',
     `number_channels` UInt32,
     `number_presamp`  UInt32,
     `number_samples`  UInt32,
@@ -44,7 +42,7 @@ CREATE TABLE IF NOT EXISTS dataruns (
     `start`           DateTime64(6),
     `end`             DateTime64(6),
 )
-    ENGINE = MergeTree()
+    ENGINE = ReplacingMergeTree()
     PRIMARY KEY (id)
     COMMENT 'Each row represents one simultaneous set of Dastard data files';
 

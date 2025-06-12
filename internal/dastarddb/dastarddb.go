@@ -24,6 +24,7 @@ type DastardDBConnection struct {
 	err           error
 	abort         <-chan struct{}
 	activityEntry *DastardActivityMessage
+	datarunmsg    chan *DatarunMessage
 	sync.WaitGroup
 }
 
@@ -108,7 +109,7 @@ func createDBConnection() *DastardDBConnection {
 	// db.SetMaxOpenConns(10)
 	// db.SetMaxIdleConns(10)
 
-	// rmsg := make(chan *DatarunMessage)
+	db.datarunmsg = make(chan *DatarunMessage)
 	// fmsg := make(chan *DatafileMessage)
 	// runIDmap := make(map[string]int64)
 	return db
@@ -146,8 +147,8 @@ func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 		case <-abort:
 			db.Disconnect()
 			return
-			// case rmsg := <-singledbconn.datarunmsg:
-			// 	singledbconn.handleDRMessage(rmsg)
+		case rmsg := <-db.datarunmsg:
+			db.handleDRMessage(rmsg)
 			// case fmsg := <-singledbconn.datafilemsg:
 			// 	singledbconn.handleDFMessage(fmsg)
 		}
@@ -158,5 +159,47 @@ func (db *DastardDBConnection) Disconnect() {
 	if db.IsConnected() {
 		db.activityEntry.End = time.Now()
 		db.logActivity()
+	}
+}
+
+// RecordDataRun takes a DatarunMessage and stores it in the DB (if it's open).
+// This function will block until the select statement in `handleConnection`
+// accepts the message.
+// WARNING: Don't change this blocking behavior! It is how we ensure that a datarun
+// is entered in the DB before any corresponding calls to `RecordDatafile` begin.
+// Without the blocking, there would be a race between the 2 kinds of DB entries,
+// and some datafiles would be entered without valid datarun IDs.
+func (db *DastardDBConnection) RecordDatarun(msg *DatarunMessage) {
+	if !db.IsConnected() || msg == nil {
+		return
+	}
+	db.datarunmsg <- msg
+}
+
+func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
+	if !db.IsConnected() {
+		return
+	}
+	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO dataruns")
+	if err != nil {
+		db.err = err
+		return
+	}
+	defer batch.Close()
+	toffset := m.TimeOffset.UnixMicro() / 1e6
+	err = batch.Append(
+		m.ID, db.activityEntry.ID, m.DateRunCode, m.Intention, m.DataSource, m.Directory,
+		m.Nchannels, m.NPresamples, m.NSamples,
+		toffset, m.Timebase, m.Start, m.End,
+	)
+
+	if err != nil {
+		fmt.Println("Error raised on batch.Append! ", err)
+		db.err = err
+	}
+	err = batch.Send()
+	if err != nil {
+		fmt.Println("Error raised on batch.Send! ", err)
+		db.err = err
 	}
 }

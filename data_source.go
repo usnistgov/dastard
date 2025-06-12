@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 
 	"github.com/sbinet/npyio/npz"
@@ -737,6 +740,27 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	if err != nil {
 		return fmt.Errorf("could not make directory: %s", err.Error())
 	}
+
+	directory := path.Dir(filenamePattern)
+	d2, runnum := path.Split(directory)
+	_, datecode := path.Split(path.Clean(d2))
+	dateruncode := path.Join(datecode, runnum)
+	NPresamples, NSamples, _ := ds.getPulseLengths()
+
+	drmsg := dastarddb.DatarunMessage{
+		ID:          ulid.Make().String(),
+		DateRunCode: dateruncode,
+		Intention:   "testing", // TODO: add ability to change datarun intentions
+		DataSource:  ds.name,
+		Directory:   directory,
+		Nchannels:   ds.Nchan(),
+		NPresamples: NPresamples,
+		NSamples:    NSamples,
+		TimeOffset:  DastardStartTime,
+		Timebase:    ds.samplePeriod.Seconds(),
+		Start:       time.Now(),
+	}
+	DB.RecordDatarun(&drmsg)
 
 	channelsWithOff := 0
 	for i, dsp := range ds.processors {
