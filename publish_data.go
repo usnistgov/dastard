@@ -50,7 +50,8 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 	Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
 	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
-	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string, pixel Pixel) {
+	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string, pixel Pixel,
+	filemsg *dastarddb.FileMessage) {
 	ReadoutInfo := off.TimeDivisionMultiplexingInfo{
 		NumberOfRows:      NumberOfRows,
 		NumberOfColumns:   NumberOfColumns,
@@ -61,7 +62,8 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 		SubframeOffset:    SubframeOffset}
 	PixelInfo := off.PixelInfo{XPosition: pixel.X, YPosition: pixel.Y, Name: pixel.Name}
 	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
-		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo)
+		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo,
+		DB, filemsg)
 	dp.OFF = w
 	dp.numberWritten = 0
 }

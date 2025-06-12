@@ -811,11 +811,15 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
+			msg := dastarddb.FileMessage{
+				SensorID: sensorID,
+				Filename: filename,
+			}
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
 				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
-				dsp.modelDescription, pixel)
+				dsp.modelDescription, pixel, &msg)
 			channelsWithOff++
 		}
 		if config.WriteLJH3 {

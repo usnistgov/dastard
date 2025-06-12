@@ -33,7 +33,7 @@ func TestOff(t *testing.T) {
 	const maxsamp = 200
 	w := NewWriter("off_test.off", 0, "chan1", 1, maxpre, maxsamp, 9.6e-6, projectors, basis, "dummy model for testing",
 		"DastardVersion Placeholder", "GitHash Placeholder", "SourceName Placeholder", TimeDivisionMultiplexingInfo{},
-		PixelInfo{})
+		PixelInfo{}, nil, nil)
 	if err := w.CreateFile(); err != nil {
 		t.Fatal(err)
 	}
