@@ -316,6 +316,7 @@ type AnySource struct {
 	archiveBlock archiveableDataBlock // Used to store a section of raw data to file
 	broker       *TriggerBroker
 	configError  error // Any error that arose when configuring the source (before Start)
+	drecmsg      dastarddb.DatarunMessage
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
@@ -686,6 +687,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
+		DB.FinishDatarun(&ds.drecmsg)
 		return ds.writingState.Stop()
 
 	case strings.HasPrefix(requestStr, "START"):
@@ -747,7 +749,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	dateruncode := path.Join(datecode, runnum)
 	NPresamples, NSamples, _ := ds.getPulseLengths()
 
-	drmsg := dastarddb.DatarunMessage{
+	ds.drecmsg = dastarddb.DatarunMessage{
 		ID:          ulid.Make().String(),
 		DateRunCode: dateruncode,
 		Intention:   "testing", // TODO: add ability to change datarun intentions
@@ -760,7 +762,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		Timebase:    ds.samplePeriod.Seconds(),
 		Start:       time.Now(),
 	}
-	DB.RecordDatarun(&drmsg)
+	DB.RecordDatarun(&ds.drecmsg)
 
 	channelsWithOff := 0
 	for i, dsp := range ds.processors {

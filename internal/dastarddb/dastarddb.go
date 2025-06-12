@@ -176,6 +176,14 @@ func (db *DastardDBConnection) RecordDatarun(msg *DatarunMessage) {
 	db.datarunmsg <- msg
 }
 
+func (db *DastardDBConnection) FinishDatarun(msg *DatarunMessage) {
+	if !db.IsConnected() || msg == nil {
+		return
+	}
+	msg.End = time.Now()
+	go func() { db.datarunmsg <- msg }()
+}
+
 func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	if !db.IsConnected() {
 		return
