@@ -25,11 +25,10 @@ CREATE TABLE IF NOT EXISTS dastardactivity (
     PRIMARY KEY (id)
     COMMENT 'Each row represents one invocation of Dastard';
 
-SELECT * from dastardactivity ORDER BY id;
 
 CREATE TABLE IF NOT EXISTS dataruns (
     `id`              FixedString(26),
-    `dastard_id`      FixedString(26),
+    `dastard_id`      FixedString(26) COMMENT 'link to dastardactivity.id',
     `date_run_code`   String,
     `intention`       LowCardinality(String) DEFAULT 'unknown',
     `datasource`      LowCardinality(String) DEFAULT 'unknown',
@@ -46,13 +45,10 @@ CREATE TABLE IF NOT EXISTS dataruns (
     PRIMARY KEY (id)
     COMMENT 'Each row represents one simultaneous set of Dastard data files';
 
-INSERT into dataruns (id, date_run_code, intention, datasource, number_channels, timebase, start) VALUES
-    (generateULID(), '20250610/0000', 'noise', 'abaco', 16, 16.384e-6, now64(6));
-
 
 CREATE TABLE IF NOT EXISTS sensors (
     `id`              FixedString(26),
-    `datarun_id`      FixedString(26),
+    `datarun_id`      FixedString(26) COMMENT 'link to dataruns.id',
     `date_run_code`   String,
     `row_number`      UInt32 NULL Comment 'TDM row number, or NULL for µMUX',
     `column_number`   UInt32 NULL Comment 'TDM column number, or NULL for µMUX',
@@ -66,8 +62,7 @@ CREATE TABLE IF NOT EXISTS sensors (
     COMMENT 'Each row represents one microcalorimeter in one datarun';
 
 CREATE TABLE IF NOT EXISTS files (
-    `id`              FixedString(26),
-    `sensor_id`       FixedString(26),
+    `sensor_id`       FixedString(26) COMMENT 'link to sensors.id',
     `filename`        String,
     `file_type`       LowCardinality(String) DEFAULT 'ljh2',
     `start`           DateTime64(6),
@@ -76,6 +71,6 @@ CREATE TABLE IF NOT EXISTS files (
     `size_bytes`      UInt32,
     `sha256`          FixedString(64),
 )
-    ENGINE = MergeTree()
-    PRIMARY KEY (id)
+    ENGINE = ReplacingMergeTree()
+    PRIMARY KEY (sensor_id, file_type)
     COMMENT 'Each row represents one microcalorimeter data file';
