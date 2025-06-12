@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS sensors (
     `channel_number`  UInt32,
     `channel_index`   UInt32,
     `channel_name`    String,
-    `isError`         Bool,
+    `isError`         Bool DEFAULT false,
 )
     ENGINE = MergeTree()
     PRIMARY KEY (id)

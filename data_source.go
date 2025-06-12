@@ -301,6 +301,7 @@ type AnySource struct {
 	chanNames         []string      // one name per channel
 	chanNumbers       []int         // names have format "prefixNumber", this is the number
 	rowColCodes       []RowColCode  // one RowColCode per channel
+	isTDM             bool          // is this a TDM data source?
 	subframeOffsets   []int         // subframe time delay per channel
 	subframeDivisions int           // number of subframe divisions per frame
 	groupKeysSorted   []GroupIndex  // sorted slice of channel group information
@@ -686,6 +687,7 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
+			// TODO: send files messages to update with start time, etc
 		}
 		DB.FinishDatarun(&ds.drecmsg)
 		return ds.writingState.Stop()
@@ -774,6 +776,19 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		colNum := rccode.col()
 		fps := 1
 		var pixel Pixel
+
+		dsp.sensormsg = dastarddb.SensorMessage{
+			ID:          ulid.Make().String(),
+			DatarunID:   ds.drecmsg.ID,
+			DateRunCode: dateruncode,
+			RowNum:      rowNum,
+			ColNum:      colNum,
+			ChanNum:     ds.chanNumbers[i],
+			ChanIndex:   i,
+			ChanName:    ds.chanNames[i],
+			IsError:     ds.isTDM && (i%2 == 0),
+		}
+		DB.RecordSensors(&dsp.sensormsg)
 
 		if config.MapInternalOnly != nil {
 			channelNumber := ds.chanNumbers[i]

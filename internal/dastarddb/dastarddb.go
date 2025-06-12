@@ -25,6 +25,7 @@ type DastardDBConnection struct {
 	abort         <-chan struct{}
 	activityEntry *DastardActivityMessage
 	datarunmsg    chan *DatarunMessage
+	sensormsg     chan *SensorMessage
 	sync.WaitGroup
 }
 
@@ -110,6 +111,7 @@ func createDBConnection() *DastardDBConnection {
 	// db.SetMaxIdleConns(10)
 
 	db.datarunmsg = make(chan *DatarunMessage)
+	db.sensormsg = make(chan *SensorMessage)
 	// fmsg := make(chan *DatafileMessage)
 	// runIDmap := make(map[string]int64)
 	return db
@@ -149,8 +151,8 @@ func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 			return
 		case rmsg := <-db.datarunmsg:
 			db.handleDRMessage(rmsg)
-			// case fmsg := <-singledbconn.datafilemsg:
-			// 	singledbconn.handleDFMessage(fmsg)
+		case smsg := <-db.sensormsg:
+			db.handleSensorMessage(smsg)
 		}
 	}
 }
@@ -184,6 +186,13 @@ func (db *DastardDBConnection) FinishDatarun(msg *DatarunMessage) {
 	go func() { db.datarunmsg <- msg }()
 }
 
+func (db *DastardDBConnection) RecordSensors(msg *SensorMessage) {
+	if !db.IsConnected() || msg == nil {
+		return
+	}
+	go func() { db.sensormsg <- msg }()
+}
+
 func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	if !db.IsConnected() {
 		return
@@ -199,6 +208,32 @@ func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 		m.ID, db.activityEntry.ID, m.DateRunCode, m.Intention, m.DataSource, m.Directory,
 		m.Nchannels, m.NPresamples, m.NSamples,
 		toffset, m.Timebase, m.Start, m.End,
+	)
+
+	if err != nil {
+		fmt.Println("Error raised on batch.Append! ", err)
+		db.err = err
+	}
+	err = batch.Send()
+	if err != nil {
+		fmt.Println("Error raised on batch.Send! ", err)
+		db.err = err
+	}
+}
+
+func (db *DastardDBConnection) handleSensorMessage(m *SensorMessage) {
+	if !db.IsConnected() {
+		return
+	}
+	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO sensors")
+	if err != nil {
+		db.err = err
+		return
+	}
+	defer batch.Close()
+	err = batch.Append(
+		m.ID, m.DatarunID, m.DateRunCode, m.RowNum, m.ColNum,
+		m.ChanNum, m.ChanIndex, m.ChanName, m.IsError,
 	)
 
 	if err != nil {
