@@ -238,11 +238,12 @@ func (w Writer) Close() {
 	}
 	if w.file != nil {
 		w.file.Close()
-		m := w.FileMessage
-		m.End = time.Now()
-		m.Records = w.RecordsWritten
-		m.Size, m.SHA256 = compute_size_sha256(w.FileName)
-		w.DB.RecordFile(m)
+		if m := w.FileMessage; m != nil {
+			m.End = time.Now()
+			m.Records = w.RecordsWritten
+			m.Size, m.SHA256 = compute_size_sha256(w.FileName)
+			w.DB.RecordFile(m)
+		}
 	}
 }
 
@@ -400,11 +401,12 @@ func (w Writer3) Close() {
 	}
 	if w.file != nil {
 		w.file.Close()
-		m := w.FileMessage
-		m.End = time.Now()
-		m.Records = w.RecordsWritten
-		m.Size, m.SHA256 = compute_size_sha256(w.FileName)
-		w.DB.RecordFile(m)
+		if m := w.FileMessage; m != nil {
+			m.End = time.Now()
+			m.Records = w.RecordsWritten
+			m.Size, m.SHA256 = compute_size_sha256(w.FileName)
+			w.DB.RecordFile(m)
+		}
 	}
 }
 
