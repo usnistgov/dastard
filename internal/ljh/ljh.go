@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -169,7 +170,7 @@ func (w *Writer) CreateFile() error {
 // WriteHeader writes a header to .file, returns err from WriteString
 func (w *Writer) WriteHeader(firstRecord time.Time) error {
 	if w.FileMessage != nil && w.DB != nil {
-		w.FileMessage.Filename = w.FileName
+		w.FileMessage.Filename = path.Base(w.FileName)
 		w.FileMessage.Filetype = "LJH22"
 		w.FileMessage.Start = time.Now()
 		w.DB.RecordFile(w.FileMessage)
