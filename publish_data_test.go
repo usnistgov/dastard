@@ -84,7 +84,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("HasPubSummaries() true, want false")
 	}
 
-	dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
+	dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile, nil)
 	if err := dp.PublishData(records); err != nil {
 		t.Error("failed to publish record")
 	}
@@ -226,7 +226,7 @@ func BenchmarkPublish(b *testing.B) {
 	})
 	b.Run("PubLJH3", func(b *testing.B) {
 		dp := DataPublisher{}
-		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
+		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile, nil)
 		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})
@@ -239,7 +239,7 @@ func BenchmarkPublish(b *testing.B) {
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0, 0, 0,
 			ljh2Testfile, "testSource", "chanX", 1, Pixel{}, nil)
 		defer dp.RemoveLJH22()
-		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
+		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile, nil)
 		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})

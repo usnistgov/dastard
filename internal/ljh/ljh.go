@@ -303,8 +303,10 @@ type Writer3 struct {
 	FileName                   string
 	RecordsWritten             int
 
-	file   *os.File
-	writer *asyncbufio.Writer
+	DB          *dastarddb.DastardDBConnection
+	FileMessage *dastarddb.FileMessage
+	file        *os.File
+	writer      *asyncbufio.Writer
 }
 
 // HeaderTDM contains info about TDM readout for placing in an LJH3 header
@@ -329,6 +331,12 @@ type Header struct {
 func (w *Writer3) WriteHeader() error {
 	if w.HeaderWritten {
 		return errors.New("header already written")
+	}
+	if w.FileMessage != nil && w.DB != nil {
+		w.FileMessage.Filename = path.Base(w.FileName)
+		w.FileMessage.Filetype = "LJH3"
+		w.FileMessage.Start = time.Now()
+		w.DB.RecordFile(w.FileMessage)
 	}
 	h := Header{Frameperiod: w.Timebase, Format: "LJH3", FormatVersion: "3.0.0",
 		TDM: HeaderTDM{NumberOfRows: w.NumberOfRows,
@@ -390,7 +398,14 @@ func (w Writer3) Close() {
 	if w.writer != nil {
 		w.writer.Close()
 	}
-	w.file.Close()
+	if w.file != nil {
+		w.file.Close()
+		m := w.FileMessage
+		m.End = time.Now()
+		m.Records = w.RecordsWritten
+		m.Size, m.SHA256 = compute_size_sha256(w.FileName)
+		w.DB.RecordFile(m)
+	}
 }
 
 // CreateFile opens the LJH3 file for writing, must be called before wring RecordSlice

@@ -820,8 +820,12 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		}
 		if config.WriteLJH3 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
+			msg := dastarddb.FileMessage{
+				SensorID: sensorID,
+				Filename: filename,
+			}
 			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, ds.subframeDivisions,
-				ds.subframeOffsets[i], filename)
+				ds.subframeOffsets[i], filename, &msg)
 		}
 	}
 	return ds.writingState.Start(filenamePattern, basepath, config)

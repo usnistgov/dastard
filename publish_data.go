@@ -84,7 +84,7 @@ func (dp *DataPublisher) RemoveOFF() {
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
 func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 	NumberOfRows, NumberOfColumns, SubframeDivisions, SubframeOffset int,
-	FileName string) {
+	FileName string, filemsg *dastarddb.FileMessage) {
 	w := ljh.Writer3{
 		ChannelIndex:      ChannelIndex,
 		Timebase:          Timebase,
@@ -93,6 +93,8 @@ func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 		SubframeDivisions: SubframeDivisions,
 		SubframeOffset:    SubframeOffset,
 		FileName:          FileName,
+		FileMessage:       filemsg,
+		DB:                DB,
 	}
 	dp.LJH3 = &w
 	dp.WritingPaused = false
