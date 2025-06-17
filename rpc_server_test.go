@@ -15,7 +15,7 @@ import (
 
 	"github.com/sbinet/npyio/npz"
 	"github.com/spf13/viper"
-	"github.com/usnistgov/dastard/lancero"
+	"github.com/usnistgov/dastard/internal/lancero"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -588,7 +588,7 @@ func TestMain(m *testing.M) {
 	lancero.SetLogOutput(f)
 
 	// set global cringeGlobalsPath to point to test file
-	cringeGlobalsPath = filepath.Join("lancero", "test_data", "cringeGlobals.json")
+	cringeGlobalsPath = filepath.Join("internal", "lancero", "test_data", "cringeGlobals.json")
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {

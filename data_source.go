@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/usnistgov/dastard/getbytes"
+	"github.com/usnistgov/dastard/internal/getbytes"
 
 	"github.com/sbinet/npyio/npz"
 	"github.com/spf13/viper"

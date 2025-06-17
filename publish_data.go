@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/usnistgov/dastard/getbytes"
-	"github.com/usnistgov/dastard/ljh"
-	"github.com/usnistgov/dastard/off"
+	"github.com/usnistgov/dastard/internal/getbytes"
+	"github.com/usnistgov/dastard/internal/ljh"
+	"github.com/usnistgov/dastard/internal/off"
 	"gonum.org/v1/gonum/mat"
 
 	"github.com/pebbe/zmq4"

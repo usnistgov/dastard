@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.7** June 9, 2025 - 
+* Reorganize the sub-modules to live in "internal" (so their API isn't exposed outside Dastard).
+
 **0.3.6** May 12, 2025
 * Make Abaco data be considered unsigned (issue 364).
 * Panic at a point where it's easier to explain why, if 2 abaco groups find unequal sample rates (issue 359).
