@@ -207,6 +207,7 @@ func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, framec
 func (w Writer) Flush() {
 	if w.writer != nil {
 		w.writer.Flush()
+		w.file.Sync()
 	}
 }
 
