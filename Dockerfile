@@ -19,10 +19,13 @@ RUN go mod download
 COPY . ./
 
 # Build
+# To do: set time zone and host name in the container from the host.
 RUN GOARCH=$(uname -m) GOOS=linux && go build -o /bahama cmd/bahama/bahama.go
-RUN export DATE_VAR=$(date -u '+%Y-%m-%d.%H:%M:%S.%Z') && \
-    export GIT_VAR=$(git rev-parse --short HEAD) && \
-    GOARCH=$(uname -m) GOOS=linux && go build -ldflags "-X main.buildDate=${DATE_VAR} -X main.githash=${GIT_VAR}" -o /dastard cmd/dastard/dastard.go
+RUN export DATE_VAR=$(date -u '+%a, %e %b %Y %H:%M:%S %z') && \
+    export GITHASH=$(git rev-parse --short HEAD) && \
+    export GITDATE=$(git log -1 --pretty=format:"%ad" --date=format:"%a, %e %b %Y %H:%M:%S %z") && \
+    GOARCH=$(uname -m) GOOS=linux && \
+    go build -ldflags "-X 'main.buildDate=${DATE_VAR}' -X main.githash=${GITHASH} -X 'main.gitdate=${GITDATE}'" -tags netgo -o /dastard cmd/dastard/dastard.go
 
 
 FROM build-stage AS run-test-stage
