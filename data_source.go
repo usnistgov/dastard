@@ -996,7 +996,7 @@ func (ds *AnySource) ComputeFullTriggerState() []FullTriggerState {
 
 // ChangeTriggerState changes the trigger state for 1 or more channels.
 func (ds *AnySource) ChangeTriggerState(state *FullTriggerState) error {
-	if state.ChannelIndices == nil || len(state.ChannelIndices) < 1 {
+	if len(state.ChannelIndices) < 1 {
 		return fmt.Errorf("got ConfigureTriggers with no valid ChannelIndices")
 	}
 	for _, channelIndex := range state.ChannelIndices {

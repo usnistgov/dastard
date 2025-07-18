@@ -17,6 +17,7 @@ import (
 )
 
 var githash = "githash not computed"
+var gitdate = "git date not computed"
 var buildDate = "build date not computed"
 
 // makeFileExist checks that dir/filename exists, and creates the directory
@@ -100,9 +101,15 @@ func startLogger(pfname string) *log.Logger {
 }
 
 func main() {
-	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
+	dastard.Build.Gitdate = gitdate
+	dastard.Build.Summary = fmt.Sprintf("DASTARD version %s (git commit %s of %s)", dastard.Build.Version, githash, gitdate)
+	if host, err := os.Hostname(); err == nil {
+		dastard.Build.Host = host
+	} else {
+		dastard.Build.Host = "host not detected"
+	}
 
 	printVersion := flag.Bool("version", false, "print version and quit")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
@@ -111,8 +118,10 @@ func main() {
 
 	if *printVersion {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
+		fmt.Printf("Hostname:        %s\n", dastard.Build.Host)
 		fmt.Printf("Git commit hash: %s\n", githash)
-		fmt.Printf("Build time: %s\n", buildDate)
+		fmt.Printf("Git commit date: %s\n", gitdate)
+		fmt.Printf("Build date+time: %s\n", buildDate)
 		fmt.Printf("Built on go version %s\n", runtime.Version())
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		os.Exit(0)
