@@ -105,7 +105,6 @@ func startLogger(pfname string) *log.Logger {
 }
 
 func main() {
-	buildDate = strings.Replace(buildDate, ".", " ", -1) // workaround for Make problems
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
 	dastard.Build.Gitdate = gitdate
@@ -125,8 +124,10 @@ func main() {
 
 	if *printVersion {
 		fmt.Printf("This is DASTARD version %s\n", dastard.Build.Version)
+		fmt.Printf("Hostname:        %s\n", dastard.Build.Host)
 		fmt.Printf("Git commit hash: %s\n", githash)
-		fmt.Printf("Build time: %s\n", buildDate)
+		fmt.Printf("Git commit date: %s\n", gitdate)
+		fmt.Printf("Build date+time: %s\n", buildDate)
 		fmt.Printf("Built on go version %s\n", runtime.Version())
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		os.Exit(0)

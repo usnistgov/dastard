@@ -32,21 +32,20 @@ func setPortnumbers(base int) {
 
 // BuildInfo can contain compile-time information about the build
 type BuildInfo struct {
-	Version string // Dastard version
+	Version string // version stored in global_config.go
 	Githash string // 7-character git commit hash
 	Gitdate string // Date/time in the git commit
 	Date    string // Date/time of the go build command
 	Host    string
 	Summary string // A summary to enter into file database
-	NCPU    int    // how many CPUs are available
 }
 
 // Build is a global holding compile-time information about the build
 var Build = BuildInfo{
 	Version: "0.4.0",
-	Githash: "no git hash entered",
+	Githash: "no git hash computed",
 	Gitdate: "no git commit date entered",
-	Date:    "no build date entered",
+	Date:    "no build date computed",
 	Host:    "no host found",
 	Summary: "DASTARD Version x.y.z (git commit ....... of date time)",
 }
