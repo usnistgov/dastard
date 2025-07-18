@@ -36,6 +36,7 @@ RUN mkdir /home/myuser && chown -R myuser:myuser /home/myuser
 RUN chown -R myuser: /app
 USER myuser
 RUN go test  ./...
+ENTRYPOINT ["/bin/bash"]
 
 
 FROM debian:latest AS build-release-stage
