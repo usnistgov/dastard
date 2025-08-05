@@ -214,6 +214,7 @@ Timebase: %e
 func (w Writer) Flush() {
 	if w.writer != nil {
 		w.writer.Flush()
+		w.file.Sync()
 	}
 }
 
@@ -342,6 +343,7 @@ func (w *Writer3) WriteRecord(firstRisingSample int32, framecount int64, timesta
 func (w Writer3) Flush() {
 	if w.writer != nil {
 		w.writer.Flush()
+		w.file.Sync()
 	}
 }
 
