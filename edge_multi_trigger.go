@@ -274,18 +274,19 @@ func edgeMultiShouldRecord(t, u, v FrameIndex, npreIn, nsampIn int32, mode EMTMo
 		// this will eventually lead to u == t as more triggers are inspected
 		return RecordSpec{-1, -1, -1}, false
 	}
-	if mode == EMTRecordsVariableLength {
+	switch mode {
+	case EMTRecordsVariableLength:
 		// always make a record, but don't overlap with neighboring triggers
 		return RecordSpec{u, npre, npre + npost}, true
-	} else if mode == EMTRecordsOneFullLength {
+	case EMTRecordsOneFullLength:
 		// always make a record, but don't overlap with neighboring triggers
 		if u-t >= FrameIndex(nsampIn) {
 			return RecordSpec{u, npreIn, nsampIn}, true
 		}
-	} else if mode == EMTRecordsTwoFullLength {
+	case EMTRecordsTwoFullLength:
 		// always make a record, overlap with neighboring records
 		return RecordSpec{u, npreIn, nsampIn}, true
-	} else if mode == EMTRecordsFullLengthIsolated {
+	case EMTRecordsFullLengthIsolated:
 		if npre >= npreIn && npre+npost >= nsampIn {
 			return RecordSpec{u, npreIn, nsampIn}, true
 		}
