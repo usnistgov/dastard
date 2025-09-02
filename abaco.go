@@ -728,6 +728,23 @@ func (as *AbacoSource) Delete() {
 	as.closeDevices()
 }
 
+// VoltsPerArb returns a per-channel value scaling raw into volts.
+// For Abaco, the default is 1 Phi0 per 4096 arb units
+func (as *AbacoSource) VoltsPerArb() []float32 {
+	if as.voltsPerArb == nil || len(as.voltsPerArb) != as.nchan {
+		as.voltsPerArb = make([]float32, as.nchan)
+		vpa := float32(1.0 / 65536.0) // default if not rescaling raw data
+		if (as.unwrapOpts.RescaleRaw){
+			vpa = float32(1. / (65536 >> abacoBitsToDrop))
+		}
+		for i := 0; i < as.nchan; i++ {
+			as.voltsPerArb[i] = vpa
+		}
+	}
+	return as.voltsPerArb
+}
+
+
 // AbacoSourceConfig holds the arguments needed to call AbacoSource.Configure by RPC.
 type AbacoSourceConfig struct {
 	ActiveCards    []int
