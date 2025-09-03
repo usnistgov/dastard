@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.8** September 2, 2025-
+* Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).
+
 **0.3.7** August 5, 2025
 * Reorganize the sub-modules to live in "internal" (so their API isn't exposed outside Dastard).
 * Synchronize disk writes occasionally, and in parallel across multiple channels (issues 353, 354).
