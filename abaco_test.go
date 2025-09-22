@@ -82,7 +82,6 @@ func TestAbacoRing(t *testing.T) {
 	if _, err := NewAbacoRing(99999); err == nil {
 		t.Errorf("NewAbacoRing(99999) succeeded, want failure")
 	}
-	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
 	dev, err := NewAbacoRing(cardnum)
 	if err != nil {
@@ -192,7 +191,6 @@ func TestAbacoSource(t *testing.T) {
 		t.Fatalf("NewAbacoSource() fails: %s", err)
 	}
 
-	rand.Seed(time.Now().UnixNano())
 	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
 
 	dev, err := NewAbacoRing(cardnum)
