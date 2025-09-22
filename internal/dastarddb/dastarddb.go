@@ -22,7 +22,6 @@ type dber interface {
 type DastardDBConnection struct {
 	conn          clickhouse.Conn
 	err           error
-	abort         <-chan struct{}
 	activityEntry *DastardActivityMessage
 	datarunmsg    chan *DatarunMessage
 	sensormsg     chan *SensorMessage
@@ -39,7 +38,7 @@ func (db *DastardDBConnection) IsConnected() bool {
 func PingServer() error {
 	db := createDBConnection()
 	if !db.IsConnected() {
-		return fmt.Errorf("Database is not connected")
+		return fmt.Errorf("database is not connected")
 	}
 	v, err := db.conn.ServerVersion()
 	if err != nil {
