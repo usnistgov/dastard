@@ -22,6 +22,8 @@ type DataPublisher struct {
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
+	SensorID         string
+	WritingDB        bool
 	WritingPaused    bool
 	numberWritten    int // integrates up the total number written; reset any time writing starts or stops
 }

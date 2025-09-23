@@ -704,8 +704,9 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 // writeControlStart handles the most complex case of WriteControl: starting to write.
 func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
-	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
-		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
+	config.WriteDB = true  // TODO: make this changeable in DCom
+	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3 || config.WriteDB) {
+		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 and WriteDB all false")
 	}
 
 	for _, dsp := range ds.processors {
@@ -778,6 +779,9 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		var pixel Pixel
 
 		sensorID := ulid.Make().String()
+		dsp.DataPublisher.SensorID = sensorID
+		dsp.DataPublisher.WritingDB = config.WriteDB
+
 		dsp.sensormsg = dastarddb.SensorMessage{
 			ID:          sensorID,
 			DatarunID:   ds.drecmsg.ID,
