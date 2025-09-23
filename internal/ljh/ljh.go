@@ -145,7 +145,7 @@ func extractFloat(line, pattern string, f *float64) bool {
 }
 
 // CreateFile creates a file with filename .FileName and assigns it to .file
-// you can't write records without doing this
+// you can't write records without doing this.
 func (w *Writer) CreateFile() error {
 	if w.file == nil {
 		file, err := os.Create(w.FileName)
