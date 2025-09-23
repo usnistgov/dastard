@@ -145,8 +145,8 @@ func extractFloat(line, pattern string, f *float64) bool {
 	return n >= 1 && err != nil
 }
 
-// SyncFilesWithFlush sets whether to call `Sync` with every `Flush` to the output file.
-func (w *Writer) SyncFilesWithFlush(sync bool) {
+// SetFlushAlsoSyncs sets whether to call `Sync` with every `Flush` to the output file.
+func (w *Writer) SetFlushAlsoSyncs(sync bool) {
 	w.syncwithflush = sync
 }
 
@@ -366,8 +366,8 @@ func (w Writer3) Close() {
 	w.file.Close()
 }
 
-// SyncFilesWithFlush sets whether to call `Sync` with every `Flush` to the output file.
-func (w *Writer3) SyncFilesWithFlush(sync bool) {
+// SetFlushAlsoSyncs sets whether to call `Sync` with every `Flush` to the output file.
+func (w *Writer3) SetFlushAlsoSyncs(sync bool) {
 	w.syncwithflush = sync
 }
 

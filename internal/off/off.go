@@ -222,8 +222,8 @@ func (w Writer) Close() {
 	w.file.Close()
 }
 
-// SyncFilesWithFlush sets whether to call `Sync` with every `Flush` to the output file.
-func (w *Writer) SyncFilesWithFlush(sync bool) {
+// SetFlushAlsoSyncs sets whether to call `Sync` with every `Flush` to the output file.
+func (w *Writer) SetFlushAlsoSyncs(sync bool) {
 	w.syncwithflush = sync
 }
 
