@@ -93,6 +93,7 @@ type Writer struct {
 	FileMessage *dastarddb.FileMessage
 	file        *os.File
 	writer      *asyncbufio.Writer
+	syncwithflush bool
 }
 
 // OpenReader returns an active LJH file reader, or an error.
@@ -150,8 +151,13 @@ func extractFloat(line, pattern string, f *float64) bool {
 	return n >= 1 && err != nil
 }
 
+// SetFlushAlsoSyncs sets whether to call `Sync` with every `Flush` to the output file.
+func (w *Writer) SetFlushAlsoSyncs(sync bool) {
+	w.syncwithflush = sync
+}
+
 // CreateFile creates a file with filename .FileName and assigns it to .file
-// you can't write records without doing this
+// you can't write records without doing this.
 func (w *Writer) CreateFile() error {
 	if w.file == nil {
 		file, err := os.Create(w.FileName)
@@ -227,7 +233,9 @@ Timebase: %e
 func (w Writer) Flush() {
 	if w.writer != nil {
 		w.writer.Flush()
-		w.file.Sync()
+		if w.syncwithflush {
+			w.file.Sync()
+		}
 	}
 }
 
@@ -308,6 +316,7 @@ type Writer3 struct {
 	FileMessage *dastarddb.FileMessage
 	file        *os.File
 	writer      *asyncbufio.Writer
+	syncwithflush bool
 }
 
 // HeaderTDM contains info about TDM readout for placing in an LJH3 header
@@ -391,7 +400,9 @@ func (w *Writer3) WriteRecord(firstRisingSample int32, framecount int64, timesta
 func (w Writer3) Flush() {
 	if w.writer != nil {
 		w.writer.Flush()
-		w.file.Sync()
+		if w.syncwithflush {
+			w.file.Sync()
+		}
 	}
 }
 
@@ -409,6 +420,11 @@ func (w Writer3) Close() {
 			w.DB.RecordFile(m)
 		}
 	}
+}
+
+// SetFlushAlsoSyncs sets whether to call `Sync` with every `Flush` to the output file.
+func (w *Writer3) SetFlushAlsoSyncs(sync bool) {
+	w.syncwithflush = sync
 }
 
 // CreateFile opens the LJH3 file for writing, must be called before wring RecordSlice

@@ -438,6 +438,7 @@ type WriteControlConfig struct {
 	WriteOFF        bool
 	WriteLJH3       bool
 	WriteDB         bool
+	FlushAlsoSyncs   bool
 	MapInternalOnly *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 
