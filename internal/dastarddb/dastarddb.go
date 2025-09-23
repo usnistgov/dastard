@@ -280,3 +280,31 @@ func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 		db.err = err
 	}
 }
+
+
+func (db *DastardDBConnection) RecordPulses(sensorID string, timestamps []time.Time, subframecounts []uint64, data [][]uint16) {
+	if !db.IsConnected() {
+		return
+	}
+	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO rawpulses")
+	if err != nil {
+		db.err = err
+		return
+	}
+	defer batch.Close()
+	for i, pulse := range data {
+		err = batch.Append(
+			sensorID, timestamps[i], subframecounts[i], pulse,
+		)		
+		if err != nil {
+			fmt.Println("Error raised on batch.Append! ", err)
+			db.err = err
+		}
+	}
+
+	err = batch.Send()
+	if err != nil {
+		fmt.Println("Error raised on batch.Send! ", err)
+		db.err = err
+	}
+}

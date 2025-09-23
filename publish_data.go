@@ -233,6 +233,20 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.WritingPaused {
 		return nil
 	}
+
+	if dp.WritingDB {
+		n := len(records)
+		timestamps := make([]time.Time, n)
+		subframecounts := make([]uint64, n)
+		pulses := make([][]uint16, n)
+		for i, record := range records {
+			timestamps[i] = record.trigTime
+			subframecounts[i] = uint64(record.trigFrame)
+			pulses[i] = rawTypeToUint16(record.data)
+		}
+		go func() {DB.RecordPulses(dp.SensorID, timestamps, subframecounts, pulses)}()
+	}
+
 	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
 		return nil
 	}
