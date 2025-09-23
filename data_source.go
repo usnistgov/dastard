@@ -762,6 +762,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
 				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
+			dsp.DataPublisher.LJH22.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
@@ -770,12 +771,14 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
 				dsp.modelDescription, pixel)
+			dsp.DataPublisher.OFF.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 			channelsWithOff++
 		}
 		if config.WriteLJH3 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
 			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, ds.subframeDivisions,
 				ds.subframeOffsets[i], filename)
+			dsp.DataPublisher.LJH3.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 	}
 	return ds.writingState.Start(filenamePattern, path, config)

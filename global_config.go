@@ -40,7 +40,7 @@ type BuildInfo struct {
 
 // Build is a global holding compile-time information about the build
 var Build = BuildInfo{
-	Version: "0.3.8pre1",
+	Version: "0.3.8pre2",
 	Githash: "no git hash computed",
 	Gitdate: "no git commit date entered",
 	Date:    "no build date computed",

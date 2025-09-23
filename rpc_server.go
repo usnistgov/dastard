@@ -437,6 +437,7 @@ type WriteControlConfig struct {
 	WriteLJH22      bool   // turn on one or more file formats
 	WriteOFF        bool
 	WriteLJH3       bool
+	FlushAlsoSyncs   bool
 	MapInternalOnly *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 

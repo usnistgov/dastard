@@ -17,6 +17,7 @@ type WritingState struct {
 	WriteLJH22                        bool // which file formats are active
 	WriteOFF                          bool
 	WriteLJH3                         bool
+	FlushAlsoSyncs                     bool
 	experimentStateFile               *os.File
 	ExperimentStateFilename           string
 	ExperimentStateLabel              string
@@ -60,6 +61,7 @@ func (ws *WritingState) ComputeState() *WritingState {
 	copyState.WriteLJH22 = ws.WriteLJH22
 	copyState.WriteLJH3 = ws.WriteLJH3
 	copyState.WriteOFF = ws.WriteOFF
+	copyState.FlushAlsoSyncs = ws.FlushAlsoSyncs
 	return &copyState
 }
 
@@ -73,6 +75,7 @@ func (ws *WritingState) Start(filenamePattern, path string, config *WriteControl
 	ws.WriteLJH22 = config.WriteLJH22
 	ws.WriteLJH3 = config.WriteLJH3
 	ws.WriteOFF = config.WriteOFF
+	ws.FlushAlsoSyncs = config.FlushAlsoSyncs
 	ws.FilenamePattern = filenamePattern
 	ws.ExperimentStateFilename = fmt.Sprintf(filenamePattern, "experiment_state", "txt")
 	ws.ExternalTriggerFilename = fmt.Sprintf(filenamePattern, "external_trigger", "bin")
