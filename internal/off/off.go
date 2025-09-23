@@ -57,6 +57,7 @@ type Writer struct {
 	headerWritten  bool
 	file           *os.File
 	writer         *asyncbufio.Writer
+	syncwithflush  bool
 }
 
 // NewWriter creates a new OFF writer. No file is created until the first call to WriteRecord
@@ -207,7 +208,9 @@ func (w *Writer) WriteRecord(recordSamples int32, recordPreSamples int32, framec
 func (w Writer) Flush() {
 	if w.writer != nil {
 		w.writer.Flush()
-		w.file.Sync()
+		if  w.syncwithflush {
+			w.file.Sync()
+		}
 	}
 }
 
@@ -219,8 +222,13 @@ func (w Writer) Close() {
 	w.file.Close()
 }
 
+// SyncFilesWithFlush sets whether to call `Sync` with every `Flush` to the output file.
+func (w *Writer) SyncFilesWithFlush(sync bool) {
+	w.syncwithflush = sync
+}
+
 // CreateFile creates a file at w.FileName
-// must be called before WriteHeader or WriteRecord
+// must be called before WriteHeader or WriteRecord.
 func (w *Writer) CreateFile() error {
 	if w.file == nil {
 		file, err := os.Create(w.fileName)
