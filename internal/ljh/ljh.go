@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -223,9 +222,6 @@ func (w Writer) Flush() {
 		w.writer.Flush()
 		if w.syncwithflush {
 			w.file.Sync()
-			fmt.Println("Sync called")
-			fmt.Println()
-			log.Println("Snyc called")
 		}
 	}
 }
