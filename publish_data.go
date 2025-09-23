@@ -244,7 +244,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			subframecounts[i] = uint64(record.trigFrame)
 			pulses[i] = rawTypeToUint16(record.data)
 		}
-		go func() {DB.RecordPulses(dp.SensorID, timestamps, subframecounts, pulses)}()
+		go func() { DB.RecordPulses(dp.SensorID, timestamps, subframecounts, pulses) }()
 	}
 
 	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
