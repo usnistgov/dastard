@@ -15,7 +15,7 @@ import (
 )
 
 // DataPublisher contains many optional methods for publishing data; any methods that are non-nil
-// will be used in each call to PublishData.
+// will be used in each call to PublishData. An instance of this object exists for each sensor channel.
 type DataPublisher struct {
 	PubRecordsChan   chan []*DataRecord
 	PubSummariesChan chan []*DataRecord
