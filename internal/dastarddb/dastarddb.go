@@ -286,25 +286,14 @@ func (db *DastardDBConnection) RecordPulses(sensorID string, timestamps []time.T
 	if !db.IsConnected() {
 		return
 	}
-	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO rawpulses")
-	if err != nil {
-		db.err = err
-		return
-	}
-	defer batch.Close()
+	ctx := context.Background()
+	const nowait = false
 	for i, pulse := range data {
-		err = batch.Append(
+		if err := db.conn.AsyncInsert(ctx, `INSERT INTO rawpulses VALUES (?, ?, ?, ?)`, nowait,
 			sensorID, timestamps[i], subframecounts[i], pulse,
-		)		
-		if err != nil {
-			fmt.Println("Error raised on batch.Append! ", err)
+		); err != nil {
+			fmt.Println("Error raised on AsyncInsert! ", err)
 			db.err = err
 		}
-	}
-
-	err = batch.Send()
-	if err != nil {
-		fmt.Println("Error raised on batch.Send! ", err)
-		db.err = err
 	}
 }

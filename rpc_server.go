@@ -839,6 +839,7 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var ws WritingState
 	err = viper.UnmarshalKey("writing", &ws)
+	ws.WriteDB = true // TODO: this is temporary
 	if err == nil {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful
