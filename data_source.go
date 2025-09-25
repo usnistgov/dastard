@@ -477,7 +477,6 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		ds.mono.LastChannelComplete()
 	}
 
-
 	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
 	// and once every 20 reads, flush the output files (but do the files out of phase, so it's not
 	// done for all files at once).

@@ -59,7 +59,7 @@ func (dsp *DataStreamProcessor) triggerAtSpecificSamples(i int, NPresamples int,
 	record := &DataRecord{data: data, trigFrame: tf, trigTime: tt,
 		channelIndex: dsp.channelIndex, channelID: dsp.DataPublisher.SensorID,
 		signed: stream.signed, voltsPerArb: stream.voltsPerArb,
-		presamples:  NPresamples, sampPeriod: sampPeriod}
+		presamples: NPresamples, sampPeriod: sampPeriod}
 	return record
 }
 

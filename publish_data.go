@@ -235,7 +235,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 		return nil
 	}
 
-	if dp.WritingDB && dp.Mono != nil{
+	if dp.WritingDB && dp.Mono != nil {
 		dp.Mono.RecordsChan <- records
 	}
 
@@ -443,12 +443,11 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	return pubchan, nil
 }
 
-
-// MonoPublisher represents the object that collects pulse records from all channels to 
+// MonoPublisher represents the object that collects pulse records from all channels to
 // publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
 type MonoPublisher struct {
 	RecordsChan chan []*DataRecord
-	abort chan struct{}
+	abort       chan struct{}
 }
 
 func NewMono(nchan int) *MonoPublisher {
@@ -459,7 +458,7 @@ func NewMono(nchan int) *MonoPublisher {
 }
 
 // LastChannelComplete signals to the publisher that there are no more channels to wait for,
-// and it's time to publish the collected data. 
+// and it's time to publish the collected data.
 func (mp *MonoPublisher) LastChannelComplete() {
 	mp.RecordsChan <- nil
 }
@@ -472,7 +471,7 @@ func (mp *MonoPublisher) LastChannelComplete() {
 func (mp *MonoPublisher) PublishLoop() {
 	queuedRecords := make([]*DataRecord, 0, 100)
 	for {
-		select  {
+		select {
 		case <-mp.abort:
 			return
 		case records := <-mp.RecordsChan:
