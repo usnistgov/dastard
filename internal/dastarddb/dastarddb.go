@@ -283,5 +283,4 @@ func (db *DastardDBConnection) RecordPulsesBatch(sensorID []string, timestamps [
 	if err = batch.Send(); err != nil {
 		fmt.Println("Batch send failed")
 	}
-	fmt.Println("Batch send succeeded; last time ", timestamps[len(timestamps)-1])
 }
