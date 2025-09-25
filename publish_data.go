@@ -491,13 +491,15 @@ func (mp *MonoPublisher) PublishLoop() {
 // Eventually, it might write them to a single Apache Arrow file instead, or in addition.
 func (mp *MonoPublisher) publishData(records []*DataRecord) {
 	n := len(records)
+	channelIDs := make([]string, n)
 	timestamps := make([]time.Time, n)
 	subframecounts := make([]uint64, n)
 	pulses := make([][]uint16, n)
 	for i, record := range records {
+		channelIDs[i] = record.channelID
 		timestamps[i] = record.trigTime
 		subframecounts[i] = uint64(record.trigFrame)
 		pulses[i] = rawTypeToUint16(record.data)
 	}
-	DB.RecordPulses("dummy", timestamps, subframecounts, pulses)
+	DB.RecordPulses(channelIDs, timestamps, subframecounts, pulses)
 }

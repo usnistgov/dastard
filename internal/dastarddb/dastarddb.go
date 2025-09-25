@@ -282,7 +282,7 @@ func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 }
 
 
-func (db *DastardDBConnection) RecordPulses(sensorID string, timestamps []time.Time, subframecounts []uint64, data [][]uint16) {
+func (db *DastardDBConnection) RecordPulses(sensorID []string, timestamps []time.Time, subframecounts []uint64, data [][]uint16) {
 	if !db.IsConnected() {
 		return
 	}
@@ -290,7 +290,7 @@ func (db *DastardDBConnection) RecordPulses(sensorID string, timestamps []time.T
 	const nowait = false
 	for i, pulse := range data {
 		if err := db.conn.AsyncInsert(ctx, `INSERT INTO rawpulses VALUES (?, ?, ?, ?)`, nowait,
-			sensorID, timestamps[i], subframecounts[i], pulse,
+			sensorID[i], timestamps[i], subframecounts[i], pulse,
 		); err != nil {
 			fmt.Println("Error raised on AsyncInsert! ", err)
 			db.err = err

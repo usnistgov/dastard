@@ -1287,6 +1287,7 @@ type DataRecord struct {
 	trigTime     time.Time
 	signed       bool // do we interpret the data as signed values?
 	channelIndex int
+	channelID    string
 	presamples   int
 	voltsPerArb  float32 // "volts" or other physical unit per raw unit
 	sampPeriod   float32
