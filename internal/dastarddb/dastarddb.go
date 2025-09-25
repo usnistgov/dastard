@@ -123,9 +123,11 @@ func (db *DastardDBConnection) logActivity() {
 	ctx := context.Background()
 	const nowait = false
 	ae := db.activityEntry
+	formattedStart := ae.Start.Format("2006-01-02 15:04:05.000000")
+	formattedEnd := ae.End.Format("2006-01-02 15:04:05.000000")
 	if err := db.conn.AsyncInsert(ctx, `INSERT INTO dastardactivity VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
 		ae.ID, ae.Hostname, ae.Githash, ae.Version,
-		ae.GoVersion, ae.CPUs, ae.Start, ae.End,
+		ae.GoVersion, ae.CPUs, formattedStart, formattedEnd,
 	); err != nil {
 		fmt.Println("Error raised on AsyncInsert into dastardactivity ", err)
 		db.err = err
@@ -198,11 +200,13 @@ func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	}
 	ctx := context.Background()
 	const nowait = false
+	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
+	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
 	toffset := m.TimeOffset.UnixMicro() / 1e6
 	if err := db.conn.AsyncInsert(ctx, `INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
 		m.ID, db.activityEntry.ID, m.DateRunCode, m.Intention, m.DataSource, m.Directory,
 		m.Nchannels, m.NPresamples, m.NSamples,
-		toffset, m.Timebase, m.Start, m.End,
+		toffset, m.Timebase, formattedStart, formattedEnd,
 	); err != nil {
 		fmt.Println("Error raised on AsyncInsert into dataruns ", err)
 		db.err = err
@@ -230,8 +234,11 @@ func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 	}
 	ctx := context.Background()
 	const nowait = false
+	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
+	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
+
 	if err := db.conn.AsyncInsert(ctx, `INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
-		m.SensorID, m.Filename, m.Filetype, m.Start, m.End,
+		m.SensorID, m.Filename, m.Filetype, formattedStart, formattedEnd,
 		m.Records, m.Size, m.SHA256,
 	); err != nil {
 		fmt.Println("Error raised on AsyncInsert into files ", err)
