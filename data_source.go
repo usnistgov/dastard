@@ -694,11 +694,14 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.RemoveLJH22()
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
-			// TODO: send files messages to update with start time, etc
 		}
 		DB.FinishDatarun(&ds.drecmsg)
 
 		if ds.mono != nil {
+			for _, dsp := range ds.processors {
+				dsp.DataPublisher.WritingDB = false
+				dsp.DataPublisher.Mono = nil
+			}
 			close(ds.mono.abort)
 			ds.mono = nil
 		}
