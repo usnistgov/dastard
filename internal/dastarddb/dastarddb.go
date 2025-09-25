@@ -283,14 +283,15 @@ func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 
 
 func (db *DastardDBConnection) RecordPulses(sensorID []string, timestamps []time.Time, subframecounts []uint64, data [][]uint16) {
-	if !db.IsConnected() {
+	if len(data) == 0 || !db.IsConnected() {
 		return
 	}
 	ctx := context.Background()
 	const nowait = false
 	for i, pulse := range data {
+		formattedTime := timestamps[i].Format("2006-01-02 15:04:05.000000")
 		if err := db.conn.AsyncInsert(ctx, `INSERT INTO rawpulses VALUES (?, ?, ?, ?)`, nowait,
-			sensorID[i], timestamps[i], subframecounts[i], pulse,
+			sensorID[i], formattedTime, subframecounts[i], pulse,
 		); err != nil {
 			fmt.Println("Error raised on AsyncInsert! ", err)
 			db.err = err
