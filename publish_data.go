@@ -500,5 +500,5 @@ func (mp *MonoPublisher) publishData(records []*DataRecord) {
 		subframecounts[i] = uint64(record.trigFrame)
 		pulses[i] = rawTypeToUint16(record.data)
 	}
-	DB.RecordPulses(channelIDs, timestamps, subframecounts, pulses)
+	DB.RecordPulsesBatch(channelIDs, timestamps, subframecounts, pulses)
 }

@@ -256,3 +256,32 @@ func (db *DastardDBConnection) RecordPulses(sensorID []string, timestamps []time
 		}
 	}
 }
+
+
+func (db *DastardDBConnection) RecordPulsesBatch(sensorID []string, timestamps []time.Time, subframecounts []uint64, data [][]uint16) {
+	if len(data) == 0 || !db.IsConnected() {
+		return
+	}
+	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO rawpulses")
+	if err != nil {
+		fmt.Println("Error raised on PrepareBatch")
+		return
+	}
+	defer batch.Close()
+	if err = batch.Column(0).Append(sensorID); err != nil {
+		return
+	}
+	if err = batch.Column(1).Append(timestamps); err != nil {
+		return
+	}
+	if err = batch.Column(2).Append(subframecounts); err != nil {
+		return
+	}
+	if err = batch.Column(3).Append(data); err != nil {
+		return
+	}
+	if err = batch.Send(); err != nil {
+		fmt.Println("Batch send failed")
+	}
+	fmt.Println("Batch send succeeded; last time ", timestamps[len(timestamps)-1])
+}
