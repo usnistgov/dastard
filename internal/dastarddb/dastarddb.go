@@ -120,23 +120,14 @@ func (db *DastardDBConnection) logActivity() {
 	if !db.IsConnected() {
 		return
 	}
-	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO dastardactivity")
-	if err != nil {
-		db.err = err
-		return
-	}
-	defer batch.Close()
+	ctx := context.Background()
+	const nowait = false
 	ae := db.activityEntry
-	err = batch.Append(
+	if err := db.conn.AsyncInsert(ctx, `INSERT INTO dastardactivity VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
 		ae.ID, ae.Hostname, ae.Githash, ae.Version,
-		ae.GoVersion, ae.CPUs, ae.Start, ae.End)
-	if err != nil {
-		fmt.Println("Error raised on batch.Append! ", err)
-		db.err = err
-	}
-	err = batch.Send()
-	if err != nil {
-		fmt.Println("Error raised on batch.Send! ", err)
+		ae.GoVersion, ae.CPUs, ae.Start, ae.End,
+	); err != nil {
+		fmt.Println("Error raised on AsyncInsert into dastardactivity ", err)
 		db.err = err
 	}
 }
@@ -205,26 +196,15 @@ func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	if !db.IsConnected() {
 		return
 	}
-	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO dataruns")
-	if err != nil {
-		db.err = err
-		return
-	}
-	defer batch.Close()
+	ctx := context.Background()
+	const nowait = false
 	toffset := m.TimeOffset.UnixMicro() / 1e6
-	err = batch.Append(
+	if err := db.conn.AsyncInsert(ctx, `INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
 		m.ID, db.activityEntry.ID, m.DateRunCode, m.Intention, m.DataSource, m.Directory,
 		m.Nchannels, m.NPresamples, m.NSamples,
 		toffset, m.Timebase, m.Start, m.End,
-	)
-
-	if err != nil {
-		fmt.Println("Error raised on batch.Append! ", err)
-		db.err = err
-	}
-	err = batch.Send()
-	if err != nil {
-		fmt.Println("Error raised on batch.Send! ", err)
+	); err != nil {
+		fmt.Println("Error raised on AsyncInsert into dataruns ", err)
 		db.err = err
 	}
 }
@@ -233,24 +213,13 @@ func (db *DastardDBConnection) handleSensorMessage(m *SensorMessage) {
 	if !db.IsConnected() {
 		return
 	}
-	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO sensors")
-	if err != nil {
-		db.err = err
-		return
-	}
-	defer batch.Close()
-	err = batch.Append(
+	ctx := context.Background()
+	const nowait = false
+	if err := db.conn.AsyncInsert(ctx, `INSERT INTO sensors VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
 		m.ID, m.DatarunID, m.DateRunCode, m.RowNum, m.ColNum,
 		m.ChanNum, m.ChanIndex, m.ChanName, m.IsError,
-	)
-
-	if err != nil {
-		fmt.Println("Error raised on batch.Append! ", err)
-		db.err = err
-	}
-	err = batch.Send()
-	if err != nil {
-		fmt.Println("Error raised on batch.Send! ", err)
+			); err != nil {
+		fmt.Println("Error raised on AsyncInsert into sensors ", err)
 		db.err = err
 	}
 }
@@ -259,24 +228,13 @@ func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 	if !db.IsConnected() {
 		return
 	}
-	batch, err := db.conn.PrepareBatch(context.Background(), "INSERT INTO files")
-	if err != nil {
-		db.err = err
-		return
-	}
-	defer batch.Close()
-	err = batch.Append(
+	ctx := context.Background()
+	const nowait = false
+	if err := db.conn.AsyncInsert(ctx, `INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
 		m.SensorID, m.Filename, m.Filetype, m.Start, m.End,
 		m.Records, m.Size, m.SHA256,
-	)
-
-	if err != nil {
-		fmt.Println("Error raised on batch.Append! ", err)
-		db.err = err
-	}
-	err = batch.Send()
-	if err != nil {
-		fmt.Println("Error raised on batch.Send! ", err)
+	); err != nil {
+		fmt.Println("Error raised on AsyncInsert into files ", err)
 		db.err = err
 	}
 }
@@ -293,7 +251,7 @@ func (db *DastardDBConnection) RecordPulses(sensorID []string, timestamps []time
 		if err := db.conn.AsyncInsert(ctx, `INSERT INTO rawpulses VALUES (?, ?, ?, ?)`, nowait,
 			sensorID[i], formattedTime, subframecounts[i], pulse,
 		); err != nil {
-			fmt.Println("Error raised on AsyncInsert! ", err)
+		fmt.Println("Error raised on AsyncInsert into rawpulses ", err)
 			db.err = err
 		}
 	}
