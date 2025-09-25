@@ -318,6 +318,7 @@ type AnySource struct {
 	broker       *TriggerBroker
 	configError  error // Any error that arose when configuring the source (before Start)
 	drecmsg      dastarddb.DatarunMessage
+	mono         *MonoPublisher
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	noProcess           bool // Set true only for testing.
@@ -470,6 +471,12 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 		}
 		wg.Wait()
 	}
+
+	// Signal to the MonoPublisher that all channels' data have been sent, and it's time to publish.
+	if ds.mono != nil {
+		ds.mono.LastChannelComplete()
+	}
+
 
 	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
 	// and once every 20 reads, flush the output files (but do the files out of phase, so it's not
@@ -690,6 +697,11 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			// TODO: send files messages to update with start time, etc
 		}
 		DB.FinishDatarun(&ds.drecmsg)
+
+		if ds.mono != nil {
+			close(ds.mono.abort)
+			ds.mono = nil
+		}
 		return ds.writingState.Stop()
 
 	case strings.HasPrefix(requestStr, "START"):
@@ -714,6 +726,13 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			return fmt.Errorf(
 				"writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
+		}
+	}
+	if config.WriteDB {
+		ds.mono = NewMono(ds.Nchan())
+		go ds.mono.PublishLoop()
+		for _, dsp := range ds.processors {
+			dsp.DataPublisher.Mono = ds.mono
 		}
 	}
 	if config.WriteOFF {

@@ -14,14 +14,15 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
-// DataPublisher contains many optional methods for publishing data; any methods that are non-nil
-// will be used in each call to PublishData. An instance of this object exists for each sensor channel.
+// DataPublisher contains many optional methods for publishing data; any Writers that are non-nil
+// will be used in each call to PublishData. One instance of this object exists for each data channel.
 type DataPublisher struct {
 	PubRecordsChan   chan []*DataRecord
 	PubSummariesChan chan []*DataRecord
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
+	Mono             *MonoPublisher // Shared by all DataPublishers; used to publish unified all-channel data
 	SensorID         string
 	WritingDB        bool
 	WritingPaused    bool
@@ -234,17 +235,8 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 		return nil
 	}
 
-	if dp.WritingDB {
-		n := len(records)
-		timestamps := make([]time.Time, n)
-		subframecounts := make([]uint64, n)
-		pulses := make([][]uint16, n)
-		for i, record := range records {
-			timestamps[i] = record.trigTime
-			subframecounts[i] = uint64(record.trigFrame)
-			pulses[i] = rawTypeToUint16(record.data)
-		}
-		go func() { DB.RecordPulses(dp.SensorID, timestamps, subframecounts, pulses) }()
+	if dp.WritingDB && dp.Mono != nil{
+		dp.Mono.RecordsChan <- records
 	}
 
 	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
@@ -449,4 +441,63 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 		}
 	}()
 	return pubchan, nil
+}
+
+
+// MonoPublisher represents the object that collects pulse records from all channels to 
+// publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
+type MonoPublisher struct {
+	RecordsChan chan []*DataRecord
+	abort chan struct{}
+}
+
+func NewMono(nchan int) *MonoPublisher {
+	mp := new(MonoPublisher)
+	mp.RecordsChan = make(chan []*DataRecord, 2*nchan)
+	mp.abort = make(chan struct{})
+	return mp
+}
+
+// LastChannelComplete signals to the publisher that there are no more channels to wait for,
+// and it's time to publish the collected data. 
+func (mp *MonoPublisher) LastChannelComplete() {
+	mp.RecordsChan <- nil
+}
+
+// PublishLoop is the MonoPublisher's long-running goroutine.
+// It collects records from all channels into a single slice of *DataRecord,
+// and publishes them together when a nil slice arrives (caused by the DataSource calling
+// mp.LastChannelComplete() to indicate all channels have been checked).
+// When data writing is stopped, the abort channel will be closed, and this routine will exit.
+func (mp *MonoPublisher) PublishLoop() {
+	queuedRecords := make([]*DataRecord, 0, 100)
+	for {
+		select  {
+		case <-mp.abort:
+			return
+		case records := <-mp.RecordsChan:
+			if records == nil {
+				mp.publishData(queuedRecords)
+				queuedRecords = queuedRecords[:0]
+			} else {
+				queuedRecords = append(queuedRecords, records...)
+			}
+		}
+	}
+}
+
+// Publish the slice of data collected from all channels.
+// For now, this writes them to the ClickHouse DB.
+// Eventually, it might write them to a single Apache Arrow file instead, or in addition.
+func (mp *MonoPublisher) publishData(records []*DataRecord) {
+	n := len(records)
+	timestamps := make([]time.Time, n)
+	subframecounts := make([]uint64, n)
+	pulses := make([][]uint16, n)
+	for i, record := range records {
+		timestamps[i] = record.trigTime
+		subframecounts[i] = uint64(record.trigFrame)
+		pulses[i] = rawTypeToUint16(record.data)
+	}
+	DB.RecordPulses("dummy", timestamps, subframecounts, pulses)
 }
