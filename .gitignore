@@ -28,6 +28,7 @@ writertest.ljh*
 TestPublishData.ljh*
 tstfile
 *.off
+empty.npy
 
 dastard
 !dastard/
