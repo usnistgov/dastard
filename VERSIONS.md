@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.4.0** November, 2025-
+* Rewrite how Dastard handles file-writing, to avoid any blocking writes in the main loops.
+
 **0.3.8** September 2, 2025-
 * Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).
 * Make the file-synchronizing be optional to avert HDD problem (issue 376).

@@ -20,12 +20,12 @@ GITHASH := $(shell git rev-parse --short HEAD)
 GITDATE := $(shell git log -1 --pretty=format:"%ad" --date=format:"%a, %e %b %Y %H:%M:%S %z")
 
 GLOBALVARIABLES=-X 'main.buildDate=$(BUILDDATE)' -X main.githash=$(GITHASH) -X 'main.gitdate=$(GITDATE)'
-LDFLAGS=-ldflags "$(GLOBALVARIABLES)"
+GOLINKFLAGS=-ldflags "$(GLOBALVARIABLES)"
 build: $(BINARY_NAME)
 all: test build install
 
-$(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go
-	$(GOBUILD) $(LDFLAGS) $(TAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
+$(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go internal/*/*.go
+	$(GOBUILD) $(GOLINKFLAGS) $(TAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
 test:
 	$(GOFMT)

@@ -5,9 +5,9 @@ A data acquisition program for NIST transition-edge sensor (TES) microcalorimete
 
 ## Installation
 
-### Golang 1.21 is required
+### Golang 1.21+ is required
 
-**Dastard requires Go version 1.21 or higher** (released August 2023) because [gonum-v1 v0.15](http://gonum.org/v1/gonum/mat) and other depdencies require it. Dastard is tested automatically on versions 1.21 and _stable_, [the most recent stable version](https://github.com/actions/go-versions/blob/main/versions-manifest.json) (as of August 21, 2024, that means Go version 1.23.0).
+**Dastard requires Go version 1.21 or higher** (released August 2023) because [gonum-v1 v0.15](http://gonum.org/v1/gonum/mat) and other depdencies require it. Dastard is tested automatically on versions 1.21 and _stable_, [the most recent stable version](https://github.com/actions/go-versions/blob/main/versions-manifest.json) (as of November 18, 2025, that means Go version 1.25.4).
 - If you need to run Go version 1.20: don't. There was a bug in a filesystem handling library that renders Go 1.20 incompatible with our TDM systems specifically. If you are _not_ using TDM and insist on Go 1.20, follow the instructions for Go 1.19.
 - If you need to run Go versions 1.17, 1.18, 1.19: [Dastard version 0.3.3](https://github.com/usnistgov/dastard/releases/tag/v0.3.3) is the last version compatible with them.
 - If you need to run Go version 1.16: [Dastard version 0.2.16](https://github.com/usnistgov/dastard/releases/tag/v0.2.16) is the last version compatible with it.
@@ -28,7 +28,7 @@ dastard
 **There was a problem with Go version 1.20 and TDM systems** If you are using TDM systems with the Lancero device, beware that we had trouble making the device read correctly with Go 1.20 (as of April 20, 2023). This turns out to be the result of a bug in Go 1.20, surprisingly. We believe this problem was worked around in May 2023 (Dastard v0.2.19) AND completely fixed with Go 1.21+. We leave this note here just in case you notice TDM problems that we didn't.
 
 
-### Ubuntu 24.04, 22.04, 20.04, 18.04, and (maybe?) 16.04
+### Ubuntu 24.04, 22.04, 20.04, and 18.04
 
 One successful installation of the dependencies looked like this. Before pasting the following, be sure to run some
 simple command as sudo first; otherwise, the password entering step will screw up your multi-line paste.

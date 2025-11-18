@@ -330,7 +330,10 @@ func messageRecords(rec *DataRecord) [][]byte {
 
 	const headerVersion = uint8(0)
 	dataType := uint8(3)
-	if rec.signed { // DataSegment.signed is set deep within a source, then dsp.signed is set equal to DataSegment.signed in process data, then DataRecord.signed is set equal to dsp.signed upon record generation
+	// DataSegment.signed is set deep within a source,
+	// then dsp.signed is set equal to DataSegment.signed in process data,
+	// then DataRecord.signed is set equal to dsp.signed when record is generated.
+	if rec.signed {
 		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
@@ -358,8 +361,8 @@ var PubRecordsChan chan []*DataRecord
 var PubSummariesChan chan []*DataRecord
 
 // configurePubRecordsSocket should be run exactly one time.
-// It initializes PubFeederChan and launches a goroutine
-// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs.
+// It initializes PubRecordsChan and launches a goroutine
+// that reads from PubRecordsChan and publishes records on a ZMQ PUB socket at port PortTrigs.
 // This way even if goroutines in different threads want to publish records, they all use the same
 // zmq port. The goroutine can be stopped by closing PubRecordsChan.
 func configurePubRecordsSocket() error {
