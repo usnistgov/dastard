@@ -74,14 +74,3 @@ CREATE TABLE IF NOT EXISTS files (
     ENGINE = ReplacingMergeTree()
     PRIMARY KEY (sensor_id, file_type)
     COMMENT 'Each row represents one microcalorimeter data file';
-
-CREATE TABLE IF NOT EXISTS rawpulses (
-    `sensor_id`       FixedString(26) COMMENT 'link to sensors.id',
-    `timestamp`       DateTime64(6),
-    `subframecount`   UInt64,
-    `pulse`           Array(UInt16),
-)
-    ENGINE = MergeTree()
-    PRIMARY KEY (sensor_id)
-    ORDER BY (sensor_id, subframecount)
-    COMMENT 'Each row represents one pulse record';

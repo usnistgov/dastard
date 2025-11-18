@@ -2,7 +2,6 @@
 
 **0.4.0** June 10, 2025-
 * Build in (optional) use of a ClickHouse database to store run+channel info.
-* Add storage of full pulse info to ClickHouse
 
 **0.3.8** September 2, 2025-
 * Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).

@@ -730,13 +730,6 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
 	}
-	if config.WriteDB {
-		ds.mono = NewMono(ds.Nchan())
-		go ds.mono.PublishLoop()
-		for _, dsp := range ds.processors {
-			dsp.DataPublisher.Mono = ds.mono
-		}
-	}
 	if config.WriteOFF {
 		// throw an error if no channels have projectors set
 		// only channels with projectors set will have OFF files enabled

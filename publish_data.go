@@ -445,6 +445,9 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 
 // MonoPublisher represents the object that collects pulse records from all channels to
 // publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
+// This was designed in Sept 2025 for an experiment with writing pulse records to a ClickHouse DB.
+// We are not going to take that route, so the object is currently unused. But here it remains,
+// in case we ever choose to write to an all-channel Arrow file, or similar.
 type MonoPublisher struct {
 	RecordsChan chan []*DataRecord
 	abort       chan struct{}
@@ -500,5 +503,4 @@ func (mp *MonoPublisher) publishData(records []*DataRecord) {
 		subframecounts[i] = uint64(record.trigFrame)
 		pulses[i] = rawTypeToUint16(record.data)
 	}
-	DB.RecordPulses(channelIDs, timestamps, subframecounts, pulses)
 }
