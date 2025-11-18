@@ -12,15 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/usnistgov/dastard/internal/asyncbufio"
 	"github.com/usnistgov/dastard/internal/getbytes"
 )
 
 // The buffer size (bytes) of the bufio.Writer that buffers disk output
 const BUFIOSIZE = 65536
-
-// The capacity of unprocessed pulse records before even the "asynchronous" writes will block.
-const WRITECHANCAPACITY = 1000
 
 // Flush the ouputfile regularly at this interval
 const FLUSHINTERVAL = 3 * time.Second
@@ -86,7 +82,7 @@ type Writer struct {
 	PixelName                 string
 
 	file   *os.File
-	writer *asyncbufio.Writer
+	writer *bufio.Writer
 	syncwithflush bool
 }
 
@@ -162,8 +158,7 @@ func (w *Writer) CreateFile() error {
 	} else {
 		return errors.New("file already exists")
 	}
-	bw := bufio.NewWriterSize(w.file, BUFIOSIZE)
-	w.writer = asyncbufio.NewWriter(bw, WRITECHANCAPACITY, FLUSHINTERVAL)
+	w.writer = bufio.NewWriterSize(w.file, BUFIOSIZE)
 	return nil
 }
 
@@ -229,9 +224,11 @@ func (w Writer) Flush() {
 // Close closes the associated file, no more records can be written after this
 func (w Writer) Close() {
 	if w.writer != nil {
-		w.writer.Close()
+		w.writer.Flush()
 	}
-	w.file.Close()
+	if w.file != nil {
+		w.file.Close()
+	}
 }
 
 // WriteRecord writes a single record to the files
@@ -273,7 +270,7 @@ type Writer3 struct {
 	RecordsWritten             int
 
 	file   *os.File
-	writer *asyncbufio.Writer
+	writer *bufio.Writer
 	syncwithflush bool
 }
 
@@ -361,9 +358,11 @@ func (w Writer3) Flush() {
 // Close closes the LJH3 file
 func (w Writer3) Close() {
 	if w.writer != nil {
-		w.writer.Close()
+		w.writer.Flush()
 	}
-	w.file.Close()
+	if w.file != nil {
+		w.file.Close()
+	}
 }
 
 // SetFlushAlsoSyncs sets whether to call `Sync` with every `Flush` to the output file.
@@ -381,8 +380,7 @@ func (w *Writer3) CreateFile() error {
 		return err
 	}
 	w.file = file
-	bw := bufio.NewWriterSize(w.file, BUFIOSIZE)
-	w.writer = asyncbufio.NewWriter(bw, WRITECHANCAPACITY, FLUSHINTERVAL)
+	w.writer = bufio.NewWriterSize(w.file, BUFIOSIZE)
 	return nil
 }
 
