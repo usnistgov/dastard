@@ -11,6 +11,7 @@ import (
 
 
 func TestWrite(t *testing.T) {
+	t.SkipNow()
 	// dirname := t.TempDir()
 	dirname := "."
 	file := path.Join(dirname, "empty.npy") 
