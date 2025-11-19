@@ -13,8 +13,8 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
-// DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
-// in each call to PublishData
+// DataPublisher contains many optional objects for publishing data; any that are non-nil will be used
+// in each call to PublishData.
 type DataPublisher struct {
 	PubRecordsChan   chan []*DataRecord
 	PubSummariesChan chan []*DataRecord
@@ -354,10 +354,10 @@ func messageRecords(rec *DataRecord) [][]byte {
 
 // Two library-global variables to allow sharing of zmq publisher sockets:
 
-// PubRecordsChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
+// PubRecordsChan is used to enable multiple different DataPublishers to publish records to TCP on the same zmq pub socket
 var PubRecordsChan chan []*DataRecord
 
-// PubSummariesChan is used to enable multiple different DataPublishers to publish on the same zmq pub socket
+// PubSummariesChan is used to enable multiple different DataPublishers to publish summaries on the same zmq pub socket
 var PubSummariesChan chan []*DataRecord
 
 // configurePubRecordsSocket should be run exactly one time.
@@ -370,7 +370,10 @@ func configurePubRecordsSocket() error {
 		return fmt.Errorf("run configurePubRecordsSocket only one time")
 	}
 	var err error
-	PubRecordsChan, err = startSocket(Ports.Trigs, messageRecords)
+	hostname := fmt.Sprintf("tcp://*:%d", Ports.Trigs)
+	if PubRecordsChan, err = startSocket(hostname, messageRecords); err != nil {
+		return err
+	}
 	return err
 }
 
@@ -380,14 +383,15 @@ func configurePubSummariesSocket() error {
 		return fmt.Errorf("run configurePubSummariesSocket only one time")
 	}
 	var err error
-	PubSummariesChan, err = startSocket(Ports.Summaries, messageSummaries)
+	hostname := fmt.Sprintf("tcp://*:%d", Ports.Summaries)
+	PubSummariesChan, err = startSocket(hostname, messageSummaries)
 	return err
 }
 
 // startSocket sets up a ZMQ publisher socket and starts a goroutine to publish
 // messages based on any records that appear on a new channel. Returns the
 // channel for other routines to fill. Close that channel to destroy the socket.
-func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
+func startSocket(hostname string, converter func(*DataRecord) [][]byte) (chan []*DataRecord, error) {
 
 	// Not totally sure how to choose this, but it should probably be
 	// at least as large as number of channels.
@@ -395,7 +399,6 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	pubchan := make(chan []*DataRecord, publishChannelDepth)
 
 	//  Socket to talk to clients
-	hostname := fmt.Sprintf("tcp://*:%d", port)
 	pubSocket, err := zmq4.NewSocket(zmq4.PUB)
 	if err != nil {
 		return nil, err
