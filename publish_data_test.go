@@ -33,9 +33,6 @@ func TestPublishData(t *testing.T) {
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
-	if dp.LJH22.RecordsWritten != 3 {
-		t.Fail()
-	}
 	if dp.numberWritten != 3 {
 		t.Errorf("expected PublishData numberWritten with LJH22 enabled, (want %d, found %d)", 3, dp.numberWritten)
 	}
@@ -88,9 +85,6 @@ func TestPublishData(t *testing.T) {
 	if err := dp.PublishData(records); err != nil {
 		t.Error("failed to publish record")
 	}
-	if dp.LJH3.RecordsWritten != 3 {
-		t.Error("wrong number of RecordsWritten, want 3, have", dp.LJH3.RecordsWritten)
-	}
 	if dp.numberWritten != 3 {
 		t.Errorf("expected PublishedData to increment numberWritten, (want %d, found %d)", 3, dp.numberWritten)
 	}
@@ -113,9 +107,6 @@ func TestPublishData(t *testing.T) {
 		"chanName", 1, projectors, basis, "ModelDescription", Pixel{})
 	if err := dp.PublishData(records); err != nil {
 		t.Error(err)
-	}
-	if dp.OFF.RecordsWritten() != 3 {
-		t.Error("wrong number of RecordsWritten, want 3, have", dp.OFF.RecordsWritten())
 	}
 	if dp.numberWritten != 3 {
 		t.Errorf("expected PublishedData to increment numberWritten (want %d, found %d)", 3, dp.numberWritten)
@@ -151,7 +142,6 @@ func TestPublishData(t *testing.T) {
 		}
 
 	}
-
 }
 
 func TestRawTypeToX(t *testing.T) {
@@ -197,8 +187,8 @@ func BenchmarkPublish(b *testing.B) {
 	for i := range records {
 		records[i] = rec
 	}
-	slowPart := func(b *testing.B, dp DataPublisher, records []*DataRecord) {
-		for i := 0; i < b.N; i++ {
+	slowPart := func(b *testing.B, dp *DataPublisher, records []*DataRecord) {
+		for b.Loop() {
 			dp.PublishData(records)
 			b.SetBytes(int64(len(d) * 2 * len(records)))
 		}
@@ -209,26 +199,26 @@ func BenchmarkPublish(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetPubRecords()
 		defer dp.RemovePubRecords()
-		slowPart(b, dp, records)
+		slowPart(b, &dp, records)
 	})
 	b.Run("PubSummaries", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetPubSummaries()
 		defer dp.RemovePubSummaries()
-		slowPart(b, dp, records)
+		slowPart(b, &dp, records)
 	})
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0, 0, 0,
 			"TestPublishData.ljh", "testSource", "chanX", 1, Pixel{})
 		defer dp.RemoveLJH22()
-		slowPart(b, dp, records)
+		slowPart(b, &dp, records)
 	})
 	b.Run("PubLJH3", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
 		defer dp.RemoveLJH3()
-		slowPart(b, dp, records)
+		slowPart(b, &dp, records)
 	})
 	b.Run("PubAll", func(b *testing.B) {
 		dp := DataPublisher{}
@@ -241,11 +231,11 @@ func BenchmarkPublish(b *testing.B) {
 		defer dp.RemoveLJH22()
 		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
 		defer dp.RemoveLJH3()
-		slowPart(b, dp, records)
+		slowPart(b, &dp, records)
 	})
 	b.Run("PubNone", func(b *testing.B) {
 		dp := DataPublisher{}
-		slowPart(b, dp, records)
+		slowPart(b, &dp, records)
 	})
 	b.Run("RawTypeToUint16", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {

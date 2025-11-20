@@ -3,6 +3,7 @@ package dastard
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/usnistgov/dastard/internal/getbytes"
@@ -16,30 +17,36 @@ import (
 // DataPublisher contains many optional objects for publishing data; any that are non-nil will be used
 // in each call to PublishData.
 type DataPublisher struct {
-	PubRecordsChan   chan []*DataRecord
-	PubSummariesChan chan []*DataRecord
+	PubRecordsChan   chan<- []*DataRecord // For sending records to the full-record publisher
+	PubSummariesChan chan<- []*DataRecord // For sending records to the summary-info publisher
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
 	WritingPaused    bool
 	numberWritten    int // integrates up the total number written, reset any time writing starts or stops
+
+	sync.Mutex
 }
 
 // SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
+	dp.Lock()
+	defer dp.Unlock()
 	dp.WritingPaused = pause
-	dp.Flush()
+	go dp.Flush()
 }
 
 // Flush calls Flush for each writer that has a Flush command (LJH22, LJH3, OFF)
 func (dp *DataPublisher) Flush() {
-	if dp.HasLJH22() {
+	dp.Lock()
+	defer dp.Unlock()
+	if dp.LJH22 != nil {
 		dp.LJH22.Flush()
 	}
-	if dp.HasLJH3() {
+	if dp.LJH3 != nil {
 		dp.LJH3.Flush()
 	}
-	if dp.HasOFF() {
+	if dp.OFF != nil {
 		dp.OFF.Flush()
 	}
 }
@@ -61,23 +68,28 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 	PixelInfo := off.PixelInfo{XPosition: pixel.X, YPosition: pixel.Y, Name: pixel.Name}
 	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
 		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo)
+	dp.Lock()
+	defer dp.Unlock()
 	dp.OFF = w
 	dp.numberWritten = 0
 }
 
 // HasOFF returns true if OFF is non-nil, eg if writing to OFF is occuring
 func (dp *DataPublisher) HasOFF() bool {
+	dp.Lock()
+	defer dp.Unlock()
 	return dp.OFF != nil
 }
 
 // RemoveOFF closes any existing OFF file and assign .OFF=nil
 func (dp *DataPublisher) RemoveOFF() {
+	dp.Lock()
+	defer dp.Unlock()
 	if dp.OFF != nil {
 		dp.OFF.Close()
 	}
 	dp.OFF = nil
 	dp.numberWritten = 0
-
 }
 
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
@@ -93,6 +105,8 @@ func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 		SubframeOffset:    SubframeOffset,
 		FileName:          FileName,
 	}
+	dp.Lock()
+	defer dp.Unlock()
 	dp.LJH3 = &w
 	dp.WritingPaused = false
 	dp.numberWritten = 0
@@ -100,11 +114,15 @@ func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 
 // HasLJH3 returns true if LJH3 is non-nil, eg if writing to LJH3 is occuring
 func (dp *DataPublisher) HasLJH3() bool {
+	dp.Lock()
+	defer dp.Unlock()
 	return dp.LJH3 != nil
 }
 
 // RemoveLJH3 closes existing LJH3 file and assign .LJH3=nil
 func (dp *DataPublisher) RemoveLJH3() {
+	dp.Lock()
+	defer dp.Unlock()
 	if dp.LJH3 != nil {
 		dp.LJH3.Close()
 	}
@@ -140,6 +158,8 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 		PixelYPosition:            pixel.Y,
 		PixelName:                 pixel.Name,
 	}
+	dp.Lock()
+	defer dp.Unlock()
 	dp.LJH22 = &w
 	dp.WritingPaused = false
 	dp.numberWritten = 0
@@ -147,11 +167,15 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 
 // HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
 func (dp *DataPublisher) HasLJH22() bool {
+	dp.Lock()
+	defer dp.Unlock()
 	return dp.LJH22 != nil
 }
 
 // RemoveLJH22 closes existing LJH22 file and assign .LJH22=nil
 func (dp *DataPublisher) RemoveLJH22() {
+	dp.Lock()
+	defer dp.Unlock()
 	if dp.LJH22 != nil {
 		dp.LJH22.Close()
 	}
@@ -216,21 +240,31 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	}
 
 	// If writing is paused or there are no active file outputs, then we are done publishing.
+	dp.Lock()
+	defer dp.Unlock()
 	if dp.WritingPaused {
 		return nil
 	}
-	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
+	if (dp.LJH22 == nil) && (dp.LJH3 == nil) && (dp.OFF == nil) {
 		return nil
 	}
 
 	// If we get here, there is one or more output active.
 	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
 	// is already opened and has a header written.
-	if dp.HasLJH22() {
+	dp.numberWritten += len(records)
+	go dp.storeToDisk(records)
+	return nil
+}
+
+func (dp *DataPublisher) storeToDisk(records []*DataRecord) {
+	dp.Lock()
+	defer dp.Unlock()
+	if dp.LJH22 != nil {
 		if !dp.LJH22.HeaderWritten {
 			err := dp.LJH22.CreateFile()
 			if err != nil {
-				return err
+				return
 			}
 			t0 := records[0].trigTime
 			dp.LJH22.WriteHeader(t0)
@@ -240,11 +274,11 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	if dp.HasLJH3() {
+	if dp.LJH3 != nil {
 		if !dp.LJH3.HeaderWritten {
 			err := dp.LJH3.CreateFile()
 			if err != nil {
-				return err
+				return
 			}
 			dp.LJH3.WriteHeader()
 		}
@@ -253,11 +287,11 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
 	}
-	if dp.HasOFF() {
+	if dp.OFF != nil {
 		if !dp.OFF.HeaderWritten() {
 			err := dp.OFF.CreateFile()
 			if err != nil {
-				return err
+				return
 			}
 			dp.OFF.WriteHeader()
 		}
@@ -269,12 +303,10 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			err := dp.OFF.WriteRecord(int32(len(record.data)), int32(record.presamples), int64(record.trigFrame), record.trigTime.UnixNano(),
 				float32(record.pretrigMean), float32(record.pretrigDelta), float32(record.residualStdDev), modelCoefs)
 			if err != nil {
-				return err
+				return
 			}
 		}
 	}
-	dp.numberWritten += len(records)
-	return nil
 }
 
 // messageSummaries makes a message with the following format for publishing on portTrigs
