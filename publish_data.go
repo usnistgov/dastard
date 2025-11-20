@@ -9,6 +9,7 @@ import (
 	"github.com/usnistgov/dastard/internal/getbytes"
 	"github.com/usnistgov/dastard/internal/ljh"
 	"github.com/usnistgov/dastard/internal/off"
+	"github.com/usnistgov/dastard/internal/unboundedchan"
 	"gonum.org/v1/gonum/mat"
 
 	"github.com/pebbe/zmq4"
@@ -19,6 +20,7 @@ import (
 type DataPublisher struct {
 	PubRecordsChan   chan<- []*DataRecord // For sending records to the full-record publisher
 	PubSummariesChan chan<- []*DataRecord // For sending records to the summary-info publisher
+	WritingChan      *unboundedchan.UnboundedChannel[[]*DataRecord]  // For sending records to be written to disk
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
@@ -26,6 +28,14 @@ type DataPublisher struct {
 	numberWritten    int // integrates up the total number written, reset any time writing starts or stops
 
 	sync.Mutex
+}
+
+func NewDataPublisher() *DataPublisher {
+	dp := new(DataPublisher)
+	dp.WritingChan = unboundedchan.NewUnboundedChannel[[]*DataRecord]()
+	fmt.Printf("Launching DataPublisher %p\n", dp)
+	go dp.WriteDataLoop()
+	return dp
 }
 
 // SetPause changes the paused state to the given value of pause
@@ -250,16 +260,36 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	}
 
 	// If we get here, there is one or more output active.
-	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
-	// is already opened and has a header written.
 	dp.numberWritten += len(records)
-	go dp.storeToDisk(records)
+	dp.WritingChan.In() <- records
+	fmt.Printf("%p Sent %d records on dp.WritingChan, LJH22=nil? %t\n", dp, len(records), dp.LJH22==nil)
 	return nil
 }
+
+func (dp *DataPublisher) WriteDataLoop() {
+	fmt.Printf("DataPublisher.WriteDataLoop %p\n", dp)
+	ch := dp.WritingChan.Out()
+	for {
+		records, ok := <-ch
+		fmt.Printf("%p Received %d records on dp.WritingChan, ok=%v\n", dp, len(records), ok)
+		if !ok {
+			return
+		}
+		if len(records) > 0 {
+			dp.storeToDisk(records)
+		}
+	}
+}
+
+
 
 func (dp *DataPublisher) storeToDisk(records []*DataRecord) {
 	dp.Lock()
 	defer dp.Unlock()
+
+	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
+	// is already opened and has a header written.
+	fmt.Printf("In storeToDisk. Writers: %v %v %v\n", dp.LJH22, dp.LJH3, dp.OFF)
 	if dp.LJH22 != nil {
 		if !dp.LJH22.HeaderWritten {
 			err := dp.LJH22.CreateFile()

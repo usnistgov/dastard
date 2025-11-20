@@ -78,9 +78,15 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, NPresamples
 	firstTime := time.Now()
 	period := time.Duration(1 * time.Millisecond) // TODO: figure out what this ought to be, or make an argument
 	stream := NewDataStream(data, framesPerSample, firstFrame, firstTime, period)
-	dsp := DataStreamProcessor{channelIndex: channelIndex, Broker: broker,
-		stream: *stream, NSamples: NSamples, NPresamples: NPresamples,
+	dsp := DataStreamProcessor{
+		channelIndex: channelIndex, 
+		Broker: broker,
+		stream: *stream, 
+		NSamples: NSamples, 
+		NPresamples: NPresamples,
+		DataPublisher: *NewDataPublisher(),
 	}
+	fmt.Printf("New DSP: %p  with publisher %p\n", &dsp, &(dsp.DataPublisher))
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors = &mat.Dense{}       // dsp.projectors is set to zero value
 	dsp.basis = &mat.Dense{}            // dsp.basis is set to zero value

@@ -17,7 +17,7 @@ func TestPublishData(t *testing.T) {
 	ljh3Testfile := filepath.Join("testData", "TestPublishData.ljh3")
 	offTestfile := filepath.Join("testData", "TestPublishData.off")
 
-	dp := DataPublisher{}
+	dp := NewDataPublisher()
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4, modelCoefs: make([]float64, 3)}
 	records := []*DataRecord{rec, rec, rec, nil}
