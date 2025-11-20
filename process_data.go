@@ -84,13 +84,12 @@ func NewDataStreamProcessor(channelIndex int, broker *TriggerBroker, NPresamples
 		stream: *stream, 
 		NSamples: NSamples, 
 		NPresamples: NPresamples,
-		DataPublisher: *NewDataPublisher(),
 	}
-	fmt.Printf("New DSP: %p  with publisher %p\n", &dsp, &(dsp.DataPublisher))
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors = &mat.Dense{}       // dsp.projectors is set to zero value
 	dsp.basis = &mat.Dense{}            // dsp.basis is set to zero value
 	dsp.EMTState.reset()                // set up edgeMulti in known state
+	dsp.DataPublisher.StartWriteDataLoop()
 	return &dsp
 }
 

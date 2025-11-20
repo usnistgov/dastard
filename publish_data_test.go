@@ -17,7 +17,8 @@ func TestPublishData(t *testing.T) {
 	ljh3Testfile := filepath.Join("testData", "TestPublishData.ljh3")
 	offTestfile := filepath.Join("testData", "TestPublishData.off")
 
-	dp := NewDataPublisher()
+	dp := DataPublisher{}
+	dp.StartWriteDataLoop()
 	d := []RawType{10, 10, 10, 10, 15, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10}
 	rec := &DataRecord{data: d, presamples: 4, modelCoefs: make([]float64, 3)}
 	records := []*DataRecord{rec, rec, rec, nil}
@@ -25,13 +26,13 @@ func TestPublishData(t *testing.T) {
 	records = slices.DeleteFunc(records, func(r *DataRecord) bool { return r == nil })
 
 	if err := dp.PublishData(records); err != nil {
-		t.Fail()
+		t.Errorf("could not publish %d data records", len(records))
 	}
 	startTime := time.Now()
 	dp.SetLJH22(1, 4, len(d), 1, 1, startTime, 8, 1, 16, 8, 3, 0, 3,
 		ljh2Testfile, "testSource", "chanX", 1, Pixel{})
 	if err := dp.PublishData(records); err != nil {
-		t.Fail()
+		t.Errorf("could not publish %d data records", len(records))
 	}
 	if dp.numberWritten != 3 {
 		t.Errorf("expected PublishData numberWritten with LJH22 enabled, (want %d, found %d)", 3, dp.numberWritten)
@@ -209,6 +210,7 @@ func BenchmarkPublish(b *testing.B) {
 	})
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
+		go dp.WriteDataLoop()
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0, 0, 0,
 			"TestPublishData.ljh", "testSource", "chanX", 1, Pixel{})
 		defer dp.RemoveLJH22()
@@ -216,12 +218,14 @@ func BenchmarkPublish(b *testing.B) {
 	})
 	b.Run("PubLJH3", func(b *testing.B) {
 		dp := DataPublisher{}
+		go dp.WriteDataLoop()
 		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
 		defer dp.RemoveLJH3()
 		slowPart(b, &dp, records)
 	})
 	b.Run("PubAll", func(b *testing.B) {
 		dp := DataPublisher{}
+		go dp.WriteDataLoop()
 		dp.SetPubRecords()
 		defer dp.RemovePubRecords()
 		dp.SetPubSummaries()

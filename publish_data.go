@@ -30,14 +30,6 @@ type DataPublisher struct {
 	sync.Mutex
 }
 
-func NewDataPublisher() *DataPublisher {
-	dp := new(DataPublisher)
-	dp.WritingChan = unboundedchan.NewUnboundedChannel[[]*DataRecord]()
-	fmt.Printf("Launching DataPublisher %p\n", dp)
-	go dp.WriteDataLoop()
-	return dp
-}
-
 // SetPause changes the paused state to the given value of pause
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.Lock()
@@ -262,16 +254,19 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	// If we get here, there is one or more output active.
 	dp.numberWritten += len(records)
 	dp.WritingChan.In() <- records
-	fmt.Printf("%p Sent %d records on dp.WritingChan, LJH22=nil? %t\n", dp, len(records), dp.LJH22==nil)
 	return nil
 }
 
+func (dp *DataPublisher) StartWriteDataLoop() {
+	dp.WritingChan = unboundedchan.NewUnboundedChannel[[]*DataRecord]()
+	go dp.WriteDataLoop()
+}
+
+
 func (dp *DataPublisher) WriteDataLoop() {
-	fmt.Printf("DataPublisher.WriteDataLoop %p\n", dp)
 	ch := dp.WritingChan.Out()
 	for {
 		records, ok := <-ch
-		fmt.Printf("%p Received %d records on dp.WritingChan, ok=%v\n", dp, len(records), ok)
 		if !ok {
 			return
 		}
@@ -289,7 +284,6 @@ func (dp *DataPublisher) storeToDisk(records []*DataRecord) {
 
 	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
 	// is already opened and has a header written.
-	fmt.Printf("In storeToDisk. Writers: %v %v %v\n", dp.LJH22, dp.LJH3, dp.OFF)
 	if dp.LJH22 != nil {
 		if !dp.LJH22.HeaderWritten {
 			err := dp.LJH22.CreateFile()
