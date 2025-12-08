@@ -62,7 +62,12 @@ func verifyLargeUDPBuffer() error {
 	if bsize, err := strconv.Atoi(val); err != nil {
 		return err
 	} else if bsize < min_buffer_size {
-		return fmt.Errorf("udp receive buffer is %d, require >= %d, recommend %d; see README to increase", bsize, min_buffer_size, rec_buffer_size)
+		return fmt.Errorf(
+			`udp receive buffer is %d, require >= %d, recommend %d.
+The UDP receive buffer must be larger than the default for Dastard to work with µMUX data sources.
+To fix it for this session do: 'sudo sysctl -w net.core.rmem_max=%d'
+to fix it in future sessions add the line 'net.core.rmem_max=%d' to the file /etc/sysctl.conf`,
+			bsize, min_buffer_size, rec_buffer_size, rec_buffer_size, rec_buffer_size)
 	}
 	return nil
 }
