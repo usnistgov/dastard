@@ -17,7 +17,7 @@ type WritingState struct {
 	WriteLJH22                        bool // which file formats are active
 	WriteOFF                          bool
 	WriteLJH3                         bool
-	FlushAlsoSyncs                     bool
+	FlushAlsoSyncs                    bool
 	experimentStateFile               *os.File
 	ExperimentStateFilename           string
 	ExperimentStateLabel              string
