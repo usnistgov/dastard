@@ -8,12 +8,15 @@ import (
 	"math"
 	"net"
 	"os"
+	"runtime"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/fabiokung/shm"
+	"github.com/lorenzosaino/go-sysctl"
 	"github.com/usnistgov/dastard/internal/ringbuffer"
 	"github.com/usnistgov/dastard/packets"
 )
@@ -42,6 +45,31 @@ type FrameTimingCorrepondence struct {
 	TimestampCountsPerSubframe uint64 // Ratio of timestamp rate to subframe division rate
 	LastFirmwareTimestamp      packets.PacketTimestamp
 	LastSubframeCount          FrameIndex
+}
+
+// Return non-nil error if the UDP receive buffer isn't at least 4 MB (system default is 200 kB on most Ubuntu, which is bad)
+func verifyLargeUDPBuffer() error {
+	// For now, we only check UDP buffer size on Linux. All others, use at your own risk.
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	val, err := sysctl.Get("net.core.rmem_max")
+	if err != nil {
+		return err
+	}
+	const min_buffer_size = 4 * 1024 * 1024
+	const rec_buffer_size = 64 * 1024 * 1024
+	if bsize, err := strconv.Atoi(val); err != nil {
+		return err
+	} else if bsize < min_buffer_size {
+		return fmt.Errorf(
+			`udp receive buffer is %d, require >= %d, recommend %d.
+The UDP receive buffer must be larger than the default for Dastard to work with µMUX data sources.
+To fix it for this session do: 'sudo sysctl -w net.core.rmem_max=%d'
+to fix it in future sessions add the line 'net.core.rmem_max=%d' to the file /etc/sysctl.conf`,
+			bsize, min_buffer_size, rec_buffer_size, rec_buffer_size, rec_buffer_size)
+	}
+	return nil
 }
 
 //------------------------------------------------------------------------------------------------
@@ -849,6 +877,15 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 func (as *AbacoSource) Sample() error {
 	if len(as.producers) <= 0 {
 		return fmt.Errorf("no Abaco ring buffers or UDP receivers are active")
+	}
+
+	// Panic if there are UDP receivers, and the UDP receive buffer isn't somewhat larger than the 200 kB default.
+	// This is to stop people who ignore the README info about sysctl, and then complain that "Dastard doesn't work".
+	if len(as.udpReceivers) > 0 {
+		if err := verifyLargeUDPBuffer(); err != nil {
+			msg := fmt.Sprintf("Could not verify large UDP receive buffer.\n%v", err)
+			panic(msg)
+		}
 	}
 
 	// Launch device.samplePackets as goroutines on each device, in parallel, to save time.
