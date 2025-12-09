@@ -54,7 +54,7 @@ func (ts *TriangleSource) Configure(config *TriangleSourceConfig) error {
 		ts.cycleLen = 2 * int(nrise)
 		ts.onecycle = make([]RawType, ts.cycleLen)
 		var i RawType
-		for i = 0; i < nrise; i++ {
+		for i = range nrise {
 			ts.onecycle[i] = config.Min + i
 			ts.onecycle[int(i)+int(nrise)] = config.Max - i
 		}

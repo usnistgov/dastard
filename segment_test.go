@@ -169,7 +169,7 @@ func TestStreamDecimated(t *testing.T) {
 func TestDecimation(t *testing.T) {
 	N := 100
 	data := make([]RawType, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		data[i] = RawType(i * 2)
 	}
 

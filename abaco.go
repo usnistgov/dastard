@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -47,7 +48,7 @@ type FrameTimingCorrepondence struct {
 const minimum_buffer_size = 4 * 1024 * 1024
 const recommended_buffer_size = 64 * 1024 * 1024
 
-	// Return non-nil error if the UDP receive buffer isn't at least 4 MB (system default is 200 kB on most Ubuntu, which is bad)
+// Return non-nil error if the UDP receive buffer isn't at least 4 MB (system default is 200 kB on most Ubuntu, which is bad)
 func verifyLargeUDPBuffer(min_buf_size int) error {
 	// For now, we only check UDP buffer size on Linux. All others, use at your own risk.
 	if runtime.GOOS != "linux" {
@@ -131,12 +132,7 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 	g.unwrap = make([]*PhaseUnwrapper, g.nchan)
 
 	isInverted := func(channum int) bool {
-		for _, ic := range opt.InvertChan {
-			if channum == ic {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(opt.InvertChan, channum)
 	}
 
 	for i := range g.unwrap {
@@ -585,7 +581,7 @@ type AbacoSource struct {
 	buffersChan  chan AbacoBuffersType
 	eTrigPackets []*packets.Packet // Unprocessed packets with external trigger info
 
-	unwrapOpts AbacoUnwrapOptions
+	unwrapOpts       AbacoUnwrapOptions
 	minUDPBufferSize int
 	AnySource
 }
@@ -630,8 +626,8 @@ func (as *AbacoSource) VoltsPerArb() []float32 {
 type AbacoSourceConfig struct {
 	// For the time being, leave ActiveCards, AvailableCards in the config, but ignore them.
 	// This leaves Dastard compatible with Dcom versions that still send these fields.
-	ActiveCards    []int  // Unused: relic of when we had shared memory spaces per card
-	AvailableCards []int  // Unused: relic of when we had shared memory spaces per card
+	ActiveCards    []int    // Unused: relic of when we had shared memory spaces per card
+	AvailableCards []int    // Unused: relic of when we had shared memory spaces per card
 	HostPortUDP    []string // host:port pairs to listen for UDP packets
 	AbacoUnwrapOptions
 }
@@ -1072,7 +1068,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 
 	// TODO: we should loop over devices here, matching devices to channels.
 	var wg sync.WaitGroup
-	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
+	for channelIndex := range nchan {
 		wg.Add(1)
 		go func(channelIndex int) {
 			defer wg.Done()

@@ -131,13 +131,13 @@ func NewTriggerBroker(nchan int) *TriggerBroker {
 	broker := new(TriggerBroker)
 	broker.nchannels = nchan
 	broker.sources = make([]map[int]bool, nchan)
-	for i := 0; i < nchan; i++ {
+	for i := range nchan {
 		broker.sources[i] = make(map[int]bool)
 	}
 	broker.latestPrimaries = make([][]FrameIndex, nchan)
 	broker.triggerCounters = make([]TriggerCounter, nchan)
 	triggerReportingPeriod := time.Second // could be programmable in future
-	for i := 0; i < nchan; i++ {
+	for i := range nchan {
 		broker.triggerCounters[i] = NewTriggerCounter(i, triggerReportingPeriod)
 	}
 	return broker
@@ -273,7 +273,7 @@ func (broker *TriggerBroker) GenerateTriggerMessages() {
 			panic(msg)
 		}
 	}
-	for i := 0; i < nMessages; i++ {
+	for i := range nMessages {
 		// It's a data race if we don't make a new slice for each message:
 		countsSeen := make([]int, broker.nchannels)
 		for j := 0; j < broker.nchannels; j++ {

@@ -22,9 +22,9 @@ func TestGeneratePackets(t *testing.T) {
 	const Nchan = 8
 	const Nsamp = 20000
 	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
+	for i := range Nchan {
 		freq := (float64(i + 2)) / float64(Nsamp)
-		for j := 0; j < Nsamp; j++ {
+		for j := range Nsamp {
 			d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
 		}
 	}
@@ -35,7 +35,7 @@ func TestGeneratePackets(t *testing.T) {
 	}
 	empty := make([]byte, packetAlign)
 	dims := []int16{Nchan}
-	for repeats := 0; repeats < 3; repeats++ {
+	for range 3 {
 		for i := 0; i < Nsamp; i += stride {
 			p.NewData(d[i:i+stride*Nchan], dims)
 			b := p.Bytes()
@@ -71,7 +71,6 @@ func TestGeneratePackets(t *testing.T) {
 	}
 }
 
-
 func TestAbacoUDP(t *testing.T) {
 	if _, err := NewAbacoUDPReceiver("nonexistenthost.remote.internet:4999"); err == nil {
 		t.Errorf("NewAbacoUDPReceiver(\"nonexistenthost.remote.internet:4999\") succeeded, want failure")
@@ -97,7 +96,7 @@ func TestAbacoUDP(t *testing.T) {
 
 func TestAbacoSource(t *testing.T) {
 	source, err := NewAbacoSource()
-	source.minUDPBufferSize = 256*1024  // for CI testing, reduce the minimum
+	source.minUDPBufferSize = 256 * 1024 // for CI testing, reduce the minimum
 	if err != nil {
 		t.Errorf("NewAbacoSource() fails: %s", err)
 	}
@@ -151,9 +150,9 @@ func TestAbacoSource(t *testing.T) {
 
 		p := packets.NewPacket(10, 20, 100, 0)
 		d := make([]int16, Nchan*Nsamp)
-		for i := 0; i < Nchan; i++ {
+		for i := range Nchan {
 			freq := (float64(i + 2)) / float64(Nsamp)
-			for j := 0; j < Nsamp; j++ {
+			for j := range Nsamp {
 				d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
 			}
 		}
@@ -244,7 +243,7 @@ func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	group.unwrap = group.unwrap[:0] // get rid of phase unwrapping
 
 	copies := make([][]RawType, nchan)
-	for i := 0; i < nchan; i++ {
+	for i := range nchan {
 		copies[i] = make([]RawType, nframes)
 	}
 	const stride = 4096 / nchan
@@ -253,8 +252,8 @@ func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	for j := 0; j < nframes; j += stride {
 		p := packets.NewPacket(10, 20, uint32(j/stride), offset)
 		d := make([]int16, 0, 4096)
-		for k := 0; k < stride; k++ {
-			for m := 0; m < nchan; m++ {
+		for k := range stride {
+			for m := range nchan {
 				d = append(d, int16(m+j+k))
 			}
 		}
@@ -287,7 +286,7 @@ func TestDemux(t *testing.T) {
 func BenchmarkDemux(b *testing.B) {
 	const nframes = 32768
 	group, allpackets, copies := prepareDemux(nframes)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		group.queue = append(group.queue, allpackets...)
 		group.demuxData(copies, nframes)
 	}

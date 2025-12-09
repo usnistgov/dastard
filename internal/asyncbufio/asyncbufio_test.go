@@ -32,8 +32,8 @@ func TestWrite(t *testing.T) {
 	defer os.Remove(f.Name()) // clean up
 
 	w := NewWriter(f, 100, time.Second)
-	for i := 0; i < 100; i++ {
-		sometext := []byte(fmt.Sprintf("Line of text %3d\n", i))
+	for i := range 100 {
+		sometext := fmt.Appendf(nil, "Line of text %3d\n", i)
 		w.Write(sometext)
 		if i%25 == 19 {
 			w.Flush()

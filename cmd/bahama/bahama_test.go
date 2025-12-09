@@ -32,22 +32,22 @@ func TestInterleave(t *testing.T) {
 	// First test interleaved, non-staggered packets
 	c1 := make([]chan []byte, ngroup)
 	p := make([][]byte, ngroup)
-	for i := 0; i < ngroup; i++ {
+	for i := range ngroup {
 		c1[i] = make(chan []byte)
 		p[i] = []byte{byte(i)}
 	}
 	c2 := make(chan []byte)
 	go interleavePackets(c2, c1, false)
 
-	for j := 0; j < ngroup; j++ {
+	for j := range ngroup {
 		go func(cid int) {
-			for i := 0; i < npackets; i++ {
+			for range npackets {
 				c1[cid] <- p[cid]
 			}
 			close(c1[cid])
 		}(j)
 	}
-	for i := 0; i < npackets*ngroup; i++ {
+	for i := range npackets * ngroup {
 		pi, ok := <-c2
 		if !ok {
 			t.Errorf("Expected %d non-staggered packets before output channel closed, got %d", npackets*ngroup, i)
@@ -63,21 +63,21 @@ func TestInterleave(t *testing.T) {
 
 	// Now test staggered, interleaved packets
 	c1 = make([]chan []byte, ngroup)
-	for i := 0; i < ngroup; i++ {
+	for i := range ngroup {
 		c1[i] = make(chan []byte)
 	}
 	c2 = make(chan []byte)
 	go interleavePackets(c2, c1, true)
-	for j := 0; j < ngroup; j++ {
+	for j := range ngroup {
 		go func(cid int) {
-			for i := 0; i < npackets; i++ {
+			for range npackets {
 				c1[cid] <- p[cid]
 			}
 			close(c1[cid])
 		}(j)
 	}
 	expectby4 := []byte{0, 1, 1, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 0, 0, 1, 1, 2}
-	for i := 0; i < npackets*ngroup; i++ {
+	for i := range npackets * ngroup {
 		pi, ok := <-c2
 		if !ok {
 			t.Errorf("Expected %d staggered packets before output channel closed, got %d", npackets*ngroup, i)

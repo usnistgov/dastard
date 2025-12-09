@@ -235,7 +235,7 @@ func (p *Packet) NewData(data any, dims []int16) error {
 	p.headerLength += 8
 	p.shape = new(headPayloadShape)
 	p.shape.Sizes = make([]int16, 1)
-	for i := 0; i < ndim; i++ {
+	for i := range ndim {
 		p.shape.Sizes[i] = dims[i]
 	}
 	p.headerLength += 8 * uint8(1+ndim/4)

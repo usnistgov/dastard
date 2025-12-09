@@ -456,7 +456,7 @@ func TestErroringSourceRPC(t *testing.T) {
 	sourceName := "ERRORINGSOURCE"
 	dummy := ""
 	okay := false
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if err := client.Call("SourceControl.Start", &sourceName, &okay); err != nil {
 			t.Error(err)
 		}

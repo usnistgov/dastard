@@ -198,7 +198,7 @@ func BenchmarkPublish(b *testing.B) {
 		records[i] = rec
 	}
 	slowPart := func(b *testing.B, dp DataPublisher, records []*DataRecord) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			dp.PublishData(records)
 			b.SetBytes(int64(len(d) * 2 * len(records)))
 		}
@@ -248,7 +248,7 @@ func BenchmarkPublish(b *testing.B) {
 		slowPart(b, dp, records)
 	})
 	b.Run("RawTypeToUint16", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			data := make([]uint16, len(rec.data))
 			for i, v := range rec.data {
 				data[i] = uint16(v)
@@ -257,14 +257,14 @@ func BenchmarkPublish(b *testing.B) {
 		}
 	})
 	b.Run("binary.Write", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			var buf bytes.Buffer
 			binary.Write(&buf, binary.LittleEndian, rec.data)
 			b.SetBytes(int64(2 * len(rec.data)))
 		}
 	})
 	b.Run("rawTypeToBytes", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			data := rawTypeToBytes(rec.data)
 			b.SetBytes(int64(2 * len(data)))
 		}

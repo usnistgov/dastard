@@ -377,7 +377,7 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 
 	// Copy data into the ab.segments
 	ncopied := 0
-	for i := 0; i < nchan; i++ {
+	for i := range nchan {
 		src := block.segments[i]
 		if i == 0 {
 			ncopied = len(src.rawData)
@@ -635,7 +635,7 @@ func makeDirectory(basepath string) (string, error) {
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
 		return "", err
 	}
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		thisDir := filepath.Join(todayDir, fmt.Sprintf("%4.4d", i))
 		_, err := os.Stat(thisDir)
 		if os.IsNotExist(err) {

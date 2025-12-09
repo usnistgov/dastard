@@ -642,7 +642,7 @@ func BenchmarkPacketEncoding(b *testing.B) {
 	Nsamples := 2500
 	packets := make([]*Packet, Npackets)
 	payload := make([]int16, Nsamples)
-	for i := 0; i < Nsamples; i++ {
+	for i := range Nsamples {
 		payload[i] = int16(i)
 	}
 	dims := make([]int16, 1)
@@ -650,7 +650,7 @@ func BenchmarkPacketEncoding(b *testing.B) {
 	// ctrpk := counterToPacket(&HeadCounter{5, 99})
 	// fmt.Printf("ctrpk: %v\n", ctrpk)
 
-	for i := 0; i < Npackets; i++ {
+	for i := range Npackets {
 		p := NewPacket(1, 20, uint32(1000+i), 1)
 		p.NewData(payload, dims)
 		// p.otherTLV = append(p.otherTLV, ctrpk)
@@ -658,8 +658,8 @@ func BenchmarkPacketEncoding(b *testing.B) {
 		packets[i] = p
 	}
 
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < Npackets; j++ {
+	for i := 0; b.Loop(); i++ {
+		for range Npackets {
 			p := packets[i]
 			p.Bytes()
 		}
@@ -670,7 +670,7 @@ func BenchmarkPacketDecoding(b *testing.B) {
 	Npackets := 2000
 	Nsamples := 2500
 	payload := make([]int16, Nsamples)
-	for i := 0; i < Nsamples; i++ {
+	for i := range Nsamples {
 		payload[i] = int16(i)
 	}
 	dims := make([]int16, 1)
@@ -678,16 +678,16 @@ func BenchmarkPacketDecoding(b *testing.B) {
 
 	var buf bytes.Buffer // A Buffer needs no initialization.
 
-	for i := 0; i < Npackets; i++ {
+	for i := range Npackets {
 		p := NewPacket(1, 20, uint32(1000+i), 1)
 		p.NewData(payload, dims)
 		buf.Write(p.Bytes())
 	}
 	fulltext := buf.Bytes()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b2 := bytes.NewBuffer(fulltext)
-		for j := 0; j < Npackets; j++ {
+		for range Npackets {
 			if _, err := ReadPacket(b2); err != nil {
 				b.Errorf("Could not read packet with error %v", err)
 			}
