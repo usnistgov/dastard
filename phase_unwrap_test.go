@@ -43,11 +43,11 @@ func TestUnwrap(t *testing.T) {
 	// Check inversion happens, even with unwrap disabled and 0 bits to drop
 	puInverter := NewPhaseUnwrapper(14, 0, false, 0, 20000, pulsesign, true)
 	data := make([]RawType, 0xffff)
-	for i := RawType(0); i < 0xffff; i++ {
+	for i := range RawType(0xffff) {
 		data[i] = i
 	}
 	puInverter.UnwrapInPlace(&data)
-	for i := RawType(0); i < 0xffff; i++ {
+	for i := range RawType(0xffff) {
 		if data[i]+i != 0xffff {
 			t.Errorf("unwrapping with inversion 0x%4.4x -> 0x%4.4x, want 0x%4.4x", i,
 				data[i], 0xffff-i)
@@ -68,7 +68,7 @@ func TestUnwrap(t *testing.T) {
 
 			// Test unwrap when no change is expected
 			pu.UnwrapInPlace(&data)
-			for i := 0; i < ndata; i++ {
+			for i := range ndata {
 				if data[i] != resetValue {
 					t.Errorf("data[%d] = %d, want %d", i, data[i], resetValue)
 				}
@@ -76,7 +76,7 @@ func TestUnwrap(t *testing.T) {
 			// Test basic unwrap
 			twopi := RawType(1) << fractionbits // this is a jump of 2π
 			baseline := RawType(100)
-			for i := 0; i < ndata; i++ {
+			for i := range ndata {
 				data[i] = baseline
 				if i > 5 && i < 10 {
 					data[i] += twopi
@@ -94,7 +94,7 @@ func TestUnwrap(t *testing.T) {
 			// Result should be a line.
 			step := 1 << (fractionbits - 2)
 			mod := step * 4
-			for i := 0; i < ndata; i++ {
+			for i := range ndata {
 				data[i] = RawType((i * step) % mod)
 				if enable {
 					target[i] = RawType(i*(step>>bits2drop)) + resetValue
@@ -149,7 +149,7 @@ func TestUnwrap(t *testing.T) {
 func BenchmarkPhaseUnwrap(b *testing.B) {
 	Nsamples := 5000000
 	data := make([]RawType, Nsamples)
-	for i := 0; i < Nsamples; i++ {
+	for i := range Nsamples {
 		data[i] = RawType(i % 50000)
 	}
 
@@ -161,7 +161,7 @@ func BenchmarkPhaseUnwrap(b *testing.B) {
 		const enable = true
 		const resetAfter = 20000
 		pu := NewPhaseUnwrapper(fractionbits, bits2drop, enable, bias, resetAfter, pulsesign, invertData)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			pu.UnwrapInPlace(&data)
 		}
 	}

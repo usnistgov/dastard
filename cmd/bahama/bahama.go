@@ -165,21 +165,21 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 
 	// Raw data that will go into packets
 	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
+	for i := range Nchan {
 		cnum := i + firstchanOffset
 		offset := int16(cnum * 1000)
-		for j := 0; j < Nsamp; j++ {
+		for j := range Nsamp {
 			d[i+Nchan*j] = offset
 		}
 		if control.sinusoid {
 			freq := (float64(cnum+1) * 2 * math.Pi) / float64(Nsamp)
 			amplitude := 8000.0
-			for j := 0; j < Nsamp; j++ {
+			for j := range Nsamp {
 				d[i+Nchan*j] += int16(amplitude * math.Sin(freq*float64(j)))
 			}
 		}
 		if control.sawtooth {
-			for j := 0; j < Nsamp; j++ {
+			for j := range Nsamp {
 				d[i+Nchan*j] += int16(j % 5000)
 			}
 		}
@@ -190,16 +190,16 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 				amplitude *= 0.02
 			}
 			scale := amplitude * 2.116
-			for j := 0; j < Nsamp/4; j++ {
+			for j := range Nsamp / 4 {
 				pulsevalue := int16(scale * (math.Exp(-float64(j)/1200.0) - math.Exp(-float64(j)/300.0)))
 				// Same pulse repeats 4x
-				for k := 0; k < 4; k++ {
+				for k := range 4 {
 					d[i+Nchan*(j+k*(Nsamp/4))] += pulsevalue
 				}
 			}
 		}
 		if control.noiselevel > 0.0 {
-			for j := 0; j < Nsamp; j++ {
+			for j := range Nsamp {
 				d[i+Nchan*j] += int16(randsource.NormFloat64() * control.noiselevel)
 			}
 		}
@@ -209,7 +209,7 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 		// As of Jan 2021, this became N=16, so no "wrapping" needed.
 		FractionBits := 16
 		if FractionBits < 16 {
-			for j := 0; j < Nsamp; j++ {
+			for j := range Nsamp {
 				raw := d[i+Nchan*j]
 				d[i+Nchan*j] = raw % (1 << FractionBits)
 			}
@@ -225,17 +225,11 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 			case <-cancel:
 				return nil
 			case <-timer.C:
-				lastvalue := (burstnum + 1) * BurstNvalues
-				if TotalNvalues < lastvalue {
-					lastvalue = TotalNvalues
-				}
+				lastvalue := min(TotalNvalues, (burstnum+1)*BurstNvalues)
 
 				for firstsamp := burstnum * BurstNvalues; firstsamp < lastvalue; firstsamp += valuesPerPacket {
 					// Must be careful: the last iteration might have fewer samples than the others.
-					lastsamp := firstsamp + valuesPerPacket
-					if lastsamp > TotalNvalues {
-						lastsamp = TotalNvalues
-					}
+					lastsamp := min(firstsamp+valuesPerPacket, TotalNvalues)
 					// Do we generate and send a packet, or drop it?
 					if control.dropfrac == 0.0 || control.dropfrac < randsource.Float64() {
 						packet.NewData(d[firstsamp:lastsamp], dims)

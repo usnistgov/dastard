@@ -71,7 +71,7 @@ type verifier struct {
 
 func newVerifier(frameLength uint32, mask uint32) *verifier {
 	v := &verifier{nRows: frameLength, mask: mask}
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		if mask&1 != 0 {
 			v.columns = append(v.columns, uint32(i))
 			v.nColumns++

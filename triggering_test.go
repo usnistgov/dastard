@@ -164,7 +164,7 @@ func TestSingles(t *testing.T) {
 	testTriggerSubroutine(t, raw, nRepeat, dsp, "AutoMultipleSegmentsB", expected)
 
 	// Test signed signals
-	for i := 0; i < len(raw); i++ {
+	for i := range raw {
 		raw[i] = 65530
 	}
 	for i := tframe; i < tframe+10; i++ {
@@ -199,7 +199,7 @@ func testTriggerSubroutine(t *testing.T, raw []RawType, nRepeat int, dsp *DataSt
 	dsp.stream.samplesSeen = 0
 	dsp.Broker = NewTriggerBroker(1)
 	var primaries, secondaries []*DataRecord
-	for i := 0; i < nRepeat; i++ {
+	for range nRepeat {
 		dsp.stream.AppendSegment(segment)
 		segment.firstFrameIndex += FrameIndex(len(raw))
 
@@ -337,7 +337,7 @@ func TestEdgeMulti(t *testing.T) {
 	raw := make([]RawType, 1000)
 	kinkList := []float64{100, 200.1, 300.5, 400.9, 460, 500, 540, 700}
 	kinkListFrameIndex := make([]FrameIndex, len(kinkList))
-	for i := 0; i < len(kinkList); i++ {
+	for i := range kinkList {
 		k := kinkList[i]
 		kint := int(math.Ceil(k))
 		for j := kint - 6; j < kint+20; j++ {
@@ -395,7 +395,7 @@ func TestEdgeMulti(t *testing.T) {
 	rawE := make([]RawType, 1000)
 	kinkListE := []float64{945}
 	kinkListFrameIndexE := make([]FrameIndex, len(kinkListE))
-	for i := 0; i < len(kinkListE); i++ {
+	for i := range kinkListE {
 		k := kinkListE[i]
 		kint := int(math.Ceil(k))
 		for j := kint - 6; j < kint+20; j++ {
@@ -427,7 +427,7 @@ func TestEdgeMulti(t *testing.T) {
 	for i := range rawK {
 		rawK[i] = RawType(aFalling)
 	}
-	for i := 0; i < len(kinkList); i++ {
+	for i := range kinkList {
 		k := kinkList[i]
 		kint := int(math.Ceil(k))
 		for j := kint - 6; j < kint+20; j++ {
@@ -593,7 +593,7 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 	dsp.AutoTrigger = true
 
 	raw := make([]RawType, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		raw[i] = 0
 	}
 	segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
@@ -626,7 +626,7 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	dsp.AutoTrigger = true
 
 	raw := make([]RawType, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		raw[i] = 0
 	}
 	segment := NewDataSegment(raw, 1, 0, time.Now(), time.Millisecond)
@@ -661,7 +661,7 @@ func TestKinkModel(t *testing.T) {
 		ymodel, a, b, c, X2, err := kinkModelResult(test.offset, xdata, ydata)
 		outputs := [4]float64{a, b, c, X2}
 		fail := false
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			if !almostEqual(outputs[i], test.abcX2[i], 1e-12) {
 				fail = true
 				break

@@ -87,7 +87,7 @@ func main() {
 					tStart := time.Now()
 					defer wg.Done()
 					// 3. here we write data to disk, still within the same goroutines that did the processing
-					for j := 0; j < recordsPerChanPerTick; j++ {
+					for range recordsPerChanPerTick {
 						if !w.headerWritten {
 							err := w.writeHeader()
 							if err != nil {

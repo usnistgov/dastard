@@ -63,7 +63,7 @@ func publish(pubSocket *zmq4.Socket, update ClientUpdate, message []byte) {
 	fullmessage := [][]byte{[]byte(tag), message}
 	const maxSendAttempts = 5
 	var err error
-	for iter := 0; iter < maxSendAttempts; iter++ {
+	for range maxSendAttempts {
 		if _, err = pubSocket.SendMessage(fullmessage); err == nil {
 			break
 		}

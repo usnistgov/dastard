@@ -268,7 +268,7 @@ func TestSimPulse(t *testing.T) {
 func TestErroringSource(t *testing.T) {
 	es := NewErroringSource()
 	ds := DataSource(es)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		// 	// start the source, wait for it to end due to error, repeat
 		if err := Start(ds, nil, 256, 1024); err != nil {
 			t.Fatalf("Could not start ErroringSource: i=%v, err=%v", i, err)

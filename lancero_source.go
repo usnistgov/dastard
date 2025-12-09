@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -109,12 +110,7 @@ func (ls *LanceroSource) Delete() {
 
 // contains is used to make sure the same device isn't used twice
 func contains(s []*LanceroDevice, e *LanceroDevice) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, e)
 }
 
 // LanceroSourceConfig holds the arguments needed to call LanceroSource.Configure by RPC.
@@ -231,7 +227,7 @@ func (ls *LanceroSource) updateChanOrderMap() {
 	nchanPrevDevices := 0
 	for _, dev := range ls.active {
 		nchan := dev.ncols * dev.nrows * 2
-		for readIdx := 0; readIdx < nchan; readIdx++ {
+		for readIdx := range nchan {
 			rownum := (readIdx / 2) / dev.ncols
 			colnum := (readIdx / 2) % dev.ncols
 			channum := (readIdx % 2) + rownum*2 + (colnum*dev.nrows)*2
@@ -737,7 +733,7 @@ func (ls *LanceroSource) launchLanceroReader() {
 				for ibuf, dev := range ls.active {
 					buffer := buffers[ibuf]
 					nchan := dev.ncols * dev.nrows * 2
-					for i := 0; i < nchan; i++ {
+					for i := range nchan {
 						dc := datacopies[i+nchanPrevDevices]
 						idx := i
 						for j := 0; j < framesUsed; j++ {
@@ -847,8 +843,8 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 	// external trigger search must occur before Mix, since mix alters FB in place
 	externalTriggerRowcounts := make([]int64, 0)
 	nrows := ls.devices[0].nrows
-	for frame := 0; frame < framesUsed; frame++ { // frame within this block, need to add ls.nextFrameNum for consistent timing across blocks
-		for row := 0; row < nrows; row++ { // search the first column for frame bit level triggers
+	for frame := range framesUsed { // frame within this block, need to add ls.nextFrameNum for consistent timing across blocks
+		for row := range nrows { // search the first column for frame bit level triggers
 			channelIndex := row*2 + 1
 			v := datacopies[channelIndex][frame]
 			externalTriggerState := (v & 0x02) == 0x02 // external trigger bit is 2nd least significant bit in feedback (odd channelIndex)
@@ -872,7 +868,7 @@ func (ls *LanceroSource) distributeData(buffersMsg BuffersChanType) *dataBlock {
 		ProblemLogger.Printf("Dropped %d lancero frames over Δt=%v", droppedFrames, droppedDuration)
 	}
 
-	for channelIndex := 0; channelIndex < nchan; channelIndex++ {
+	for channelIndex := range nchan {
 		data := datacopies[ls.chan2readoutOrder[channelIndex]]
 		isFeedbackChannel := (channelIndex%2 == 1)
 		if isFeedbackChannel { // feedback channel needs more processing

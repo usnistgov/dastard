@@ -92,7 +92,7 @@ func TestAnalyzePre(t *testing.T) {
 				sumx := 0.0
 				sumxy := 0.0
 				sumx2 := 0.0
-				for j := 0; j < npre; j++ {
+				for j := range npre {
 					data[j] = RawType(b + m*float64(j) + 0.5)
 					sum += float64(data[j])
 					sumx += float64(j)
@@ -409,7 +409,7 @@ func BenchmarkMatSub(b *testing.B) {
 			B := mat.NewDense(bm.rA, bm.cA, make([]float64, bm.rA*bm.cA))
 			var result mat.Dense
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				result.Sub(A, B)
 			}
 
@@ -443,7 +443,7 @@ func BenchmarkMatMul(b *testing.B) {
 			B := mat.NewDense(bm.rB, bm.cB, make([]float64, bm.rB*bm.cB))
 			var result mat.Dense
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				result.Mul(A, B)
 			}
 
@@ -459,7 +459,7 @@ func BenchmarkMatMul(b *testing.B) {
 			B := mat.NewVecDense(bm.rB, make([]float64, bm.rB*bm.cB))
 			var result mat.VecDense
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				result.MulVec(A, B)
 			}
 
