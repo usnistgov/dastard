@@ -44,8 +44,11 @@ type FrameTimingCorrepondence struct {
 	LastSubframeCount          FrameIndex
 }
 
-// Return non-nil error if the UDP receive buffer isn't at least 4 MB (system default is 200 kB on most Ubuntu, which is bad)
-func verifyLargeUDPBuffer() error {
+const minimum_buffer_size = 4 * 1024 * 1024
+const recommended_buffer_size = 64 * 1024 * 1024
+
+	// Return non-nil error if the UDP receive buffer isn't at least 4 MB (system default is 200 kB on most Ubuntu, which is bad)
+func verifyLargeUDPBuffer(min_buf_size int) error {
 	// For now, we only check UDP buffer size on Linux. All others, use at your own risk.
 	if runtime.GOOS != "linux" {
 		return nil
@@ -54,17 +57,15 @@ func verifyLargeUDPBuffer() error {
 	if err != nil {
 		return err
 	}
-	const min_buffer_size = 4 * 1024 * 1024
-	const rec_buffer_size = 64 * 1024 * 1024
 	if bsize, err := strconv.Atoi(val); err != nil {
 		return err
-	} else if bsize < min_buffer_size {
+	} else if bsize < min_buf_size {
 		return fmt.Errorf(
 			`udp receive buffer is %d, require >= %d, recommend %d.
 The UDP receive buffer must be larger than the default for Dastard to work with µMUX data sources.
 To fix it for this session do: 'sudo sysctl -w net.core.rmem_max=%d'
 to fix it in future sessions add the line 'net.core.rmem_max=%d' to the file /etc/sysctl.conf`,
-			bsize, min_buffer_size, rec_buffer_size, rec_buffer_size, rec_buffer_size)
+			bsize, min_buf_size, recommended_buffer_size, recommended_buffer_size, recommended_buffer_size)
 	}
 	return nil
 }
@@ -585,6 +586,7 @@ type AbacoSource struct {
 	eTrigPackets []*packets.Packet // Unprocessed packets with external trigger info
 
 	unwrapOpts AbacoUnwrapOptions
+	minUDPBufferSize int
 	AnySource
 }
 
@@ -598,6 +600,7 @@ func NewAbacoSource() (*AbacoSource, error) {
 	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
 	source.subframeDivisions = abacoSubframeDivisions
+	source.minUDPBufferSize = minimum_buffer_size
 
 	return source, nil
 }
@@ -700,7 +703,7 @@ func (as *AbacoSource) Sample() error {
 	// Panic if there are UDP receivers, and the UDP receive buffer isn't somewhat larger than the 200 kB default.
 	// This is to stop people who ignore the README info about sysctl, and then complain that "Dastard doesn't work".
 	if len(as.udpReceivers) > 0 {
-		if err := verifyLargeUDPBuffer(); err != nil {
+		if err := verifyLargeUDPBuffer(as.minUDPBufferSize); err != nil {
 			msg := fmt.Sprintf("Could not verify large UDP receive buffer.\n%v", err)
 			panic(msg)
 		}

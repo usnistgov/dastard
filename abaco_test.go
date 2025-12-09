@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net"
 	"testing"
@@ -96,6 +97,7 @@ func TestAbacoUDP(t *testing.T) {
 
 func TestAbacoSource(t *testing.T) {
 	source, err := NewAbacoSource()
+	source.minUDPBufferSize = 256*1024  // for CI testing, reduce the minimum
 	if err != nil {
 		t.Errorf("NewAbacoSource() fails: %s", err)
 	}
@@ -126,25 +128,24 @@ func TestAbacoSource(t *testing.T) {
 		t.Errorf("source.Configure() returns output expected 1 ports in HostPortUDP=%v", config.HostPortUDP)
 	}
 
-	const packetAlign = 8192
 	const Nchan = 8
 	const Nsamp = 20000
 	const stride = 500 // We'll put this many samples into a packet
 	if stride*Nchan*2 > 8000 {
-		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
+		log.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
 
 	abortSupply := make(chan any)
 	supplyDataForever := func() {
 		targetAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
 		if err != nil {
-			t.Fatalf("Error resolving UDP address: %v", err)
+			log.Fatalf("Error resolving UDP address: %v", err)
 		}
 
 		// Dial a UDP connection (this doesn't establish a persistent connection like TCP)
 		conn, err := net.DialUDP("udp", nil, targetAddr)
 		if err != nil {
-			t.Fatalf("Error dialing UDP: %v", err)
+			log.Fatalf("Error dialing UDP: %v", err)
 		}
 		defer conn.Close() // Close the connection when done
 
@@ -183,7 +184,6 @@ func TestAbacoSource(t *testing.T) {
 	queuedRequests := make(chan func())
 	Npresamp := 256
 	Nsamples := 1024
-	fmt.Printf("Source: %v\n", source)
 	if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
 		t.Fatal(err)
