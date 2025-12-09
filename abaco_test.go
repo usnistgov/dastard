@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"testing"
 	"time"
 
@@ -96,25 +97,33 @@ func TestAbacoUDP(t *testing.T) {
 func TestAbacoSource(t *testing.T) {
 	source, err := NewAbacoSource()
 	if err != nil {
-		t.Fatalf("NewAbacoSource() fails: %s", err)
+		t.Errorf("NewAbacoSource() fails: %s", err)
 	}
 
 	var config AbacoSourceConfig
 
+	config.HostPortUDP = []string{}
+	if err = source.Configure(&config); err != nil {
+		t.Errorf("AbacoSource.Configure(%v) fails: %s", config, err)
+	}
+
 	// Check that HostPortUDP slices are unique-ified when source.Configure(&config) called.
 	config.HostPortUDP = []string{"localhost:4444", "localhost:3333", "localhost:4444"}
-	err = source.Configure(&config)
-	if err != nil {
+	if err = source.Configure(&config); err != nil {
 		t.Errorf("source.Configure(&c) fails with c=%v, err=%v", config, err)
 	}
 	if len(config.HostPortUDP) > 2 {
-		t.Errorf("AbacoSource.Configure() returns with repeats in HostPortUDP=%v", config.HostPortUDP)
+		t.Errorf("source.Configure() returns with repeats in HostPortUDP=%v", config.HostPortUDP)
+	} else if len(config.HostPortUDP) < 2 {
+		t.Errorf("source.Configure() returns output expected 2 ports in HostPortUDP=%v", config.HostPortUDP)
 	}
 
-	config.HostPortUDP = []string{}
-	err = source.Configure(&config)
-	if err != nil {
-		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
+	config.HostPortUDP = []string{"localhost:4444"}
+	if err = source.Configure(&config); err != nil {
+		t.Errorf("source.Configure(&c) fails with c=%v, err=%v", config, err)
+	}
+	if len(config.HostPortUDP) != 1 {
+		t.Errorf("source.Configure() returns output expected 1 ports in HostPortUDP=%v", config.HostPortUDP)
 	}
 
 	const packetAlign = 8192
@@ -125,9 +134,21 @@ func TestAbacoSource(t *testing.T) {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
 
-	var rb bytes.Buffer
+
 	abortSupply := make(chan interface{})
 	supplyDataForever := func() {
+		targetAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
+		if err != nil {
+			t.Fatalf("Error resolving UDP address: %v", err)
+		}
+
+		// Dial a UDP connection (this doesn't establish a persistent connection like TCP)
+		conn, err := net.DialUDP("udp", nil, targetAddr)
+		if err != nil {
+			t.Fatalf("Error dialing UDP: %v", err)
+		}
+		defer conn.Close() // Close the connection when done
+
 		p := packets.NewPacket(10, 20, 100, 0)
 		d := make([]int16, Nchan*Nsamp)
 		for i := 0; i < Nchan; i++ {
@@ -137,7 +158,6 @@ func TestAbacoSource(t *testing.T) {
 			}
 		}
 
-		empty := make([]byte, packetAlign)
 		dims := []int16{Nchan}
 		timer := time.NewTicker(10 * time.Millisecond)
 		packetcount := 0
@@ -154,8 +174,7 @@ func TestAbacoSource(t *testing.T) {
 						continue
 					}
 					b := p.Bytes()
-					b = append(b, empty[:packetAlign-len(b)]...)
-					rb.Write(b)
+					conn.Write(b)
 				}
 			}
 		}
@@ -165,6 +184,7 @@ func TestAbacoSource(t *testing.T) {
 	queuedRequests := make(chan func())
 	Npresamp := 256
 	Nsamples := 1024
+	fmt.Printf("Source: %v\n", source)
 	if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
 		t.Fatal(err)
