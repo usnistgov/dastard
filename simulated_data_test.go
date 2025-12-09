@@ -17,7 +17,6 @@ func TestTriangle(t *testing.T) {
 		Max:        200,
 	}
 	ts.Configure(&config)
-	ts.noProcess = true
 	ds := DataSource(ts)
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true before first start.")
@@ -177,7 +176,6 @@ func TestSimPulse(t *testing.T) {
 		Nsamp:      16000,
 	}
 	ps.Configure(&config)
-	ps.noProcess = true // for testing
 	ds := DataSource(ps)
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
@@ -270,7 +268,7 @@ func TestSimPulse(t *testing.T) {
 func TestErroringSource(t *testing.T) {
 	es := NewErroringSource()
 	ds := DataSource(es)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		// 	// start the source, wait for it to end due to error, repeat
 		if err := Start(ds, nil, 256, 1024); err != nil {
 			t.Fatalf("Could not start ErroringSource: i=%v, err=%v", i, err)

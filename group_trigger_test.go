@@ -123,8 +123,8 @@ func TestBrokerConnections(t *testing.T) {
 	if err := ls.SetCoupling(FBToErr); err != nil {
 		t.Errorf("SetCoupling(FBToErr) failed: %v", err)
 	} else {
-		for src := 0; src < N; src++ {
-			for rx := 0; rx < N; rx++ {
+		for src := range N {
+			for rx := range N {
 				expect := (src-rx) == 1 && src%2 == 1
 				c := broker.isConnected(src, rx)
 				if c != expect {
@@ -139,8 +139,8 @@ func TestBrokerConnections(t *testing.T) {
 	if err := ls.SetCoupling(ErrToFB); err != nil {
 		t.Errorf("SetCoupling(ErrToFB) failed: %v", err)
 	} else {
-		for src := 0; src < N; src++ {
-			for rx := 0; rx < N; rx++ {
+		for src := range N {
+			for rx := range N {
 				expect := (rx-src) == 1 && src%2 == 0
 				c := broker.isConnected(src, rx)
 				if c != expect {
@@ -155,8 +155,8 @@ func TestBrokerConnections(t *testing.T) {
 	if err := ls.SetCoupling(NoCoupling); err != nil {
 		t.Errorf("SetCoupling(NoCoupling) failed: %v", err)
 	} else {
-		for src := 0; src < N; src++ {
-			for rx := 0; rx < N; rx++ {
+		for src := range N {
+			for rx := range N {
 				expect := false
 				c := broker.isConnected(src, rx)
 				if c != expect {
@@ -175,9 +175,9 @@ func TestBrokering(t *testing.T) {
 	broker.AddConnection(0, 3)
 	broker.AddConnection(2, 3)
 
-	for iter := 0; iter < 3; iter++ {
+	for range 3 {
 		allTrigs := make(map[int]triggerList)
-		for i := 0; i < N; i++ {
+		for i := range N {
 			trigs := triggerList{channelIndex: i, frames: []FrameIndex{FrameIndex(i) + 10, FrameIndex(i) + 20, 30}}
 			allTrigs[i] = trigs
 		}
@@ -195,7 +195,7 @@ func TestBrokering(t *testing.T) {
 		if len(t3) != len(expected) {
 			t.Errorf("TriggerBroker chan %d received %d secondary triggers, want %d", 3, len(t3), len(expected))
 		}
-		for i := 0; i < len(expected); i++ {
+		for i := range expected {
 			if t3[i] != expected[i] {
 				t.Errorf("TriggerBroker chan %d secondary trig[%d]=%d, want %d", 3, i, t2[i], expected[i])
 			}

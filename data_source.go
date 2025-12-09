@@ -275,7 +275,7 @@ func rcCode(row, col, rows, cols int) RowColCode {
 
 // dataBlock contains a block of data (one segment per data stream)
 // This implies that dataBlock has synchronized data across all parts of a source (all Lancero
-// cards, all Abaco ring buffers and channel groups, etc.).
+// cards, all Abaco UDP sources and channel groups, etc.).
 type dataBlock struct {
 	segments                 []DataSegment
 	externalTriggerRowcounts []int64
@@ -321,7 +321,6 @@ type AnySource struct {
 	mono         *MonoPublisher
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
-	noProcess           bool // Set true only for testing.
 	heartbeats          chan Heartbeat
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
@@ -384,7 +383,7 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 
 	// Copy data into the ab.segments
 	ncopied := 0
-	for i := 0; i < nchan; i++ {
+	for i := range nchan {
 		src := block.segments[i]
 		if i == 0 {
 			ncopied = len(src.rawData)
@@ -647,7 +646,7 @@ func makeDirectory(basepath string) (string, error) {
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
 		return "", err
 	}
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		thisDir := filepath.Join(todayDir, fmt.Sprintf("%4.4d", i))
 		_, err := os.Stat(thisDir)
 		if os.IsNotExist(err) {

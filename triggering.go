@@ -102,7 +102,7 @@ func (dsp *DataStreamProcessor) edgeTriggerComputeAppend(records []*DataRecord) 
 	if dsp.stream.signed {
 		raw = make([]RawType, ndata)
 		copy(raw, dsp.stream.rawData)
-		for i := 0; i < ndata; i++ {
+		for i := range ndata {
 			raw[i] += 32768
 		}
 	}
@@ -140,7 +140,7 @@ func (dsp *DataStreamProcessor) levelTriggerComputeAppend(records []*DataRecord)
 		threshold += 32768
 		raw = make([]RawType, ndata)
 		copy(raw, dsp.stream.rawData)
-		for i := 0; i < ndata; i++ {
+		for i := range ndata {
 			raw[i] += 32768
 		}
 	}

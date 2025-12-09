@@ -31,7 +31,7 @@ Format is a text message-key (as a ZMQ frame) then a status block in JSON format
 * **SIMPULSE**: contains the configuration of the Simulated Pulse data source.
 * **TRIANGLE**: contains the configuration of the Triangle Wave data source.
 * **LANCERO**: contains the configuration of the Lancero data source (e.g., which cards to use, fiber mask, etc.).
-* **ABACO**: contains the configuration of the Abaco data source (e.g., which ring buffers to use).
+* **ABACO**: contains the configuration of the Abaco data source (e.g., which UDP host:ports to use).
 * **TRIGGERRATE**: how many triggers have been counted (array-wide) over some duration, plus the clock time of last checked sample.
 * **NUMBERWRITTEN**: counts how many records have been written to file.
 * **DATADROP**: counts data frames dropped from an active data source (since previous message).

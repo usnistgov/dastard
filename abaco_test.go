@@ -4,37 +4,27 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"math"
-	"math/rand"
+	"net"
 	"testing"
 	"time"
 
-	"github.com/usnistgov/dastard/internal/ringbuffer"
 	"github.com/usnistgov/dastard/packets"
 )
 
 func TestGeneratePackets(t *testing.T) {
 
-	ringname := "ring_test_buffer"
-	ringdesc := "ring_test_description"
-	rb, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-	if err != nil {
-		t.Fatalf("Could not open ringbuffer: %s", err)
-	}
-	defer rb.Unlink()
 	const packetAlign = 8192
-	if err = rb.Create(128 * packetAlign); err != nil {
-		t.Fatalf("Failed RingBuffer.Create: %s", err)
-	}
-
 	p := packets.NewPacket(10, 20, 0x100, 0)
+	var rb bytes.Buffer
 
 	const Nchan = 8
 	const Nsamp = 20000
 	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
+	for i := range Nchan {
 		freq := (float64(i + 2)) / float64(Nsamp)
-		for j := 0; j < Nsamp; j++ {
+		for j := range Nsamp {
 			d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
 		}
 	}
@@ -45,7 +35,7 @@ func TestGeneratePackets(t *testing.T) {
 	}
 	empty := make([]byte, packetAlign)
 	dims := []int16{Nchan}
-	for repeats := 0; repeats < 3; repeats++ {
+	for range 3 {
 		for i := 0; i < Nsamp; i += stride {
 			p.NewData(d[i:i+stride*Nchan], dims)
 			b := p.Bytes()
@@ -53,9 +43,12 @@ func TestGeneratePackets(t *testing.T) {
 			rb.Write(b)
 		}
 		// Consume packetSize
-		contents, err := rb.ReadMultipleOf(packetAlign)
+		contents := make([]byte, packetAlign)
+		n, err := rb.Read(contents)
 		if err != nil {
 			t.Errorf("Could not read buffer: %s", err)
+		} else if n < packetAlign {
+			t.Errorf("buffer read gives %d bytes, want %d", n, packetAlign)
 		}
 		r := bytes.NewReader(contents)
 		for {
@@ -75,90 +68,6 @@ func TestGeneratePackets(t *testing.T) {
 				break
 			}
 		}
-	}
-}
-
-func TestAbacoRing(t *testing.T) {
-	if _, err := NewAbacoRing(99999); err == nil {
-		t.Errorf("NewAbacoRing(99999) succeeded, want failure")
-	}
-	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
-	dev, err := NewAbacoRing(cardnum)
-	if err != nil {
-		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
-	}
-
-	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
-	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-	if err != nil {
-		t.Fatalf("Could not open ringbuffer: %s", err)
-	}
-	defer ring.Unlink()
-	const packetAlign = 8192
-	if err = ring.Create(128 * packetAlign); err != nil {
-		t.Fatalf("Failed RingBuffer.Create: %s", err)
-	}
-	timeout := 500 * time.Millisecond
-	dev.start()
-	dev.samplePackets(timeout)
-
-	p := packets.NewPacket(10, 20, 0x100, 0)
-	const Nchan = 8
-	const Nsamp = 20000
-	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
-		freq := (float64(i + 2)) / float64(Nsamp)
-		for j := 0; j < Nsamp; j++ {
-			d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
-		}
-	}
-
-	const stride = 500 // We'll put this many samples into a packet
-	if stride*Nchan*2 > 8000 {
-		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
-	}
-	empty := make([]byte, packetAlign)
-	dims := []int16{Nchan}
-	const counterRate = 1e9
-	counter := uint64(0)
-	for repeats := 0; repeats < 6; repeats++ {
-		// Repeat the data buffer `d` once per outer loop iteration
-		for i := 0; i < Nsamp; i += stride {
-			// Each inner loop iteration generates 1 packet. Nsamp/stride packets completes buffer `d`.
-			p.NewData(d[i:i+stride*Nchan], dims)
-			ts := packets.MakeTimestamp(uint16(counter>>32), uint32(counter), counterRate)
-			p.SetTimestamp(ts)
-			b := p.Bytes()
-
-			b = append(b, empty[:packetAlign-len(b)]...)
-			if ring.BytesWriteable() >= len(b) {
-				ring.Write(b)
-			}
-			counter += stride * 1000
-		}
-		time.Sleep(Nsamp * time.Microsecond) // sample rate is 1/μs.
-	}
-	ps, err := dev.ReadAllPackets()
-	if err != nil {
-		t.Errorf("Error on AbacoRing.ReadAllPackets: %v", err)
-	}
-	if len(ps) <= 0 {
-		t.Errorf("AbacoRing.samplePackets returned only %d packets", len(ps))
-	}
-	unwrapOpts := AbacoUnwrapOptions{}
-	group := NewAbacoGroup(gIndex(ps[0]), unwrapOpts)
-	group.queue = append(group.queue, ps...)
-	err = group.samplePackets()
-	if err != nil {
-		t.Errorf("Error on AbacoGroup.samplePackets: %v", err)
-	}
-
-	if group.nchan != Nchan {
-		t.Errorf("group.nchan=%d, want %d", group.nchan, Nchan)
-	}
-	if group.sampleRate <= 0.0 {
-		t.Errorf("group.sampleRate=%.4g, want >0", group.sampleRate)
 	}
 }
 
@@ -187,74 +96,67 @@ func TestAbacoUDP(t *testing.T) {
 
 func TestAbacoSource(t *testing.T) {
 	source, err := NewAbacoSource()
+	source.minUDPBufferSize = 256 * 1024 // for CI testing, reduce the minimum
 	if err != nil {
-		t.Fatalf("NewAbacoSource() fails: %s", err)
+		t.Errorf("NewAbacoSource() fails: %s", err)
 	}
-
-	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
-
-	dev, err := NewAbacoRing(cardnum)
-	if err != nil {
-		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
-	}
-	source.arings[cardnum] = dev
-	source.Nrings++
 
 	var config AbacoSourceConfig
 
-	// Check that ActiveCards and HostPortUDP slices are unique-ified when source.Configure(&config) called.
-	config.ActiveCards = []int{4, 3, 3, 3, 3, 3, 4, 3, 3}
-	config.HostPortUDP = []string{"localhost:4444", "localhost:3333", "localhost:4444"}
-	err = source.Configure(&config)
-	if err == nil {
-		t.Fatalf("AbacoSource.Configure(%v) should fail but doesn't", config)
+	config.HostPortUDP = []string{}
+	if err = source.Configure(&config); err != nil {
+		t.Errorf("AbacoSource.Configure(%v) fails: %s", config, err)
 	}
-	if len(config.ActiveCards) > 2 {
-		t.Errorf("AbacoSource.Configure() returns with repeats in ActiveCards=%v", config.ActiveCards)
+
+	// Check that HostPortUDP slices are unique-ified when source.Configure(&config) called.
+	config.HostPortUDP = []string{"localhost:4444", "localhost:3333", "localhost:4444"}
+	if err = source.Configure(&config); err != nil {
+		t.Errorf("source.Configure(&c) fails with c=%v, err=%v", config, err)
 	}
 	if len(config.HostPortUDP) > 2 {
-		t.Errorf("AbacoSource.Configure() returns with repeats in HostPortUDP=%v", config.HostPortUDP)
+		t.Errorf("source.Configure() returns with repeats in HostPortUDP=%v", config.HostPortUDP)
+	} else if len(config.HostPortUDP) < 2 {
+		t.Errorf("source.Configure() returns output expected 2 ports in HostPortUDP=%v", config.HostPortUDP)
 	}
 
-	deviceCodes := []int{cardnum}
-	config.ActiveCards = deviceCodes
-	config.HostPortUDP = []string{}
-	err = source.Configure(&config)
-	if err != nil {
-		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
+	config.HostPortUDP = []string{"localhost:4444"}
+	if err = source.Configure(&config); err != nil {
+		t.Errorf("source.Configure(&c) fails with c=%v, err=%v", config, err)
 	}
-
-	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
-	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-	rb, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-	if err != nil {
-		t.Fatalf("Could not open ringbuffer: %s", err)
-	}
-	defer rb.Unlink()
-	const packetAlign = 8192
-	if err = rb.Create(256 * packetAlign); err != nil {
-		t.Fatalf("Failed RingBuffer.Create: %s", err)
+	if len(config.HostPortUDP) != 1 {
+		t.Errorf("source.Configure() returns output expected 1 ports in HostPortUDP=%v", config.HostPortUDP)
 	}
 
 	const Nchan = 8
 	const Nsamp = 20000
 	const stride = 500 // We'll put this many samples into a packet
 	if stride*Nchan*2 > 8000 {
-		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
+		log.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
 
-	abortSupply := make(chan interface{})
+	abortSupply := make(chan any)
 	supplyDataForever := func() {
+		targetAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
+		if err != nil {
+			log.Fatalf("Error resolving UDP address: %v", err)
+		}
+
+		// Dial a UDP connection (this doesn't establish a persistent connection like TCP)
+		conn, err := net.DialUDP("udp", nil, targetAddr)
+		if err != nil {
+			log.Fatalf("Error dialing UDP: %v", err)
+		}
+		defer conn.Close() // Close the connection when done
+
 		p := packets.NewPacket(10, 20, 100, 0)
 		d := make([]int16, Nchan*Nsamp)
-		for i := 0; i < Nchan; i++ {
+		for i := range Nchan {
 			freq := (float64(i + 2)) / float64(Nsamp)
-			for j := 0; j < Nsamp; j++ {
+			for j := range Nsamp {
 				d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
 			}
 		}
 
-		empty := make([]byte, packetAlign)
 		dims := []int16{Nchan}
 		timer := time.NewTicker(10 * time.Millisecond)
 		packetcount := 0
@@ -271,10 +173,7 @@ func TestAbacoSource(t *testing.T) {
 						continue
 					}
 					b := p.Bytes()
-					b = append(b, empty[:packetAlign-len(b)]...)
-					if rb.BytesWriteable() >= len(b) {
-						rb.Write(b)
-					}
+					conn.Write(b)
 				}
 			}
 		}
@@ -344,7 +243,7 @@ func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	group.unwrap = group.unwrap[:0] // get rid of phase unwrapping
 
 	copies := make([][]RawType, nchan)
-	for i := 0; i < nchan; i++ {
+	for i := range nchan {
 		copies[i] = make([]RawType, nframes)
 	}
 	const stride = 4096 / nchan
@@ -353,8 +252,8 @@ func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
 	for j := 0; j < nframes; j += stride {
 		p := packets.NewPacket(10, 20, uint32(j/stride), offset)
 		d := make([]int16, 0, 4096)
-		for k := 0; k < stride; k++ {
-			for m := 0; m < nchan; m++ {
+		for k := range stride {
+			for m := range nchan {
 				d = append(d, int16(m+j+k))
 			}
 		}
@@ -387,7 +286,7 @@ func TestDemux(t *testing.T) {
 func BenchmarkDemux(b *testing.B) {
 	const nframes = 32768
 	group, allpackets, copies := prepareDemux(nframes)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		group.queue = append(group.queue, allpackets...)
 		group.demuxData(copies, nframes)
 	}

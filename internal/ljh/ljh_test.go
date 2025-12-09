@@ -92,8 +92,8 @@ func TestBadVersionNumbers(t *testing.T) {
 		{"2.2.0", false},
 	}
 	for _, vt := range versiontests {
-		content := []byte(
-			fmt.Sprintf("#LJH Memorial File Format\nSave File Format Version: %s\n#End of Header\n", vt.vnum))
+		content :=
+			fmt.Appendf(nil, "#LJH Memorial File Format\nSave File Format Version: %s\n#End of Header\n", vt.vnum)
 		if err = os.WriteFile(tempFile, content, 0666); err != nil {
 			t.Error(err)
 		}
@@ -245,8 +245,8 @@ func BenchmarkLJH22(b *testing.B) {
 	w.CreateFile()
 	w.WriteHeader(time.Now())
 	data := make([]uint16, 1000)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		err := w.WriteRecord(8888888, 127, data)
 		if err != nil {
 			b.Fatal(fmt.Sprint(err))
@@ -259,8 +259,8 @@ func BenchmarkLJH3(b *testing.B) {
 	w.CreateFile()
 	w.WriteHeader()
 	data := make([]uint16, 1000)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		err := w.WriteRecord(0, 0, 0, data)
 		if err != nil {
 			b.Fatal(fmt.Sprint(err))
@@ -271,8 +271,8 @@ func BenchmarkLJH3(b *testing.B) {
 func BenchmarkFileWrite(b *testing.B) {
 	f, _ := os.Create("benchmark.ljh")
 	data := make([]byte, 2000)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, err := f.Write(data)
 		if err != nil {
 			b.Fatal(fmt.Sprint(err))
@@ -286,8 +286,8 @@ func BenchmarkBufIOWrite(b *testing.B) {
 	defer w.Flush()
 	defer f.Close()
 	data := make([]byte, 2000)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, err := w.Write(data)
 		if err != nil {
 			b.Fatal(fmt.Sprint(err))

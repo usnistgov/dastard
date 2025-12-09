@@ -20,7 +20,7 @@ func probe(npack int, endpoint string) error {
 	defer ServerConn.Close()
 
 	buf := make([]byte, 8192)
-	for i := 0; i < npack; i++ {
+	for range npack {
 		if _, _, err := ServerConn.ReadFromUDP(buf); err != nil {
 			return err
 		}
