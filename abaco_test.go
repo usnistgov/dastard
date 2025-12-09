@@ -5,29 +5,17 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"testing"
 	"time"
 
-	"github.com/usnistgov/dastard/internal/ringbuffer"
 	"github.com/usnistgov/dastard/packets"
 )
 
 func TestGeneratePackets(t *testing.T) {
 
-	ringname := "ring_test_buffer"
-	ringdesc := "ring_test_description"
-	rb, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-	if err != nil {
-		t.Fatalf("Could not open ringbuffer: %s", err)
-	}
-	defer rb.Unlink()
 	const packetAlign = 8192
-	if err = rb.Create(128 * packetAlign); err != nil {
-		t.Fatalf("Failed RingBuffer.Create: %s", err)
-	}
-
 	p := packets.NewPacket(10, 20, 0x100, 0)
+	var rb bytes.Buffer
 
 	const Nchan = 8
 	const Nsamp = 20000
@@ -53,9 +41,12 @@ func TestGeneratePackets(t *testing.T) {
 			rb.Write(b)
 		}
 		// Consume packetSize
-		contents, err := rb.ReadMultipleOf(packetAlign)
+		contents := make([]byte, packetAlign)
+		n, err := rb.Read(contents)
 		if err != nil {
 			t.Errorf("Could not read buffer: %s", err)
+		} else if n < packetAlign {
+			t.Errorf("buffer read gives %d bytes, want %d", n, packetAlign)
 		}
 		r := bytes.NewReader(contents)
 		for {
@@ -78,89 +69,6 @@ func TestGeneratePackets(t *testing.T) {
 	}
 }
 
-func TestAbacoRing(t *testing.T) {
-	if _, err := NewAbacoRing(99999); err == nil {
-		t.Errorf("NewAbacoRing(99999) succeeded, want failure")
-	}
-	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
-	dev, err := NewAbacoRing(cardnum)
-	if err != nil {
-		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
-	}
-
-	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
-	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-	if err != nil {
-		t.Fatalf("Could not open ringbuffer: %s", err)
-	}
-	defer ring.Unlink()
-	const packetAlign = 8192
-	if err = ring.Create(128 * packetAlign); err != nil {
-		t.Fatalf("Failed RingBuffer.Create: %s", err)
-	}
-	timeout := 500 * time.Millisecond
-	dev.start()
-	dev.samplePackets(timeout)
-
-	p := packets.NewPacket(10, 20, 0x100, 0)
-	const Nchan = 8
-	const Nsamp = 20000
-	d := make([]int16, Nchan*Nsamp)
-	for i := 0; i < Nchan; i++ {
-		freq := (float64(i + 2)) / float64(Nsamp)
-		for j := 0; j < Nsamp; j++ {
-			d[i+Nchan*j] = int16(30000.0 * math.Cos(freq*float64(j)))
-		}
-	}
-
-	const stride = 500 // We'll put this many samples into a packet
-	if stride*Nchan*2 > 8000 {
-		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
-	}
-	empty := make([]byte, packetAlign)
-	dims := []int16{Nchan}
-	const counterRate = 1e9
-	counter := uint64(0)
-	for repeats := 0; repeats < 6; repeats++ {
-		// Repeat the data buffer `d` once per outer loop iteration
-		for i := 0; i < Nsamp; i += stride {
-			// Each inner loop iteration generates 1 packet. Nsamp/stride packets completes buffer `d`.
-			p.NewData(d[i:i+stride*Nchan], dims)
-			ts := packets.MakeTimestamp(uint16(counter>>32), uint32(counter), counterRate)
-			p.SetTimestamp(ts)
-			b := p.Bytes()
-
-			b = append(b, empty[:packetAlign-len(b)]...)
-			if ring.BytesWriteable() >= len(b) {
-				ring.Write(b)
-			}
-			counter += stride * 1000
-		}
-		time.Sleep(Nsamp * time.Microsecond) // sample rate is 1/μs.
-	}
-	ps, err := dev.ReadAllPackets()
-	if err != nil {
-		t.Errorf("Error on AbacoRing.ReadAllPackets: %v", err)
-	}
-	if len(ps) <= 0 {
-		t.Errorf("AbacoRing.samplePackets returned only %d packets", len(ps))
-	}
-	unwrapOpts := AbacoUnwrapOptions{}
-	group := NewAbacoGroup(gIndex(ps[0]), unwrapOpts)
-	group.queue = append(group.queue, ps...)
-	err = group.samplePackets()
-	if err != nil {
-		t.Errorf("Error on AbacoGroup.samplePackets: %v", err)
-	}
-
-	if group.nchan != Nchan {
-		t.Errorf("group.nchan=%d, want %d", group.nchan, Nchan)
-	}
-	if group.sampleRate <= 0.0 {
-		t.Errorf("group.sampleRate=%.4g, want >0", group.sampleRate)
-	}
-}
 
 func TestAbacoUDP(t *testing.T) {
 	if _, err := NewAbacoUDPReceiver("nonexistenthost.remote.internet:4999"); err == nil {
@@ -191,51 +99,25 @@ func TestAbacoSource(t *testing.T) {
 		t.Fatalf("NewAbacoSource() fails: %s", err)
 	}
 
-	cardnum := -rand.Intn(99998) - 1 // Rand # between -1 and -99999
-
-	dev, err := NewAbacoRing(cardnum)
-	if err != nil {
-		t.Fatalf("NewAbacoRing(%d) fails: %s", cardnum, err)
-	}
-	source.arings[cardnum] = dev
-	source.Nrings++
-
 	var config AbacoSourceConfig
 
-	// Check that ActiveCards and HostPortUDP slices are unique-ified when source.Configure(&config) called.
-	config.ActiveCards = []int{4, 3, 3, 3, 3, 3, 4, 3, 3}
+	// Check that HostPortUDP slices are unique-ified when source.Configure(&config) called.
 	config.HostPortUDP = []string{"localhost:4444", "localhost:3333", "localhost:4444"}
 	err = source.Configure(&config)
-	if err == nil {
-		t.Fatalf("AbacoSource.Configure(%v) should fail but doesn't", config)
-	}
-	if len(config.ActiveCards) > 2 {
-		t.Errorf("AbacoSource.Configure() returns with repeats in ActiveCards=%v", config.ActiveCards)
+	if err != nil {
+		t.Errorf("source.Configure(&c) fails with c=%v, err=%v", config, err)
 	}
 	if len(config.HostPortUDP) > 2 {
 		t.Errorf("AbacoSource.Configure() returns with repeats in HostPortUDP=%v", config.HostPortUDP)
 	}
 
-	deviceCodes := []int{cardnum}
-	config.ActiveCards = deviceCodes
 	config.HostPortUDP = []string{}
 	err = source.Configure(&config)
 	if err != nil {
 		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
 	}
 
-	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
-	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-	rb, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-	if err != nil {
-		t.Fatalf("Could not open ringbuffer: %s", err)
-	}
-	defer rb.Unlink()
 	const packetAlign = 8192
-	if err = rb.Create(256 * packetAlign); err != nil {
-		t.Fatalf("Failed RingBuffer.Create: %s", err)
-	}
-
 	const Nchan = 8
 	const Nsamp = 20000
 	const stride = 500 // We'll put this many samples into a packet
@@ -243,6 +125,7 @@ func TestAbacoSource(t *testing.T) {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
 
+	var rb bytes.Buffer
 	abortSupply := make(chan interface{})
 	supplyDataForever := func() {
 		p := packets.NewPacket(10, 20, 100, 0)
@@ -272,9 +155,7 @@ func TestAbacoSource(t *testing.T) {
 					}
 					b := p.Bytes()
 					b = append(b, empty[:packetAlign-len(b)]...)
-					if rb.BytesWriteable() >= len(b) {
-						rb.Write(b)
-					}
+					rb.Write(b)
 				}
 			}
 		}
