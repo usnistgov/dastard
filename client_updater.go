@@ -20,7 +20,7 @@ import (
 // ClientUpdate carries the messages to be published on the status port.
 type ClientUpdate struct {
 	tag   string
-	state interface{}
+	state any
 }
 
 // nopublishMessages is a set of message names that you don't send to clients, because they
@@ -114,7 +114,7 @@ func RunClientUpdater(statusport int, abort <-chan struct{}) {
 	saveStateOnceTimer := time.NewTimer(saveDelayAfterChange)
 
 	// Here, store the last message of each type seen. Use when storing state.
-	lastMessages := make(map[string]interface{})
+	lastMessages := make(map[string]any)
 	lastMessageStrings := make(map[string]string)
 
 	for {
@@ -179,7 +179,7 @@ var nosaveMessages = map[string]struct{}{
 }
 
 // saveState stores server configuration to the standard config file.
-func saveState(lastMessages map[string]interface{}) {
+func saveState(lastMessages map[string]any) {
 
 	lastMessages["___1"] = "DASTARD configuration file. Written and read by DASTARD."
 	lastMessages["___2"] = "Human intervention by experts is permitted but not expected."

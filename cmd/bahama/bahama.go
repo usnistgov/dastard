@@ -12,24 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/usnistgov/dastard/internal/ringbuffer"
 	"github.com/usnistgov/dastard/packets"
 )
-
-const packetAlign = 8192 // Packets go into the ring buffer at this stride (bytes)
-
-func clearRings(nclear int) error {
-	for cardnum := 0; cardnum < nclear; cardnum++ {
-		ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
-		ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-		ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-		if err != nil {
-			return fmt.Errorf("could not open ringbuffer: %s", err)
-		}
-		ring.Unlink() // in case it exists from before
-	}
-	return nil
-}
 
 // BahamaControl carries all the free parameters of the data generator
 type BahamaControl struct {
@@ -37,10 +21,8 @@ type BahamaControl struct {
 	Ngroups    int
 	Nsources   int
 	Chan0      int // channel number of first channel
-	chanGaps   int // how many channel numbers to skip between groups/rings
-	ringsize   int // Bytes per ring
+	chanGaps   int // how many channel numbers to skip between groups
 	port       int
-	udp        bool
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
@@ -56,18 +38,10 @@ type BahamaControl struct {
 func (control *BahamaControl) Report() {
 	fmt.Println("Samples per second:       ", control.samplerate)
 	fmt.Printf("Drop packets randomly:     %.2f%%\n", 100.0*control.dropfrac)
-	if control.udp {
-		fmt.Println("Generating UDP packets on port ", control.port)
-		fmt.Println("Number of UDP sources:    ", control.Nsources)
-		fmt.Println("Channels per UDP source:  ", control.Nchan)
-		fmt.Println("Channel groups per UDP:   ", control.Ngroups)
-	} else {
-		fmt.Println("Putting packets into ring buffers.")
-		fmt.Println("Number of ring buffers:   ", control.Nsources)
-		fmt.Println("Size of each ring:        ", control.ringsize)
-		fmt.Println("Channels per ring:        ", control.Nchan)
-		fmt.Println("Channel groups per ring:  ", control.Ngroups)
-	}
+	fmt.Println("Generating UDP packets on port ", control.port)
+	fmt.Println("Number of UDP sources:    ", control.Nsources)
+	fmt.Println("Channels per UDP source:  ", control.Nchan)
+	fmt.Println("Channel groups per UDP:   ", control.Ngroups)
 	fmt.Println("Channel # of 1st chan:    ", control.Chan0)
 	if control.Ngroups > 1 || control.Nsources > 1 {
 		fmt.Println("Skip # btwn groups/sources: ", control.chanGaps)
@@ -279,40 +253,6 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 	}
 }
 
-func ringwriter(cardnum int, packetchan chan []byte, ringsize int) error {
-	ringname := fmt.Sprintf("xdma%d_c2h_0_buffer", cardnum)
-	ringdesc := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-	ring, err := ringbuffer.NewRingBuffer(ringname, ringdesc)
-	if err != nil {
-		return fmt.Errorf("could not open ringbuffer %d: %s", cardnum, err)
-	}
-	ring.Unlink() // in case it exists from before
-	if err = ring.Create(ringsize); err != nil {
-		return fmt.Errorf("failed RingBuffer.Create(%d): %s", ringsize, err)
-	}
-	fmt.Printf("Generating data in shm:%s\n", ringname)
-
-	go func() {
-		defer ring.Unlink() // so it won't exist after
-		empty := make([]byte, packetAlign)
-		for {
-			b, ok := <-packetchan
-			if !ok {
-				return
-			}
-			if len(b) > packetAlign {
-				b = b[:packetAlign]
-			} else if len(b) < packetAlign {
-				b = append(b, empty[:packetAlign-len(b)]...)
-			}
-			if ring.BytesWriteable() >= len(b) {
-				ring.Write(b)
-			}
-		}
-	}()
-	return nil
-}
-
 // udpwriter is called once per data source (i.e., per UDP port producing data)
 func udpwriter(portnum int, packetchan chan []byte) error {
 	hostname := fmt.Sprintf("localhost:%d", portnum)
@@ -358,10 +298,8 @@ func coerceFloat(f *float64, minval, maxval float64) {
 }
 
 func main() {
-	maxRings := 4
 	nchan := flag.Int("nchan", 4, "Number of channels per source, 4-512 allowed")
-	ring := flag.Bool("ring", false, "Data into shared memory ring buffers instead of UDP packets (default false)")
-	nsource := flag.Int("nsource", 1, "Number of sources (UDP clients or ring buffers), 1-4 allowed")
+	nsource := flag.Int("nsource", 1, "Number of sources (UDP clients), 1-4 allowed")
 	chan0 := flag.Int("firstchan", 0, "Channel number of the first channel (default 0)")
 	changaps := flag.Int("gaps", 0, "How many channel numbers to skip between groups (relevant only if ngroups>1 or nsource>1)")
 	ngroups := flag.Int("ngroups", 1, "Number of channel groups per source, (1-Nchan/4) allowed")
@@ -383,7 +321,6 @@ func main() {
 	}
 	flag.Parse()
 
-	clearRings(maxRings)
 	coerceInt(nchan, 4, 512)
 	coerceInt(nsource, 1, 4)
 	coerceInt(ngroups, 1, *nchan/4)
@@ -399,26 +336,13 @@ func main() {
 		}
 	}
 
-	// Compute the size of each ring buffer. Let it be big enough to hold 0.5 seconds of data
-	// or 500 packets, and be a multiple of packetAlign.
-	ringlasts := 0.5 // seconds
-	byterate := 2.0 * float64(*nchan) * (*samplerate)
-	ringsize := int(byterate*ringlasts) + packetAlign
-	ringsize -= ringsize % packetAlign
-	if ringsize < 500*packetAlign {
-		ringsize = 500 * packetAlign
-	}
-	udp := !(*ring)
-	if udp {
-		ringsize = 0
-	}
 	if *crosstalk {
 		*usepulses = true
 	}
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
-		Nsources: *nsource, udp: udp, port: *port,
-		Chan0: *chan0, chanGaps: *changaps, ringsize: ringsize,
+		Nsources: *nsource, port: *port,
+		Chan0: *chan0, chanGaps: *changaps,
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses, crosstalk: *crosstalk,
 		sinusoid: *usesine, noiselevel: *noiselevel,
@@ -436,17 +360,10 @@ func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 	for cardnum := 0; cardnum < control.Nsources; cardnum++ {
 		packetchan := make(chan []byte)
 		defer close(packetchan)
-		if control.udp {
-			portnum := (control.port) + cardnum
-			if err := udpwriter(portnum, packetchan); err != nil {
-				fmt.Printf("udpwriter(%d,...) failed: %v\n", portnum, err)
-				continue
-			}
-		} else {
-			if err := ringwriter(cardnum, packetchan, control.ringsize); err != nil {
-				fmt.Printf("ringwriter(%d,...) failed: %v\n", cardnum, err)
-				continue
-			}
+		portnum := (control.port) + cardnum
+		if err := udpwriter(portnum, packetchan); err != nil {
+			fmt.Printf("udpwriter(%d,...) failed: %v\n", portnum, err)
+			continue
 		}
 
 		stage1pchans := make([]chan []byte, control.Ngroups)

@@ -1,16 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
-
-	"github.com/fabiokung/shm"
 )
 
 func TestHelpers(t *testing.T) {
-	clearRings(4)
 	f := 1.0
 	j := 1
 	mins := []float64{0, -10, 10}
@@ -97,14 +93,13 @@ func TestInterleave(t *testing.T) {
 }
 
 func TestGenerate(t *testing.T) {
-	const cardnum = -3
 	cancel := make(chan os.Signal)
 	go func() {
 		time.Sleep(40 * time.Millisecond)
 		close(cancel)
 	}()
 	control := BahamaControl{Nchan: 4, Ngroups: 1, sinusoid: true, sawtooth: true, pulses: true,
-		noiselevel: 5.0, samplerate: 100000, ringsize: 1000000}
+		noiselevel: 5.0, samplerate: 100000}
 
 	// Keep the data channel drained...
 	ch := make(chan []byte)
@@ -118,13 +113,6 @@ func TestGenerate(t *testing.T) {
 		t.Errorf("generateData() returned %s", err.Error())
 	}
 
-	// Ensure that the above deleted the shared memory region
-	name := fmt.Sprintf("xdma%d_c2h_0_description", cardnum)
-	if region, err := shm.Open(name, os.O_RDONLY, 0600); err == nil {
-		region.Close()
-		shm.Unlink(name)
-		t.Errorf("generateData() left shm:%s in existence", name)
-	}
 }
 
 func BenchmarkUDPGenerate(b *testing.B) {
@@ -137,7 +125,7 @@ func BenchmarkUDPGenerate(b *testing.B) {
 	packetchan := make(chan []byte)
 
 	control := BahamaControl{Nchan: 64, Ngroups: 1, Nsources: 1, pulses: true,
-		noiselevel: 5.0, samplerate: 244140, udp: true, port: 4000}
+		noiselevel: 5.0, samplerate: 244140, port: 4000}
 	if err := udpwriter(control.port, packetchan); err != nil {
 		b.Errorf("udpwriter(%d,...) failed: %v\n", control.port, err)
 	}

@@ -17,7 +17,6 @@ func TestTriangle(t *testing.T) {
 		Max:        200,
 	}
 	ts.Configure(&config)
-	ts.noProcess = true
 	ds := DataSource(ts)
 	if ds.Running() {
 		t.Errorf("TriangleSource.Running() says true before first start.")
@@ -177,7 +176,6 @@ func TestSimPulse(t *testing.T) {
 		Nsamp:      16000,
 	}
 	ps.Configure(&config)
-	ps.noProcess = true // for testing
 	ds := DataSource(ps)
 	if ds.Running() {
 		t.Errorf("SimPulseSource.Running() says true before first start.")
