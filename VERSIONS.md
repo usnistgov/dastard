@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.9** December 9, 2025-
+* Remove relic internals/ringbuffers and ability of Abaco to use it as a data source (issue 382).
+
 **0.3.8** December 8, 2025
 * Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).
 * Make the file-synchronizing be optional to avert HDD problem (issue 376).
