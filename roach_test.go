@@ -17,7 +17,7 @@ import (
 func newBuffer(nchan, nsamp uint16, sampnum uint64) []byte {
 	buf := new(bytes.Buffer)
 
-	header := []interface{}{
+	header := []any{
 		uint8(0), // unused
 		uint8(1), // flag: 1=flux-ramp demodulation
 		nchan,

@@ -471,7 +471,7 @@ func TestFullPackets(t *testing.T) {
 		d32[i] = 20 * int32(i)
 		d64[i] = 20 * int64(i)
 	}
-	alldata := []interface{}{d16, d32, d64}
+	alldata := []any{d16, d32, d64}
 	for _, d := range alldata {
 		if err := p.NewData(d, dims); err != nil {
 			t.Errorf("Packet.NewData failed: %v", err)

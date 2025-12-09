@@ -441,7 +441,7 @@ func setupViper() error {
 	viper.Set("writing", &ws)
 
 	// Check config saving.
-	msg := make(map[string]interface{})
+	msg := make(map[string]any)
 	msg["HarryPotter"] = harrypotter
 	saveState(msg)
 	return nil

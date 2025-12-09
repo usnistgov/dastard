@@ -134,8 +134,7 @@ func TestAbacoSource(t *testing.T) {
 		t.Fatalf("Packet payload size %d exceeds 8000 bytes", stride*Nchan*2)
 	}
 
-
-	abortSupply := make(chan interface{})
+	abortSupply := make(chan any)
 	supplyDataForever := func() {
 		targetAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
 		if err != nil {

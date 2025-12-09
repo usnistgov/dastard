@@ -32,10 +32,10 @@ type Packet struct {
 	explicitOffset bool
 
 	// Any other TLV objects.
-	otherTLV []interface{}
+	otherTLV []any
 
 	// The data payload
-	Data interface{}
+	Data any
 }
 
 // packetMAGIC is the packet header's magic number.
@@ -199,7 +199,7 @@ func (p *Packet) ReadValue(sample int) int {
 }
 
 // NewData adds data to the packet, and creates the format and shape TLV items to match.
-func (p *Packet) NewData(data interface{}, dims []int16) error {
+func (p *Packet) NewData(data any, dims []int16) error {
 	ndim := len(dims)
 	p.headerLength = 24
 	if p.timestamp != nil {
@@ -378,7 +378,7 @@ func byteSwap2(b []byte, nb int) error {
 	return nil
 }
 
-func ByteSwap(vectorIn interface{}) error {
+func ByteSwap(vectorIn any) error {
 	switch v := vectorIn.(type) {
 	case []uint8:
 	case []int8:
@@ -562,7 +562,7 @@ type headPayloadShape struct {
 }
 
 // parseTLV parses data, generating a list of all TLV objects
-func parseTLV(data []byte) (result []interface{}, err error) {
+func parseTLV(data []byte) (result []any, err error) {
 	bytesRemaining := len(data)
 	for bytesRemaining > 0 {
 		if bytesRemaining < 8 {
