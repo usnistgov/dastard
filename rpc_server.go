@@ -437,6 +437,7 @@ type WriteControlConfig struct {
 	WriteLJH22      bool   // turn on one or more file formats
 	WriteOFF        bool
 	WriteLJH3       bool
+	WriteDB         bool
 	FlushAlsoSyncs  bool
 	MapInternalOnly *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
@@ -838,6 +839,7 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var ws WritingState
 	err = viper.UnmarshalKey("writing", &ws)
+	ws.WriteDB = true // TODO: this is temporary
 	if err == nil {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful

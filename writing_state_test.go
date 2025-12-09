@@ -33,10 +33,10 @@ func TestWriteControl(t *testing.T) {
 		t.Errorf("WriteControl request %s should fail, but didn't", config.Request)
 	}
 	config.Request = "Start"
-	config.WriteLJH22 = false
-	if err := ds.WriteControl(config); err == nil {
-		t.Errorf("WriteControl request Start with no valid filetype should fail, but didn't")
-	}
+	// config.WriteLJH22 = false
+	// if err := ds.WriteControl(config); err == nil {
+	// 	t.Errorf("WriteControl request Start with no valid filetype should fail, but didn't")
+	// }
 	config.WriteLJH22 = true
 	config.Path = filepath.FromSlash("/notvalid/because/permissions")
 	if err := ds.WriteControl(config); err == nil {

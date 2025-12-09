@@ -15,13 +15,17 @@ package off
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"time"
 
 	"github.com/usnistgov/dastard/internal/asyncbufio"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 	"gonum.org/v1/gonum/mat"
 )
@@ -55,6 +59,8 @@ type Writer struct {
 	recordsWritten int
 	fileName       string
 	headerWritten  bool
+	db             *dastarddb.DastardDBConnection
+	fileMessage    *dastarddb.FileMessage
 	file           *os.File
 	writer         *asyncbufio.Writer
 	syncwithflush  bool
@@ -65,7 +71,8 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	MaxPresamples int, MaxSamples int, FramePeriodSeconds float64,
 	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string,
 	DastardVersion string, GitHash string, SourceName string,
-	ReadoutInfo TimeDivisionMultiplexingInfo, pixelInfo PixelInfo) *Writer {
+	ReadoutInfo TimeDivisionMultiplexingInfo, pixelInfo PixelInfo,
+	db *dastarddb.DastardDBConnection, filemsg *dastarddb.FileMessage) *Writer {
 	writer := new(Writer)
 	writer.ChannelIndex = ChannelIndex
 	writer.ChannelName = ChannelName
@@ -83,6 +90,8 @@ func NewWriter(fileName string, ChannelIndex int, ChannelName string, ChannelNum
 	writer.ReadoutInfo = ReadoutInfo
 	writer.PixelInfo = pixelInfo
 	writer.fileName = fileName
+	writer.db = db
+	writer.fileMessage = filemsg
 	return writer
 }
 
@@ -167,6 +176,12 @@ func (w *Writer) WriteHeader() error {
 		return err
 	}
 	w.headerWritten = true
+	if w.fileMessage != nil && w.db != nil {
+		w.fileMessage.Filename = path.Base(w.fileName)
+		w.fileMessage.Filetype = "OFF"
+		w.fileMessage.Start = time.Now()
+		w.db.RecordFile(w.fileMessage)
+	}
 	return nil
 }
 
@@ -219,7 +234,34 @@ func (w Writer) Close() {
 	if w.writer != nil {
 		w.writer.Close()
 	}
-	w.file.Close()
+	if w.file != nil {
+		w.file.Close()
+		if m := w.fileMessage; m != nil {
+			m.End = time.Now()
+			m.Records = w.recordsWritten
+			m.Size, m.SHA256 = compute_size_sha256(w.fileName)
+			w.db.RecordFile(m)
+		}
+	}
+}
+
+func compute_size_sha256(fname string) (size int, sha string) {
+	sha = "unknown"
+	file, err := os.Open(fname)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	if info, err := file.Stat(); err == nil {
+		size = int(info.Size())
+	}
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return
+	}
+
+	return size, fmt.Sprintf("%x", hash.Sum(nil))
 }
 
 // SetFlushAlsoSyncs sets whether to call `Sync` with every `Flush` to the output file.

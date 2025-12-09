@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 
 	"github.com/sbinet/npyio/npz"
@@ -298,6 +301,7 @@ type AnySource struct {
 	chanNames         []string      // one name per channel
 	chanNumbers       []int         // names have format "prefixNumber", this is the number
 	rowColCodes       []RowColCode  // one RowColCode per channel
+	isTDM             bool          // is this a TDM data source?
 	subframeOffsets   []int         // subframe time delay per channel
 	subframeDivisions int           // number of subframe divisions per frame
 	groupKeysSorted   []GroupIndex  // sorted slice of channel group information
@@ -313,6 +317,8 @@ type AnySource struct {
 	archiveBlock archiveableDataBlock // Used to store a section of raw data to file
 	broker       *TriggerBroker
 	configError  error // Any error that arose when configuring the source (before Start)
+	drecmsg      dastarddb.DatarunMessage
+	mono         *MonoPublisher
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	heartbeats          chan Heartbeat
@@ -463,6 +469,11 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 			}
 		}
 		wg.Wait()
+	}
+
+	// Signal to the MonoPublisher that all channels' data have been sent, and it's time to publish.
+	if ds.mono != nil {
+		ds.mono.LastChannelComplete()
 	}
 
 	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
@@ -682,6 +693,16 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
+		DB.FinishDatarun(&ds.drecmsg)
+
+		if ds.mono != nil {
+			for _, dsp := range ds.processors {
+				dsp.DataPublisher.WritingDB = false
+				dsp.DataPublisher.Mono = nil
+			}
+			close(ds.mono.abort)
+			ds.mono = nil
+		}
 		return ds.writingState.Stop()
 
 	case strings.HasPrefix(requestStr, "START"):
@@ -696,8 +717,9 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 // writeControlStart handles the most complex case of WriteControl: starting to write.
 func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
-	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
-		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
+	config.WriteDB = false // TODO: make this changeable in DCom
+	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3 || config.WriteDB) {
+		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 and WriteDB all false")
 	}
 
 	for _, dsp := range ds.processors {
@@ -727,15 +749,36 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				len(config.MapInternalOnly.Pixels), ds.nchan/ds.channelsPerPixel, ds.nchan, ds.channelsPerPixel)}
 		}
 	}
-	path := ds.writingState.BasePath
+	basepath := ds.writingState.BasePath
 	if len(config.Path) > 0 {
-		path = config.Path
+		basepath = config.Path
 	}
 	var err error
-	filenamePattern, err := makeDirectory(path)
+	filenamePattern, err := makeDirectory(basepath)
 	if err != nil {
 		return fmt.Errorf("could not make directory: %s", err.Error())
 	}
+
+	directory := path.Dir(filenamePattern)
+	d2, runnum := path.Split(directory)
+	_, datecode := path.Split(path.Clean(d2))
+	dateruncode := path.Join(datecode, runnum)
+	NPresamples, NSamples, _ := ds.getPulseLengths()
+
+	ds.drecmsg = dastarddb.DatarunMessage{
+		ID:          ulid.Make().String(),
+		DateRunCode: dateruncode,
+		Intention:   "testing", // TODO: add ability to change datarun intentions
+		DataSource:  ds.name,
+		Directory:   directory,
+		Nchannels:   ds.Nchan(),
+		NPresamples: NPresamples,
+		NSamples:    NSamples,
+		TimeOffset:  DastardStartTime,
+		Timebase:    ds.samplePeriod.Seconds(),
+		Start:       time.Now(),
+	}
+	DB.RecordDatarun(&ds.drecmsg)
 
 	channelsWithOff := 0
 	for i, dsp := range ds.processors {
@@ -748,6 +791,23 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		fps := 1
 		var pixel Pixel
 
+		sensorID := ulid.Make().String()
+		dsp.DataPublisher.SensorID = sensorID
+		dsp.DataPublisher.WritingDB = config.WriteDB
+
+		dsp.sensormsg = dastarddb.SensorMessage{
+			ID:          sensorID,
+			DatarunID:   ds.drecmsg.ID,
+			DateRunCode: dateruncode,
+			RowNum:      rowNum,
+			ColNum:      colNum,
+			ChanNum:     ds.chanNumbers[i],
+			ChanIndex:   i,
+			ChanName:    ds.chanNames[i],
+			IsError:     ds.isTDM && (i%2 == 0),
+		}
+		DB.RecordSensors(&dsp.sensormsg)
+
 		if config.MapInternalOnly != nil {
 			channelNumber := ds.chanNumbers[i]
 			pixel = config.MapInternalOnly.Pixels[channelNumber-1]
@@ -757,30 +817,42 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		}
 		if config.WriteLJH22 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh")
+			msg := dastarddb.FileMessage{
+				SensorID: sensorID,
+				Filename: filename,
+			}
 			dsp.DataPublisher.SetLJH22(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
 				rowNum, colNum, ds.subframeOffsets[i], filename,
-				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
+				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel, &msg)
 			dsp.DataPublisher.LJH22.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
+			msg := dastarddb.FileMessage{
+				SensorID: sensorID,
+				Filename: filename,
+			}
 			dsp.DataPublisher.SetOFF(i, dsp.NPresamples, dsp.NSamples, fps,
 				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
 				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
-				dsp.modelDescription, pixel)
+				dsp.modelDescription, pixel, &msg)
 			dsp.DataPublisher.OFF.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 			channelsWithOff++
 		}
 		if config.WriteLJH3 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
+			msg := dastarddb.FileMessage{
+				SensorID: sensorID,
+				Filename: filename,
+			}
 			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, ds.subframeDivisions,
-				ds.subframeOffsets[i], filename)
+				ds.subframeOffsets[i], filename, &msg)
 			dsp.DataPublisher.LJH3.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 	}
-	return ds.writingState.Start(filenamePattern, path, config)
+	return ds.writingState.Start(filenamePattern, basepath, config)
 }
 
 // ComputeWritingState returns a partial copy of the writingState
@@ -1209,6 +1281,7 @@ type DataRecord struct {
 	trigTime     time.Time
 	signed       bool // do we interpret the data as signed values?
 	channelIndex int
+	channelID    string
 	presamples   int
 	voltsPerArb  float32 // "volts" or other physical unit per raw unit
 	sampPeriod   float32

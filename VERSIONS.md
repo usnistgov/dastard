@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.4.0** June 10, 2025-
+* Build in (optional) use of a ClickHouse database to store run+channel info.
+
 **0.3.9** December 9, 2025-
 * Remove relic internals/ringbuffers and ability of Abaco to use it as a data source (issue 382).
 * Modernize to use Go 1.22+ features like `for range n` loops (issue 384),

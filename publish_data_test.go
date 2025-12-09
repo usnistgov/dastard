@@ -29,7 +29,7 @@ func TestPublishData(t *testing.T) {
 	}
 	startTime := time.Now()
 	dp.SetLJH22(1, 4, len(d), 1, 1, startTime, 8, 1, 16, 8, 3, 0, 3,
-		ljh2Testfile, "testSource", "chanX", 1, Pixel{})
+		ljh2Testfile, "testSource", "chanX", 1, Pixel{}, nil)
 	if err := dp.PublishData(records); err != nil {
 		t.Fail()
 	}
@@ -84,7 +84,7 @@ func TestPublishData(t *testing.T) {
 		t.Error("HasPubSummaries() true, want false")
 	}
 
-	dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
+	dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile, nil)
 	if err := dp.PublishData(records); err != nil {
 		t.Error("failed to publish record")
 	}
@@ -110,7 +110,7 @@ func TestPublishData(t *testing.T) {
 	projectors := mat.NewDense(nbases, nsamples, make([]float64, nbases*nsamples))
 	basis := mat.NewDense(nsamples, nbases, make([]float64, nbases*nsamples))
 	dp.SetOFF(0, 0, 0, 1, 1, time.Now(), 1, 1, 1, 1, 1, 1, 1, offTestfile, "sourceName",
-		"chanName", 1, projectors, basis, "ModelDescription", Pixel{})
+		"chanName", 1, projectors, basis, "ModelDescription", Pixel{}, nil)
 	if err := dp.PublishData(records); err != nil {
 		t.Error(err)
 	}
@@ -220,13 +220,13 @@ func BenchmarkPublish(b *testing.B) {
 	b.Run("PubLJH22", func(b *testing.B) {
 		dp := DataPublisher{}
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0, 0, 0,
-			"TestPublishData.ljh", "testSource", "chanX", 1, Pixel{})
+			"TestPublishData.ljh", "testSource", "chanX", 1, Pixel{}, nil)
 		defer dp.RemoveLJH22()
 		slowPart(b, dp, records)
 	})
 	b.Run("PubLJH3", func(b *testing.B) {
 		dp := DataPublisher{}
-		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
+		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile, nil)
 		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})
@@ -237,9 +237,9 @@ func BenchmarkPublish(b *testing.B) {
 		dp.SetPubSummaries()
 		defer dp.RemovePubSummaries()
 		dp.SetLJH22(0, 0, len(d), 1, 0, startTime, 0, 0, 0, 0, 0, 0, 0,
-			ljh2Testfile, "testSource", "chanX", 1, Pixel{})
+			ljh2Testfile, "testSource", "chanX", 1, Pixel{}, nil)
 		defer dp.RemoveLJH22()
-		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile)
+		dp.SetLJH3(0, 0, 0, 0, 0, 0, ljh3Testfile, nil)
 		defer dp.RemoveLJH3()
 		slowPart(b, dp, records)
 	})

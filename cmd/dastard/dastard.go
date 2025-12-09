@@ -10,9 +10,12 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -60,6 +63,7 @@ func makeFileExist(dir, filename string) (string, error) {
 // files and the filename and suffix. Sets some defaults.
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
+	viper.SetDefault("DBRequired", false)
 
 	HOME, err := os.UserHomeDir()
 	if err != nil { // Handle errors reading the config file
@@ -112,8 +116,10 @@ func main() {
 	}
 
 	printVersion := flag.Bool("version", false, "print version and quit")
-	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
-	memprofile := flag.String("memprofile", "", "write memory profile to this file")
+	pingdb := flag.Bool("ping-db", false, "connect to ClickHouse DB, test with a ping, and quit")
+	nodb := flag.Bool("no-db", false, "run without making a ClickHouse DB connection (will override a dbrequired: true in config.yaml file)")
+	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to given file")
+	memprofile := flag.String("memprofile", "", "write memory profile to given file")
 	flag.Parse()
 
 	if *printVersion {
@@ -126,6 +132,15 @@ func main() {
 		fmt.Printf("Running on %d CPUs.\n", runtime.NumCPU())
 		os.Exit(0)
 	}
+
+	if *pingdb {
+		if err := dastarddb.PingServer(); err != nil {
+			fmt.Println("Could not ping DB server: ", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	banner := fmt.Sprintf("\nThis is DASTARD version %s (git commit %s)\n", dastard.Build.Version, githash)
 	fmt.Print(banner)
 
@@ -164,19 +179,54 @@ func main() {
 	}
 
 	abort := make(chan struct{})
+	initiateDBConnection(*nodb, abort)
+
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
 	close(abort)
+	dastard.DB.Wait()
+	writeMemoryProfile(memprofile)
+}
 
-	if *memprofile != "" {
-		f, err := os.Create(*memprofile)
-		if err != nil {
-			log.Fatal("could not create memory profile: ", err)
-		}
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			log.Fatal("could not write memory profile: ", err)
-		}
+func initiateDBConnection(nodb bool, abort chan struct{}) {
+	if nodb {
+		fmt.Println("-no-db flag used: deliberately NOT connecting to ClickHouse DB")
+		return
+	}
+
+	activity := &dastarddb.DastardActivityMessage{
+		ID:        ulid.Make().String(),
+		Hostname:  dastard.Build.Host,
+		Githash:   dastard.Build.Githash,
+		Version:   dastard.Build.Version,
+		GoVersion: runtime.Version(),
+		CPUs:      runtime.NumCPU(),
+		Start:     time.Now(),
+	}
+	dastard.DB = dastarddb.StartDBConnection(activity, abort)
+	dbrequired := viper.GetBool("DBRequired")
+	if dastard.DB.IsConnected() {
+		viper.Set("DBRequired", true)
+	} else if dbrequired {
+		msg := "Cannot connect to database. Run with `-no-db` cmd-line argument,\n\tor set dbrequired: false in ~/.dastard/config.yaml"
+		panic(msg)
+	}
+}
+
+// writeMemoryProfile writes the memory use profile to the indicated file.
+// If `memprofile` points to an empty string, do not write.
+func writeMemoryProfile(memprofile *string) {
+	if *memprofile == "" {
+		return
+	}
+
+	f, err := os.Create(*memprofile)
+	if err != nil {
+		log.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+	runtime.GC()    // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Fatal("could not write memory profile: ", err)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"time"
+
+	"github.com/usnistgov/dastard/internal/dastarddb"
 )
 
 // Portnumbers structs can contain all TCP port numbers used by Dastard.
@@ -40,7 +42,7 @@ type BuildInfo struct {
 
 // Build is a global holding compile-time information about the build
 var Build = BuildInfo{
-	Version: "0.3.9pre2",
+	Version: "0.4.0pre1",
 	Githash: "no git hash computed",
 	Gitdate: "no git commit date entered",
 	Date:    "no build date computed",
@@ -57,11 +59,18 @@ var ProblemLogger *log.Logger
 // UpdateLogger will log client updates to a file
 var UpdateLogger *log.Logger
 
+// DB will be a database connection (possibly not valid)
+var DB *dastarddb.DastardDBConnection
+
 func init() {
 	setPortnumbers(BasePort)
 	DastardStartTime = time.Now()
 
-	// Dastard main program will override this, but at least initialize with a sensible value
+	// Dastard main program will override these loggers, but at least initialize with a sensible value
 	ProblemLogger = log.New(os.Stderr, "", log.LstdFlags)
 	UpdateLogger = log.New(os.Stdout, "", log.LstdFlags)
+
+	// Dastard main program will try to override this dummy DB interface, unless the -no-db argument was
+	// given or dbrequired: false appears in the config file.
+	DB = dastarddb.DummyDBConnection()
 }

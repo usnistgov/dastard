@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 	"github.com/usnistgov/dastard/internal/ljh"
 	"github.com/usnistgov/dastard/internal/off"
@@ -13,25 +14,28 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
-// DataPublisher contains many optional methods for publishing data, any methods that are non-nil will be used
-// in each call to PublishData
+// DataPublisher contains many optional methods for publishing data; any Writers that are non-nil
+// will be used in each call to PublishData. One instance of this object exists for each data channel.
 type DataPublisher struct {
 	PubRecordsChan   chan []*DataRecord
 	PubSummariesChan chan []*DataRecord
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
+	Mono             *MonoPublisher // Shared by all DataPublishers; used to publish unified all-channel data
+	SensorID         string
+	WritingDB        bool
 	WritingPaused    bool
-	numberWritten    int // integrates up the total number written, reset any time writing starts or stops
+	numberWritten    int // integrates up the total number written; reset any time writing starts or stops
 }
 
-// SetPause changes the paused state to the given value of pause
+// SetPause changes the paused state to the value of `pause`
 func (dp *DataPublisher) SetPause(pause bool) {
 	dp.WritingPaused = pause
 	dp.Flush()
 }
 
-// Flush calls Flush for each writer that has a Flush command (LJH22, LJH3, OFF)
+// Flush calls Flush for each active writer that has a Flush command (LJH22, LJH3, OFF)
 func (dp *DataPublisher) Flush() {
 	if dp.HasLJH22() {
 		dp.LJH22.Flush()
@@ -49,7 +53,8 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 	Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
 	FileName, sourceName, chanName string, ChannelNumberMatchingName int,
-	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string, pixel Pixel) {
+	Projectors *mat.Dense, Basis *mat.Dense, ModelDescription string, pixel Pixel,
+	filemsg *dastarddb.FileMessage) {
 	ReadoutInfo := off.TimeDivisionMultiplexingInfo{
 		NumberOfRows:      NumberOfRows,
 		NumberOfColumns:   NumberOfColumns,
@@ -60,12 +65,13 @@ func (dp *DataPublisher) SetOFF(ChannelIndex int, Presamples int, Samples int, F
 		SubframeOffset:    SubframeOffset}
 	PixelInfo := off.PixelInfo{XPosition: pixel.X, YPosition: pixel.Y, Name: pixel.Name}
 	w := off.NewWriter(FileName, ChannelIndex, chanName, ChannelNumberMatchingName, Presamples, Samples, Timebase,
-		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo)
+		Projectors, Basis, ModelDescription, Build.Version, Build.Githash, sourceName, ReadoutInfo, PixelInfo,
+		DB, filemsg)
 	dp.OFF = w
 	dp.numberWritten = 0
 }
 
-// HasOFF returns true if OFF is non-nil, eg if writing to OFF is occuring
+// HasOFF returns true if OFF is non-nil; used to decide if writing to OFF should occur
 func (dp *DataPublisher) HasOFF() bool {
 	return dp.OFF != nil
 }
@@ -83,7 +89,7 @@ func (dp *DataPublisher) RemoveOFF() {
 // SetLJH3 adds an LJH3 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
 func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 	NumberOfRows, NumberOfColumns, SubframeDivisions, SubframeOffset int,
-	FileName string) {
+	FileName string, filemsg *dastarddb.FileMessage) {
 	w := ljh.Writer3{
 		ChannelIndex:      ChannelIndex,
 		Timebase:          Timebase,
@@ -92,6 +98,8 @@ func (dp *DataPublisher) SetLJH3(ChannelIndex int, Timebase float64,
 		SubframeDivisions: SubframeDivisions,
 		SubframeOffset:    SubframeOffset,
 		FileName:          FileName,
+		FileMessage:       filemsg,
+		DB:                DB,
 	}
 	dp.LJH3 = &w
 	dp.WritingPaused = false
@@ -112,12 +120,15 @@ func (dp *DataPublisher) RemoveLJH3() {
 	dp.numberWritten = 0
 }
 
-// SetLJH22 adds an LJH22 writer to dp, the .file attribute is nil, and will be instantiated upon next call to dp.WriteRecord
-func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int, FramesPerSample int,
-	Timebase float64, TimestampOffset time.Time,
+// SetLJH22 adds an LJH22 writer to dp.
+// The Writer.file attribute is nil and will be instantiated upon next call to dp.WriteRecord
+func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
+	FramesPerSample int, Timebase float64, TimestampOffset time.Time,
 	NumberOfRows, NumberOfColumns, NumberOfChans, SubframeDivisions, rowNum, colNum, SubframeOffset int,
-	FileName, sourceName, chanName string, ChannelNumberMatchingName int, pixel Pixel) {
-	w := ljh.Writer{ChannelIndex: ChannelIndex,
+	FileName, sourceName, chanName string, ChannelNumberMatchingName int, pixel Pixel,
+	filemsg *dastarddb.FileMessage) {
+	w := ljh.Writer{
+		ChannelIndex:              ChannelIndex,
 		Presamples:                Presamples,
 		Samples:                   Samples,
 		FramesPerSample:           FramesPerSample,
@@ -139,18 +150,20 @@ func (dp *DataPublisher) SetLJH22(ChannelIndex int, Presamples int, Samples int,
 		PixelXPosition:            pixel.X,
 		PixelYPosition:            pixel.Y,
 		PixelName:                 pixel.Name,
+		FileMessage:               filemsg,
+		DB:                        DB,
 	}
 	dp.LJH22 = &w
 	dp.WritingPaused = false
 	dp.numberWritten = 0
 }
 
-// HasLJH22 returns true if LJH22 is non-nil, used to decide if writeint to LJH22 should occur
+// HasLJH22 returns true if LJH22 is non-nil; used to decide if writing to LJH22 should occur
 func (dp *DataPublisher) HasLJH22() bool {
 	return dp.LJH22 != nil
 }
 
-// RemoveLJH22 closes existing LJH22 file and assign .LJH22=nil
+// RemoveLJH22 closes existing LJH22 file and assigns .LJH22=nil
 func (dp *DataPublisher) RemoveLJH22() {
 	if dp.LJH22 != nil {
 		dp.LJH22.Close()
@@ -199,7 +212,9 @@ func (dp *DataPublisher) RemovePubSummaries() {
 	dp.PubSummariesChan = nil
 }
 
-// PublishData looks at each member of DataPublisher, and if it is non-nil, publishes each record into that member.
+// PublishData publishes each record in the slice `records` onto each
+// active specific publisher, including the ZMQ record port, the ZMQ
+// summary port, and the 3 possible disk file types (LJH22, LJH3, OFF).
 // The first step is to publish the full record and/or a record summary to the relevant ZMQ ports.
 // The second is to store the records into any active LJH22, LJH3, and/or OFF writers.
 func (dp *DataPublisher) PublishData(records []*DataRecord) error {
@@ -219,6 +234,11 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.WritingPaused {
 		return nil
 	}
+
+	if dp.WritingDB && dp.Mono != nil {
+		dp.Mono.RecordsChan <- records
+	}
+
 	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
 		return nil
 	}
@@ -330,7 +350,10 @@ func messageRecords(rec *DataRecord) [][]byte {
 
 	const headerVersion = uint8(0)
 	dataType := uint8(3)
-	if rec.signed { // DataSegment.signed is set deep within a source, then dsp.signed is set equal to DataSegment.signed in process data, then DataRecord.signed is set equal to dsp.signed upon record generation
+	// DataSegment.signed is set deep within a source,
+	// then dsp.signed is set equal to DataSegment.signed in process data,
+	// then DataRecord.signed is set equal to dsp.signed when record is generated.
+	if rec.signed {
 		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
@@ -358,8 +381,8 @@ var PubRecordsChan chan []*DataRecord
 var PubSummariesChan chan []*DataRecord
 
 // configurePubRecordsSocket should be run exactly one time.
-// It initializes PubFeederChan and launches a goroutine
-// that reads from PubFeederChan and publishes records on a ZMQ PUB socket at port PortTrigs.
+// It initializes PubRecordsChan and launches a goroutine
+// that reads from PubRecordsChan and publishes records on a ZMQ PUB socket at port PortTrigs.
 // This way even if goroutines in different threads want to publish records, they all use the same
 // zmq port. The goroutine can be stopped by closing PubRecordsChan.
 func configurePubRecordsSocket() error {
@@ -418,4 +441,66 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 		}
 	}()
 	return pubchan, nil
+}
+
+// MonoPublisher represents the object that collects pulse records from all channels to
+// publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
+// This was designed in Sept 2025 for an experiment with writing pulse records to a ClickHouse DB.
+// We are not going to take that route, so the object is currently unused. But here it remains,
+// in case we ever choose to write to an all-channel Arrow file, or similar.
+type MonoPublisher struct {
+	RecordsChan chan []*DataRecord
+	abort       chan struct{}
+}
+
+func NewMono(nchan int) *MonoPublisher {
+	mp := new(MonoPublisher)
+	mp.RecordsChan = make(chan []*DataRecord, 2*nchan)
+	mp.abort = make(chan struct{})
+	return mp
+}
+
+// LastChannelComplete signals to the publisher that there are no more channels to wait for,
+// and it's time to publish the collected data.
+func (mp *MonoPublisher) LastChannelComplete() {
+	mp.RecordsChan <- nil
+}
+
+// PublishLoop is the MonoPublisher's long-running goroutine.
+// It collects records from all channels into a single slice of *DataRecord,
+// and publishes them together when a nil slice arrives (caused by the DataSource calling
+// mp.LastChannelComplete() to indicate all channels have been checked).
+// When data writing is stopped, the abort channel will be closed, and this routine will exit.
+func (mp *MonoPublisher) PublishLoop() {
+	queuedRecords := make([]*DataRecord, 0, 100)
+	for {
+		select {
+		case <-mp.abort:
+			return
+		case records := <-mp.RecordsChan:
+			if records == nil {
+				mp.publishData(queuedRecords)
+				queuedRecords = queuedRecords[:0]
+			} else {
+				queuedRecords = append(queuedRecords, records...)
+			}
+		}
+	}
+}
+
+// Publish the slice of data collected from all channels.
+// For now, this writes them to the ClickHouse DB.
+// Eventually, it might write them to a single Apache Arrow file instead, or in addition.
+func (mp *MonoPublisher) publishData(records []*DataRecord) {
+	n := len(records)
+	channelIDs := make([]string, n)
+	timestamps := make([]time.Time, n)
+	subframecounts := make([]uint64, n)
+	pulses := make([][]uint16, n)
+	for i, record := range records {
+		channelIDs[i] = record.channelID
+		timestamps[i] = record.trigTime
+		subframecounts[i] = uint64(record.trigFrame)
+		pulses[i] = rawTypeToUint16(record.data)
+	}
 }

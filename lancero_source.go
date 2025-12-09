@@ -80,6 +80,7 @@ func NewLanceroSource() (*LanceroSource, error) {
 	source.nsamp = 1
 	source.devices = make(map[int]*LanceroDevice)
 	source.channelsPerPixel = 2
+	source.isTDM = true
 
 	for _, dnum := range devnums {
 		ld := LanceroDevice{devnum: dnum}
