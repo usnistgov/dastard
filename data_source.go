@@ -315,7 +315,6 @@ type AnySource struct {
 	configError  error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
-	noProcess           bool // Set true only for testing.
 	heartbeats          chan Heartbeat
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
