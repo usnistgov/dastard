@@ -63,11 +63,13 @@ func TestTriggerCoupling(t *testing.T) {
 			t.Errorf("Broker 1->%d not connected (%v)", rx, ds.broker.sources)
 		}
 	}
+
+	// Check that the computed group triggers use channel numbers, not indices.
 	gtscomputed := ds.ComputeGroupTriggerState()
 	for source, receivers := range cnumconnections {
 		for i, receiver := range receivers {
 			if gtscomputed.Connections[source][i] != receiver {
-				t.Errorf("ComputeGroupTriggerState[%d][%d] = %d, want %d", source, i, 
+				t.Errorf("ComputeGroupTriggerState().Connections[%d][%d] = %d, want %d", source, i, 
 				gtscomputed.Connections[source][i], receiver)
 			}
 		}

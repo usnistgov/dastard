@@ -973,8 +973,24 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 }
 
 // ComputeGroupTriggerState returns the current `GroupTriggerState`.
+// Though the trigger broker stores channels according to their index, we want to report this according to
+// channel number, for exterior use.
 func (ds *AnySource) ComputeGroupTriggerState() GroupTriggerState {
-	return ds.broker.computeGroupTriggerState()
+	gtsIndices := ds.broker.computeGroupTriggerState()
+	connections := make(map[int][]int)
+	for sourceIdx, receivers := range gtsIndices.Connections {
+		if sourceIdx >= 0 && sourceIdx < ds.nchan {
+			source := ds.chanNumbers[sourceIdx]
+			connections[source] = make([]int, len(receivers))
+			for i, receiverIdx := range receivers {
+				if receiverIdx >= 0 && receiverIdx < ds.nchan {
+					receiver := ds.chanNumbers[receiverIdx]
+					connections[source][i] = receiver
+				}
+			}
+		}
+	}
+	return GroupTriggerState{Connections: connections}
 }
 
 // FullTriggerState used to collect channels that share the same TriggerState
