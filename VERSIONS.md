@@ -4,6 +4,7 @@
 * Remove relic internals/ringbuffers and ability of Abaco to use it as a data source (issue 382).
 * Modernize to use Go 1.22+ features like `for range n` loops (issue 384),
   with `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test  -fix ./...`
+* Fix group trigger RPC calls and status report to accept and send channel numbers, not indices (issue 386).
 
 **0.3.8** December 8, 2025
 * Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).

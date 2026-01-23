@@ -333,6 +333,7 @@ func (ls *LanceroSource) PrepareChannels() error {
 	ls.rowColCodes = make([]RowColCode, ls.nchan)
 	ls.chanNames = make([]string, ls.nchan)
 	ls.chanNumbers = make([]int, ls.nchan)
+	ls.chanIndices = make(map[int]int)
 	ls.subframeOffsets = make([]int, ls.nchan)
 	index := 0
 	cnum := ls.firstRowChanNum
@@ -364,11 +365,13 @@ func (ls *LanceroSource) PrepareChannels() error {
 			for row := 0; row < device.nrows; row++ {
 				ls.chanNames[index] = fmt.Sprintf("err%d", cnum)
 				ls.chanNumbers[index] = cnum
+				ls.chanIndices[cnum] = index
 				ls.subframeOffsets[index] = row
 				ls.rowColCodes[index] = rcCode(row, col, device.nrows, device.ncols)
 				index++
 				ls.chanNames[index] = fmt.Sprintf("chan%d", cnum)
 				ls.chanNumbers[index] = cnum
+				ls.chanIndices[cnum] = index
 				ls.rowColCodes[index] = rcCode(row, col, device.nrows, device.ncols)
 				index++
 				cnum++

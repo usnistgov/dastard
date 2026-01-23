@@ -297,6 +297,7 @@ type AnySource struct {
 	name              string        // what kind of source is this?
 	chanNames         []string      // one name per channel
 	chanNumbers       []int         // names have format "prefixNumber", this is the number
+	chanIndices       map[int]int   // map back from channel number to index
 	rowColCodes       []RowColCode  // one RowColCode per channel
 	subframeOffsets   []int         // subframe time delay per channel
 	subframeDivisions int           // number of subframe divisions per frame
@@ -881,10 +882,12 @@ func (ds *AnySource) PrepareChannels() error {
 
 	ds.chanNames = make([]string, ds.nchan)
 	ds.chanNumbers = make([]int, ds.nchan)
+	ds.chanIndices = make(map[int]int)
 	ds.subframeOffsets = make([]int, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
 		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
 		ds.chanNumbers[i] = i
+		ds.chanIndices[i] = i
 		ds.subframeOffsets[i] = 0
 	}
 	return nil

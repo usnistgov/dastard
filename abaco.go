@@ -815,16 +815,20 @@ func (as *AbacoSource) PrepareChannels() error {
 	// as rows 0...g.nchan-1.
 	as.chanNames = make([]string, 0, as.nchan)
 	as.chanNumbers = make([]int, 0, as.nchan)
+	as.chanIndices = make(map[int]int)
 	as.subframeOffsets = make([]int, as.nchan) // all zeros for Abaco sources
 	as.rowColCodes = make([]RowColCode, 0, as.nchan)
 	ncol := len(as.groups)
+	index := 0
 	for col, g := range as.groupKeysSorted {
 		for row := 0; row < g.Nchan; row++ {
 			cnum := row + g.Firstchan
 			name := fmt.Sprintf("chan%d", cnum)
 			as.chanNames = append(as.chanNames, name)
 			as.chanNumbers = append(as.chanNumbers, cnum)
+			as.chanIndices[cnum] = index
 			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.Nchan, ncol))
+			index += 1
 		}
 	}
 	return nil
