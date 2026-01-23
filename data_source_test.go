@@ -1,6 +1,7 @@
 package dastard
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -11,6 +12,16 @@ import (
 func TestTriggerCoupling(t *testing.T) {
 	ds := AnySource{nchan: 8}
 	ds.PrepareChannels()
+
+	// Now shift the channel numbers away from 0
+	cnumOffset := 100
+	ds.chanIndices = make(map[int]int)
+	for i := range ds.nchan {
+		cnum := i + cnumOffset
+		ds.chanNumbers[i] = cnum
+		ds.chanNames[i] = fmt.Sprintf("chan%d", cnum)
+		ds.chanIndices[i+cnumOffset] = i
+	}
 	ds.PrepareRun(100, 1000)
 	var err error
 	if err = ds.SetCoupling(NoCoupling); err != nil {
@@ -20,11 +31,27 @@ func TestTriggerCoupling(t *testing.T) {
 		t.Errorf("ds.SetCoupling(FBToErr) should not be allowed (for non-Lancero source)")
 	}
 
-	// Make a GTS object with 5 connections
+	// First make a connections map with 5 connections using channel indices.
+	// This is what we expect the broker to mimic when properly set up.
+	// Then make a copy `cnumconnections`, where all values are channel numbers. This means they are
+	// offset by `cnumOffset` (the first channel number in the datasource) relative to the first map.
+	// Make a GTS object, using the latter map, the one based on channel numbers.
 	connections := make(map[int][]int)
 	connections[1] = []int{2, 3, 4}
 	connections[5] = []int{6, 7}
-	gts := &GroupTriggerState{Connections: connections}
+	cnumconnections := make(map[int][]int)
+	if ds.chanNumbers[0] <= 0 {
+		t.Errorf("trigger coupling test requires a source with channel numbers starting above zero, got %d", ds.chanNumbers[0])
+	}
+	for source, receivers := range connections {
+		cnumconnections[source+cnumOffset] = make([]int, len(receivers))
+		for i, receiver := range receivers {
+			cnumconnections[source+cnumOffset][i] = receiver+cnumOffset
+		}
+	}
+	cnumconnections[1+cnumOffset] = []int{2+cnumOffset, 3+cnumOffset, 4+cnumOffset}
+	cnumconnections[5+cnumOffset] = []int{6+cnumOffset, 7+cnumOffset}
+	gts := &GroupTriggerState{Connections: cnumconnections}
 
 	// Turn on the 5 connections and check some of them.
 	ds.ChangeGroupTrigger(true, gts)
