@@ -885,9 +885,10 @@ func (ds *AnySource) PrepareChannels() error {
 	ds.chanIndices = make(map[int]int)
 	ds.subframeOffsets = make([]int, ds.nchan)
 	for i := 0; i < ds.nchan; i++ {
-		ds.chanNames[i] = fmt.Sprintf("chan%d", i)
-		ds.chanNumbers[i] = i
-		ds.chanIndices[i] = i
+		cnum := i
+		ds.chanNames[i] = fmt.Sprintf("chan%d", cnum)
+		ds.chanNumbers[i] = cnum
+		ds.chanIndices[cnum] = i
 		ds.subframeOffsets[i] = 0
 	}
 	return nil
@@ -1053,16 +1054,24 @@ func (ds *AnySource) SetCoupling(status CouplingStatus) error {
 }
 
 // ChangeGroupTrigger either adds or deletes the connections in `gts` (add when `turnon` is true,
-// otherwise delete).
+// otherwise delete). The connections in `gts` use channel _numbers_, not indices.
+// This functions maps numbers into indices internally.
 func (ds *AnySource) ChangeGroupTrigger(turnon bool, gts *GroupTriggerState) error {
 	// changer is either the Add or Delete function, depending on turnon
 	changer := ds.broker.DeleteConnection
 	if turnon {
 		changer = ds.broker.AddConnection
 	}
-	for source, receivers := range gts.Connections {
-		for _, receiver := range receivers {
-			changer(source, receiver)
+	// Map the channel numbers in the `gts` that comes from the RPC server, into indices.
+	// Silently ignore any invalid channel numbers.
+	for sourceCnum, receivers := range gts.Connections {
+		sourceIdx, ok := ds.chanIndices[sourceCnum]; if !ok {
+			continue
+		}
+		for _, receiverCnum := range receivers {
+			receiverIdx, ok := ds.chanIndices[receiverCnum]; if ok {
+				changer(sourceIdx, receiverIdx)
+			}
 		}
 	}
 	return nil
