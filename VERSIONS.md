@@ -1,5 +1,17 @@
 ## DASTARD Versions
 
+**0.3.9** December 9, 2025-
+* Remove relic internals/ringbuffers and ability of Abaco to use it as a data source (issue 382).
+* Modernize to use Go 1.22+ features like `for range n` loops (issue 384),
+  with `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test  -fix ./...`
+* Broadcast channel names to clients before info that requires the name-numbering-index relationship (issue 388).
+
+**0.3.8** December 8, 2025
+* Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).
+* Make the file-synchronizing be optional to avert HDD problem (issue 376).
+* Test that the UDP receive buffer is large enough for µMUX use.
+* Update dependencies with `go get -u ./...`
+
 **0.3.7** August 5, 2025
 * Reorganize the sub-modules to live in "internal" (so their API isn't exposed outside Dastard).
 * Synchronize disk writes occasionally, and in parallel across multiple channels (issues 353, 354).

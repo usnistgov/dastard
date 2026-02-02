@@ -89,7 +89,7 @@ func kinkModelResult(k float64, xdata []float64, ydata []float64) ([]float64, fl
 	// sdxi - sum of xi, with k subtracted from each value
 	// sdxj - sum of xj, with k subtracted from each value
 	// other variables follow same pattern
-	for i := 0; i < len(xdata); i++ {
+	for i := range xdata {
 		xd := xdata[i] - k
 		yd := ydata[i]
 		sy += yd
@@ -115,7 +115,7 @@ func kinkModelResult(k float64, xdata []float64, ydata []float64) ([]float64, fl
 	c := abc.AtVec(2)
 	var ymodel []float64
 	var X2 float64
-	for i := 0; i < len(xdata); i++ {
+	for i := range xdata {
 		ym := kinkModel(k, xdata[i], a, b, c)
 		d := ydata[i] - ym
 		X2 += d * d
@@ -131,7 +131,7 @@ func kinkModelFit(xdata []float64, ydata []float64, ks []float64) (float64, floa
 	X2min = math.MaxFloat64
 	var kbest float64
 	var returnErr error
-	for i := 0; i < len(ks); i++ {
+	for i := range ks {
 		k := ks[i]
 
 		_, _, _, _, X2, err := kinkModelResult(k, xdata, ydata)
@@ -157,7 +157,7 @@ func zeroThreshold(raw []RawType, i int32, enable bool) int32 {
 	}
 	xdataf := [8]float64{0, 0, 0, 0, 0, 0, 0, 0}
 	ydataf := [8]float64{0, 0, 0, 0, 0, 0, 0, 0}
-	for j := 0; j < 8; j++ {
+	for j := range 8 {
 		xdataf[j] = float64(int32(j) + i - 4) // look at samples from i-4 to i+3
 		ydataf[j] = float64(raw[int32(j)+i-4])
 	}
@@ -274,18 +274,19 @@ func edgeMultiShouldRecord(t, u, v FrameIndex, npreIn, nsampIn int32, mode EMTMo
 		// this will eventually lead to u == t as more triggers are inspected
 		return RecordSpec{-1, -1, -1}, false
 	}
-	if mode == EMTRecordsVariableLength {
+	switch mode {
+	case EMTRecordsVariableLength:
 		// always make a record, but don't overlap with neighboring triggers
 		return RecordSpec{u, npre, npre + npost}, true
-	} else if mode == EMTRecordsOneFullLength {
+	case EMTRecordsOneFullLength:
 		// always make a record, but don't overlap with neighboring triggers
 		if u-t >= FrameIndex(nsampIn) {
 			return RecordSpec{u, npreIn, nsampIn}, true
 		}
-	} else if mode == EMTRecordsTwoFullLength {
+	case EMTRecordsTwoFullLength:
 		// always make a record, overlap with neighboring records
 		return RecordSpec{u, npreIn, nsampIn}, true
-	} else if mode == EMTRecordsFullLengthIsolated {
+	case EMTRecordsFullLengthIsolated:
 		if npre >= npreIn && npre+npost >= nsampIn {
 			return RecordSpec{u, npreIn, nsampIn}, true
 		}

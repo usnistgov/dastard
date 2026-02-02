@@ -11,7 +11,7 @@ func main() {
 	Conn, _ := net.DialUDP("udp", nil, &net.UDPAddr{IP: []byte{127, 0, 0, 1}, Port: 12321, Zone: ""})
 	defer Conn.Close()
 	for i := 1; i <= 60; i++ {
-		Conn.Write([]byte(fmt.Sprintf("hello %d", i)))
+		Conn.Write(fmt.Appendf(nil, "hello %d", i))
 		time.Sleep(time.Second)
 	}
 }

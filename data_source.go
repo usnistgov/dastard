@@ -272,7 +272,7 @@ func rcCode(row, col, rows, cols int) RowColCode {
 
 // dataBlock contains a block of data (one segment per data stream)
 // This implies that dataBlock has synchronized data across all parts of a source (all Lancero
-// cards, all Abaco ring buffers and channel groups, etc.).
+// cards, all Abaco UDP sources and channel groups, etc.).
 type dataBlock struct {
 	segments                 []DataSegment
 	externalTriggerRowcounts []int64
@@ -315,7 +315,6 @@ type AnySource struct {
 	configError  error // Any error that arose when configuring the source (before Start)
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
-	noProcess           bool // Set true only for testing.
 	heartbeats          chan Heartbeat
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
@@ -378,7 +377,7 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 
 	// Copy data into the ab.segments
 	ncopied := 0
-	for i := 0; i < nchan; i++ {
+	for i := range nchan {
 		src := block.segments[i]
 		if i == 0 {
 			ncopied = len(src.rawData)
@@ -636,7 +635,7 @@ func makeDirectory(basepath string) (string, error) {
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
 		return "", err
 	}
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		thisDir := filepath.Join(todayDir, fmt.Sprintf("%4.4d", i))
 		_, err := os.Stat(thisDir)
 		if os.IsNotExist(err) {
@@ -762,6 +761,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				timebase, DastardStartTime, nrows, ncols, ds.nchan, ds.subframeDivisions,
 				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], pixel)
+			dsp.DataPublisher.LJH22.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 		if config.WriteOFF && dsp.HasProjectors() {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "off")
@@ -770,12 +770,14 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				rowNum, colNum, ds.subframeOffsets[i], filename,
 				ds.name, ds.chanNames[i], ds.chanNumbers[i], dsp.projectors, dsp.basis,
 				dsp.modelDescription, pixel)
+			dsp.DataPublisher.OFF.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 			channelsWithOff++
 		}
 		if config.WriteLJH3 {
 			filename := fmt.Sprintf(filenamePattern, dsp.Name, "ljh3")
 			dsp.DataPublisher.SetLJH3(i, timebase, nrows, ncols, ds.subframeDivisions,
 				ds.subframeOffsets[i], filename)
+			dsp.DataPublisher.LJH3.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 	}
 	return ds.writingState.Start(filenamePattern, path, config)

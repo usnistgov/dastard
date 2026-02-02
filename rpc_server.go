@@ -381,9 +381,9 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.status.Nchannels = s.ActiveSource.Nchan()
 	s.status.ChanGroups = s.ActiveSource.ChanGroups()
 	s.broadcastStatus()
+	s.broadcastChannelNames()
 	s.broadcastTriggerState()
 	s.broadcastGroupTriggerState()
-	s.broadcastChannelNames()
 	s.storeChannelGroups()
 	*reply = true
 	return nil
@@ -437,6 +437,7 @@ type WriteControlConfig struct {
 	WriteLJH22      bool   // turn on one or more file formats
 	WriteOFF        bool
 	WriteLJH3       bool
+	FlushAlsoSyncs  bool
 	MapInternalOnly *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 

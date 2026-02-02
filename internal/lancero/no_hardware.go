@@ -130,7 +130,7 @@ func (lan *NoHardware) AvailableBuffer() ([]byte, time.Time, error) {
 		return buf.Bytes(), now, fmt.Errorf("reads were %v apart, want < %v", sinceLastRead, 50*lan.minTimeBetweenReads)
 	}
 
-	for i := 0; i < frames; i++ { // i counts frames
+	for range frames { // i counts frames
 		for row := 0; row < lan.nrows; row++ {
 			for col := 0; col < lan.ncols; col++ {
 				v := byte(uint8(lan.rowCount))

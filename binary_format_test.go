@@ -21,7 +21,7 @@ func TestPublishRecord(t *testing.T) {
 		t.Errorf("bytes.Reader has length %d, want %d", buf.Len(), len(header))
 	}
 	var b uint8
-	for i := 0; i < len(header); i++ {
+	for range header {
 		if err := binary.Read(buf, binary.LittleEndian, &b); err != nil {
 			t.Errorf("binary.Read failed: %v", err)
 		}

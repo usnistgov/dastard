@@ -241,14 +241,11 @@ includes external trigger information, which is extracted here.
 
 ### Abaco data source
 
-An `AbacoSource` (`abaco.go`) reads out one or more Abaco devices. The devices can be programmed to put data
-into a large user-space ring buffer or to produce UDP packets for DASTARD to read. The ring buffer type is
-older, and the UDP type is the newer version intended for long-term use. Either device produces data in a
-packet format (defined and processed in `packets/packets.go`).
+An `AbacoSource` (`abaco.go`) reads out one or more Abaco devices. The devices can produce UDP packets for DASTARD
+in a packet format (defined and processed in `packets/packets.go`).
 
-The `AbacoSource` owns slices of two types: `[]AbacoRing` and `[]AbacoUDPReceiver`. Both types implement the
-`PacketProducer` interface. The slice of rings is filled at creation time in `NewAbacoSource()` by checking
-for the existence of shared memory regions named `xdma*_c2h_0_description`. The UDP receivers, by contrast,
+The `AbacoSource` owns slices of type: `[]AbacoUDPReceiver`, which implements the
+`PacketProducer` interface. The UDP receivers
 are not created until the source is configured in `AbacoSource.Configure()`, because the user has to choose
 them from among the near-infinite space of host:port choices. After the configure call, the source maintains a
 slice `producers` that can potentially have one or more sources of one or both types.

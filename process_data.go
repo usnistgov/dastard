@@ -163,12 +163,12 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 		level := dsp.DecimateLevel
 		cdata := make([]float64, Nout)
 		if segment.signed {
-			for i := 0; i < Nin; i++ {
+			for i := range Nin {
 				j := i / level
 				cdata[j] += float64(int16(data[i]))
 			}
 		} else {
-			for i := 0; i < Nin; i++ {
+			for i := range Nin {
 				j := i / level
 				cdata[j] += float64(data[i])
 			}
@@ -182,19 +182,19 @@ func (dsp *DataStreamProcessor) DecimateData(segment *DataSegment) {
 			// Trick for rounding to int16: don't let any numbers be negative,
 			// because float->int is a truncation operation. If we removed the
 			// +65536 in this loop, then 0 would become an unwanted "rounding attractor".
-			for i := 0; i < Nout; i++ {
+			for i := range Nout {
 				data[i] = RawType(int16(cdata[i]/float64(level) + 65536 + 0.5))
 			}
 
 		} else {
-			for i := 0; i < Nout; i++ {
+			for i := range Nout {
 				data[i] = RawType(cdata[i]/float64(level) + 0.5)
 			}
 		}
 
 	} else {
 		// Decimate by dropping data
-		for i := 0; i < Nout; i++ {
+		for i := range Nout {
 			data[i] = data[i*dsp.DecimateLevel]
 		}
 	}
@@ -227,7 +227,7 @@ func (dsp *DataStreamProcessor) AnalyzeData(records []*DataRecord) {
 		npre := rec.presamples
 		d0 := dataVec.AtVec(0)
 		xmean := float64(npre-1) * 0.5
-		for i := 0; i < npre; i++ {
+		for i := range npre {
 			val += dataVec.AtVec(i)
 			valPTDelta += (dataVec.AtVec(i) - d0) * (float64(i) - xmean)
 		}
