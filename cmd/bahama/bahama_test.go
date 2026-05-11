@@ -125,9 +125,9 @@ func BenchmarkUDPGenerate(b *testing.B) {
 	packetchan := make(chan []byte)
 
 	control := BahamaControl{Nchan: 64, Ngroups: 1, Nsources: 1, pulses: true,
-		noiselevel: 5.0, samplerate: 244140, port: 4000}
-	if err := udpwriter(control.port, packetchan); err != nil {
-		b.Errorf("udpwriter(%d,...) failed: %v\n", control.port, err)
+		noiselevel: 5.0, samplerate: 244140, host: "localhost", port: 4000}
+	if err := udpwriter(control.host, control.port, packetchan); err != nil {
+		b.Errorf("udpwriter(%s,%d,...) failed: %v\n", control.host, control.port, err)
 	}
 	if err := generateData(control.Nchan, 0, packetchan, cancel, control); err != nil {
 		b.Errorf("generateData() returned %s", err.Error())

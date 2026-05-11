@@ -23,6 +23,7 @@ type BahamaControl struct {
 	Chan0      int // channel number of first channel
 	chanGaps   int // how many channel numbers to skip between groups
 	port       int
+	host	   string
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
@@ -38,7 +39,7 @@ type BahamaControl struct {
 func (control *BahamaControl) Report() {
 	fmt.Println("Samples per second:       ", control.samplerate)
 	fmt.Printf("Drop packets randomly:     %.2f%%\n", 100.0*control.dropfrac)
-	fmt.Println("Generating UDP packets on port ", control.port)
+	fmt.Printf("Generating UDP packets on %s:%d\n", control.host, control.port)
 	fmt.Println("Number of UDP sources:    ", control.Nsources)
 	fmt.Println("Channels per UDP source:  ", control.Nchan)
 	fmt.Println("Channel groups per UDP:   ", control.Ngroups)
@@ -248,8 +249,8 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 }
 
 // udpwriter is called once per data source (i.e., per UDP port producing data)
-func udpwriter(portnum int, packetchan chan []byte) error {
-	hostname := fmt.Sprintf("localhost:%d", portnum)
+func udpwriter(host string, portnum int, packetchan chan []byte) error {
+	hostname := fmt.Sprintf("%s:%d", host, portnum)
 	addr, err := net.ResolveUDPAddr("udp", hostname)
 	if err != nil {
 		return err
@@ -298,6 +299,7 @@ func main() {
 	changaps := flag.Int("gaps", 0, "How many channel numbers to skip between groups (relevant only if ngroups>1 or nsource>1)")
 	ngroups := flag.Int("ngroups", 1, "Number of channel groups per source, (1-Nchan/4) allowed")
 	port := flag.Int("port", 4000, "UDP port to produce data")
+	host := flag.String("host", "localhost", "Hostname or IP address to bind to")
 	samplerate := flag.Float64("rate", 200000., "Samples per channel per second, 1000-500000")
 	noiselevel := flag.Float64("noise", 0.0, "White noise level (<=0 means no noise)")
 	usesawtooth := flag.Bool("saw", false, "Whether to add a sawtooth pattern")
@@ -335,7 +337,7 @@ func main() {
 	}
 
 	control := BahamaControl{Nchan: *nchan, Ngroups: *ngroups,
-		Nsources: *nsource, port: *port,
+		Nsources: *nsource, port: *port, host: *host,
 		Chan0: *chan0, chanGaps: *changaps,
 		stagger: *stagger, interleave: *interleave,
 		sawtooth: *usesawtooth, pulses: *usepulses, crosstalk: *crosstalk,
@@ -355,7 +357,7 @@ func generateAndPublishData(control BahamaControl, cancel chan os.Signal) {
 		packetchan := make(chan []byte)
 		defer close(packetchan)
 		portnum := (control.port) + cardnum
-		if err := udpwriter(portnum, packetchan); err != nil {
+		if err := udpwriter(control.host, portnum, packetchan); err != nil {
 			fmt.Printf("udpwriter(%d,...) failed: %v\n", portnum, err)
 			continue
 		}

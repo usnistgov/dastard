@@ -381,9 +381,9 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	s.status.Nchannels = s.ActiveSource.Nchan()
 	s.status.ChanGroups = s.ActiveSource.ChanGroups()
 	s.broadcastStatus()
+	s.broadcastChannelNames()
 	s.broadcastTriggerState()
 	s.broadcastGroupTriggerState()
-	s.broadcastChannelNames()
 	s.storeChannelGroups()
 	*reply = true
 	return nil
