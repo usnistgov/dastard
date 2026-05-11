@@ -1,5 +1,6 @@
 // Package appendablenpy provides classes that write in numpy's *.npy
-// format, but extendable
+// format, but extendable. They are not currently (May 2026) used in
+// Dastard, but @ggggggggg was inclined to add this feature.
 
 package appendablenpy
 
@@ -24,13 +25,18 @@ func OpenAppendableNPY(fp *os.File, dtype string) (an *AppendableNPY) {
 	an.writer = fp
 	an.dtype_description = dtype
 	an.size_max_digits = 10
+	// The header must begin with 10 "pre-header bytes":
+	// - the 6-byte magic "\x93NUMPY", 
+	// - the 2-byte version number "\x01\x00" (means version 1.0)
+	// - the 2-byte header size, little endian. Fill in zero here; we update later
 	header := []byte{0x93,  0x4e,  0x55,  0x4d,  0x50,  0x59,  0x01,  0, 0, 0}
 	header = append(header, []byte("{'descr': ")...)
 	header = append(header, []byte(dtype)...)
 	header = append(header, []byte(", 'fortran_order': False, 'shape': (0         ,),}")...)
 	an.shape_ptr = len(header) - len([]byte("0         ,),}"))
 
-	// Put header size into bytes 8-9, little-endian. It's a multiple of 64 bytes
+	// Put header size (exclusive of pre-header) into bytes 8-9, little-endian.
+	// Full header (including pre-header plus termination string "\n") must be a multiple of 64 bytes.
 	const PREHEADER_SIZE = 10
 	nunits := (len(header) + HEADER_UNITS) / HEADER_UNITS
 	header_size := nunits * HEADER_UNITS - PREHEADER_SIZE
@@ -41,7 +47,7 @@ func OpenAppendableNPY(fp *os.File, dtype string) (an *AppendableNPY) {
 	npad := header_size + PREHEADER_SIZE - (1 + len(header))
 	if npad > 0 {
 		spaces := make([]byte, npad)
-		for i := 0; i < npad; i++ {
+		for i := range(npad) {
 			spaces[i] = 0x20
 		}
 		header = append(header, spaces...)
@@ -60,12 +66,14 @@ func (an *AppendableNPY) Write(data [][]byte) error {
 		}
 	}
 
-	// Now seek backwards to update the header then forward to the end of file
+	// Now seek backwards to update the header
 	an.items_written += n
 	shape_text := fmt.Sprintf("%-10d", an.items_written)
 	shape_bytes := []byte(shape_text)
 	an.writer.Seek(int64(an.shape_ptr), 0)
 	an.writer.Write(shape_bytes)
+
+	// Return to the end-of-file, to be ready for another write
 	an.writer.Seek(0, 2)
 	return nil
 }
