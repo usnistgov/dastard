@@ -35,6 +35,8 @@ func (db *DastardDBConnection) IsConnected() bool {
 	return (db != nil) && (db.conn != nil) && (db.err == nil)
 }
 
+// PingServer attempts to create a DB connection, inquire the version number, and disconnect.
+// It returns a nil error if that all succeeds.
 func PingServer() error {
 	db := createDBConnection()
 	if !db.IsConnected() {
@@ -88,16 +90,16 @@ func createDBConnection() *DastardDBConnection {
 			ClientInfo: client,
 			TLS:        nil,
 		}
+		conn, err := clickhouse.Open(&opt)
+		if err != nil {
+			db.err = err
+			return db
+		}
+		db.conn = conn
+		db.Add(1)
+		
+		// Ping the server at the DB connection.
 	ctx := context.Background()
-	conn, err := clickhouse.Open(&opt)
-	if err != nil {
-		db.err = err
-		return db
-	}
-	db.conn = conn
-	db.Add(1)
-
-	// Ping the server at the DB connection.
 	if err = conn.Ping(ctx); err != nil {
 		if exception, ok := err.(*clickhouse.Exception); ok {
 			fmt.Printf("Exception [%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
@@ -106,6 +108,7 @@ func createDBConnection() *DastardDBConnection {
 		return db
 	}
 
+	// Some parameters that we might wish to set in the future?
 	// db.SetConnMaxLifetime(time.Minute * 3)
 	// db.SetMaxOpenConns(10)
 	// db.SetMaxIdleConns(10)
@@ -116,22 +119,36 @@ func createDBConnection() *DastardDBConnection {
 	return db
 }
 
+const dontwait = false
+// const dowait = true
+
+func(db *DastardDBConnection) asyncInsert(query string, wait bool, args ...any) {
+	ctx := context.Background()
+	var waitint int  // 0 = don't wait for flush, 1 = wait for flush
+	if wait {
+		waitint = 1
+	}
+	asyncCtx := clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+	    "async_insert": 1,
+	    "wait_for_async_insert": waitint,
+	}))
+	if err := db.conn.Exec(asyncCtx, query, args...); err != nil {
+		fmt.Println("Error raised on async insert ", err)
+		db.err = err
+	}
+}
+
 func (db *DastardDBConnection) logActivity() {
 	if !db.IsConnected() {
 		return
 	}
-	ctx := context.Background()
-	const nowait = false
 	ae := db.activityEntry
 	formattedStart := ae.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := ae.End.Format("2006-01-02 15:04:05.000000")
-	if err := db.conn.AsyncInsert(ctx, `INSERT INTO dastardactivity VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
+	db.asyncInsert(`INSERT INTO dastardactivity VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
 		ae.ID, ae.Hostname, ae.Githash, ae.Version,
 		ae.GoVersion, ae.CPUs, formattedStart, formattedEnd,
-	); err != nil {
-		fmt.Println("Error raised on AsyncInsert into dastardactivity ", err)
-		db.err = err
-	}
+	)
 }
 
 func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
@@ -198,50 +215,34 @@ func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	if !db.IsConnected() {
 		return
 	}
-	ctx := context.Background()
-	const nowait = false
 	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
 	toffset := m.TimeOffset.UnixMicro() / 1e6
-	if err := db.conn.AsyncInsert(ctx, `INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
+	db.asyncInsert(`INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
 		m.ID, db.activityEntry.ID, m.DateRunCode, m.Intention, m.DataSource, m.Directory,
 		m.Nchannels, m.NPresamples, m.NSamples,
 		toffset, m.Timebase, formattedStart, formattedEnd,
-	); err != nil {
-		fmt.Println("Error raised on AsyncInsert into dataruns ", err)
-		db.err = err
-	}
+	)
 }
 
 func (db *DastardDBConnection) handleSensorMessage(m *SensorMessage) {
 	if !db.IsConnected() {
 		return
 	}
-	ctx := context.Background()
-	const nowait = false
-	if err := db.conn.AsyncInsert(ctx, `INSERT INTO sensors VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
+	db.asyncInsert(`INSERT INTO sensors VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
 		m.ID, m.DatarunID, m.DateRunCode, m.RowNum, m.ColNum,
 		m.ChanNum, m.ChanIndex, m.ChanName, m.IsError,
-			); err != nil {
-		fmt.Println("Error raised on AsyncInsert into sensors ", err)
-		db.err = err
-	}
+	)
 }
 
 func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 	if !db.IsConnected() {
 		return
 	}
-	ctx := context.Background()
-	const nowait = false
 	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
-
-	if err := db.conn.AsyncInsert(ctx, `INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, nowait,
+	db.asyncInsert(`INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
 		m.SensorID, m.Filename, m.Filetype, formattedStart, formattedEnd,
 		m.Records, m.Size, m.SHA256,
-	); err != nil {
-		fmt.Println("Error raised on AsyncInsert into files ", err)
-		db.err = err
-	}
+	)
 }

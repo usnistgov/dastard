@@ -5,6 +5,7 @@ import "time"
 // The composite types used for messages to the ClickHouse database.
 
 // DastardActivityMessage is the information for the dastardactivity table.
+// End won't be filled in until Dastard shuts down.
 type DastardActivityMessage struct {
 	ID        string
 	Hostname  string
@@ -17,6 +18,7 @@ type DastardActivityMessage struct {
 }
 
 // DatarunMessage is the information required to make an entry in the dataruns table.
+// End won't be filled in until the data run shuts down.
 type DatarunMessage struct {
 	ID          string
 	DastardID   string
