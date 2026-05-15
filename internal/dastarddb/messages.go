@@ -35,6 +35,9 @@ type DatarunMessage struct {
 	NSamples    int
 	TimeOffset  time.Time
 	Timebase    float64
+	Users       string
+	Sample      string
+	Purpose     string
 	Start       time.Time
 	End         time.Time
 }

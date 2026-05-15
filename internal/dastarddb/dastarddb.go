@@ -218,11 +218,12 @@ func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
 	toffset := m.TimeOffset.UnixMicro() / 1e6
-	db.asyncInsert(`INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
+	db.asyncInsert(`INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
 		m.ID, db.activityEntry.ID, 
 		m.DateRunCode, m.Intention, m.DataSource, m.Directory,
-		m.Nchannels, m.NPresamples, m.NSamples,
-		toffset, m.Timebase, formattedStart, formattedEnd,
+		m.Nchannels, m.NPresamples, m.NSamples, toffset, m.Timebase, 
+		m.Users, m.Sample, m.Purpose,
+		formattedStart, formattedEnd,
 	)
 }
 

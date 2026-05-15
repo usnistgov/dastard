@@ -777,6 +777,9 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		NSamples:    NSamples,
 		TimeOffset:  DastardStartTime,
 		Timebase:    ds.samplePeriod.Seconds(),
+		Users:       "unknown",
+		Sample:      "unknown",
+		Purpose:     "unknown",
 		Start:       time.Now(),
 	}
 	DB.RecordDatarun(&ds.drecmsg)
