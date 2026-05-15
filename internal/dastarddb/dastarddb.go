@@ -24,7 +24,7 @@ type DastardDBConnection struct {
 	err           error
 	activityEntry *DastardActivityMessage
 	datarunmsg    chan *DatarunMessage
-	sensormsg     chan *SensorMessage
+	sensormsg     chan *[]SensorMessage
 	filemsg       chan *FileMessage
 	sync.WaitGroup
 }
@@ -114,7 +114,7 @@ func createDBConnection() *DastardDBConnection {
 	// db.SetMaxIdleConns(10)
 
 	db.datarunmsg = make(chan *DatarunMessage)
-	db.sensormsg = make(chan *SensorMessage)
+	db.sensormsg = make(chan *[]SensorMessage)
 	db.filemsg = make(chan *FileMessage)
 	return db
 }
@@ -160,8 +160,8 @@ func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 			return
 		case rmsg := <-db.datarunmsg:
 			db.handleDRMessage(rmsg)
-		case smsg := <-db.sensormsg:
-			db.handleSensorMessage(smsg)
+		case smsgs := <-db.sensormsg:
+			db.handleSensorMessages(smsgs)
 		case fmsg := <-db.filemsg:
 			db.handleFileMessage(fmsg)
 		}
@@ -197,7 +197,7 @@ func (db *DastardDBConnection) FinishDatarun(msg *DatarunMessage) {
 	go func() { db.datarunmsg <- msg }()
 }
 
-func (db *DastardDBConnection) RecordSensors(msg *SensorMessage) {
+func (db *DastardDBConnection) RecordSensors(msg *[]SensorMessage) {
 	if !db.IsConnected() || msg == nil {
 		return
 	}
@@ -227,14 +227,24 @@ func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	)
 }
 
-func (db *DastardDBConnection) handleSensorMessage(m *SensorMessage) {
+func (db *DastardDBConnection) handleSensorMessages(messages *[]SensorMessage) {
 	if !db.IsConnected() {
 		return
 	}
-	db.asyncInsert(`INSERT INTO sensors VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
-		m.ID, m.DatarunID, m.DateRunCode, m.RowNum, m.ColNum,
-		m.ChanNum, m.ChanIndex, m.ChanName, m.IsError,
-	)
+	ctx := context.Background()
+	batch, err := db.conn.PrepareBatch(ctx, "INSERT INTO sensors")
+	if err != nil {
+		fmt.Println("Error in PrepareBatch: ", err)
+		fmt.Println(messages)
+		return
+	}
+	for _, m := range *messages {
+		batch.Append(
+			m.ID, m.DatarunID, m.DateRunCode, m.RowNum, m.ColNum,
+			m.ChanNum, m.ChanIndex, m.ChanName, m.IsError,
+		)
+	}
+	batch.Send()
 }
 
 func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {

@@ -785,6 +785,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	DB.RecordDatarun(&ds.drecmsg)
 
 	channelsWithOff := 0
+	sensorMessages := make([]dastarddb.SensorMessage, 0, ds.Nchan())
 	for i, dsp := range ds.processors {
 		timebase := 1.0 / dsp.SampleRate
 		rccode := ds.rowColCodes[i]
@@ -800,7 +801,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		dsp.DataPublisher.WritingDB = config.WriteDB
 
 		id, _ := uuid.NewV7()
-		dsp.sensormsg = dastarddb.SensorMessage{
+		sensormsg := dastarddb.SensorMessage{
 			ID:          id,
 			DatarunID:   ds.drecmsg.ID,
 			DateRunCode: dateruncode,
@@ -811,7 +812,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			ChanName:    ds.chanNames[i],
 			IsError:     ds.isTDM && (i%2 == 0),
 		}
-		DB.RecordSensors(&dsp.sensormsg)
+		sensorMessages = append(sensorMessages, sensormsg)
 
 		if config.MapInternalOnly != nil {
 			channelNumber := ds.chanNumbers[i]
@@ -857,6 +858,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			dsp.DataPublisher.LJH3.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 	}
+	DB.RecordSensors(&sensorMessages)
 	return ds.writingState.Start(filenamePattern, basepath, config)
 }
 

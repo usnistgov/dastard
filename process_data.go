@@ -5,7 +5,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -22,7 +21,6 @@ type DataStreamProcessor struct {
 	LastEdgeMultiTrigger FrameIndex
 	stream               DataStream
 	lastTrigList         triggerList
-	sensormsg            dastarddb.SensorMessage
 
 	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
 	// Otherwise projectors must be of size (nbases,NSamples)
