@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.46.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+	github.com/google/uuid v1.6.0
 	github.com/lorenzosaino/go-sysctl v0.3.1
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pebbe/zmq4 v1.4.0
@@ -24,7 +25,6 @@ require (
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/nlpodyssey/gopickle v0.3.0 // indirect
 	github.com/paulmach/orb v0.13.0 // indirect

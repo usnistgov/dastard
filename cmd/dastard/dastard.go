@@ -195,7 +195,7 @@ func initiateDBConnection(nodb bool, abort chan struct{}) {
 	}
 
 	activity := &dastarddb.DastardActivityMessage{
-		ID:        ulid.Make().String(),
+		ID:        ulid.Make(),
 		Hostname:  dastard.Build.Host,
 		Githash:   dastard.Build.Githash,
 		Version:   dastard.Build.Version,

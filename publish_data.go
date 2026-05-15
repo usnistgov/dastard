@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 	"github.com/usnistgov/dastard/internal/ljh"
@@ -23,7 +24,7 @@ type DataPublisher struct {
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
 	Mono             *MonoPublisher // Shared by all DataPublishers; used to publish unified all-channel data
-	SensorID         string
+	SensorID         ulid.ULID
 	WritingDB        bool
 	WritingPaused    bool
 	numberWritten    int // integrates up the total number written; reset any time writing starts or stops
@@ -493,7 +494,7 @@ func (mp *MonoPublisher) PublishLoop() {
 // Eventually, it might write them to a single Apache Arrow file instead, or in addition.
 func (mp *MonoPublisher) publishData(records []*DataRecord) {
 	n := len(records)
-	channelIDs := make([]string, n)
+	channelIDs := make([]ulid.ULID, n)
 	timestamps := make([]time.Time, n)
 	subframecounts := make([]uint64, n)
 	pulses := make([][]uint16, n)

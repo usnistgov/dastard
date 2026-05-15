@@ -12,7 +12,7 @@ CREATE DATABASE IF NOT EXISTS dastard;
 USE dastard;
 
 CREATE TABLE IF NOT EXISTS dastardactivity (
-    `id`           FixedString(26),
+    `id`           UUID,
     `hostname`     LowCardinality(String) DEFAULT 'unknown',
     `git_hash`     LowCardinality(String) DEFAULT 'unknown',
     `version`      LowCardinality(String) DEFAULT 'unknown',
@@ -22,13 +22,13 @@ CREATE TABLE IF NOT EXISTS dastardactivity (
     `server_end`   DateTime64(6),
 )
     ENGINE = ReplacingMergeTree()
-    PRIMARY KEY (id)
+    ORDER BY (id)
     COMMENT 'Each row represents one invocation of Dastard';
 
 
 CREATE TABLE IF NOT EXISTS dataruns (
-    `id`              FixedString(26),
-    `dastard_id`      FixedString(26) COMMENT 'link to dastardactivity.id',
+    `id`              UUID,
+    `dastard_id`      UUID COMMENT 'link to dastardactivity.id',
     `date_run_code`   String,
     `intention`       LowCardinality(String) DEFAULT 'unknown',
     `datasource`      LowCardinality(String) DEFAULT 'unknown',
@@ -38,17 +38,20 @@ CREATE TABLE IF NOT EXISTS dataruns (
     `number_samples`  UInt32,
     `time_offset`     Float64,
     `timebase`        Float64,
+    `users`           LowCardinality(String) DEFAULT 'unknown',
+    `sample`          LowCardinality(String) DEFAULT 'unknown',
+    `purpose`         LowCardinality(String) DEFAULT 'unknown',
     `start`           DateTime64(6),
     `end`             DateTime64(6),
 )
     ENGINE = ReplacingMergeTree()
-    PRIMARY KEY (id)
+    ORDER BY (id)
     COMMENT 'Each row represents one simultaneous set of Dastard data files';
 
 
 CREATE TABLE IF NOT EXISTS sensors (
-    `id`              FixedString(26),
-    `datarun_id`      FixedString(26) COMMENT 'link to dataruns.id',
+    `id`              UUID,
+    `datarun_id`      UUID COMMENT 'link to dataruns.id',
     `date_run_code`   String,
     `row_number`      UInt32 NULL Comment 'TDM row number, or NULL for µMUX',
     `column_number`   UInt32 NULL Comment 'TDM column number, or NULL for µMUX',
@@ -58,11 +61,11 @@ CREATE TABLE IF NOT EXISTS sensors (
     `isError`         Bool DEFAULT false,
 )
     ENGINE = MergeTree()
-    PRIMARY KEY (id)
+    ORDER BY (id)
     COMMENT 'Each row represents one microcalorimeter in one datarun';
 
 CREATE TABLE IF NOT EXISTS files (
-    `sensor_id`       FixedString(26) COMMENT 'link to sensors.id',
+    `sensor_id`       UUID COMMENT 'link to sensors.id',
     `filename`        String,
     `file_type`       LowCardinality(String) DEFAULT 'ljh2',
     `start`           DateTime64(6),
@@ -72,5 +75,5 @@ CREATE TABLE IF NOT EXISTS files (
     `sha256`          FixedString(64),
 )
     ENGINE = ReplacingMergeTree()
-    PRIMARY KEY (sensor_id, file_type)
+    ORDER BY (sensor_id, file_type)
     COMMENT 'Each row represents one microcalorimeter data file';

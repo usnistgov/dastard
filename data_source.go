@@ -766,7 +766,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	NPresamples, NSamples, _ := ds.getPulseLengths()
 
 	ds.drecmsg = dastarddb.DatarunMessage{
-		ID:          ulid.Make().String(),
+		ID:          ulid.Make(),
 		DateRunCode: dateruncode,
 		Intention:   "testing", // TODO: add ability to change datarun intentions
 		DataSource:  ds.name,
@@ -791,7 +791,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		fps := 1
 		var pixel Pixel
 
-		sensorID := ulid.Make().String()
+		sensorID := ulid.Make()
 		dsp.DataPublisher.SensorID = sensorID
 		dsp.DataPublisher.WritingDB = config.WriteDB
 
@@ -1281,7 +1281,7 @@ type DataRecord struct {
 	trigTime     time.Time
 	signed       bool // do we interpret the data as signed values?
 	channelIndex int
-	channelID    string
+	channelID    ulid.ULID
 	presamples   int
 	voltsPerArb  float32 // "volts" or other physical unit per raw unit
 	sampPeriod   float32
