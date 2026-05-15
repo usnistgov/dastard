@@ -12,7 +12,7 @@ CREATE DATABASE IF NOT EXISTS dastard;
 USE dastard;
 
 CREATE TABLE IF NOT EXISTS dastardactivity (
-    `id`           UUID,
+    `id`           UUID DEFAULT generateUUIDv7(),
     `hostname`     LowCardinality(String) DEFAULT 'unknown',
     `git_hash`     LowCardinality(String) DEFAULT 'unknown',
     `version`      LowCardinality(String) DEFAULT 'unknown',
@@ -22,12 +22,12 @@ CREATE TABLE IF NOT EXISTS dastardactivity (
     `server_end`   DateTime64(6),
 )
     ENGINE = ReplacingMergeTree()
-    ORDER BY (id)
+    ORDER BY  (toUInt128(id)) -- ClickHouse has a pathological (?) or unsuitable ordering of UUIDs, sorting by the randomness half. This is workaround.
     COMMENT 'Each row represents one invocation of Dastard';
 
 
 CREATE TABLE IF NOT EXISTS dataruns (
-    `id`              UUID,
+    `id`              UUID DEFAULT generateUUIDv7(),
     `dastard_id`      UUID COMMENT 'link to dastardactivity.id',
     `date_run_code`   String,
     `intention`       LowCardinality(String) DEFAULT 'unknown',
@@ -45,12 +45,12 @@ CREATE TABLE IF NOT EXISTS dataruns (
     `end`             DateTime64(6),
 )
     ENGINE = ReplacingMergeTree()
-    ORDER BY (id)
+    ORDER BY (toUInt128(id))
     COMMENT 'Each row represents one simultaneous set of Dastard data files';
 
 
 CREATE TABLE IF NOT EXISTS sensors (
-    `id`              UUID,
+    `id`              UUID DEFAULT generateUUIDv7(),
     `datarun_id`      UUID COMMENT 'link to dataruns.id',
     `date_run_code`   String,
     `row_number`      UInt32 NULL Comment 'TDM row number, or NULL for µMUX',
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS sensors (
     `isError`         Bool DEFAULT false,
 )
     ENGINE = MergeTree()
-    ORDER BY (id)
+    ORDER BY (toUInt128(id))
     COMMENT 'Each row represents one microcalorimeter in one datarun';
 
 CREATE TABLE IF NOT EXISTS files (
@@ -75,5 +75,5 @@ CREATE TABLE IF NOT EXISTS files (
     `sha256`          FixedString(64),
 )
     ENGINE = ReplacingMergeTree()
-    ORDER BY (sensor_id, file_type)
+    ORDER BY (toUInt128(sensor_id), file_type)
     COMMENT 'Each row represents one microcalorimeter data file';

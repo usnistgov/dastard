@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oklog/ulid/v2"
+	"github.com/google/uuid"
 	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 
@@ -765,8 +765,9 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	dateruncode := path.Join(datecode, runnum)
 	NPresamples, NSamples, _ := ds.getPulseLengths()
 
+	id, _ := uuid.NewV7()
 	ds.drecmsg = dastarddb.DatarunMessage{
-		ID:          ulid.Make(),
+		ID:          id,
 		DateRunCode: dateruncode,
 		Intention:   "testing", // TODO: add ability to change datarun intentions
 		DataSource:  ds.name,
@@ -791,12 +792,13 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		fps := 1
 		var pixel Pixel
 
-		sensorID := ulid.Make()
+		sensorID, _ := uuid.NewV7()
 		dsp.DataPublisher.SensorID = sensorID
 		dsp.DataPublisher.WritingDB = config.WriteDB
 
+		id, _ := uuid.NewV7()
 		dsp.sensormsg = dastarddb.SensorMessage{
-			ID:          sensorID,
+			ID:          id,
 			DatarunID:   ds.drecmsg.ID,
 			DateRunCode: dateruncode,
 			RowNum:      rowNum,
@@ -1281,7 +1283,7 @@ type DataRecord struct {
 	trigTime     time.Time
 	signed       bool // do we interpret the data as signed values?
 	channelIndex int
-	channelID    ulid.ULID
+	channelID    uuid.UUID
 	presamples   int
 	voltsPerArb  float32 // "volts" or other physical unit per raw unit
 	sampPeriod   float32

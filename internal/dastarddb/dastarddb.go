@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/google/uuid"
-	"github.com/oklog/ulid/v2"
 )
 
 type dber interface {
@@ -140,14 +138,6 @@ func(db *DastardDBConnection) asyncInsert(query string, wait bool, args ...any) 
 	}
 }
 
-// convertULID2UUID accepts a `ulid.ULID` (unique lexicographically sortable ID), which is a
-// synonym for a [16]byte, and converts to a `uuid.UUID`, so that clickhouse-go knows how to
-// enter it into the DB without having to convert to/from a string.
-func convertULID2UUID(ul ulid.ULID) uuid.UUID {
-	uu, _ := uuid.FromBytes(ul[:])
-	return uu
-}
-
 func (db *DastardDBConnection) logActivity() {
 	if !db.IsConnected() {
 		return
@@ -156,7 +146,7 @@ func (db *DastardDBConnection) logActivity() {
 	formattedStart := ae.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := ae.End.Format("2006-01-02 15:04:05.000000")
 	db.asyncInsert(`INSERT INTO dastardactivity VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
-		convertULID2UUID(ae.ID), ae.Hostname, ae.Githash, ae.Version,
+		ae.ID, ae.Hostname, ae.Githash, ae.Version,
 		ae.GoVersion, ae.CPUs, formattedStart, formattedEnd,
 	)
 }
@@ -229,7 +219,7 @@ func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
 	toffset := m.TimeOffset.UnixMicro() / 1e6
 	db.asyncInsert(`INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
-		convertULID2UUID(m.ID), convertULID2UUID(db.activityEntry.ID), 
+		m.ID, db.activityEntry.ID, 
 		m.DateRunCode, m.Intention, m.DataSource, m.Directory,
 		m.Nchannels, m.NPresamples, m.NSamples,
 		toffset, m.Timebase, formattedStart, formattedEnd,
@@ -241,8 +231,7 @@ func (db *DastardDBConnection) handleSensorMessage(m *SensorMessage) {
 		return
 	}
 	db.asyncInsert(`INSERT INTO sensors VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
-		convertULID2UUID(m.ID), convertULID2UUID(m.DatarunID), 
-		m.DateRunCode, m.RowNum, m.ColNum,
+		m.ID, m.DatarunID, m.DateRunCode, m.RowNum, m.ColNum,
 		m.ChanNum, m.ChanIndex, m.ChanName, m.IsError,
 	)
 }
@@ -254,7 +243,7 @@ func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
 	db.asyncInsert(`INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
-		convertULID2UUID(m.SensorID), m.Filename, m.Filetype, formattedStart, formattedEnd,
+		m.SensorID, m.Filename, m.Filetype, formattedStart, formattedEnd,
 		m.Records, m.Size, m.SHA256,
 	)
 }

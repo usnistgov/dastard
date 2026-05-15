@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oklog/ulid/v2"
+	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
 	"github.com/usnistgov/dastard/internal/dastarddb"
@@ -194,8 +194,9 @@ func initiateDBConnection(nodb bool, abort chan struct{}) {
 		return
 	}
 
+	id, _ := uuid.NewV7()
 	activity := &dastarddb.DastardActivityMessage{
-		ID:        ulid.Make(),
+		ID:        id,
 		Hostname:  dastard.Build.Host,
 		Githash:   dastard.Build.Githash,
 		Version:   dastard.Build.Version,

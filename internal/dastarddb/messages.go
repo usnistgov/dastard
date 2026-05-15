@@ -3,7 +3,7 @@ package dastarddb
 import (
 	"time"
 
-	"github.com/oklog/ulid/v2"
+	"github.com/google/uuid"
 )
 
 // The composite types used for messages to the ClickHouse database.
@@ -11,7 +11,7 @@ import (
 // DastardActivityMessage is the information for the dastardactivity table.
 // End won't be filled in until Dastard shuts down.
 type DastardActivityMessage struct {
-	ID        ulid.ULID
+	ID        uuid.UUID
 	Hostname  string
 	Githash   string
 	Version   string
@@ -24,8 +24,8 @@ type DastardActivityMessage struct {
 // DatarunMessage is the information required to make an entry in the dataruns table.
 // End won't be filled in until the data run shuts down.
 type DatarunMessage struct {
-	ID          ulid.ULID
-	DastardID   ulid.ULID
+	ID          uuid.UUID
+	DastardID   uuid.UUID
 	DateRunCode string
 	Intention   string
 	DataSource  string
@@ -41,8 +41,8 @@ type DatarunMessage struct {
 
 // SensorMessage is the information required to make an entry in the sensors table.
 type SensorMessage struct {
-	ID          ulid.ULID
-	DatarunID   ulid.ULID
+	ID          uuid.UUID
+	DatarunID   uuid.UUID
 	DateRunCode string
 	RowNum      int
 	ColNum      int
@@ -55,7 +55,7 @@ type SensorMessage struct {
 // FileMessage is the information required to make an entry in the files table.
 // End, Records, Size, and SHA256 can't be filled in until the file closes.
 type FileMessage struct {
-	SensorID ulid.ULID
+	SensorID uuid.UUID
 	Filename string
 	Filetype string
 	Start    time.Time
