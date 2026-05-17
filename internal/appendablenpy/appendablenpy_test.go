@@ -9,12 +9,11 @@ import (
 	"testing"
 )
 
-
 func TestWrite(t *testing.T) {
 	t.SkipNow()
 	// dirname := t.TempDir()
 	dirname := "."
-	file := path.Join(dirname, "empty.npy") 
+	file := path.Join(dirname, "empty.npy")
 	dtype := "[('ch_num', '<u2'), ('timestamp', '<u8'), ('subframe', '<u8'), ('pulse', '<u2', (100,))]"
 	fp, err := os.Create(file)
 	if err != nil {
@@ -30,7 +29,7 @@ func TestWrite(t *testing.T) {
 		t.Errorf("len(data) is %d, want %d", len(data), 192)
 	}
 	pythonScript := "./test.py"
-	cmd := exec.Command("python", pythonScript, file, "0") 
+	cmd := exec.Command("python", pythonScript, file, "0")
 	// Run the command and capture its output and error
 	output, err := cmd.CombinedOutput()
 
@@ -39,7 +38,6 @@ func TestWrite(t *testing.T) {
 		t.Fatalf("Python script execution failed: %v\nOutput: %s", err, output)
 	}
 
-	
 	pulse := make([]byte, 2*100)
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(55))
@@ -58,7 +56,7 @@ func TestWrite(t *testing.T) {
 		t.Errorf("len(data) is %d, want %d", len(data), want)
 	}
 
-	cmd = exec.Command("python", pythonScript, file, "5") 
+	cmd = exec.Command("python", pythonScript, file, "5")
 
 	// Run the command and capture its output and error
 	output, err = cmd.CombinedOutput()
@@ -80,7 +78,7 @@ func TestWrite(t *testing.T) {
 		t.Errorf("len(data) is %d, want %d", len(data), want)
 	}
 
-	cmd = exec.Command("python", pythonScript, file, "505") 
+	cmd = exec.Command("python", pythonScript, file, "505")
 
 	// Run the command and capture its output and error
 	output, err = cmd.CombinedOutput()

@@ -13,11 +13,11 @@ import (
 const HEADER_UNITS = 64
 
 type AppendableNPY struct {
-	writer *os.File
+	writer            *os.File
 	dtype_description string
-	size_max_digits int
-	shape_ptr int
-	items_written int
+	size_max_digits   int
+	shape_ptr         int
+	items_written     int
 }
 
 func OpenAppendableNPY(fp *os.File, dtype string) (an *AppendableNPY) {
@@ -26,10 +26,10 @@ func OpenAppendableNPY(fp *os.File, dtype string) (an *AppendableNPY) {
 	an.dtype_description = dtype
 	an.size_max_digits = 10
 	// The header must begin with 10 "pre-header bytes":
-	// - the 6-byte magic "\x93NUMPY", 
+	// - the 6-byte magic "\x93NUMPY",
 	// - the 2-byte version number "\x01\x00" (means version 1.0)
 	// - the 2-byte header size, little endian. Fill in zero here; we update later
-	header := []byte{0x93,  0x4e,  0x55,  0x4d,  0x50,  0x59,  0x01,  0, 0, 0}
+	header := []byte{0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 0x01, 0, 0, 0}
 	header = append(header, []byte("{'descr': ")...)
 	header = append(header, []byte(dtype)...)
 	header = append(header, []byte(", 'fortran_order': False, 'shape': (0         ,),}")...)
@@ -39,7 +39,7 @@ func OpenAppendableNPY(fp *os.File, dtype string) (an *AppendableNPY) {
 	// Full header (including pre-header plus termination string "\n") must be a multiple of 64 bytes.
 	const PREHEADER_SIZE = 10
 	nunits := (len(header) + HEADER_UNITS) / HEADER_UNITS
-	header_size := nunits * HEADER_UNITS - PREHEADER_SIZE
+	header_size := nunits*HEADER_UNITS - PREHEADER_SIZE
 	header[8] = byte(header_size % 256)
 	header[9] = byte(header_size / 256)
 
@@ -47,7 +47,7 @@ func OpenAppendableNPY(fp *os.File, dtype string) (an *AppendableNPY) {
 	npad := header_size + PREHEADER_SIZE - (1 + len(header))
 	if npad > 0 {
 		spaces := make([]byte, npad)
-		for i := range(npad) {
+		for i := range npad {
 			spaces[i] = 0x20
 		}
 		header = append(header, spaces...)

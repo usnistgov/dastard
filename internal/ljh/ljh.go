@@ -89,10 +89,10 @@ type Writer struct {
 	PixelYPosition            int
 	PixelName                 string
 
-	DB          *dastarddb.DastardDBConnection
-	FileMessage *dastarddb.FileMessage
-	file        *os.File
-	writer      *asyncbufio.Writer
+	DB            *dastarddb.DastardDBConnection
+	FileMessage   *dastarddb.FileMessage
+	file          *os.File
+	writer        *asyncbufio.Writer
 	syncwithflush bool
 }
 
@@ -312,10 +312,10 @@ type Writer3 struct {
 	FileName                   string
 	RecordsWritten             int
 
-	DB          *dastarddb.DastardDBConnection
-	FileMessage *dastarddb.FileMessage
-	file        *os.File
-	writer      *asyncbufio.Writer
+	DB            *dastarddb.DastardDBConnection
+	FileMessage   *dastarddb.FileMessage
+	file          *os.File
+	writer        *asyncbufio.Writer
 	syncwithflush bool
 }
 

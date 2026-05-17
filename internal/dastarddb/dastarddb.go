@@ -90,15 +90,15 @@ func createDBConnection() *DastardDBConnection {
 			ClientInfo: client,
 			TLS:        nil,
 		}
-		conn, err := clickhouse.Open(&opt)
-		if err != nil {
-			db.err = err
-			return db
-		}
-		db.conn = conn
-		db.Add(1)
-		
-		// Ping the server at the DB connection.
+	conn, err := clickhouse.Open(&opt)
+	if err != nil {
+		db.err = err
+		return db
+	}
+	db.conn = conn
+	db.Add(1)
+
+	// Ping the server at the DB connection.
 	ctx := context.Background()
 	if err = conn.Ping(ctx); err != nil {
 		if exception, ok := err.(*clickhouse.Exception); ok {
@@ -120,17 +120,18 @@ func createDBConnection() *DastardDBConnection {
 }
 
 const dontwait = false
+
 // const dowait = true
 
-func(db *DastardDBConnection) asyncInsert(query string, wait bool, args ...any) {
+func (db *DastardDBConnection) asyncInsert(query string, wait bool, args ...any) {
 	ctx := context.Background()
 	var waitint int  // 0 = don't wait for flush, 1 = wait for flush
 	if wait {
 		waitint = 1
 	}
 	asyncCtx := clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
-	    "async_insert": 1,
-	    "wait_for_async_insert": waitint,
+		"async_insert":          1,
+		"wait_for_async_insert": waitint,
 	}))
 	if err := db.conn.Exec(asyncCtx, query, args...); err != nil {
 		fmt.Println("Error raised on async insert ", err)
