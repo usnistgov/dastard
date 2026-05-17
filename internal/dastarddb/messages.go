@@ -67,3 +67,10 @@ type FileMessage struct {
 	Size     int
 	SHA256   string
 }
+
+// BaselineMonitorMessage is one entry in the baseline table.
+type BaselineMonitorMessage struct {
+	ChanNum   int
+	Timestamp time.Time
+	Value     float32
+}

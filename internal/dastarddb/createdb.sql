@@ -77,3 +77,14 @@ CREATE TABLE IF NOT EXISTS files (
     ENGINE = ReplacingMergeTree()
     ORDER BY (toUInt128(sensor_id), file_type)
     COMMENT 'Each row represents one microcalorimeter data file';
+
+CREATE TABLE IF NOT EXISTS baseline (
+    `channel_number`    UInt32,
+    `timestamp`         DateTime CODEC(DoubleDelta, ZSTD(1)),
+    `value`             Float32 CODEC(Gorilla, LZ4),
+)
+    ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (channel_number, timestamp)
+    COMMENT 'Each row represents one estimate of baseline for one channel';
+    

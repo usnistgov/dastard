@@ -188,6 +188,10 @@ func (db *DastardDBConnection) RecordFile(msg *FileMessage) {
 	go func() { db.handleFileMessage(msg) }()
 }
 
+func (db *DastardDBConnection) RecordBaseline(msg *BaselineMonitorMessage) {
+	go func() { db.handleBaselineMessage(msg) }()
+}
+
 func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
 	if !db.IsConnected() || m == nil {
 		return
@@ -233,5 +237,15 @@ func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
 	db.asyncInsert(`INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
 		m.SensorID, m.Filename, m.Filetype, formattedStart, formattedEnd,
 		m.Records, m.Size, m.SHA256,
+	)
+}
+
+func (db *DastardDBConnection) handleBaselineMessage(m *BaselineMonitorMessage) {
+	if !db.IsConnected() || m == nil {
+		return
+	}
+	formattedTime := m.Timestamp.Format("2006-01-02 15:04:05.000000")
+	db.asyncInsert(`INSERT INTO baseline VALUES (?, ?, ?)`, dontwait,
+		m.ChanNum, formattedTime, m.Value,
 	)
 }
