@@ -279,7 +279,7 @@ func TestDataSignedness(t *testing.T) {
 	seg := &DataSegment{rawData: data}
 	NPresamples := 256
 	NSamples := 1024
-	dsp := NewDataStreamProcessor(0, nil, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, nil, NPresamples, NSamples, 1.0)
 	dsp.DecimateLevel = 2
 	dsp.Decimate = true
 	dsp.DecimateAvgMode = true

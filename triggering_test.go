@@ -35,7 +35,7 @@ func TestLongRecords(t *testing.T) {
 	for _, test := range tests {
 		NPresamples := 256
 		NSamples := 1024
-		dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+		dsp := NewDataStreamProcessor(0, 0, nil, NPresamples, NSamples, 1.0)
 		dsp.NPresamples = test.npre
 		dsp.NSamples = test.nsamp
 		dsp.SampleRate = 100000.0
@@ -84,7 +84,7 @@ func TestSingles(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	NPresamples := 256
 	NSamples := 1024
-	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 	nRepeat := 1
 
 	// Set raw data to mostly 0s, with runs of 10 large (and later small) values at certain times.
@@ -268,7 +268,7 @@ func TestEdgeLevelInteraction(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	NPresamples := 256
 	NSamples := 1024
-	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 	nRepeat := 1
 
 	const bigval = 8000
@@ -326,7 +326,7 @@ func TestEdgeMulti(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	NPresamples := 256
 	NSamples := 1024
-	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 	dsp.EdgeMulti = true
 
 	//kink model parameters
@@ -459,7 +459,7 @@ func TestEdgeVetoesLevel(t *testing.T) {
 	broker := NewTriggerBroker(nchan)
 	NPresamples := 20
 	NSamples := 100
-	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 
 	dsp.EdgeTrigger = true
 	dsp.EdgeLevel = 200
@@ -524,7 +524,7 @@ func TestTriggersDontOverlap(t *testing.T) {
 	}
 
 	for offset := 0; offset < 2*SegLen+1; offset++ {
-		dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+		dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 		dsp.NPresamples = NPresamples
 		dsp.NSamples = NSamples
 
@@ -556,7 +556,7 @@ func BenchmarkAutoTriggerOpsAre100SampleTriggers(b *testing.B) {
 	broker := NewTriggerBroker(nchan)
 	NPresamples := 256
 	NSamples := 1024
-	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 	dsp.AutoTrigger = true
@@ -580,7 +580,7 @@ func BenchmarkEdgeTrigger0TriggersOpsAreSamples(b *testing.B) {
 	broker := NewTriggerBroker(nchan)
 	NPresamples := 256
 	NSamples := 1024
-	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 
@@ -613,7 +613,7 @@ func BenchmarkLevelTrigger0TriggersOpsAreSamples(b *testing.B) {
 	broker := NewTriggerBroker(nchan)
 	NPresamples := 256
 	NSamples := 1024
-	dsp := NewDataStreamProcessor(0, broker, NPresamples, NSamples)
+	dsp := NewDataStreamProcessor(0, 0, broker, NPresamples, NSamples, 1.0)
 	dsp.NPresamples = 20
 	dsp.NSamples = 100
 

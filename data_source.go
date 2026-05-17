@@ -923,7 +923,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 		for _, channelIndex := range ts.ChannelIndices {
 			if channelIndex < ds.nchan {
 				tsptrs[channelIndex] = &(fts[i].TriggerState)
-				tsptrs[channelIndex].EdgeMulti = false // fix for issue #271
+				tsptrs[channelIndex].EdgeMulti = false // fix for issue 271
 				// won't be neccesary if we get rid of the old EMT fields used for rpc compatability
 				// basically EMTState is not saved, so it has threshold = 0
 				// so if we come back with EdgeMulti=true
@@ -947,10 +947,8 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	}
 
 	for channelIndex := range ds.processors {
-		dsp := NewDataStreamProcessor(channelIndex, ds.broker, Npresamples, Nsamples)
+		dsp := NewDataStreamProcessor(channelIndex, ds.chanNumbers[channelIndex], ds.broker, Npresamples, Nsamples, ds.sampleRate)
 		dsp.Name = ds.chanNames[channelIndex]
-		dsp.ChannelNumber = ds.chanNumbers[channelIndex]
-		dsp.SampleRate = ds.sampleRate
 		dsp.stream.voltsPerArb = vpa[channelIndex]
 		ds.processors[channelIndex] = dsp
 
