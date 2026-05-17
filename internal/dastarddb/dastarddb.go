@@ -23,9 +23,6 @@ type DastardDBConnection struct {
 	conn          clickhouse.Conn
 	err           error
 	activityEntry *DastardActivityMessage
-	datarunmsg    chan *DatarunMessage
-	sensormsg     chan *[]SensorMessage
-	filemsg       chan *FileMessage
 	sync.WaitGroup
 }
 
@@ -113,9 +110,6 @@ func createDBConnection() *DastardDBConnection {
 	// db.SetMaxOpenConns(10)
 	// db.SetMaxIdleConns(10)
 
-	db.datarunmsg = make(chan *DatarunMessage)
-	db.sensormsg = make(chan *[]SensorMessage)
-	db.filemsg = make(chan *FileMessage)
 	return db
 }
 
@@ -125,7 +119,7 @@ const dontwait = false
 
 func (db *DastardDBConnection) asyncInsert(query string, wait bool, args ...any) {
 	ctx := context.Background()
-	var waitint int  // 0 = don't wait for flush, 1 = wait for flush
+	var waitint int // 0 = don't wait for flush, 1 = wait for flush
 	if wait {
 		waitint = 1
 	}
@@ -159,12 +153,6 @@ func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 		case <-abort:
 			db.Disconnect()
 			return
-		case rmsg := <-db.datarunmsg:
-			db.handleDRMessage(rmsg)
-		case smsgs := <-db.sensormsg:
-			db.handleSensorMessages(smsgs)
-		case fmsg := <-db.filemsg:
-			db.handleFileMessage(fmsg)
 		}
 	}
 }
@@ -184,52 +172,40 @@ func (db *DastardDBConnection) Disconnect() {
 // Without the blocking, there would be a race between the 2 kinds of DB entries,
 // and some datafiles would be entered without valid datarun IDs.
 func (db *DastardDBConnection) RecordDatarun(msg *DatarunMessage) {
-	if !db.IsConnected() || msg == nil {
-		return
-	}
-	db.datarunmsg <- msg
+	db.handleDRMessage(msg)
 }
 
 func (db *DastardDBConnection) FinishDatarun(msg *DatarunMessage) {
-	if !db.IsConnected() || msg == nil {
-		return
-	}
 	msg.End = time.Now()
-	go func() { db.datarunmsg <- msg }()
+	go func() { db.handleDRMessage(msg) }()
 }
 
-func (db *DastardDBConnection) RecordSensors(msg *[]SensorMessage) {
-	if !db.IsConnected() || msg == nil {
-		return
-	}
-	go func() { db.sensormsg <- msg }()
+func (db *DastardDBConnection) RecordSensors(msgs *[]SensorMessage) {
+	go func() { db.handleSensorMessages(msgs) }()
 }
 
 func (db *DastardDBConnection) RecordFile(msg *FileMessage) {
-	if !db.IsConnected() || msg == nil {
-		return
-	}
-	go func() { db.filemsg <- msg }()
+	go func() { db.handleFileMessage(msg) }()
 }
 
 func (db *DastardDBConnection) handleDRMessage(m *DatarunMessage) {
-	if !db.IsConnected() {
+	if !db.IsConnected() || m == nil {
 		return
 	}
 	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := m.End.Format("2006-01-02 15:04:05.000000")
 	toffset := m.TimeOffset.UnixMicro() / 1e6
 	db.asyncInsert(`INSERT INTO dataruns VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
-		m.ID, db.activityEntry.ID, 
+		m.ID, db.activityEntry.ID,
 		m.DateRunCode, m.Intention, m.DataSource, m.Directory,
-		m.Nchannels, m.NPresamples, m.NSamples, toffset, m.Timebase, 
+		m.Nchannels, m.NPresamples, m.NSamples, toffset, m.Timebase,
 		m.Users, m.Sample, m.Purpose,
 		formattedStart, formattedEnd,
 	)
 }
 
 func (db *DastardDBConnection) handleSensorMessages(messages *[]SensorMessage) {
-	if !db.IsConnected() {
+	if !db.IsConnected() || messages == nil || len(*messages) == 0 {
 		return
 	}
 	ctx := context.Background()
@@ -249,7 +225,7 @@ func (db *DastardDBConnection) handleSensorMessages(messages *[]SensorMessage) {
 }
 
 func (db *DastardDBConnection) handleFileMessage(m *FileMessage) {
-	if !db.IsConnected() {
+	if !db.IsConnected() || m == nil {
 		return
 	}
 	formattedStart := m.Start.Format("2006-01-02 15:04:05.000000")
