@@ -244,7 +244,7 @@ func (db *DastardDBConnection) handleBaselineMessage(m *BaselineMonitorMessage) 
 	if !db.IsConnected() || m == nil {
 		return
 	}
-	formattedTime := m.Timestamp.Format("2006-01-02 15:04:05.000000")
+	formattedTime := m.Timestamp.Format("2006-01-02 15:04:05")
 	db.asyncInsert(`INSERT INTO baseline VALUES (?, ?, ?)`, dontwait,
 		m.ChanNum, formattedTime, m.Value,
 	)
