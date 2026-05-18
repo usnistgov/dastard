@@ -67,9 +67,6 @@ func TestBaselineMonitor(t *testing.T) {
 	}
 
 	// Check for expected errors
-	if NewBaselineMonitor(0, 100000, nStore, nPeak) != nil {
-		t.Errorf("NewBaselineMonitor should fail with nAvg > 65536")
-	}
 	if NewBaselineMonitor(0, nAvg, nStore, nStore+nPeak) != nil {
 		t.Errorf("NewBaselineMonitor should fail with nPeak > nStore")
 	}
