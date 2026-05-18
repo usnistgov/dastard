@@ -62,9 +62,22 @@ func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs []*dastarddb.BaselineM
 func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*dastarddb.BaselineMonitorMessage {
 	var msgs []*dastarddb.BaselineMonitorMessage
 
-	for _, v := range values {
-		bmon.avgSum += uint64(v)
-		bmon.avgCounter++
+	idx := 0
+	ndata := len(values)
+
+	for idx < ndata {
+		// Determine how many we can process in a "fast path"
+        // We take the smaller of: the distance to the boundary OR the rest of the slice
+		chunkSize := min(bmon.nAverage - bmon.avgCounter, ndata - idx)
+		sum := uint64(0)
+		for j := range chunkSize {
+			sum += uint64(values[idx + j])
+		}
+ 		bmon.avgSum += sum
+		bmon.avgCounter += chunkSize
+		idx += chunkSize
+
+		// Boundary check only happens once per nAverage samples in large slices
 		if bmon.avgCounter >= bmon.nAverage {
 			if thismsg := bmon.performAverage(); thismsg != nil {
 				if msgs == nil {
