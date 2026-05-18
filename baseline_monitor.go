@@ -49,7 +49,7 @@ func (bmon *BaselineMonitor) AddOneValue(v RawType) {
 }
 
 func (bmon *BaselineMonitor) AddSliceValues(values []RawType) {
-	for _, v := range(values){
+	for _, v := range values {
 		bmon.avgSum += uint32(v)
 		bmon.avgCounter += 1
 		if bmon.avgCounter >= bmon.nAverage {
