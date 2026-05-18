@@ -53,7 +53,7 @@ func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs []*dastarddb.BaselineM
 }
 
 func (bmon *BaselineMonitor) AddSliceValues(values []RawType) (msgs []*dastarddb.BaselineMonitorMessage) {
-	for _, v := range(values){
+	for _, v := range values {
 		bmon.avgSum += uint32(v)
 		bmon.avgCounter += 1
 		if bmon.avgCounter >= bmon.nAverage {
