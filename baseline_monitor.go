@@ -8,6 +8,18 @@ import (
 	"github.com/usnistgov/dastard/internal/dastarddb"
 )
 
+// BaselineMonitor is a structure to perform inexpensive monitoring of microcalorimeter "baseline" levels.
+// It estimates the baseline by approximating the mode of the distribution of raw values, on the theory that
+// the baseline is defined as the level to which the readout system returns in between energetic pulse events.
+// Raw data are put into the monitor one at a time (`AddOneValue`) or in slices (`AddSliceValues`), and
+// zero or more `dbMonitor.BaselineMonitorMessage` objects are produced. These contain a channel #, a timestamp,
+// and the monitor value.
+//
+// The monitor works in 2 stages. At the fast stage, raw data are averaged over `nAverage` consecutive samples.
+// The slow stage accumulates these averages until there are `nStore` stored. These are sorted, and the smallest
+// range that contains `nPeak` values is used to define a region near the mode, or peak. That cluster is averaged,
+// and the message produced uses that cluster average as the monitored value.
+// See discussion at https://github.com/usnistgov/dastard/issues/392
 type BaselineMonitor struct {
 	chanNumber int
 	nAverage   int // how many samples to average
@@ -19,7 +31,7 @@ type BaselineMonitor struct {
 }
 
 // NewBaselineMonitor creates and initializes a new BaselineMonitor.
-// Its behavior (average time, queue size) is fixed at creation time.
+// Its behavior (average time, queue size, cluster size to define a "peak") is fixed at creation time.
 func NewBaselineMonitor(chanNumber int, nAverage int, nStore int, nPeak int) *BaselineMonitor {
 	if nPeak > nStore {
 		fmt.Printf("BaselineMonitor requires nPeak < nStore, got %d, %d\n", nPeak, nStore)
@@ -35,7 +47,9 @@ func NewBaselineMonitor(chanNumber int, nAverage int, nStore int, nPeak int) *Ba
 	}
 }
 
-func (bmon *BaselineMonitor) AddOneValue(v RawType) {
+func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs []*dastarddb.BaselineMonitorMessage) {
+// AddOneValue adds a single raw data value to the monitor.
+// It returns a pointer to the result message, or (more often) nil if none is ready.
 	bmon.avgSum += uint64(v)
 	bmon.avgCounter += 1
 	if bmon.avgCounter >= bmon.nAverage {
@@ -43,6 +57,8 @@ func (bmon *BaselineMonitor) AddOneValue(v RawType) {
 	}
 }
 
+// AddOneValue adds a slice of raw data values to the monitor.
+// It returns a slice of pointers to the result messages, or nil if no results are ready.
 func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*dastarddb.BaselineMonitorMessage {
 	var msgs []*dastarddb.BaselineMonitorMessage
 
@@ -61,7 +77,10 @@ func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*dastarddb.Basel
 	return msgs
 }
 
-func (bmon *BaselineMonitor) performAverage() {
+// performAverage averages and resets the short-time averaging of raw values. It appends the result
+// to the slower `bmon.averages` queue, and analyzes that queue if full.
+// It returns the single message that comes from queue analysis, or nil otherwise.
+func (bmon *BaselineMonitor) performAverage() *dastarddb.BaselineMonitorMessage {
 	avg := float32(bmon.avgSum) / float32(bmon.avgCounter)
 	bmon.avgSum = 0.0
 	bmon.avgCounter = 0
@@ -71,12 +90,18 @@ func (bmon *BaselineMonitor) performAverage() {
 	}
 }
 
-func (bmon *BaselineMonitor) analyzeQueue() {
+// analyzeQueue finds a weighted average of values near the mode of the distribution, and it
+// returns a single message containing the result, suitable for sending to a dastarddb.
+// It also resets the queue for re-use.
+//
+// This analysis of the queue defines the mode (the monitored value) by averaging the most
+// closely clustered values for a cluster of size bmon.nPeak.
+func (bmon *BaselineMonitor) analyzeQueue() *dastarddb.BaselineMonitorMessage {
 	slices.Sort(bmon.averages)
-	bestRange := bmon.averages[bmon.nPeak] - bmon.averages[0]
+	bestRange := bmon.averages[bmon.nPeak - 1] - bmon.averages[0]
 	bestIdx := 0
-	for i := 1; i < bmon.nStore-bmon.nPeak; i++ {
-		thisrange := bmon.averages[bmon.nPeak+i] - bmon.averages[i]
+	for i := 0; i < bmon.nStore - bmon.nPeak; i++ {
+		thisrange := bmon.averages[bmon.nPeak + i] - bmon.averages[i + 1]
 		if thisrange < bestRange {
 			bestRange = thisrange
 			bestIdx = i
