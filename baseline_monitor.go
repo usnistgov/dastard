@@ -106,7 +106,7 @@ func (bmon *BaselineMonitor) analyzeQueue() *dastarddb.BaselineMonitorMessage {
 		thisrange := bmon.averages[bmon.nPeak + i] - bmon.averages[i + 1]
 		if thisrange < bestRange {
 			bestRange = thisrange
-			bestIdx = i
+			bestIdx = i + 1
 		}
 	}
 	var sum float32
