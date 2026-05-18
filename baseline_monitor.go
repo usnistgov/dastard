@@ -40,35 +40,47 @@ func NewBaselineMonitor(chanNumber int, nAverage int, nStore int, nPeak int) *Ba
 	return &bmon
 }
 
-func (bmon *BaselineMonitor) AddOneValue(v RawType) {
+func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs []*dastarddb.BaselineMonitorMessage) {
 	bmon.avgSum += uint32(v)
 	bmon.avgCounter += 1
 	if bmon.avgCounter >= bmon.nAverage {
-		bmon.performAverage()
+		msg := bmon.performAverage()
+		if msg != nil {
+			return []*dastarddb.BaselineMonitorMessage{msg}
+		}
 	}
+	return nil
 }
 
-func (bmon *BaselineMonitor) AddSliceValues(values []RawType) {
+func (bmon *BaselineMonitor) AddSliceValues(values []RawType) (msgs []*dastarddb.BaselineMonitorMessage) {
 	for _, v := range(values){
 		bmon.avgSum += uint32(v)
 		bmon.avgCounter += 1
 		if bmon.avgCounter >= bmon.nAverage {
-			bmon.performAverage()
+			thismsg := bmon.performAverage()
+			if thismsg != nil {
+				if msgs == nil {
+					msgs = make([]*dastarddb.BaselineMonitorMessage, 0, 16)
+				}
+				msgs = append(msgs, thismsg)
+			}
 		}
 	}
+	return
 }
 
-func (bmon *BaselineMonitor) performAverage() {
+func (bmon *BaselineMonitor) performAverage() *dastarddb.BaselineMonitorMessage {
 	avg := float32(bmon.avgSum) / float32(bmon.avgCounter)
 	bmon.avgSum = 0.0
 	bmon.avgCounter = 0
 	bmon.averages = append(bmon.averages, avg)
 	if len(bmon.averages) == bmon.nStore {
-		bmon.analyzeQueue()
+		return bmon.analyzeQueue()
 	}
+	return nil
 }
 
-func (bmon *BaselineMonitor) analyzeQueue() {
+func (bmon *BaselineMonitor) analyzeQueue() *dastarddb.BaselineMonitorMessage {
 	slices.Sort(bmon.averages)
 	bestRange := bmon.averages[bmon.nPeak] - bmon.averages[0]
 	bestIdx := 0
@@ -85,10 +97,9 @@ func (bmon *BaselineMonitor) analyzeQueue() {
 	}
 	baseline := sum / float32(bmon.nPeak)
 	bmon.averages = bmon.averages[:0]
-	msg := dastarddb.BaselineMonitorMessage{
+	return &dastarddb.BaselineMonitorMessage{
 		ChanNum:   bmon.chanNumber,
 		Timestamp: time.Now(),
 		Value:     baseline,
 	}
-	DB.RecordBaseline(&msg)
 }

@@ -147,7 +147,13 @@ func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) error {
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
-	dsp.BaselineMonitor.AddSliceValues(segment.rawData)
+	baselineMessages := dsp.BaselineMonitor.AddSliceValues(segment.rawData)
+	if baselineMessages != nil && len(baselineMessages) > 0 {
+		for _, msg := range baselineMessages {
+			DB.RecordBaseline(msg)
+		}
+	}
+
 	dsp.stream.AppendSegment(segment)
 	primaryRecords := dsp.TriggerData()
 	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place
