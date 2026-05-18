@@ -47,16 +47,13 @@ func NewBaselineMonitor(chanNumber int, nAverage int, nStore int, nPeak int) *Ba
 	}
 }
 
-func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs []*dastarddb.BaselineMonitorMessage) {
 // AddOneValue adds a single raw data value to the monitor.
 // It returns a pointer to the result message, or (more often) nil if none is ready.
+func (bmon *BaselineMonitor) AddOneValue(v RawType) *dastarddb.BaselineMonitorMessage {
 	bmon.avgSum += uint64(v)
 	bmon.avgCounter += 1
 	if bmon.avgCounter >= bmon.nAverage {
-		msg := bmon.performAverage()
-		if msg != nil {
-			return []*dastarddb.BaselineMonitorMessage{msg}
-		}
+		return bmon.performAverage()
 	}
 	return nil
 }
