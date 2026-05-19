@@ -68,13 +68,13 @@ func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*dastarddb.Basel
 
 	for idx < ndata {
 		// Determine how many we can process in a "fast path"
-        // We take the smaller of: the distance to the boundary OR the rest of the slice
-		chunkSize := min(bmon.nAverage - bmon.avgCounter, ndata - idx)
+		// We take the smaller of: the distance to the boundary OR the rest of the slice
+		chunkSize := min(bmon.nAverage-bmon.avgCounter, ndata-idx)
 		sum := uint64(0)
 		for j := range chunkSize {
-			sum += uint64(values[idx + j])
+			sum += uint64(values[idx+j])
 		}
- 		bmon.avgSum += sum
+		bmon.avgSum += sum
 		bmon.avgCounter += chunkSize
 		idx += chunkSize
 
@@ -113,10 +113,10 @@ func (bmon *BaselineMonitor) performAverage() *dastarddb.BaselineMonitorMessage 
 // closely clustered values for a cluster of size bmon.nPeak.
 func (bmon *BaselineMonitor) analyzeQueue() *dastarddb.BaselineMonitorMessage {
 	slices.Sort(bmon.averages)
-	bestRange := bmon.averages[bmon.nPeak - 1] - bmon.averages[0]
+	bestRange := bmon.averages[bmon.nPeak-1] - bmon.averages[0]
 	bestIdx := 0
-	for i := 0; i < bmon.nStore - bmon.nPeak; i++ {
-		thisrange := bmon.averages[bmon.nPeak + i] - bmon.averages[i + 1]
+	for i := 0; i < bmon.nStore-bmon.nPeak; i++ {
+		thisrange := bmon.averages[bmon.nPeak+i] - bmon.averages[i+1]
 		if thisrange < bestRange {
 			bestRange = thisrange
 			bestIdx = i + 1
