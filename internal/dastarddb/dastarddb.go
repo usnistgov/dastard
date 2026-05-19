@@ -11,13 +11,13 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-type dber interface {
-	IsConnected() bool
-	Disconnect()
-	Wait()
-	logActivity()
-	handleConnection(<-chan struct{})
-}
+// type dber interface {
+// 	IsConnected() bool
+// 	Disconnect()
+// 	Wait()
+// 	logActivity()
+// 	handleConnection(<-chan struct{})
+// }
 
 type DastardDBConnection struct {
 	conn          clickhouse.Conn
@@ -140,10 +140,13 @@ func (db *DastardDBConnection) logActivity() {
 	ae := db.activityEntry
 	formattedStart := ae.Start.Format("2006-01-02 15:04:05.000000")
 	formattedEnd := ae.End.Format("2006-01-02 15:04:05.000000")
-	db.asyncInsert(`INSERT INTO dastardactivity VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, dontwait,
+	// Unlike most DB entries, the activity ones should be synchronous
+	ctx := context.Background()
+	db.conn.Exec(ctx, `INSERT INTO dastardactivity VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		ae.ID, ae.Hostname, ae.Githash, ae.Version,
 		ae.GoVersion, ae.CPUs, formattedStart, formattedEnd,
 	)
+
 }
 
 func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
