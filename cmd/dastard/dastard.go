@@ -179,10 +179,18 @@ func main() {
 	}
 
 	abort := make(chan struct{})
+	
+	// RunClientUpdater launches a long-lived goroutine but returns if the status port is successfully bound.
+	// Since failure to bind that port is how we learn that another instance of Dastard is running already,
+	// we want a chance to panic on that _before_ we call initiateDBConnection and make a potentially erroneous
+	// entry in the DB's dastardactivity table.
+	dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	initiateDBConnection(*nodb, abort)
 
-	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
-	dastard.RunRPCServer(dastard.Ports.RPC, true)
+	const serverShallBlock = true
+	dastard.RunRPCServer(dastard.Ports.RPC, serverShallBlock)
+
+	// When RunRPCServer returns, it means Ctrl-C stopped Dastard. Signal the client updater and the DB to abort and wait for it.
 	close(abort)
 	dastard.DB.Wait()
 	writeMemoryProfile(memprofile)

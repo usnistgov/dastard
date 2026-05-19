@@ -90,13 +90,20 @@ func RunClientUpdater(statusport int, abort <-chan struct{}) {
 		panicmsg := fmt.Errorf("could not create client updater port %d\n\terr=%v", statusport, err)
 		panic(panicmsg)
 	}
-	defer pubSocket.Close()
 	// pubSocket.SetSndhwm(100)
+
+	// If there's an instance of dastard running already, this Bind will fail.
 	if err = pubSocket.Bind(hostname); err != nil {
 		panicmsg := fmt.Errorf("could not bind client updater port %d\n\terr=%v", statusport, err)
 		panic(panicmsg)
 	}
 
+	// Now that we passed the potential crash, launch the long-running goroutine to send info to all clients
+	go clientServiceLoop(pubSocket, abort)
+}
+
+func clientServiceLoop(pubSocket *zmq4.Socket, abort <- chan struct{}) {
+	defer pubSocket.Close()
 	// The ZMQ middleware will need some time for existing SUBscribers (and their
 	// subscription topics) to be hooked up to this new PUBlisher.
 	// The result is that the first few messages will be dropped, including the
