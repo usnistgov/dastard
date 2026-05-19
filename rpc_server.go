@@ -430,15 +430,20 @@ func (s *SourceControl) WaitForStopTestingOnly(dummy *string, reply *bool) error
 }
 
 // WriteControlConfig object to control start/stop/pause of data writing
-// Path and FileType are ignored for any request other than Start
+// Path and Write* are ignored for any request other than Start
+// The strings Intention, Users, Sample, Purpose are ignored for any request other than Start or ChangeDBInfo
 type WriteControlConfig struct {
-	Request         string // "Start", "Stop", "Pause", or "Unpause", or "Unpause label"
+	Request         string // "Start", "Stop", "ChangeDBInfo", "Pause", or "Unpause", or "Unpause label". Case-insensitive.
 	Path            string // write in a new directory under this path
 	WriteLJH22      bool   // turn on one or more file formats
 	WriteOFF        bool
 	WriteLJH3       bool
 	WriteDB         bool
 	FlushAlsoSyncs  bool
+	Intention       string  // such as "testing", "noise", "pulses"
+	Users           string
+	Sample          string
+	Purpose         string
 	MapInternalOnly *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 
@@ -839,7 +844,6 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var ws WritingState
 	err = viper.UnmarshalKey("writing", &ws)
-	ws.WriteDB = true // TODO: this is temporary
 	if err == nil {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful

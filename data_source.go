@@ -708,16 +708,32 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 	case strings.HasPrefix(requestStr, "START"):
 		return ds.writeControlStart(config)
 
+	case strings.HasPrefix(requestStr, "CHANGEDBINFO"):
+		return ds.changeDBInfo(config)
+
 	default:
-		return fmt.Errorf("WriteControl config.Request=%q, must be one of (START,STOP,PAUSE,UNPAUSE). Not case sensitive. \"UNPAUSE label\" is also ok",
+		return fmt.Errorf("WriteControl config.Request=%q, must be one of (START,STOP,PAUSE,UNPAUSE,CHANGEDBINFO)." +
+			"Not case sensitive. \"UNPAUSE label\" is also ok",
 			config.Request)
 	}
 	return nil
 }
 
+// changeDBInfo allows the user to update the row in the `dataruns` database table with new string info:
+// Intention, Purpose, Sample, Users.
+func (ds *AnySource) changeDBInfo(config *WriteControlConfig) error {
+	msg := ds.drecmsg
+	msg.Intention = config.Intention
+	msg.Purpose = config.Purpose
+	msg.Sample = config.Sample
+	msg.Users = config.Users
+	DB.RecordDatarun(&ds.drecmsg)
+	return nil
+}
+
 // writeControlStart handles the most complex case of WriteControl: starting to write.
 func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
-	config.WriteDB = false // TODO: make this changeable in DCom
+	config.WriteDB = false // WriteDB is not currently implemented
 	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3 || config.WriteDB) {
 		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 and WriteDB all false")
 	}
@@ -769,7 +785,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	ds.drecmsg = dastarddb.DatarunMessage{
 		ID:          id,
 		DateRunCode: dateruncode,
-		Intention:   "testing", // TODO: add ability to change datarun intentions
+		Intention:   config.Intention,
 		DataSource:  ds.name,
 		Directory:   directory,
 		Nchannels:   ds.Nchan(),
@@ -777,9 +793,9 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		NSamples:    NSamples,
 		TimeOffset:  DastardStartTime,
 		Timebase:    ds.samplePeriod.Seconds(),
-		Users:       "unknown",
-		Sample:      "unknown",
-		Purpose:     "unknown",
+		Users:       config.Users,
+		Sample:      config.Sample,
+		Purpose:     config.Purpose,
 		Start:       time.Now(),
 	}
 	DB.RecordDatarun(&ds.drecmsg)
