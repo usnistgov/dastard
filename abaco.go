@@ -957,8 +957,8 @@ awaitmoredata:
 
 			if len(as.buffersChan) == cap(as.buffersChan) {
 				msg := fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan))
-				fmt.Printf("Panic! %s\n", msg)
-				panic(msg)
+				log.Printf("Abaco read failed: %s\n", msg)
+				return
 			}
 			as.buffersChan <- AbacoBuffersType{
 				datacopies:     datacopies,
