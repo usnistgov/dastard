@@ -151,13 +151,8 @@ func (db *DastardDBConnection) logActivity() {
 
 func (db *DastardDBConnection) handleConnection(abort <-chan struct{}) {
 	defer db.Done()
-	for {
-		select {
-		case <-abort:
-			db.Disconnect()
-			return
-		}
-	}
+	defer db.Disconnect()
+	<- abort
 }
 
 func (db *DastardDBConnection) Disconnect() {
