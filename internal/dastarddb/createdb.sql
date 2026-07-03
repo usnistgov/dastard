@@ -88,3 +88,12 @@ CREATE TABLE IF NOT EXISTS baseline (
     ORDER BY (channel_number, timestamp)
     COMMENT 'Each row represents one estimate of baseline for one channel';
     
+CREATE TABLE IF NOT EXISTS cryo_sensors (
+    `channel_name`      LowCardinality(String),
+    `timestamp`         DateTime CODEC(DoubleDelta, ZSTD(1)),
+    `value`             Float32 COMMENT 'temperature in Kelvin or heater output' CODEC(Gorilla, LZ4),
+)
+    ENGINE = ReplacingMergeTree()
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (channel_name, timestamp)
+    COMMENT 'Each row represents one sensor readout or one heater control level';
