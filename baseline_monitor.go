@@ -4,9 +4,14 @@ import (
 	"fmt"
 	"slices"
 	"time"
-
-	"github.com/usnistgov/dastard/internal/dastarddb"
 )
+
+// BaselineMonitorMessage is one channel's baseline monitor result.
+type BaselineMonitorMessage struct {
+	ChanNum   int
+	Timestamp time.Time
+	Value     float32
+}
 
 // BaselineMonitor is a structure to perform inexpensive monitoring of microcalorimeter "baseline" levels.
 // It estimates the baseline by approximating the mode of the distribution of raw values, on the theory that
@@ -47,20 +52,21 @@ func NewBaselineMonitor(chanNumber int, nAverage int, nStore int, nPeak int) *Ba
 	}
 }
 
-func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs []*dastarddb.BaselineMonitorMessage) {
+func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs *BaselineMonitorMessage) {
 // AddOneValue adds a single raw data value to the monitor.
 // It returns a pointer to the result message, or (more often) nil if none is ready.
 	bmon.avgSum += uint64(v)
 	bmon.avgCounter += 1
 	if bmon.avgCounter >= bmon.nAverage {
-		bmon.performAverage()
+		return bmon.performAverage()
 	}
+	return nil
 }
 
 // AddOneValue adds a slice of raw data values to the monitor.
 // It returns a slice of pointers to the result messages, or nil if no results are ready.
-func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*dastarddb.BaselineMonitorMessage {
-	var msgs []*dastarddb.BaselineMonitorMessage
+func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*BaselineMonitorMessage {
+	var msgs []*BaselineMonitorMessage
 
 	idx := 0
 	ndata := len(values)
@@ -81,7 +87,7 @@ func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*dastarddb.Basel
 		if bmon.avgCounter >= bmon.nAverage {
 			if thismsg := bmon.performAverage(); thismsg != nil {
 				if msgs == nil {
-					msgs = make([]*dastarddb.BaselineMonitorMessage, 0, 16)
+					msgs = make([]*BaselineMonitorMessage, 0, 16)
 				}
 				msgs = append(msgs, thismsg)
 			}
@@ -93,23 +99,24 @@ func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*dastarddb.Basel
 // performAverage averages and resets the short-time averaging of raw values. It appends the result
 // to the slower `bmon.averages` queue, and analyzes that queue if full.
 // It returns the single message that comes from queue analysis, or nil otherwise.
-func (bmon *BaselineMonitor) performAverage() *dastarddb.BaselineMonitorMessage {
+func (bmon *BaselineMonitor) performAverage() *BaselineMonitorMessage {
 	avg := float32(bmon.avgSum) / float32(bmon.avgCounter)
 	bmon.avgSum = 0.0
 	bmon.avgCounter = 0
 	bmon.averages = append(bmon.averages, avg)
 	if len(bmon.averages) == bmon.nStore {
-		bmon.analyzeQueue()
+		return bmon.analyzeQueue()
 	}
+	return nil
 }
 
 // analyzeQueue finds a weighted average of values near the mode of the distribution, and it
-// returns a single message containing the result, suitable for sending to a dastarddb.
+// returns a single message containing the result, suitable for sending to a 
 // It also resets the queue for re-use.
 //
 // This analysis of the queue defines the mode (the monitored value) by averaging the most
 // closely clustered values for a cluster of size bmon.nPeak.
-func (bmon *BaselineMonitor) analyzeQueue() *dastarddb.BaselineMonitorMessage {
+func (bmon *BaselineMonitor) analyzeQueue() *BaselineMonitorMessage {
 	slices.Sort(bmon.averages)
 	bestRange := bmon.averages[bmon.nPeak - 1] - bmon.averages[0]
 	bestIdx := 0
@@ -127,10 +134,9 @@ func (bmon *BaselineMonitor) analyzeQueue() *dastarddb.BaselineMonitorMessage {
 	}
 	baseline := sum / float32(bmon.nPeak)
 	bmon.averages = bmon.averages[:0]
-	msg := dastarddb.BaselineMonitorMessage{
+	return &BaselineMonitorMessage{
 		ChanNum:   bmon.chanNumber,
 		Timestamp: time.Now(),
 		Value:     baseline,
 	}
-	DB.RecordBaseline(&msg)
 }

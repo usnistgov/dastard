@@ -11,27 +11,20 @@ func TestBaselineMonitor(t *testing.T) {
 	bmon := NewBaselineMonitor(0, nAvg, nStore, nPeak)
 	// Fill exactly once using AddOneValue with nAvg*nStore total values. Expect one message.
 	for range nAvg*nStore - nAvg {
-		msgs := bmon.AddOneValue(12345)
-		if msgs != nil {
-			t.Errorf("BaselineMonitor has %d values in queue but returned messages %v", len(bmon.averages), msgs)
+		msg := bmon.AddOneValue(12345)
+		if msg != nil {
+			t.Errorf("BaselineMonitor has %d values in queue but returned messages %v", len(bmon.averages), msg)
 		}
 	}
 	for range nAvg - 1 {
-		msgs := bmon.AddOneValue(0)
-		if msgs != nil {
-			t.Errorf("BaselineMonitor has %d values in queue but returned messages %v", len(bmon.averages), msgs)
+		msg := bmon.AddOneValue(0)
+		if msg != nil {
+			t.Errorf("BaselineMonitor has %d values in queue but returned messages %v", len(bmon.averages), msg)
 		}
 	}
-	msgs := bmon.AddOneValue(993)
-	if msgs == nil {
+	msg := bmon.AddOneValue(993)
+	if msg == nil {
 		t.Error("BaselineMonitor did not return a message when filled")
-	}
-	if len(msgs) != 1 {
-		t.Errorf("Baseline montitor returned %d messages, want 1", len(msgs))
-	}
-	msg := msgs[0]
-	if msg.Value != 12345. {
-		t.Errorf("Baseline monitor returned %f, want 12345", msg.Value)
 	}
 
 	// Fill exactly once using AddOneValue with nAvg*nStore total values. Expect one message.
@@ -39,7 +32,7 @@ func TestBaselineMonitor(t *testing.T) {
 	for i := range nAvg * 3 {
 		data[i] = 900
 	}
-	msgs = bmon.AddSliceValues(data)
+	msgs := bmon.AddSliceValues(data)
 	if msgs == nil {
 		t.Error("BaselineMonitor did not return a message when filled")
 	}
