@@ -53,8 +53,8 @@ func NewBaselineMonitor(chanNumber int, nAverage int, nStore int, nPeak int) *Ba
 }
 
 func (bmon *BaselineMonitor) AddOneValue(v RawType) (msgs *BaselineMonitorMessage) {
-// AddOneValue adds a single raw data value to the monitor.
-// It returns a pointer to the result message, or (more often) nil if none is ready.
+	// AddOneValue adds a single raw data value to the monitor.
+	// It returns a pointer to the result message, or (more often) nil if none is ready.
 	bmon.avgSum += uint64(v)
 	bmon.avgCounter += 1
 	if bmon.avgCounter >= bmon.nAverage {
@@ -73,13 +73,13 @@ func (bmon *BaselineMonitor) AddSliceValues(values []RawType) []*BaselineMonitor
 
 	for idx < ndata {
 		// Determine how many we can process in a "fast path"
-        // We take the smaller of: the distance to the boundary OR the rest of the slice
-		chunkSize := min(bmon.nAverage - bmon.avgCounter, ndata - idx)
+		// We take the smaller of: the distance to the boundary OR the rest of the slice
+		chunkSize := min(bmon.nAverage-bmon.avgCounter, ndata-idx)
 		sum := uint64(0)
 		for j := range chunkSize {
-			sum += uint64(values[idx + j])
+			sum += uint64(values[idx+j])
 		}
- 		bmon.avgSum += sum
+		bmon.avgSum += sum
 		bmon.avgCounter += chunkSize
 		idx += chunkSize
 
@@ -111,17 +111,17 @@ func (bmon *BaselineMonitor) performAverage() *BaselineMonitorMessage {
 }
 
 // analyzeQueue finds a weighted average of values near the mode of the distribution, and it
-// returns a single message containing the result, suitable for sending to a 
+// returns a single message containing the result, suitable for sending to a
 // It also resets the queue for re-use.
 //
 // This analysis of the queue defines the mode (the monitored value) by averaging the most
 // closely clustered values for a cluster of size bmon.nPeak.
 func (bmon *BaselineMonitor) analyzeQueue() *BaselineMonitorMessage {
 	slices.Sort(bmon.averages)
-	bestRange := bmon.averages[bmon.nPeak - 1] - bmon.averages[0]
+	bestRange := bmon.averages[bmon.nPeak-1] - bmon.averages[0]
 	bestIdx := 0
-	for i := 0; i < bmon.nStore - bmon.nPeak; i++ {
-		thisrange := bmon.averages[bmon.nPeak + i] - bmon.averages[i + 1]
+	for i := 0; i < bmon.nStore-bmon.nPeak; i++ {
+		thisrange := bmon.averages[bmon.nPeak+i] - bmon.averages[i+1]
 		if thisrange < bestRange {
 			bestRange = thisrange
 			bestIdx = i + 1
