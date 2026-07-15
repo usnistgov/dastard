@@ -60,6 +60,7 @@ func makeFileExist(dir, filename string) (string, error) {
 // files and the filename and suffix. Sets some defaults.
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
+	viper.SetDefault("DataDirectory", "/data")
 
 	HOME, err := os.UserHomeDir()
 	if err != nil { // Handle errors reading the config file
@@ -112,6 +113,7 @@ func main() {
 	}
 
 	printVersion := flag.Bool("version", false, "print version and quit")
+	datadirectory := flag.String("datadir", "", "write Dastard metadata and housekeeping to this directory")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
 	memprofile := flag.String("memprofile", "", "write memory profile to this file")
 	flag.Parse()
@@ -155,14 +157,24 @@ func main() {
 	dastard.ProblemLogger = startLogger(problemname)
 	dastard.UpdateLogger = startLogger(logname)
 	fmt.Printf("Logging problems       to %s\n", problemname)
-	fmt.Printf("Logging client updates to %s\n\n", logname)
-	dastard.UpdateLogger.Printf("\n\n\n\n%s", banner)
+	fmt.Printf("Logging client updates to %s\n", logname)
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
 		panic(err)
 	}
 
+	// Fix the data directory, either from the command-line, if given
+	if len(*datadirectory) > 0 {
+		viper.Set("DataDirectory",  *datadirectory)
+	}
+	if err := viper.UnmarshalKey("DataDirectory", datadirectory); err != nil {
+		*datadirectory = "/data"
+	}
+	fmt.Printf("Writing metadata       to %s\n\n", *datadirectory)
+
+	dastard.UpdateLogger.Printf("\n\n\n\n%s", banner)
+	
 	abort := make(chan struct{})
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
