@@ -104,6 +104,27 @@ func startLogger(pfname string) *log.Logger {
 	return probLogger
 }
 
+
+func launchDB(datadirectory *string) (*dastarddb.DastardDBConnection, error) {
+	dbPath := filepath.Join(*datadirectory, "dastard.db")
+	db, err := dastarddb.NewDastardDBConnection(dbPath)
+	if err != nil {
+		panic(err)
+	}
+	msg := &dastarddb.DastardActivityMessage{
+		Hostname:  dastard.Build.Host,
+		Githash:   dastard.Build.Githash,
+		Builddate: dastard.Build.Date,
+		Version:   dastard.Build.Version,
+		GoVersion: runtime.Version(),
+		CPUs:      runtime.NumCPU(),
+		Start:     time.Now(),
+	}
+	err = db.LogDastardActivity(msg)
+	// todo check err
+	return db, err
+}
+
 func main() {
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
@@ -204,24 +225,4 @@ func main() {
 			log.Fatal("could not write memory profile: ", err)
 		}
 	}
-}
-
-func launchDB(datadirectory *string) (*dastarddb.DastardDBConnection, error) {
-	dbPath := filepath.Join(*datadirectory, "dastard.db")
-	db, err := dastarddb.NewDastardDBConnection(dbPath)
-	if err != nil {
-		panic(err)
-	}
-	msg := &dastarddb.DastardActivityMessage{
-		Hostname:  dastard.Build.Host,
-		Githash:   dastard.Build.Githash,
-		Builddate: dastard.Build.Date,
-		Version:   dastard.Build.Version,
-		GoVersion: runtime.Version(),
-		CPUs:      runtime.NumCPU(),
-		Start:     time.Now(),
-	}
-	err = db.LogDastardActivity(msg)
-	// todo check err
-	return db, err
 }
