@@ -28,7 +28,7 @@ $(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go internal/*/*.go
 	$(GOBUILD) $(GOLINKFLAGS) $(TAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
 
 test:
-	$(GOFMT)
+	$(GOFMT) ./...
 	$(GOTEST) $(NETGO) -v ./...
 
 clean:

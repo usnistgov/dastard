@@ -85,8 +85,8 @@ type Writer struct {
 	PixelYPosition            int
 	PixelName                 string
 
-	file   *os.File
-	writer *asyncbufio.Writer
+	file          *os.File
+	writer        *asyncbufio.Writer
 	syncwithflush bool
 }
 
@@ -272,8 +272,8 @@ type Writer3 struct {
 	FileName                   string
 	RecordsWritten             int
 
-	file   *os.File
-	writer *asyncbufio.Writer
+	file          *os.File
+	writer        *asyncbufio.Writer
 	syncwithflush bool
 }
 
