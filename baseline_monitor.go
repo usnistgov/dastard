@@ -148,8 +148,9 @@ func (bmon *BaselineMonitor) analyzeQueue() *BaselineMonitorMessage {
 
 func RunBaselineUpdater(datadirectory string, baselineMessages <-chan []*BaselineMonitorMessage) error {
 	dir := filepath.Join(datadirectory, "baseline", "latest")
-	path := filepath.Join(dir, "baseline.avro")
-	// todo: figure out how to rotate files hourly or daily or ...?
+	timestamp := time.Now().Format("20060102-150405")
+	filename := fmt.Sprintf("baseline_%s.avro", timestamp)
+	path := filepath.Join(dir, filename)
 
 	// Create directory `dir`, if needed
 	if _, err := os.Stat(dir); err != nil {
@@ -177,6 +178,7 @@ func RunBaselineUpdater(datadirectory string, baselineMessages <-chan []*Baselin
 	// enc, err := ocf.NewEncoder(schema, file, ocf.WithCodec(ocf.Snappy))
 	enc, err := ocf.NewEncoder(schema, file)
 	if err != nil {
+		file.Close()
 		return err
 	}
 
