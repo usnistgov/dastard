@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.10** July 16, 2026-
+* Write Dastard meta-data and run information to a SQLite database.
+
 **0.3.9** December 9, 2025-
 * Remove relic internals/ringbuffers and ability of Abaco to use it as a data source (issue 382).
 * Modernize to use Go 1.22+ features like `for range n` loops (issue 384),
