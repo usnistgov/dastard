@@ -14,6 +14,7 @@ var schemaSQL string
 
 type DastardDBConnection struct {
 	db *sql.DB
+	activityID int64
 }
 
 func NewDastardDBConnection(dbPath string) (*DastardDBConnection, error) {
@@ -62,28 +63,27 @@ func (db *DastardDBConnection) LogDastardActivity(m *DastardActivityMessage) err
 	if err == nil {
 		// Set up a timer to update the "server_seen" column every minute.
 		// It will run until process ends.
-		var rowID int64
-		rowID, err = result.LastInsertId()
+		db.activityID, err = result.LastInsertId()
 		go func() {
 			ticker := time.NewTicker(time.Minute)
 			for range ticker.C {
-				db.updateActivity(rowID)
+				db.updateActivity()
 			}
 		}()
 	}
 	return err
 }
 
-func (db *DastardDBConnection) updateActivity(id int64) error {
+func (db *DastardDBConnection) updateActivity() error {
 	seen := time.Now().UnixMicro()
-	result, err := db.db.Exec("UPDATE activity SET server_seen = ? WHERE id = ?", seen, id)
+	result, err := db.db.Exec("UPDATE activity SET server_seen = ? WHERE id = ?", seen, db.activityID)
 	if err != nil {
 		log.Println("Error UPDATEing: ", err)
 		return err
 	}
 	nrows, err := result.RowsAffected()
 	if err == nil && nrows == 0 {
-		log.Printf("Warning: no rows updated for activity.id=%d", id)
+		log.Printf("Warning: no rows updated for activity.id=%d", db.activityID)
 	}
 	return err
 }
