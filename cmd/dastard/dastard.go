@@ -10,9 +10,11 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -60,6 +62,7 @@ func makeFileExist(dir, filename string) (string, error) {
 // files and the filename and suffix. Sets some defaults.
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
+	viper.SetDefault("Database", true)
 	viper.SetDefault("DataDirectory", "/data")
 
 	HOME, err := os.UserHomeDir()
@@ -166,7 +169,7 @@ func main() {
 
 	// Fix the data directory, either from the command-line, if given
 	if len(*datadirectory) > 0 {
-		viper.Set("DataDirectory",  *datadirectory)
+		viper.Set("DataDirectory", *datadirectory)
 	}
 	if err := viper.UnmarshalKey("DataDirectory", datadirectory); err != nil {
 		*datadirectory = "/data"
@@ -174,7 +177,17 @@ func main() {
 	fmt.Printf("Writing metadata       to %s\n\n", *datadirectory)
 
 	dastard.UpdateLogger.Printf("\n\n\n\n%s", banner)
-	
+
+	// Set up the SQLite database
+	var usedb bool
+	var db *dastarddb.DastardDBConnection
+	if err := viper.UnmarshalKey("Database", &usedb); err != nil && usedb {
+		db, err = launchDB(datadirectory)
+		if err == nil {
+			defer db.Close()
+		}
+	}
+
 	abort := make(chan struct{})
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
 	dastard.RunRPCServer(dastard.Ports.RPC, true)
@@ -191,4 +204,24 @@ func main() {
 			log.Fatal("could not write memory profile: ", err)
 		}
 	}
+}
+
+func launchDB(datadirectory *string) (*dastarddb.DastardDBConnection, error) {
+	dbPath := filepath.Join(*datadirectory, "dastard.db")
+	db, err := dastarddb.NewDastardDBConnection(dbPath)
+	if err != nil {
+		panic(err)
+	}
+	msg := &dastarddb.DastardActivityMessage{
+		Hostname:  dastard.Build.Host,
+		Githash:   dastard.Build.Githash,
+		Builddate: dastard.Build.Date,
+		Version:   dastard.Build.Version,
+		GoVersion: runtime.Version(),
+		CPUs:      runtime.NumCPU(),
+		Start:     time.Now(),
+	}
+	err = db.LogDastardActivity(msg)
+	// todo check err
+	return db, err
 }
