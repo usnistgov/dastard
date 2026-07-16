@@ -2,15 +2,20 @@ package dastard
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/hamba/avro/v2/ocf"
 )
 
 // BaselineMonitorMessage is one channel's baseline monitor result.
 type BaselineMonitorMessage struct {
-	ChanNum   int
-	Timestamp time.Time
-	Value     float32
+	ChanNum   int       `avro:"channum"`
+	Timestamp time.Time `avro:"timestamp"`
+	Value     float32   `avro:"value"`
 }
 
 // BaselineMonitor is a structure to perform inexpensive monitoring of microcalorimeter "baseline" levels.
@@ -139,4 +144,68 @@ func (bmon *BaselineMonitor) analyzeQueue() *BaselineMonitorMessage {
 		Timestamp: time.Now(),
 		Value:     baseline,
 	}
+}
+
+func RunBaselineUpdater(datadirectory string, baselineMessages <-chan []*BaselineMonitorMessage) error {
+	dir := filepath.Join(datadirectory, "baseline", "latest")
+	path := filepath.Join(dir, "baseline.avro")
+	// todo: figure out how to rotate files hourly or daily or ...?
+
+	// Create directory `dir`, if needed
+	if _, err := os.Stat(dir); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		err2 := os.MkdirAll(dir, 0775)
+		if err2 != nil {
+			return err2
+		}
+	}
+
+	schema := `{
+		"type": "record",
+		"name": "BaselineMonitor",
+		"namespace": "dastard",
+		"fields" : [
+			{"name": "channum", "type": "long"},
+			{"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-micros"}},
+			{"name": "value", "type": "float"}
+		]
+	}`
+
+	file, _ := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	// enc, err := ocf.NewEncoder(schema, file, ocf.WithCodec(ocf.Snappy))
+	enc, err := ocf.NewEncoder(schema, file)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer file.Close()
+		defer enc.Close()
+
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case messages, ok := <-baselineMessages:
+				if !ok {
+					return
+				}
+				// encode data, if any
+				for _, msg := range messages {
+					if err := enc.Encode(msg); err != nil {
+						log.Printf("Baseline monitor failed to encode: %v", err)
+					}
+				}
+
+			case <-ticker.C:
+				if err := enc.Flush(); err != nil {
+					log.Printf("Baseline monitor failed to flush: %v", err)
+				}
+			}
+		}
+	}()
+	return nil
 }

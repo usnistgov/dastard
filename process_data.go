@@ -22,6 +22,7 @@ type DataStreamProcessor struct {
 	stream               DataStream
 	lastTrigList         triggerList
 	BaselineMonitor      *BaselineMonitor
+	baselineMonitorChan  chan<- []*BaselineMonitorMessage
 
 	// Realtime analysis features. RT analysis is disabled if projectors.IsEmpty()
 	// Otherwise projectors must be of size (nbases,NSamples)
@@ -73,7 +74,7 @@ func (dsp *DataStreamProcessor) HasProjectors() bool {
 
 // NewDataStreamProcessor creates and initializes a new DataStreamProcessor.
 func NewDataStreamProcessor(channelIndex int, channelNumber int, broker *TriggerBroker,
-	NPresamples int, NSamples int, sampleRate float64) *DataStreamProcessor {
+	NPresamples int, NSamples int, sampleRate float64, baselineMonitorChan chan<- []*BaselineMonitorMessage) *DataStreamProcessor {
 	data := make([]RawType, 0, 1024)
 	framesPerSample := 1
 	firstFrame := FrameIndex(0)
@@ -91,7 +92,7 @@ func NewDataStreamProcessor(channelIndex int, channelNumber int, broker *Trigger
 
 	dsp := DataStreamProcessor{channelIndex: channelIndex, ChannelNumber: channelNumber, Broker: broker,
 		stream: *stream, NSamples: NSamples, NPresamples: NPresamples, SampleRate: sampleRate,
-		BaselineMonitor: bmon,
+		BaselineMonitor: bmon, baselineMonitorChan: baselineMonitorChan,
 	}
 	dsp.LastTrigger = math.MinInt64 / 4 // far in the past, but not so far we can't subtract from it
 	dsp.projectors = &mat.Dense{}       // dsp.projectors is set to zero value
@@ -147,7 +148,11 @@ func (dsp *DataStreamProcessor) ConfigureTrigger(state TriggerState) error {
 
 func (dsp *DataStreamProcessor) processSegment(segment *DataSegment) {
 	dsp.DecimateData(segment)
-	dsp.BaselineMonitor.AddSliceValues(segment.rawData)
+	if msgs := dsp.BaselineMonitor.AddSliceValues(segment.rawData); msgs != nil {
+		if dsp.baselineMonitorChan != nil {
+			dsp.baselineMonitorChan <- msgs
+		}
+	}
 	dsp.stream.AppendSegment(segment)
 	primaryRecords := dsp.TriggerData()
 	dsp.AnalyzeData(primaryRecords)                                       // add analysis results to records in-place

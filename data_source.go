@@ -86,6 +86,7 @@ type DataSource interface {
 	ShouldAutoRestart() bool
 	getPulseLengths() (int, int, error)
 	ArchiveDataBlock(int, *os.File, string) error
+	SetBaselineMonitorChan(chan<- []*BaselineMonitorMessage)
 }
 
 // RunDoneActivate adds one to ds.runDone, this should only be called in Start
@@ -316,6 +317,7 @@ type AnySource struct {
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	heartbeats          chan Heartbeat
+	baselineMessages    chan<- []*BaselineMonitorMessage
 	writingState        WritingState
 	numberWrittenTicker *time.Ticker
 	sourceState         SourceState
@@ -403,6 +405,10 @@ func (ds *AnySource) archiveNewDataBlock(block *dataBlock) {
 		close(ab.complete)
 		ab.active = false
 	}
+}
+
+func (ds *AnySource) SetBaselineMonitorChan(ch chan<- []*BaselineMonitorMessage) {
+	ds.baselineMessages = ch
 }
 
 // ProcessSegments processes a single outstanding segment for each of ds.processors
@@ -947,7 +953,8 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 	}
 
 	for channelIndex := range ds.processors {
-		dsp := NewDataStreamProcessor(channelIndex, ds.chanNumbers[channelIndex], ds.broker, Npresamples, Nsamples, ds.sampleRate)
+		dsp := NewDataStreamProcessor(channelIndex, ds.chanNumbers[channelIndex], ds.broker,
+			Npresamples, Nsamples, ds.sampleRate, ds.baselineMessages)
 		dsp.Name = ds.chanNames[channelIndex]
 		dsp.stream.voltsPerArb = vpa[channelIndex]
 		ds.processors[channelIndex] = dsp
