@@ -7,7 +7,7 @@
 * Broadcast channel names to clients before info that requires the name-numbering-index relationship (issue 388).
 * Copy some changes from the experimental branch `clickhouse_start`.
 * Add a configuration variable `dataDirectory` to store meta-data (issue 394).
-* Create a baseline monitor (issue 392).
+* Create a baseline monitor, storing to Avro file in the meta-data place (issue 392).
 
 **0.3.8** December 8, 2025
 * Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).
