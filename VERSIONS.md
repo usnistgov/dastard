@@ -6,6 +6,7 @@
   with `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test  -fix ./...`
 * Broadcast channel names to clients before info that requires the name-numbering-index relationship (issue 388).
 * Add a configuration variable `dataDirectory` to store meta-data (issue 394).
+* Require go 1.24 for some testing features that have required it already.
 
 **0.3.8** December 8, 2025
 * Fix incorrect scaling of raw data to physical (phi0) units for µMUX source `AbacoSource` (issue 374).
