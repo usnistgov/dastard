@@ -5,10 +5,10 @@ A data acquisition program for NIST transition-edge sensor (TES) microcalorimete
 
 ## Installation
 
-### Golang 1.22+ is required
+### Golang 1.24+ is required
 
-**Dastard requires Go version 1.22 or higher** (released February 2024) to take advantage of certain language constructs including `for range n` loops. Dastard is tested automatically on versions 1.22 and _stable_, [the most recent stable version](https://github.com/actions/go-versions/blob/main/versions-manifest.json) (as of December 9, 2025, that means Go version 1.25.5).
-- If you need to run Go versions 1.21: [Dastard version 0.3.8](https://github.com/usnistgov/dastard/releases/tag/v0.3.8) is the last version compatible with it.
+**Dastard requires Go version 1.24 or higher** (released February 2025) to take advantage of certain language constructs including `test.loop` loops. Dastard is tested automatically on versions 1.24 and _stable_, [the most recent stable version](https://github.com/actions/go-versions/blob/main/versions-manifest.json) (as of July 17, 2026, that means Go version 1.26.5).
+- If you need to run Go versions 1.21, 1.22, or 1.23: [Dastard version 0.3.8](https://github.com/usnistgov/dastard/releases/tag/v0.3.8) is the last version compatible with them.
 - If you need to run Go version 1.20: **don't**. There was a bug in a filesystem handling library that renders Go 1.20 incompatible with our TDM systems specifically. If you are _not_ using TDM and insist on Go 1.20, follow the instructions for Go 1.19.
 - If you need to run Go versions 1.17, 1.18, 1.19: [Dastard version 0.3.3](https://github.com/usnistgov/dastard/releases/tag/v0.3.3) is the last version compatible with them.
 - If you need to run Go version 1.16: [Dastard version 0.2.16](https://github.com/usnistgov/dastard/releases/tag/v0.2.16) is the last version compatible with it.
