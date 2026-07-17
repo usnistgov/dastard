@@ -27,7 +27,7 @@ jobs:
         sudo apt-get --yes install libsodium-dev libzmq3-dev
 
     - name: Setup Go ${{ matrix.go-version }}
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: ${{ matrix.go-version }}
         cache: true
