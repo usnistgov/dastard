@@ -10,9 +10,11 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -60,6 +62,8 @@ func makeFileExist(dir, filename string) (string, error) {
 // files and the filename and suffix. Sets some defaults.
 func setupViper() error {
 	viper.SetDefault("Verbose", false)
+	viper.SetDefault("Database", true)
+	viper.SetDefault("DataDirectory", "/data")
 
 	HOME, err := os.UserHomeDir()
 	if err != nil { // Handle errors reading the config file
@@ -100,6 +104,28 @@ func startLogger(pfname string) *log.Logger {
 	return probLogger
 }
 
+func launchDB(datadirectory *string) (*dastarddb.DastardDBConnection, error) {
+	dbPath := filepath.Join(*datadirectory, "dastard.db")
+	db, err := dastarddb.NewDastardDBConnection(dbPath)
+	if err != nil {
+		panic(err)
+	}
+	msg := &dastarddb.DastardActivityMessage{
+		Hostname:  dastard.Build.Host,
+		Githash:   dastard.Build.Githash,
+		Builddate: dastard.Build.Date,
+		Version:   dastard.Build.Version,
+		GoVersion: runtime.Version(),
+		CPUs:      runtime.NumCPU(),
+		Start:     time.Now(),
+	}
+	err = db.LogDastardActivity(msg)
+	if err != nil {
+		log.Printf("problem: db.LogDastardActivity returned %v", err)
+	}
+	return db, err
+}
+
 func main() {
 	dastard.Build.Date = buildDate
 	dastard.Build.Githash = githash
@@ -112,6 +138,7 @@ func main() {
 	}
 
 	printVersion := flag.Bool("version", false, "print version and quit")
+	datadirectory := flag.String("datadir", "", "write Dastard metadata and housekeeping to this directory")
 	cpuprofile := flag.String("cpuprofile", "", "write CPU profile to this file")
 	memprofile := flag.String("memprofile", "", "write memory profile to this file")
 	flag.Parse()
@@ -155,28 +182,57 @@ func main() {
 	dastard.ProblemLogger = startLogger(problemname)
 	dastard.UpdateLogger = startLogger(logname)
 	fmt.Printf("Logging problems       to %s\n", problemname)
-	fmt.Printf("Logging client updates to %s\n\n", logname)
-	dastard.UpdateLogger.Printf("\n\n\n\n%s", banner)
+	fmt.Printf("Logging client updates to %s\n", logname)
 
 	// Find config file, creating it if needed, and read it.
 	if err := setupViper(); err != nil {
 		panic(err)
 	}
 
+	// Fix the data directory, either from the command-line, if given
+	if len(*datadirectory) > 0 {
+		viper.Set("DataDirectory", *datadirectory)
+	}
+	if err := viper.UnmarshalKey("DataDirectory", datadirectory); err != nil {
+		*datadirectory = "/data"
+	}
+	fmt.Printf("Writing metadata       to %s\n\n", *datadirectory)
+
+	dastard.UpdateLogger.Printf("\n\n\n\n%s", banner)
+
+	// Set up the SQLite database for Dastard metadata
+	var usedb bool
+	var db *dastarddb.DastardDBConnection
+	if err := viper.UnmarshalKey("Database", &usedb); err != nil {
+		panic(err)
+	} else if usedb {
+		db, err = launchDB(datadirectory)
+		if err == nil {
+			defer db.Close()
+		}
+	}
+
+	// Run the main goroutines. The RPC server is blocking.
 	abort := make(chan struct{})
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
-	dastard.RunRPCServer(dastard.Ports.RPC, true)
-	close(abort)
+	dastard.RunRPCServer(dastard.Ports.RPC, true, db)
 
-	if *memprofile != "" {
-		f, err := os.Create(*memprofile)
-		if err != nil {
-			log.Fatal("could not create memory profile: ", err)
-		}
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			log.Fatal("could not write memory profile: ", err)
-		}
+	// Clean up: stop the ClientUpdater and write mem profile (if any)
+	close(abort)
+	writeMemoryProfile(memprofile)
+}
+
+func writeMemoryProfile(memprofile *string) {
+	if *memprofile == "" {
+		return
+	}
+	f, err := os.Create(*memprofile)
+	if err != nil {
+		log.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+	runtime.GC()    // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Fatal("could not write memory profile: ", err)
 	}
 }

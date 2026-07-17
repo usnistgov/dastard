@@ -439,6 +439,7 @@ func setupViper() error {
 	// Write output files in a temporary file
 	ws := WritingState{BasePath: os.TempDir()}
 	viper.Set("writing", &ws)
+	viper.Set("dataDirectory", &ws.BasePath)
 
 	// Check config saving.
 	msg := make(map[string]any)
@@ -466,6 +467,20 @@ func TestErroringSourceRPC(t *testing.T) {
 		if err := client.Call("SourceControl.Stop", &dummy, &okay); err == nil {
 			t.Error("ErroringSource.Stop: expected error for stop because already waited for source to end")
 		}
+	}
+}
+
+func TestViperConfig(t *testing.T) {
+	var dd string
+	viper.UnmarshalKey("dataDirectory", &dd)
+	if len(dd) == 0 {
+		t.Errorf("could not read viper `dataDirectory`")
+	}
+
+	verbose := true
+	viper.UnmarshalKey("verbose", &verbose)
+	if verbose {
+		t.Errorf("found viper `verbose` is true, want false")
 	}
 }
 
@@ -598,7 +613,7 @@ func TestMain(m *testing.M) {
 	abort := make(chan struct{})
 	go RunClientUpdater(Ports.Status, abort)
 	block := false
-	RunRPCServer(Ports.RPC, block)
+	RunRPCServer(Ports.RPC, block, nil)
 
 	// run tests and wrap up
 	result := m.Run()

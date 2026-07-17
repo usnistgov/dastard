@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 
 	"github.com/sbinet/npyio/npz"
@@ -313,6 +315,7 @@ type AnySource struct {
 	archiveBlock archiveableDataBlock // Used to store a section of raw data to file
 	broker       *TriggerBroker
 	configError  error // Any error that arose when configuring the source (before Start)
+	db           *dastarddb.DastardDBConnection
 
 	shouldAutoRestart   bool // used to tell SourceControl to try to restart this source after an error
 	heartbeats          chan Heartbeat
@@ -682,7 +685,13 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
-		return ds.writingState.Stop()
+		err := ds.writingState.Stop()
+		if ds.db != nil {
+			if err := ds.db.EndDatarun(time.Now()); err != nil {
+				// nothing reasonable to do here
+			}
+		}
+		return err
 
 	case strings.HasPrefix(requestStr, "START"):
 		return ds.writeControlStart(config)
@@ -727,14 +736,41 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				len(config.MapInternalOnly.Pixels), ds.nchan/ds.channelsPerPixel, ds.nchan, ds.channelsPerPixel)}
 		}
 	}
-	path := ds.writingState.BasePath
+	basepath := ds.writingState.BasePath
 	if len(config.Path) > 0 {
-		path = config.Path
+		basepath = config.Path
 	}
 	var err error
-	filenamePattern, err := makeDirectory(path)
+	filenamePattern, err := makeDirectory(basepath)
 	if err != nil {
 		return fmt.Errorf("could not make directory: %s", err.Error())
+	}
+
+	// Collect information and store new entry in the `dataruns` table in the database.
+	if ds.db != nil {
+		directory := path.Dir(filenamePattern)
+		d2, runnum := path.Split(directory)
+		_, datecode := path.Split(path.Clean(d2))
+		dateruncode := path.Join(datecode, runnum)
+		NPresamples, NSamples, _ := ds.getPulseLengths()
+
+		drecmsg := dastarddb.DatarunMessage{
+			NumChan:    ds.Nchan(),
+			NumPresamp: NPresamples,
+			NumSamples: NSamples,
+			Timebase:   ds.samplePeriod.Seconds(),
+			DateRun:    dateruncode,
+			BasePath:   directory,
+			DataSource: ds.name,
+			Intention:  config.Intention,
+			Users:      config.Users,
+			Sample:     config.Sample,
+			Purpose:    config.Purpose,
+			Start:      time.Now(),
+		}
+		if err := ds.db.LogDatarun(&drecmsg); err != nil {
+			// nothing reasonable to do here
+		}
 	}
 
 	channelsWithOff := 0
@@ -780,7 +816,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			dsp.DataPublisher.LJH3.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 	}
-	return ds.writingState.Start(filenamePattern, path, config)
+	return ds.writingState.Start(filenamePattern, basepath, config)
 }
 
 // ComputeWritingState returns a partial copy of the writingState
