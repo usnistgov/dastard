@@ -613,7 +613,7 @@ func TestMain(m *testing.M) {
 	abort := make(chan struct{})
 	go RunClientUpdater(Ports.Status, abort)
 	block := false
-	RunRPCServer(Ports.RPC, block)
+	RunRPCServer(Ports.RPC, block, nil)
 
 	// run tests and wrap up
 	result := m.Run()

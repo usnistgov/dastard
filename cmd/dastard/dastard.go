@@ -215,7 +215,7 @@ func main() {
 	// Run the main goroutines. The RPC server is blocking.
 	abort := make(chan struct{})
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
-	dastard.RunRPCServer(dastard.Ports.RPC, true)
+	dastard.RunRPCServer(dastard.Ports.RPC, true, db)
 
 	// Clean up: stop the ClientUpdater and write mem profile (if any)
 	close(abort)
