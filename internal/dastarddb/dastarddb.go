@@ -15,6 +15,7 @@ var schemaSQL string
 type DastardDBConnection struct {
 	db         *sql.DB
 	activityID int64
+	datarunID  int64
 }
 
 func NewDastardDBConnection(dbPath string) (*DastardDBConnection, error) {
@@ -37,7 +38,8 @@ func NewDastardDBConnection(dbPath string) (*DastardDBConnection, error) {
 		log.Fatal("Failed to create tables:", err)
 	}
 
-	return &DastardDBConnection{db: db}, nil
+	newval := &DastardDBConnection{db: db}
+	return newval, nil
 }
 
 func (db *DastardDBConnection) Close() error {
@@ -84,6 +86,50 @@ func (db *DastardDBConnection) updateActivity() error {
 	nrows, err := result.RowsAffected()
 	if err == nil && nrows == 0 {
 		log.Printf("Warning: no rows updated for activity.id=%d", db.activityID)
+	}
+	return err
+}
+
+type DatarunMessage struct {
+	NumChan    int
+	NumPresamp int
+	NumSamples int
+	Timebase   float64
+	DateRun    string
+	BasePath   string
+	DataSource string
+	Intention  string
+	Users      string
+	Sample     string
+	Purpose    string
+	Start      time.Time
+}
+
+func (db *DastardDBConnection) LogDatarun(m *DatarunMessage) error {
+	start := m.Start.UnixMicro()
+	result, err := db.db.Exec(
+		`INSERT INTO dataruns (activity_id, number_channels, number_presamp, number_samples, 
+			timebase, date_run_code, base_storage, intention, datasource, users, sample, purpose, run_start) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		db.activityID, m.NumChan, m.NumPresamp, m.NumSamples, m.Timebase, m.DateRun,
+		m.BasePath, m.Intention, m.DataSource, m.Users, m.Sample, m.Purpose, start,
+	)
+	if err == nil {
+		if id, err := result.LastInsertId(); err == nil {
+			db.datarunID = id
+		}
+	}
+	return err
+}
+
+func (db *DastardDBConnection) EndDatarun(end time.Time) error {
+	result, err := db.db.Exec("UPDATE dataruns SET run_end = ? WHERE id = ?", end.UnixMicro(), db.datarunID)
+	if err != nil {
+		log.Println("Error UPDATEing: ", err)
+		return err
+	}
+	nrows, err := result.RowsAffected()
+	if err == nil && nrows == 0 {
+		log.Printf("Warning: no rows updated for dataruns ID=%d", db.datarunID)
 	}
 	return err
 }

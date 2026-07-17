@@ -99,3 +99,37 @@ func TestDB_LogDastardActivity(t *testing.T) {
 		t.Errorf("expected hostname '%s', got '%s'", msg.Hostname, dbmsg.Hostname)
 	}
 }
+
+func TestDB_LogDatarun(t *testing.T) {
+	// Insert a line with plain SQL, multiple times. Make sure it
+	db := setupTestDB(t)
+	msg := DatarunMessage{
+		NumChan:    6,
+		NumPresamp: 500,
+		NumSamples: 1000,
+		Users:      "Marie Curie",
+		Start:      time.Now(),
+	}
+	err := db.LogDatarun(&msg)
+	if err != nil {
+		t.Errorf("could not run LogDatarun: %v", err)
+	}
+
+	var dbmsg DatarunMessage
+	var start int64
+	err = db.db.QueryRow("SELECT number_channels, number_presamp, number_samples, users, run_start FROM dataruns WHERE id = 1").Scan(
+		&dbmsg.NumChan, &dbmsg.NumPresamp, &dbmsg.NumSamples, &dbmsg.Users, &start)
+	dbmsg.Start = time.UnixMicro(start)
+	if err != nil {
+		t.Fatalf("failed to query activity: %v", err)
+	}
+	// Careful: the time.Now() includes monotonic clock info; value retrieved from the DB doesn't.
+	// Therefore, must compare using t1.Equal(t2) and then copy over the value from the DB.
+	if !msg.Start.Equal(dbmsg.Start) {
+		t.Errorf("expected run_start %v, got %v", msg.Start, dbmsg.Start)
+	}
+	dbmsg.Start = msg.Start
+	if dbmsg != msg {
+		t.Errorf("expected data '%v', got '%v'", msg, dbmsg)
+	}
+}
