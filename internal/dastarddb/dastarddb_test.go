@@ -124,8 +124,8 @@ func TestDB_LogDatarun(t *testing.T) {
 		t.Fatalf("failed to query activity: %v", err)
 	}
 	// Careful: the time.Now() includes monotonic clock info; value retrieved from the DB doesn't.
-	// Therefore, must compare using t1.Equal(t2) and then copy over the value from the DB.
-	if !msg.Start.Equal(dbmsg.Start) {
+	// Therefore, must compare using t1.Equal(t2) (truncating t1 to µs) and then copy over the value from the DB.
+	if !msg.Start.Truncate(time.Microsecond).Equal(dbmsg.Start) {
 		t.Errorf("expected run_start %v, got %v", msg.Start, dbmsg.Start)
 	}
 	dbmsg.Start = msg.Start
