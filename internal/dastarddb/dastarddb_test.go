@@ -90,7 +90,7 @@ func TestDB_LogDastardActivity(t *testing.T) {
 	}
 
 	var dbmsg DastardActivityMessage
-	err = db.db.QueryRow("SELECT hostname, version, go_version, CPUs FROM activity WHERE id = 1").Scan(
+	err = db.db.QueryRow("SELECT hostname, version, go_version, numCPUs FROM activity WHERE id = 1").Scan(
 		&dbmsg.Hostname, &dbmsg.Version, &dbmsg.GoVersion, &dbmsg.CPUs)
 	if err != nil {
 		t.Fatalf("failed to query activity: %v", err)

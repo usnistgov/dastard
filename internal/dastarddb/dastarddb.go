@@ -13,7 +13,7 @@ import (
 var schemaSQL string
 
 type DastardDBConnection struct {
-	db *sql.DB
+	db         *sql.DB
 	activityID int64
 }
 

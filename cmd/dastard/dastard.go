@@ -104,7 +104,6 @@ func startLogger(pfname string) *log.Logger {
 	return probLogger
 }
 
-
 func launchDB(datadirectory *string) (*dastarddb.DastardDBConnection, error) {
 	dbPath := filepath.Join(*datadirectory, "dastard.db")
 	db, err := dastarddb.NewDastardDBConnection(dbPath)
