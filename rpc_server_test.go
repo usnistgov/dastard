@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/sbinet/npyio/npz"
-	"github.com/spf13/viper"
 	"github.com/usnistgov/dastard/internal/lancero"
 	"gonum.org/v1/gonum/mat"
 )
@@ -60,14 +60,6 @@ func TestServer(t *testing.T) {
 		if reply != args.A*args.B {
 			t.Errorf("SourceControl.Multiply: %d * %d = %d, want %d\n", args.A, args.B, reply, args.A*args.B)
 		}
-	}
-
-	// Test the viper config
-	if hp := viper.GetInt("harrypotter"); hp != harrypotter {
-		t.Errorf("viper.GetInt(%q) returns %d, want %d", "harrypotter", hp, harrypotter)
-	}
-	if now := viper.Get("currenttime"); now == nil {
-		t.Errorf("viper.Get(\"currenttime\") returns nil")
 	}
 
 	var okay bool
@@ -404,29 +396,18 @@ func verifyConfigFile(path, filename string) error {
 	return nil
 }
 
-// setupViper sets up the viper configuration manager: says where to find config
-// files and the filename and suffix. Sets some defaults.
-func setupViper() error {
-	viper.SetDefault("Verbose", false)
-
-	HOME, err := os.UserHomeDir()
+func setupKoanf(tempDir string) error {
+	// First, load default values
+	err := GlobalKoanf.Load(confmap.Provider(map[string]any{
+		"Verbose":       false,
+		"DataDirectory": tempDir,
+	}, "."), nil)
 	if err != nil {
-		return err
+		log.Fatalf("Error loading configuration defaults: %v", err)
 	}
-	path := filepath.Join(HOME, ".dastard")
-	const filename string = "testconfig"
-	const suffix string = ".yaml"
-	if err := verifyConfigFile(path, filename+suffix); err != nil {
-		return err
-	}
-
-	viper.SetConfigName(filename)
-	viper.AddConfigPath(path)
-	viper.AddConfigPath(".")
-	err = viper.ReadInConfig() // Find and read the config file
-	if err != nil {            // Handle errors reading the config file
-		return fmt.Errorf("error reading config file: %s", err)
-	}
+	// Remember the file path, so saveState knows where the configuration should be stored
+	fullpath := filepath.Join(tempDir, "test-config.yaml")
+	GlobalKoanf.Set("koanf_mainname", fullpath)
 
 	// Set up different ports for testing than you'd use otherwise.
 	// Use a random value in {30000,30010,...39990} so that two tests can run at once.
@@ -436,15 +417,17 @@ func setupViper() error {
 	portoffset := 10 * rand.Intn(1000)
 	setPortnumbers(30000 + portoffset)
 
-	// Write output files in a temporary file
-	ws := WritingState{BasePath: os.TempDir()}
-	viper.Set("writing", &ws)
-	viper.Set("dataDirectory", &ws.BasePath)
+	// Write output files in the temporary directory
+	ws := WritingState{BasePath: tempDir}
+
+	GlobalKoanf.Set("writing", &ws)
+	GlobalKoanf.Set("DataDirectory", &ws.BasePath)
 
 	// Check config saving.
 	msg := make(map[string]any)
 	msg["HarryPotter"] = harrypotter
 	saveState(msg)
+
 	return nil
 }
 
@@ -470,17 +453,17 @@ func TestErroringSourceRPC(t *testing.T) {
 	}
 }
 
-func TestViperConfig(t *testing.T) {
+func TestKoanfConfig(t *testing.T) {
 	var dd string
-	viper.UnmarshalKey("dataDirectory", &dd)
+	GlobalKoanf.Unmarshal("DataDirectory", &dd)
 	if len(dd) == 0 {
-		t.Errorf("could not read viper `dataDirectory`")
+		t.Errorf("could not read koanf `DataDirectory`")
 	}
 
-	verbose := true
-	viper.UnmarshalKey("verbose", &verbose)
-	if verbose {
-		t.Errorf("found viper `verbose` is true, want false")
+	Verbose := true
+	GlobalKoanf.Unmarshal("Verbose", &Verbose)
+	if Verbose {
+		t.Errorf("found koanf `Verbose` is true, want false")
 	}
 }
 
@@ -585,13 +568,6 @@ waitingforfile:
 	}
 }
 
-func TestNoConfigFile(t *testing.T) {
-	// Find config file, creating it if needed, and read it.
-	if err := setupViper(); err != nil {
-		panic(err)
-	}
-}
-
 func TestMain(m *testing.M) {
 	// set log to write to a file
 	f, err := os.Create("dastardtestlogfile")
@@ -606,7 +582,8 @@ func TestMain(m *testing.M) {
 	cringeGlobalsPath = filepath.Join("internal", "lancero", "test_data", "cringeGlobals.json")
 
 	// Find config file, creating it if needed, and read it.
-	if err := setupViper(); err != nil {
+	tmpDir, err := os.MkdirTemp(os.TempDir(), "dastard-tests-*")
+	if err := setupKoanf(tmpDir); err != nil {
 		panic(err)
 	}
 

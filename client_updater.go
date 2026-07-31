@@ -2,7 +2,7 @@ package dastard
 
 // Contain the ClientUpdater object, which publishes JSON-encoded messages
 // giving the latest DASTARD state. Most of these messages are saved to
-// disk with viper.
+// disk with koanf.
 
 import (
 	"encoding/json"
@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/pebbe/zmq4"
-	"github.com/spf13/viper"
 )
 
 // ClientUpdate carries the messages to be published on the status port.
@@ -188,15 +188,20 @@ func saveState(lastMessages map[string]any) {
 	// Note that the nosaveMessages shouldn't get into the lastMessages map.
 	for k, v := range lastMessages {
 		if _, ok := nosaveMessages[strings.ToLower(k)]; !ok {
-			viper.Set(k, v)
+			GlobalKoanf.Set(k, v)
 		}
 	}
 
-	mainname := viper.ConfigFileUsed()
+	mainname := GlobalKoanf.String("koanf_mainname")
 	tmpname := strings.Replace(mainname, ".yaml", ".tmp.yaml", 1)
 	bakname := mainname + ".bak"
-	err := viper.WriteConfigAs(tmpname)
+	yamlBytes, err := GlobalKoanf.Marshal(yaml.Parser())
 	if err != nil {
+		log.Println("Could not marshal koanf state: ", err)
+		return
+	}
+
+	if err := os.WriteFile(tmpname, yamlBytes, 0644); err != nil {
 		log.Println("Could not store config file ", tmpname, ": ", err)
 		return
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/usnistgov/dastard/internal/getbytes"
 
 	"github.com/sbinet/npyio/npz"
-	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -920,10 +919,11 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 
 	// Load last trigger state from config file
 	var fts []FullTriggerState
-	if err := viper.UnmarshalKey("trigger", &fts); err != nil {
+	if err := GlobalKoanf.Unmarshal("trigger", &fts); err != nil {
 		// could not read trigger state from config file.
 		fts = []FullTriggerState{}
 	}
+
 	tsptrs := make([]*TriggerState, ds.nchan)
 	for i, ts := range fts {
 		for _, channelIndex := range ts.ChannelIndices {
