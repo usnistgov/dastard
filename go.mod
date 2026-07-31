@@ -4,6 +4,7 @@ go 1.24.13
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+	github.com/hamba/avro/v2 v2.31.0
 	github.com/lorenzosaino/go-sysctl v0.3.1
 	github.com/pebbe/zmq4 v1.4.0
 	github.com/sbinet/npyio v0.9.0
@@ -17,6 +18,11 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/compress v1.19.0 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nlpodyssey/gopickle v0.3.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
