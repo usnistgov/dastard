@@ -5,6 +5,9 @@ go 1.25.0
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/hamba/avro/v2 v2.31.0
+	github.com/knadh/koanf/parsers/yaml v1.1.0
+	github.com/knadh/koanf/providers/file v1.2.1
+	github.com/knadh/koanf/v2 v2.3.5
 	github.com/lorenzosaino/go-sysctl v0.3.1
 	github.com/pebbe/zmq4 v1.4.0
 	github.com/sbinet/npyio v0.9.0
@@ -21,6 +24,9 @@ require (
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/knadh/koanf/maps v0.1.2 // indirect
+	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nlpodyssey/gopickle v0.3.0 // indirect
