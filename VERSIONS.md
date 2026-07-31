@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.10** July 17, 2026-
+* Minimum go version 1.25 (released August 2025).
+
 **0.3.9** July 31, 2026
 * Remove relic internals/ringbuffers and ability of Abaco to use it as a data source (issue 382).
 * Modernize to use Go 1.22+ features like `for range n` loops (issue 384),
