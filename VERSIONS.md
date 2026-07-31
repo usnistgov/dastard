@@ -1,6 +1,7 @@
 ## DASTARD Versions
 
 **0.3.10** July 16, 2026-
+* Minimum go version 1.25 (released August 2025).
 * Write Dastard meta-data and run information to a SQLite database.
 
 **0.3.9** July 31, 2026
