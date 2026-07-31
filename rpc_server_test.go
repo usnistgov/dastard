@@ -9,7 +9,6 @@ import (
 	"net/rpc/jsonrpc"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -361,41 +360,6 @@ func configRunningSourceTests(client *rpc.Client, t *testing.T) {
 	}
 }
 
-// verifyConfigFile checks that path/filename exists, and creates the directory
-// and file if it doesn't.
-func verifyConfigFile(path, filename string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	path = strings.Replace(path, "$HOME", home, 1)
-
-	// Create directory <path>, if needed
-	_, err = os.Stat(path)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-		err = os.MkdirAll(path, 0775)
-		if err != nil {
-			return err
-		}
-	}
-
-	// If it exists, delete it. Then create an empty file path/filename.
-	fullname := filepath.Join(path, filename)
-	_, err = os.Stat(fullname)
-	if !os.IsNotExist(err) {
-		os.Remove(fullname)
-	}
-	f, err := os.OpenFile(fullname, os.O_WRONLY|os.O_CREATE, 0664)
-	if err != nil {
-		return err
-	}
-	f.Close()
-	return nil
-}
-
 func setupKoanf(tempDir string) error {
 	// First, load default values
 	err := GlobalKoanf.Load(confmap.Provider(map[string]any{
@@ -421,7 +385,6 @@ func setupKoanf(tempDir string) error {
 	ws := WritingState{BasePath: tempDir}
 
 	GlobalKoanf.Set("WRITING", &ws)
-	GlobalKoanf.Set("DataDirectory", &ws.BasePath)
 
 	// Check config saving.
 	msg := make(map[string]any)
@@ -582,7 +545,8 @@ func TestMain(m *testing.M) {
 	cringeGlobalsPath = filepath.Join("internal", "lancero", "test_data", "cringeGlobals.json")
 
 	// Find config file, creating it if needed, and read it.
-	tmpDir, err := os.MkdirTemp(os.TempDir(), "dastard-tests-*")
+	tmpDir, err := os.MkdirTemp("", "dastard-tests-*")
+	defer os.RemoveAll(tmpDir)
 	if err := setupKoanf(tmpDir); err != nil {
 		panic(err)
 	}

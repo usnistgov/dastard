@@ -9,7 +9,7 @@
   with `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test  -fix ./...`
 * Broadcast channel names to clients before info that requires the name-numbering-index relationship (issue 388).
 * Copy some changes from the experimental branch `clickhouse_start`.
-* Add a configuration variable `dataDirectory` to store meta-data (issue 394).
+* Add a configuration variable `DataDirectory` to store meta-data (issue 394).
 * Require go 1.24 for some testing features that have required it already.
 * Create a baseline monitor, storing to Avro file in the meta-data place (issue 392).
 
