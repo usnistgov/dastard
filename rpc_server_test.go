@@ -420,7 +420,7 @@ func setupKoanf(tempDir string) error {
 	// Write output files in the temporary directory
 	ws := WritingState{BasePath: tempDir}
 
-	GlobalKoanf.Set("writing", &ws)
+	GlobalKoanf.Set("WRITING", &ws)
 	GlobalKoanf.Set("DataDirectory", &ws.BasePath)
 
 	// Check config saving.

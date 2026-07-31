@@ -919,7 +919,7 @@ func (ds *AnySource) PrepareRun(Npresamples int, Nsamples int) error {
 
 	// Load last trigger state from config file
 	var fts []FullTriggerState
-	if err := GlobalKoanf.Unmarshal("trigger", &fts); err != nil {
+	if err := GlobalKoanf.Unmarshal("TRIGGER", &fts); err != nil {
 		// could not read trigger state from config file.
 		fts = []FullTriggerState{}
 	}

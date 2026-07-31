@@ -770,7 +770,7 @@ func RunRPCServer(portrpc int, block bool) {
 	var okay bool
 	var spc SimPulseSourceConfig
 	spc.SampleRate = 1000.0
-	err = GlobalKoanf.Unmarshal("simpulse", &spc)
+	err = GlobalKoanf.Unmarshal("SIMPULSE", &spc)
 	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
 		spc.Nchan = 1
 	}
@@ -782,7 +782,7 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var tsc TriangleSourceConfig
 	tsc.SampleRate = 1000.0
-	err = GlobalKoanf.Unmarshal("triangle", &tsc)
+	err = GlobalKoanf.Unmarshal("TRIANGLE", &tsc)
 	// Default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
 	if tsc.Nchan == 0 {
 		tsc.Nchan = 1
@@ -794,7 +794,7 @@ func RunRPCServer(portrpc int, block bool) {
 		}
 	}
 	var lsc LanceroSourceConfig
-	err = GlobalKoanf.Unmarshal("lancero", &lsc)
+	err = GlobalKoanf.Unmarshal("LANCERO", &lsc)
 	if err == nil {
 		_ = sourceControl.ConfigureLanceroSource(&lsc, &okay)
 		// Don't panic on config errors: they are expected on any system w/o Lancero cards.
@@ -804,20 +804,20 @@ func RunRPCServer(portrpc int, block bool) {
 	// Set reasonable defaults when not in the config file.
 	asc.AbacoUnwrapOptions.Unwrap = true
 	asc.AbacoUnwrapOptions.ResetAfter = 20000
-	err = GlobalKoanf.Unmarshal("abaco", &asc)
+	err = GlobalKoanf.Unmarshal("ABACO", &asc)
 	if err == nil {
 		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)
 		// intentionally not checking for configure errors since it might fail on non abaco systems
 	}
 
 	var rsc RoachSourceConfig
-	err = GlobalKoanf.Unmarshal("roach", &rsc)
+	err = GlobalKoanf.Unmarshal("ROACH", &rsc)
 	if err == nil {
 		_ = sourceControl.ConfigureRoachSource(&rsc, &okay)
 		// intentionally not checking for configure errors since it might fail on non roach systems
 	}
 
-	err = GlobalKoanf.Unmarshal("status", &sourceControl.status)
+	err = GlobalKoanf.Unmarshal("STATUS", &sourceControl.status)
 	// Set some defaults that won't cause problems down the line.
 	status := &sourceControl.status
 	if status.Npresamp <= 0 {
@@ -837,7 +837,7 @@ func RunRPCServer(portrpc int, block bool) {
 		sourceControl.broadcastStatus()
 	}
 	var ws WritingState
-	err = GlobalKoanf.Unmarshal("writing", &ws)
+	err = GlobalKoanf.Unmarshal("WRITING", &ws)
 	if err == nil {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful
@@ -854,7 +854,7 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 
 	var mapFileName string
-	err = GlobalKoanf.Unmarshal("tesmapfile", &mapFileName)
+	err = GlobalKoanf.Unmarshal("TESMAPFILE", &mapFileName)
 	if err == nil {
 		_ = mapServer.Load(&mapFileName, &okay)
 		// intentionally not checking for error, it ok if we fail to load a map file

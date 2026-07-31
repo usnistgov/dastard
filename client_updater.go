@@ -143,7 +143,7 @@ func RunClientUpdater(statusport int, abort <-chan struct{}) {
 
 			// Check if the state has changed; if so, remember the message for later
 			// (we'll need to broadcast it when a new client asks for a SENDALL).
-			// If it's also NOT on the no-save list, save to Viper config file after a delay.
+			// If it's also NOT on the no-save list, save to config file after a delay.
 			// The delay allows us to accumulate many near-simultaneous changes then
 			// save only once.
 			updateString := string(message)
