@@ -40,6 +40,7 @@ type SourceControl struct {
 	clientUpdates chan<- ClientUpdate
 	totalData     Heartbeat
 	heartbeats    chan Heartbeat
+	baselineMsg   chan<- []*BaselineMonitorMessage
 
 	// For queueing up RPC requests for later execution and getting the result
 	queuedRequests chan func()
@@ -375,6 +376,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	default:
 		return fmt.Errorf("data Source \"%s\" is not recognized", *sourceName)
 	}
+	s.ActiveSource.SetBaselineMonitorChan(s.baselineMsg)
 
 	log.Printf("Starting data source named %s\n", *sourceName)
 	s.status.Running = true
@@ -855,6 +857,15 @@ func RunRPCServer(portrpc int, block bool, db *dastarddb.DastardDBConnection) {
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", &wsSend}
 	}
 
+	datadirectory := viper.GetString("DataDirectory")
+	baselineMessages := make(chan []*BaselineMonitorMessage, 1024)
+	sourceControl.baselineMsg = baselineMessages
+	defer close(baselineMessages)
+	err = RunBaselineUpdater(datadirectory, baselineMessages)
+	if err != nil {
+		panic(err)
+	}
+
 	var mapFileName string
 	err = viper.UnmarshalKey("tesmapfile", &mapFileName)
 	if err == nil {
@@ -932,4 +943,5 @@ func RunRPCServer(portrpc int, block bool, db *dastarddb.DastardDBConnection) {
 	sourceControl.Stop(&dummy, &okay)
 	// Recover from the AsciiBouncer repeatedly repainting the terminal by printing a newline
 	fmt.Println()
+	// todo: figure out how to wait on things like baseline monitor to complete.
 }
