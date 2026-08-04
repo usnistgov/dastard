@@ -51,20 +51,6 @@ func (b EMTBackwardCompatibleRPCFields) toEMTState() (EMTState, error) {
 	return s, nil
 }
 
-func min(a int, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a >= b {
-		return a
-	}
-	return b
-}
-
 // kinkModel returns a+b(x-k) for x<k and a+c(x-k) for x>=k
 func kinkModel(k float64, x float64, a float64, b float64, c float64) float64 {
 	if x < k {

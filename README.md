@@ -172,7 +172,7 @@ Futher reading:
 * [BINARY_FORMATS.md](doc/BINARY_FORMATS.md): info about the binary data packets sent by Dastard (very technical!)
 
 ### Configuration
-DASTARD caches its configuration via the [Viper](https://github.com/spf13/viper) "complete configuration solution for Go applications". You can find your user file at `$HOME/.dastard/config.yaml`. It's human-readable, though you should normally never need to read or edit it. If you have configuration problems and cannot find another way out, it is okay to delete this file (or hide it temporarily in, for example, `/tmp/`). If you want some kind of global defaults that you want to persist even if that file is deleted, it is possible to create a global `/etc/dastard/config.yaml` file with a subset of the values you want to set by default.
+DASTARD caches its configuration via the [Koanf](https://github.com/knadh/koanf) "library for reading configuration from different sources in different formats in Go applications". You can find your user file at `$HOME/.dastard/config.yaml`. It's human-readable, though you should normally never need to read or edit it. If you have configuration problems and cannot find another way out, it is okay to delete this file (or hide it temporarily in, for example, `/tmp/`). If you want some kind of global defaults that you want to persist even if that file is deleted, it is possible to create a global `/etc/dastard/config.yaml` file with a subset of the values you want to set by default.
 
 But again, this is expert usage! You should not normally need to touch or look at the configuration file. It's there for internal use to allow settings to persist from one run of Dastard to another.
 

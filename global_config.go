@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"time"
+
+	"github.com/knadh/koanf/v2"
 )
 
 // Portnumbers structs can contain all TCP port numbers used by Dastard.
@@ -57,6 +59,8 @@ var ProblemLogger *log.Logger
 // UpdateLogger will log client updates to a file
 var UpdateLogger *log.Logger
 
+var GlobalKoanf *koanf.Koanf
+
 func init() {
 	setPortnumbers(BasePort)
 	DastardStartTime = time.Now()
@@ -64,4 +68,5 @@ func init() {
 	// Dastard main program will override this, but at least initialize with a sensible value
 	ProblemLogger = log.New(os.Stderr, "", log.LstdFlags)
 	UpdateLogger = log.New(os.Stdout, "", log.LstdFlags)
+	GlobalKoanf = koanf.New(".")
 }

@@ -1,5 +1,4 @@
 //go:build !ci
-// +build !ci
 
 // Don't run these Roach tests on CI platforms. There were UDP problems 10/23/2020 on Travis.
 

@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/viper"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/providers/file"
 	"github.com/usnistgov/dastard"
 	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -58,12 +60,16 @@ func makeFileExist(dir, filename string) (string, error) {
 	return fullname, nil
 }
 
-// setupViper sets up the viper configuration manager: says where to find config
-// files and the filename and suffix. Sets some defaults.
-func setupViper() error {
-	viper.SetDefault("Verbose", false)
-	viper.SetDefault("Database", true)
-	viper.SetDefault("DataDirectory", "/data")
+func setupKoanf() error {
+	// First, load default values
+	err := dastard.GlobalKoanf.Load(confmap.Provider(map[string]interface{}{
+		"Verbose":       false,
+		"Database":      true,
+		"DataDirectory": "/data",
+	}, "."), nil)
+	if err != nil {
+		log.Fatalf("Error loading configuration defaults: %v", err)
+	}
 
 	HOME, err := os.UserHomeDir()
 	if err != nil { // Handle errors reading the config file
@@ -72,18 +78,19 @@ func setupViper() error {
 	dotDastard := filepath.Join(HOME, ".dastard")
 	const filename string = "config"
 	const suffix string = ".yaml"
-	if _, err := makeFileExist(dotDastard, filename+suffix); err != nil {
+	fullpath, err := makeFileExist(dotDastard, filename+suffix)
+	if err != nil {
 		return err
 	}
+	// Todo: look in /etc/dastard/, ~/.dastard/, and .
 
-	viper.SetConfigName(filename)
-	viper.AddConfigPath(filepath.FromSlash("/etc/dastard"))
-	viper.AddConfigPath(dotDastard)
-	viper.AddConfigPath(".")
-	err = viper.ReadInConfig() // Find and read the config file
-	if err != nil {            // Handle errors reading the config file
-		return fmt.Errorf("error reading config file: %s", err)
+	if err = dastard.GlobalKoanf.Load(file.Provider(fullpath), yaml.Parser()); err != nil {
+		log.Fatalf("error loading config: %v", err)
 	}
+	log.Printf("Dastard config file: %s\n", fullpath)
+
+	// Store the file path
+	dastard.GlobalKoanf.Set("koanf_mainname", fullpath)
 	return nil
 }
 
@@ -185,15 +192,15 @@ func main() {
 	fmt.Printf("Logging client updates to %s\n", logname)
 
 	// Find config file, creating it if needed, and read it.
-	if err := setupViper(); err != nil {
+	if err := setupKoanf(); err != nil {
 		panic(err)
 	}
 
 	// Fix the data directory, either from the command-line, if given
 	if len(*datadirectory) > 0 {
-		viper.Set("DataDirectory", *datadirectory)
+		dastard.GlobalKoanf.Set("DataDirectory", *datadirectory)
 	}
-	if err := viper.UnmarshalKey("DataDirectory", datadirectory); err != nil {
+	if err := dastard.GlobalKoanf.Unmarshal("DataDirectory", datadirectory); err != nil {
 		*datadirectory = "/data"
 	}
 	fmt.Printf("Writing metadata       to %s\n\n", *datadirectory)
