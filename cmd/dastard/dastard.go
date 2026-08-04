@@ -210,7 +210,7 @@ func main() {
 	// Set up the SQLite database for Dastard metadata
 	var usedb bool
 	var db *dastarddb.DastardDBConnection
-	if err := viper.UnmarshalKey("Database", &usedb); err != nil {
+	if err := dastard.GlobalKoanf.Unmarshal("Database", &usedb); err != nil {
 		panic(err)
 	} else if usedb {
 		db, err = launchDB(datadirectory)
