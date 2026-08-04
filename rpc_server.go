@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/spf13/viper"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -751,7 +750,7 @@ func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
 func RunRPCServer(portrpc int, block bool) {
 	// Set up objects to handle remote calls
 
-	// Set up source control. Later, we will try to use `viper.UnmarshallKey("status"...)' to fill
+	// Set up source control. Later, we will try to use `GlobalKoanf.Unmarshall("status"...)' to fill
 	// it with stored values from ~/.dastard/config.yaml. But in the absence of stored values, we
 	// need to set some reasonable defaults, including non-zero values of Nsamples and Npresamples.
 	sourceControl := NewSourceControl()
@@ -765,14 +764,13 @@ func RunRPCServer(portrpc int, block bool) {
 	sourceControl.clientUpdates <- ClientUpdate{"NEWDASTARD", "new Dastard is running"}
 
 	// Load stored settings, and transfer saved configuration
-	// from Viper to relevant objects. Note that these items are saved
-	// in client_updater.go
+	// from koanf to relevant objects. Note that these items are saved
+	// regularly and automatically in client_updater.go
 	var err error
 	var okay bool
 	var spc SimPulseSourceConfig
 	spc.SampleRate = 1000.0
-	log.Printf("Dastard config file: %s\n", viper.ConfigFileUsed())
-	err = viper.UnmarshalKey("simpulse", &spc)
+	err = GlobalKoanf.Unmarshal("SIMPULSE", &spc)
 	if spc.Nchan == 0 { // default to a valid Nchan value to avoid ConfigureSimPulseSource throwing an error
 		spc.Nchan = 1
 	}
@@ -784,7 +782,7 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 	var tsc TriangleSourceConfig
 	tsc.SampleRate = 1000.0
-	err = viper.UnmarshalKey("triangle", &tsc)
+	err = GlobalKoanf.Unmarshal("TRIANGLE", &tsc)
 	// Default to a valid Nchan value to avoid ConfigureTriangleSource throwing an error
 	if tsc.Nchan == 0 {
 		tsc.Nchan = 1
@@ -796,7 +794,7 @@ func RunRPCServer(portrpc int, block bool) {
 		}
 	}
 	var lsc LanceroSourceConfig
-	err = viper.UnmarshalKey("lancero", &lsc)
+	err = GlobalKoanf.Unmarshal("LANCERO", &lsc)
 	if err == nil {
 		_ = sourceControl.ConfigureLanceroSource(&lsc, &okay)
 		// Don't panic on config errors: they are expected on any system w/o Lancero cards.
@@ -806,20 +804,20 @@ func RunRPCServer(portrpc int, block bool) {
 	// Set reasonable defaults when not in the config file.
 	asc.AbacoUnwrapOptions.Unwrap = true
 	asc.AbacoUnwrapOptions.ResetAfter = 20000
-	err = viper.UnmarshalKey("abaco", &asc)
+	err = GlobalKoanf.Unmarshal("ABACO", &asc)
 	if err == nil {
 		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)
 		// intentionally not checking for configure errors since it might fail on non abaco systems
 	}
 
 	var rsc RoachSourceConfig
-	err = viper.UnmarshalKey("roach", &rsc)
+	err = GlobalKoanf.Unmarshal("ROACH", &rsc)
 	if err == nil {
 		_ = sourceControl.ConfigureRoachSource(&rsc, &okay)
 		// intentionally not checking for configure errors since it might fail on non roach systems
 	}
 
-	err = viper.UnmarshalKey("status", &sourceControl.status)
+	err = GlobalKoanf.Unmarshal("STATUS", &sourceControl.status)
 	// Set some defaults that won't cause problems down the line.
 	status := &sourceControl.status
 	if status.Npresamp <= 0 {
@@ -839,14 +837,14 @@ func RunRPCServer(portrpc int, block bool) {
 		sourceControl.broadcastStatus()
 	}
 	var ws WritingState
-	err = viper.UnmarshalKey("writing", &ws)
+	err = GlobalKoanf.Unmarshal("WRITING", &ws)
 	if err == nil {
 		wsSend := WritingState{BasePath: ws.BasePath} // only send the BasePath to clients
 		// other info like Active: true could be wrong, and is not useful
 		sourceControl.clientUpdates <- ClientUpdate{"WRITING", &wsSend}
 	}
 
-	datadirectory := viper.GetString("DataDirectory")
+	datadirectory := GlobalKoanf.String("DataDirectory")
 	baselineMessages := make(chan []*BaselineMonitorMessage, 1024)
 	sourceControl.baselineMsg = baselineMessages
 	defer close(baselineMessages)
@@ -856,7 +854,7 @@ func RunRPCServer(portrpc int, block bool) {
 	}
 
 	var mapFileName string
-	err = viper.UnmarshalKey("tesmapfile", &mapFileName)
+	err = GlobalKoanf.Unmarshal("TESMAPFILE", &mapFileName)
 	if err == nil {
 		_ = mapServer.Load(&mapFileName, &okay)
 		// intentionally not checking for error, it ok if we fail to load a map file

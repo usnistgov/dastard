@@ -63,7 +63,7 @@ represented as JSON objects. We are using [JSON-RPC version 1.0](https://www.jso
 is implemented by a Go package, [net/rpc/jsonrpc](https://pkg.go.dev/net/rpc/jsonrpc).
 
 The main DASTARD program (`dastard/dastard.go`) is simple. It performs one startup task then launches three
-parallel tasks. The startup task uses the [viper configuration manager](http://github.com/spf13/viper) to read
+parallel tasks. The startup task uses the [Koanf configuration manager](https://github.com/knadh/koanf) to read
 a configuration file `$HOME/.dastard/config.yaml` that restores much of the configuration from the last run of
 DASTARD. If a global configuration` /etc/dastard/config.yaml` exists, it will be read before the user’s main
 configuration. The parallel tasks are:
@@ -85,10 +85,10 @@ various supported data sources (e.g., an Abaco). It contains one each of a `Lanc
 `RoachSource`, `SimPulseSource`, and `TriangleSource`. These 5 specific types match the `DataSource` interface
 and therefore offer a ton of identically named methods like `Sample()`, `PrepareRun()`, `StartRun()`, and `Stop()`.
 Each of these 5 sources also has configuration/control options specific to that type of data source. Each has
-a stored state that is read (by viper) initially. A "new Dastard is running" message is sent to all active
+a stored state that is read (by Koanf) initially. A "new Dastard is running" message is sent to all active
 clients (by pushing the message to `sourceControl.clientUpdates` channel, which the `RunClientUpdater`
 goroutine is receiving from). The previous info about the data-writing state and the TES map (location) file
-are loaded by viper. Also a new `MapServer` object is created to load and send TES position data.
+are loaded by Koanf. Also a new `MapServer` object is created to load and send TES position data.
 
 After these setup tasks are completed, 2 goroutines are launched:
 
@@ -161,7 +161,7 @@ complicated channel numbering possibilities.
 channel `ds.abortSelf` for knowing when to stop; channel `ds.nextBlock` for passing data chunks from the
 source to the downstream processors; a `TriggerBroker`; tickers to regularly track the amount of data written,
 write out external triggers, and monitor data drops (1, 1, and 10 seconds period). Also start one
-`DataStreamProcessor` per channel (`process_data.go`), assigning the viper-stored trigger state as a starting
+`DataStreamProcessor` per channel (`process_data.go`), assigning the Koanf-stored trigger state as a starting
 value.
 1. `ds.RunDoneActivate()`: sets `AnySource.sourceState=Active` and increments a WaitGroup, again using
 the Mutex to serialize access.
