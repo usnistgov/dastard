@@ -3,6 +3,7 @@
 **0.3.10** August 18, 2026
 * Minimum go version 1.25 (released August 2025).
 * Replace `spf13/viper` with `knadh/koanf`.
+* Write Dastard meta-data and run information to a SQLite database.
 * Generalize the "Abaco" data source to work with all resonator readouts (issue 403).
 
 **0.3.9** July 31, 2026

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -31,6 +32,7 @@ type SourceControl struct {
 	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
+	db             *dastarddb.DastardDBConnection
 	mapServer      *MapServer
 
 	status        ServerStatus
@@ -46,8 +48,9 @@ type SourceControl struct {
 
 // NewSourceControl creates a new SourceControl object with correctly initialized
 // contents.
-func NewSourceControl() *SourceControl {
+func NewSourceControl(db *dastarddb.DastardDBConnection) *SourceControl {
 	sc := new(SourceControl)
+	sc.db = db
 	sc.heartbeats = make(chan Heartbeat)
 	sc.queuedRequests = make(chan func())
 	sc.queuedResults = make(chan error)
@@ -342,6 +345,7 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 	name := strings.ToUpper(*sourceName)
 	switch name {
 	case "SIMPULSESOURCE":
+		s.simPulses.db = s.db
 		s.ActiveSource = DataSource(s.simPulses)
 		s.status.SourceName = "SimPulses"
 
@@ -350,14 +354,17 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.status.SourceName = "Triangles"
 
 	case "LANCEROSOURCE":
+		s.lancero.db = s.db
 		s.ActiveSource = DataSource(s.lancero)
 		s.status.SourceName = "Lancero"
 
 	case "ROACHSOURCE":
+		s.roach.db = s.db
 		s.ActiveSource = DataSource(s.roach)
 		s.status.SourceName = "Roach"
 
 	case "RESONATORSOURCE":
+		s.resonator.db = s.db
 		s.ActiveSource = DataSource(s.resonator)
 		s.status.SourceName = "Resonator"
 
@@ -439,6 +446,10 @@ type WriteControlConfig struct {
 	WriteOFF        bool
 	WriteLJH3       bool
 	FlushAlsoSyncs  bool
+	Intention       string // such as "testing", "noise", "pulses"
+	Users           string
+	Sample          string
+	Purpose         string
 	MapInternalOnly *Map // for dastard internal use only, used to pass map info to DataStreamProcessors
 }
 
@@ -747,13 +758,13 @@ func (s *SourceControl) StoreRawDataBlock(N int, reply *string) error {
 // RunRPCServer sets up and runs a permanent JSON-RPC server.
 // If `block`, it will block until Ctrl-C and gracefully shut down.
 // (The intention is that block=true in normal operation, but false for certain tests.)
-func RunRPCServer(portrpc int, block bool) {
+func RunRPCServer(portrpc int, block bool, db *dastarddb.DastardDBConnection) {
 	// Set up objects to handle remote calls
 
 	// Set up source control. Later, we will try to use `GlobalKoanf.Unmarshall("status"...)' to fill
 	// it with stored values from ~/.dastard/config.yaml. But in the absence of stored values, we
 	// need to set some reasonable defaults, including non-zero values of Nsamples and Npresamples.
-	sourceControl := NewSourceControl()
+	sourceControl := NewSourceControl(db)
 	defer sourceControl.lancero.Delete()
 	sourceControl.clientUpdates = clientMessageChan
 
