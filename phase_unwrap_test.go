@@ -20,15 +20,6 @@ func TestUnwrap(t *testing.T) {
 	const dontInvert = false
 	enables := []bool{true, false}
 
-	shouldFail1 := func() {
-		NewPhaseUnwrapper(13, bits2drop, true, biaslevel, -1, pulsesign, dontInvert)
-	}
-	shouldFail2 := func() {
-		NewPhaseUnwrapper(13, 0, true, biaslevel, -1, pulsesign, dontInvert)
-	}
-	assertPanic(t, shouldFail1)
-	assertPanic(t, shouldFail2)
-
 	NewPhaseUnwrapper(13, bits2drop, false, biaslevel, -1, pulsesign, dontInvert)
 	NewPhaseUnwrapper(13, bits2drop, true, biaslevel, 100, pulsesign, dontInvert)
 

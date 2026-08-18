@@ -19,16 +19,16 @@ import (
 	"github.com/usnistgov/dastard/packets"
 )
 
-const abacoSubframeDivisions = 64 // The external triggers will be resolved this much finer than the frame rate
+const resonatorSubframeDivisions = 64 // The external triggers will be resolved this much finer than the frame rate
 // We are writing external trigger info at a clock rate finer than the frame rate, the "subframe" rate.
 // In TDM systems the subframe rate was equal to the row rate, thus historical usage has conflated the two.
-// For the Abaco it's arbitrary how finely we divide frames, but even at the lowest frame rate, 64 subdivisions
+// For the Resonator it's arbitrary how finely we divide frames, but even at the lowest frame rate, 64 subdivisions
 // seems adequate.
 
-const abacoFractionBits = 16 // changed from 13 to 16 in Jan 2021.
-const abacoBitsToDrop = 4
+const µMUXFractionBits = 16 // changed from 13 to 16 in Jan 2021.
+const µMUXBitsToDrop = 4
 
-// That is, Abaco data is of the form bbbb bbbb bbbb bbbb with 0 integer bits
+// That is, µMUX data is of the form bbbb bbbb bbbb bbbb with 0 integer bits
 // and 16 fractional bits. In the unwrapping process, we drop 4, making it 4/12, or
 // iiii.bbbb bbbb bbbb. This gives room for up to ±8ϕ0 (actually, -8ϕ0 and +8ϕ0 both map to 0x8000).
 
@@ -73,9 +73,9 @@ to fix it in future sessions add the line 'net.core.rmem_max=%d' to the file /et
 
 //------------------------------------------------------------------------------------------------
 
-// AbacoGroup represents a channel group, a set of consecutively numbered
+// ResonatorGroup represents a channel group, a set of consecutively numbered
 // channels.
-type AbacoGroup struct {
+type ResonatorGroup struct {
 	index      GroupIndex
 	nchan      int
 	sampleRate float64
@@ -87,24 +87,24 @@ type AbacoGroup struct {
 	FrameTimingCorrepondence
 }
 
-// AbacoUnwrapOptions contains options to control phase unwrapping.
-type AbacoUnwrapOptions struct {
+// ResonatorUnwrapOptions contains options to control phase unwrapping.
+type ResonatorUnwrapOptions struct {
 	RescaleRaw bool  // are we rescaling (left-shifting) the raw data? If not, the rest is ignored
 	Unwrap     bool  // are we even unwrapping at all?
 	Bias       bool  // should the unwrapping be biased?
 	ResetAfter int   // reset the phase unwrap offset back to 0 after this many samples (≈auto-relock)
 	PulseSign  int   // direction data will go when pulse arrives, used to calculate bias level
-	InvertChan []int // invert channels with these numbers before unwrapping phase
+	InvertChan []int // invert channels with these numbers (invert before unwrapping phase)
 }
 
-func (u AbacoUnwrapOptions) isvalid() error {
+func (u ResonatorUnwrapOptions) isvalid() error {
 	if u.Unwrap && !u.RescaleRaw {
-		return fmt.Errorf("should not have Unwrap=true when RescaleRaw=false in AbacoUnwrapOpts")
+		return fmt.Errorf("should not have Unwrap=true when RescaleRaw=false in ResonatorUnwrapOptions")
 	}
 	return nil
 }
 
-func (u AbacoUnwrapOptions) calcBiasLevel() int {
+func (u ResonatorUnwrapOptions) calcBiasLevel() int {
 	var biasLevel int
 	if u.Bias {
 		// Assume 2^16 equals exactly one ϕ0, then bias based on the assumption of critically
@@ -118,14 +118,14 @@ func (u AbacoUnwrapOptions) calcBiasLevel() int {
 	return biasLevel
 }
 
-// NewAbacoGroup creates an AbacoGroup given the specified GroupIndex.
-func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
+// NewResonatorGroup creates a ResonatorGroup given the specified GroupIndex.
+func NewResonatorGroup(index GroupIndex, opt ResonatorUnwrapOptions) *ResonatorGroup {
 	var bitsToDrop uint
 	if opt.RescaleRaw {
-		bitsToDrop = abacoBitsToDrop
+		bitsToDrop = µMUXBitsToDrop
 	}
 
-	g := new(AbacoGroup)
+	g := new(ResonatorGroup)
 	g.index = index
 	g.nchan = index.Nchan
 	g.queue = make([]*packets.Packet, 0)
@@ -138,8 +138,11 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 	for i := range g.unwrap {
 		channum := i + index.Firstchan
 		invert := isInverted(channum)
-		g.unwrap[i] = NewPhaseUnwrapper(abacoFractionBits, bitsToDrop, opt.Unwrap,
-			opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign, invert)
+		// There's no need to even create a phase unwrapper if bitsToDrop == 0 and not inverting
+		if bitsToDrop > 0 || invert {
+			g.unwrap[i] = NewPhaseUnwrapper(µMUXFractionBits, bitsToDrop, opt.Unwrap,
+				opt.calcBiasLevel(), opt.ResetAfter, opt.PulseSign, invert)
+		}
 	}
 	return g
 }
@@ -147,12 +150,12 @@ func NewAbacoGroup(index GroupIndex, opt AbacoUnwrapOptions) *AbacoGroup {
 // updateFrameTiming will update the group's `FrameTimingCorrespondence` info,
 // as long as the packet has a valid timestamp, and the frameIdx is greater than any
 // previously seen. (Otherwise, return without effect.)
-func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameIndex) {
+func (group *ResonatorGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameIndex) {
 	ts := p.Timestamp()
 	if ts == nil {
 		return
 	}
-	newSubframeCount := frameIdx * abacoSubframeDivisions
+	newSubframeCount := frameIdx * resonatorSubframeDivisions
 	deltaSubframe := newSubframeCount - group.LastSubframeCount
 	deltaTs := ts.T - group.LastFirmwareTimestamp.T
 
@@ -172,8 +175,8 @@ func (group *AbacoGroup) updateFrameTiming(p *packets.Packet, frameIdx FrameInde
 }
 
 // subframeCountFromTimestamp uses the group.FrameTimingCorrespondence data to
-// convert a timestamp (in raw Abaco clock counts) to a FrameIndex
-func (group *AbacoGroup) subframeCountFromTimestamp(firmwareTimestamp uint64) FrameIndex {
+// convert a timestamp (in raw firmware clock counts) to a FrameIndex
+func (group *ResonatorGroup) subframeCountFromTimestamp(firmwareTimestamp uint64) FrameIndex {
 	if group.TimestampCountsPerSubframe == 0 {
 		return 0
 	}
@@ -185,12 +188,12 @@ func (group *AbacoGroup) subframeCountFromTimestamp(firmwareTimestamp uint64) Fr
 	return FrameIndex(int64(group.LastSubframeCount) + deltaF)
 }
 
-func (group *AbacoGroup) enqueuePacket(p *packets.Packet, now time.Time) {
+func (group *ResonatorGroup) enqueuePacket(p *packets.Packet, now time.Time) {
 	group.queue = append(group.queue, p)
 	group.lasttime = now
 }
 
-func (group *AbacoGroup) samplePackets() error {
+func (group *ResonatorGroup) samplePackets() error {
 	// Capture timestamp and sample # for a range of packets. Use to find rate.
 	var tsInit, tsFinal packets.PacketTimestamp
 	var snInit, snFinal uint32
@@ -247,7 +250,7 @@ func (group *AbacoGroup) samplePackets() error {
 
 // firstSeqNum returns the global sequence number for the first packet in the group's packet queue,
 // meaning the sequence number referenced to the group.seqnumsync offset.
-func (group *AbacoGroup) firstSeqNum() (uint32, error) {
+func (group *ResonatorGroup) firstSeqNum() (uint32, error) {
 	if len(group.queue) == 0 {
 		return 0, fmt.Errorf("no packets in queue")
 	}
@@ -256,7 +259,7 @@ func (group *AbacoGroup) firstSeqNum() (uint32, error) {
 
 // fillMissingPackets looks for holes in the sequence numbers in group.queue, and replaces them with
 // pretend packets.
-func (group *AbacoGroup) fillMissingPackets() (bytesAdded, packetsAdded, framesAdded int) {
+func (group *ResonatorGroup) fillMissingPackets() (bytesAdded, packetsAdded, framesAdded int) {
 	if len(group.queue) == 0 {
 		return
 	}
@@ -285,7 +288,7 @@ func (group *AbacoGroup) fillMissingPackets() (bytesAdded, packetsAdded, framesA
 
 // trimPacketsBefore removes leading packets from the queue that "predate" firstSn
 // firstSn is a "global sequence number", thus relative to the group.seqnumsync
-func (group *AbacoGroup) trimPacketsBefore(firstSn uint32) {
+func (group *ResonatorGroup) trimPacketsBefore(firstSn uint32) {
 	firstSn += group.seqnumsync
 	for {
 		sn0 := group.queue[0].SequenceNumber()
@@ -300,7 +303,7 @@ func (group *AbacoGroup) trimPacketsBefore(firstSn uint32) {
 }
 
 // countSamplesInQueue counts the samples per channel in all packets in the group.queue.
-func (group *AbacoGroup) countSamplesInQueue() int {
+func (group *ResonatorGroup) countSamplesInQueue() int {
 	// Go through packets and figure out the # of samples contained in all packets.
 	valuesFound := 0
 	for _, p := range group.queue {
@@ -320,7 +323,7 @@ func (group *AbacoGroup) countSamplesInQueue() int {
 
 // demuxData demultiplexes the data in the packet queue into the datacopies slices (1 slice per channel)
 // but only up to the requested number of frames.
-func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
+func (group *ResonatorGroup) demuxData(datacopies [][]RawType, frames int) int {
 	// This is the demultiplexing step. Loops over packets, then values.
 	// Within a slice of values, handle all channels for frame 0, then all for frame 1...
 	totalBytes := 0
@@ -392,11 +395,13 @@ func (group *AbacoGroup) demuxData(datacopies [][]RawType, frames int) int {
 	// Apply phase unwrapping to each channel's data. Do in parallel to use multiple processors.
 	var wg sync.WaitGroup
 	for i, unwrapper := range group.unwrap {
-		wg.Add(1)
-		go func(up *PhaseUnwrapper, dc *[]RawType) {
-			defer wg.Done()
-			up.UnwrapInPlace(dc)
-		}(unwrapper, &datacopies[i])
+		if unwrapper != nil {
+			wg.Add(1)
+			go func(up *PhaseUnwrapper, dc *[]RawType) {
+				defer wg.Done()
+				up.UnwrapInPlace(dc)
+			}(unwrapper, &datacopies[i])
+		}
 	}
 	wg.Wait()
 
@@ -417,17 +422,17 @@ type PacketProducer interface {
 
 //------------------------------------------------------------------------------------------------
 
-// AbacoUDPReceiver represents a single Abaco device producing data by UDP packets to a single UDP port.
-type AbacoUDPReceiver struct {
+// ResonatorUDPReceiver represents a single Resonator readout device producing data by UDP packets to a single UDP port.
+type ResonatorUDPReceiver struct {
 	host     string                 // in the form: "127.0.0.1:56789"
 	conn     *net.UDPConn           // active UDP connection
 	data     chan []*packets.Packet // channel for sending next bunch of packets to downstream processor
 	sendmore chan bool              // a channel by which downstream processor signals readiness for next bunch of packets
 }
 
-// NewAbacoUDPReceiver creates a new AbacoUDPReceiver and binds as a server to the requested host:port
-func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
-	dev = new(AbacoUDPReceiver)
+// NewResonatorUDPReceiver creates a new ResonatorUDPReceiver and binds as a server to the requested host:port
+func NewResonatorUDPReceiver(hostport string) (dev *ResonatorUDPReceiver, err error) {
+	dev = new(ResonatorUDPReceiver)
 	dev.host = hostport
 	if _, err := net.ResolveUDPAddr("udp", hostport); err != nil {
 		return nil, err
@@ -436,7 +441,7 @@ func NewAbacoUDPReceiver(hostport string) (dev *AbacoUDPReceiver, err error) {
 }
 
 // start starts the UDP device by...?
-func (device *AbacoUDPReceiver) start() (err error) {
+func (device *ResonatorUDPReceiver) start() (err error) {
 	raddr, err := net.ResolveUDPAddr("udp", device.host)
 	if err != nil {
 		return err
@@ -511,7 +516,7 @@ func (device *AbacoUDPReceiver) start() (err error) {
 
 // discardStale discards all data currently ready for reading at the UDP socket.
 // At least, it is supposed to. We are not sure it actually works.
-func (device *AbacoUDPReceiver) discardStale() error {
+func (device *ResonatorUDPReceiver) discardStale() error {
 	device.conn.SetReadBuffer(0)
 	device.conn.SetReadBuffer(67108864)
 	return nil
@@ -519,7 +524,7 @@ func (device *AbacoUDPReceiver) discardStale() error {
 
 // ReadAllPackets returns an array of *packet.Packet, as read from the device's network connection.
 // It is a non-blocking wrapper around the UDP connection read (a blocking operation).
-func (device *AbacoUDPReceiver) ReadAllPackets() ([]*packets.Packet, error) {
+func (device *ResonatorUDPReceiver) ReadAllPackets() ([]*packets.Packet, error) {
 	device.sendmore <- true
 	allPackets, ok := <-device.data
 	if !ok {
@@ -528,9 +533,9 @@ func (device *AbacoUDPReceiver) ReadAllPackets() ([]*packets.Packet, error) {
 	return allPackets, nil
 }
 
-// samplePackets samples the data from a single AbacoUDPReceiver. It scans enough packets to
+// samplePackets samples the data from a single ResonatorUDPReceiver. It scans enough packets to
 // learn the number of channels, data rate, etc.
-func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allPackets []*packets.Packet, err error) {
+func (device *ResonatorUDPReceiver) samplePackets(maxSampleTime time.Duration) (allPackets []*packets.Packet, err error) {
 	// Run for at least a minimum time or a minimum number of packets.
 	// The hard requirement is for at least 2 packets per channel group, so we can count samples taken
 	// between 2 timestamps and thus the sample rate. More packets is better, because we can estimate
@@ -542,7 +547,7 @@ func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allP
 	for packetsRead < minPacketsToRead {
 		select {
 		case <-timeOut.C:
-			fmt.Printf("AbacoUDPReceiver.samplePackets() timer expired after only %d packets read\n", packetsRead)
+			fmt.Printf("ResonatorUDPReceiver.samplePackets() timer expired after only %d packets read\n", packetsRead)
 			return
 
 		default:
@@ -560,7 +565,7 @@ func (device *AbacoUDPReceiver) samplePackets(maxSampleTime time.Duration) (allP
 }
 
 // stop closes the UDP connection
-func (device *AbacoUDPReceiver) stop() error {
+func (device *ResonatorUDPReceiver) stop() error {
 	err := device.conn.Close()
 	close(device.sendmore)
 	return err
@@ -568,52 +573,53 @@ func (device *AbacoUDPReceiver) stop() error {
 
 //------------------------------------------------------------------------------------------------
 
-// AbacoSource represents all AbacoUDPReceiver objects that can potentially supply data,
-// as well as all AbacoGroups that are discovered in the SampleData phase.
-type AbacoSource struct {
+// ResonatorSource represents all ResonatorUDPReceiver objects that can potentially supply data,
+// as well as all ResonatorGroups that are discovered in the SampleData phase.
+type ResonatorSource struct {
 	// These items have to do with UDP data sources
-	udpReceivers []*AbacoUDPReceiver
+	udpReceivers []*ResonatorUDPReceiver
 
 	// Below here are independent of exact nature of the data sources.
 	producers    []PacketProducer
-	groups       map[GroupIndex]*AbacoGroup
+	groups       map[GroupIndex]*ResonatorGroup
 	readPeriod   time.Duration
-	buffersChan  chan AbacoBuffersType
+	buffersChan  chan ResonatorBuffersType
 	eTrigPackets []*packets.Packet // Unprocessed packets with external trigger info
 
-	unwrapOpts       AbacoUnwrapOptions
+	unwrapOpts       ResonatorUnwrapOptions
 	minUDPBufferSize int
 	AnySource
 }
 
-// NewAbacoSource creates a new AbacoSource.
-func NewAbacoSource() (*AbacoSource, error) {
-	source := new(AbacoSource)
-	source.name = "Abaco"
-	source.udpReceivers = make([]*AbacoUDPReceiver, 0)
+// NewResonatorSource creates a new ResonatorSource.
+func NewResonatorSource() (*ResonatorSource, error) {
+	source := new(ResonatorSource)
+	source.name = "Resonator"
+	source.udpReceivers = make([]*ResonatorUDPReceiver, 0)
 	source.producers = make([]PacketProducer, 0)
-	source.groups = make(map[GroupIndex]*AbacoGroup)
+	source.groups = make(map[GroupIndex]*ResonatorGroup)
 	source.eTrigPackets = make([]*packets.Packet, 0)
 	source.channelsPerPixel = 1
-	source.subframeDivisions = abacoSubframeDivisions
+	source.subframeDivisions = resonatorSubframeDivisions
 	source.minUDPBufferSize = minimum_buffer_size
 
 	return source, nil
 }
 
 // Delete terminates any input data producers.
-func (as *AbacoSource) Delete() {
+func (as *ResonatorSource) Delete() {
 	as.closeDevices()
 }
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
-// For Abaco, the default is 1 Phi0 per 4096 arb units
-func (as *AbacoSource) VoltsPerArb() []float32 {
+// For Resonators, the scale is 1 Phi0 per 65536 arbs, but in the case of µMUX
+// readout, left shift 65536 by the number of µMUXBitsToDrop
+func (as *ResonatorSource) VoltsPerArb() []float32 {
 	if as.voltsPerArb == nil || len(as.voltsPerArb) != as.nchan {
 		as.voltsPerArb = make([]float32, as.nchan)
 		vpa := float32(1.0 / 65536.0) // default if not rescaling raw data
 		if as.unwrapOpts.RescaleRaw {
-			vpa = float32(1. / (65536 >> abacoBitsToDrop))
+			vpa = float32(1. / (65536 >> µMUXBitsToDrop))
 		}
 		for i := 0; i < as.nchan; i++ {
 			as.voltsPerArb[i] = vpa
@@ -622,19 +628,19 @@ func (as *AbacoSource) VoltsPerArb() []float32 {
 	return as.voltsPerArb
 }
 
-// AbacoSourceConfig holds the arguments needed to call AbacoSource.Configure by RPC.
-type AbacoSourceConfig struct {
+// ResonatorSourceConfig holds the arguments needed to call ResonatorSource.Configure by RPC.
+type ResonatorSourceConfig struct {
 	// For the time being, leave ActiveCards, AvailableCards in the config, but ignore them.
 	// This leaves Dastard compatible with Dcom versions that still send these fields.
 	ActiveCards    []int    // Unused: relic of when we had shared memory spaces per card
 	AvailableCards []int    // Unused: relic of when we had shared memory spaces per card
 	HostPortUDP    []string // host:port pairs to listen for UDP packets
-	AbacoUnwrapOptions
+	ResonatorUnwrapOptions
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
-func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
-	if err := config.AbacoUnwrapOptions.isvalid(); err != nil {
+func (as *ResonatorSource) Configure(config *ResonatorSourceConfig) (err error) {
+	if err := config.ResonatorUnwrapOptions.isvalid(); err != nil {
 		return err
 	}
 
@@ -654,13 +660,13 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	as.sourceStateLock.Lock()
 	defer as.sourceStateLock.Unlock()
 
-	as.unwrapOpts = config.AbacoUnwrapOptions
+	as.unwrapOpts = config.ResonatorUnwrapOptions
 
 	// Bind servers at each host:port pair in the list of requested UDP receivers
 	as.producers = make([]PacketProducer, 0)
-	as.udpReceivers = make([]*AbacoUDPReceiver, 0)
+	as.udpReceivers = make([]*ResonatorUDPReceiver, 0)
 	for _, hostport := range config.HostPortUDP {
-		device, err := NewAbacoUDPReceiver(hostport)
+		device, err := NewResonatorUDPReceiver(hostport)
 		if err != nil {
 			fmt.Printf("Could not bind server at udp://%s/, %v\n", hostport, err)
 			return err
@@ -671,8 +677,8 @@ func (as *AbacoSource) Configure(config *AbacoSourceConfig) (err error) {
 	return nil
 }
 
-// distributePackets sorts a slice of Abaco packets into the data queues according to the GroupIndex.
-func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
+// distributePackets sorts a slice of packets into the data queues according to the GroupIndex.
+func (as *ResonatorSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
 	frameTimeUpdated := false
 	for _, p := range allpackets {
 		if p.IsExternalTrigger() {
@@ -691,9 +697,9 @@ func (as *AbacoSource) distributePackets(allpackets []*packets.Packet, now time.
 }
 
 // Sample determines key data facts by sampling some initial data.
-func (as *AbacoSource) Sample() error {
+func (as *ResonatorSource) Sample() error {
 	if len(as.producers) <= 0 {
-		return fmt.Errorf("no Abaco data producers (UDP receivers) are active")
+		return fmt.Errorf("no ResonatorSource data producers (UDP receivers) are active")
 	}
 
 	// Panic if there are UDP receivers, and the UDP receive buffer isn't somewhat larger than the 200 kB default.
@@ -724,9 +730,9 @@ func (as *AbacoSource) Sample() error {
 		}(pp)
 	}
 
-	// Now sort the packets received into the right AbacoGroups
+	// Now sort the packets received into the right ResonatorGroups
 	as.nchan = 0
-	as.groups = make(map[GroupIndex]*AbacoGroup)
+	as.groups = make(map[GroupIndex]*ResonatorGroup)
 	allRates := []float64{}
 	for range as.producers {
 		results := <-sampleResults
@@ -734,14 +740,14 @@ func (as *AbacoSource) Sample() error {
 		if results.err != nil {
 			return results.err
 		}
-		// Create new AbacoGroup for each GroupIndex seen
+		// Create new ResonatorGroup for each GroupIndex seen
 		for _, p := range results.allpackets {
 			if p.IsExternalTrigger() {
 				continue
 			}
 			cidx := gIndex(p)
 			if _, ok := as.groups[cidx]; !ok {
-				as.groups[cidx] = NewAbacoGroup(cidx, as.unwrapOpts)
+				as.groups[cidx] = NewResonatorGroup(cidx, as.unwrapOpts)
 				as.nchan += cidx.Nchan
 				allRates = append(allRates, as.groups[cidx].sampleRate)
 			}
@@ -780,7 +786,7 @@ func (as *AbacoSource) Sample() error {
 	sort.Sort(ByGroup(keys))
 	as.groupKeysSorted = keys
 
-	// Each AbacoGroup should process its sampled packets.
+	// Each ResonatorGroup should process its sampled packets.
 	for _, group := range as.groups {
 		group.samplePackets()
 	}
@@ -805,9 +811,9 @@ func (as *AbacoSource) Sample() error {
 	return nil
 }
 
-// PrepareChannels configures an AbacoSource by initializing all data structures that
+// PrepareChannels configures a ResonatorSource by initializing all data structures that
 // have to do with channels and their naming/numbering.
-func (as *AbacoSource) PrepareChannels() error {
+func (as *ResonatorSource) PrepareChannels() error {
 	as.channelsPerPixel = 1
 
 	// Fill the channel names and numbers slices
@@ -815,7 +821,7 @@ func (as *AbacoSource) PrepareChannels() error {
 	// as rows 0...g.nchan-1.
 	as.chanNames = make([]string, 0, as.nchan)
 	as.chanNumbers = make([]int, 0, as.nchan)
-	as.subframeOffsets = make([]int, as.nchan) // all zeros for Abaco sources
+	as.subframeOffsets = make([]int, as.nchan) // all zeros for ResonatorSource
 	as.rowColCodes = make([]RowColCode, 0, as.nchan)
 	ncol := len(as.groups)
 	for col, g := range as.groupKeysSorted {
@@ -832,19 +838,19 @@ func (as *AbacoSource) PrepareChannels() error {
 
 // StartRun tells the hardware to switch into data streaming mode.
 // Discard existing data, then launch a goroutine to consume data.
-func (as *AbacoSource) StartRun() error {
+func (as *ResonatorSource) StartRun() error {
 	for _, pp := range as.producers {
 		pp.discardStale()
 	}
-	as.buffersChan = make(chan AbacoBuffersType, 100)
+	as.buffersChan = make(chan ResonatorBuffersType, 100)
 	as.readPeriod = 50 * time.Millisecond
 	go as.readerMainLoop()
 	return nil
 }
 
-// AbacoBuffersType is an internal message type used to allow
-// a goroutine to read from the Abaco card and put data on a buffered channel
-type AbacoBuffersType struct {
+// ResonatorBuffersType is an internal message type used to allow
+// a goroutine to read from the resonator firmware and put data on a buffered channel
+type ResonatorBuffersType struct {
 	datacopies     [][]RawType
 	lastSampleTime time.Time
 	timeDiff       time.Duration
@@ -853,7 +859,7 @@ type AbacoBuffersType struct {
 	droppedFrames  int
 }
 
-func (as *AbacoSource) readerMainLoop() {
+func (as *ResonatorSource) readerMainLoop() {
 	defer close(as.buffersChan)
 	const timeoutPeriod = 5 * time.Second
 	timeout := time.NewTimer(timeoutPeriod)
@@ -866,12 +872,12 @@ awaitmoredata:
 	for {
 		select {
 		case <-as.abortSelf:
-			log.Printf("Abaco read was aborted")
+			log.Printf("Resonator read was aborted")
 			return
 
 		case <-timeout.C:
 			// Handle failure to return
-			log.Printf("Abaco read timed out after %v", timeoutPeriod)
+			log.Printf("Resonator read timed out after %v", timeoutPeriod)
 			return
 
 		case <-ticker.C:
@@ -904,7 +910,7 @@ awaitmoredata:
 				if packetsAdded > 0 && ProblemLogger != nil {
 					cfirst := idx.Firstchan
 					clast := cfirst + idx.Nchan - 1
-					ProblemLogger.Printf("AbacoGroup %v=channels [%d,%d] filled in %d missing packets (%d frames)", idx,
+					ProblemLogger.Printf("ResonatorGroup %v=channels [%d,%d] filled in %d missing packets (%d frames)", idx,
 						cfirst, clast, packetsAdded, framesAdded)
 				}
 				sn0, err := group.firstSeqNum()
@@ -951,16 +957,16 @@ awaitmoredata:
 
 			timeDiff := lastSampleTime.Sub(as.lastread)
 			if timeDiff > 2*as.readPeriod {
-				fmt.Println("timeDiff in abaco reader", timeDiff)
+				fmt.Println("timeDiff in ResonatorSource reader", timeDiff)
 			}
 			as.lastread = lastSampleTime
 
 			if len(as.buffersChan) == cap(as.buffersChan) {
 				msg := fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan))
-				log.Printf("Abaco read failed: %s\n", msg)
+				log.Printf("Resonator read failed: %s\n", msg)
 				return
 			}
-			as.buffersChan <- AbacoBuffersType{
+			as.buffersChan <- ResonatorBuffersType{
 				datacopies:     datacopies,
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
@@ -979,17 +985,17 @@ awaitmoredata:
 // Waiting on this channel = waiting on the source to produce a data block.
 // This goroutine will end by putting a valid or error-ish dataBlock onto as.nextBlock.
 // If the block has a non-nil error, this goroutine will also close as.nextBlock.
-// The AbacoSource version also has to monitor the timeout channel and wait for
-// the buffersChan to yield real, valid Abaco data.
+// The ResonatorSource version also has to monitor the timeout channel and wait for
+// the buffersChan to yield real, valid Resonator data.
 // TODO: if there are any configuations that can change mid-run (analogous to Mix
 // for Lancero), we'll also want to handle those changes in this loop.
-func (as *AbacoSource) getNextBlock() chan *dataBlock {
+func (as *ResonatorSource) getNextBlock() chan *dataBlock {
 	panicTime := time.Duration(cap(as.buffersChan)) * as.readPeriod
 	go func() {
 		for {
 			select {
 			case <-time.After(panicTime):
-				panic(fmt.Sprintf("timeout, no data from Abaco after %v / readPeriod is %v", panicTime, as.readPeriod))
+				panic(fmt.Sprintf("timeout, no data from ResonatorSource after %v / readPeriod is %v", panicTime, as.readPeriod))
 
 			case buffersMsg, ok := <-as.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
@@ -1016,7 +1022,7 @@ func (as *AbacoSource) getNextBlock() chan *dataBlock {
 	return as.nextBlock
 }
 
-func (as *AbacoSource) extractExternalTriggers() []int64 {
+func (as *ResonatorSource) extractExternalTriggers() []int64 {
 	externalTriggers := make([]int64, 0)
 	for _, p := range as.eTrigPackets {
 		// These packets have form (u32, u32, u64) repeating, but we don't care about the first 2.
@@ -1050,7 +1056,7 @@ func (as *AbacoSource) extractExternalTriggers() []int64 {
 	return externalTriggers
 }
 
-func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
+func (as *ResonatorSource) distributeData(buffersMsg ResonatorBuffersType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
@@ -1105,7 +1111,7 @@ func (as *AbacoSource) distributeData(buffersMsg AbacoBuffersType) *dataBlock {
 }
 
 // closeDevices stops and closes all UDP servers.
-func (as *AbacoSource) closeDevices() error {
+func (as *ResonatorSource) closeDevices() error {
 	for _, pp := range as.producers {
 		pp.stop()
 	}

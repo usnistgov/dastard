@@ -23,7 +23,7 @@ type BahamaControl struct {
 	Chan0      int // channel number of first channel
 	chanGaps   int // how many channel numbers to skip between groups
 	port       int
-	host	   string
+	host       string
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
@@ -85,7 +85,7 @@ func (control *BahamaControl) Report() {
 		sources = append(sources, "sinusoids")
 	}
 	fmt.Printf("Data will be the sum of these source types: %s.\n", strings.Join(sources, "+"))
-	fmt.Println("Type Ctrl-C to stop generating Abaco-style data.")
+	fmt.Println("Type Ctrl-C to stop generating Resonator-style data.")
 }
 
 // interleavePackets takes packets from the N channels `inchans` and puts them onto `outchan` in a

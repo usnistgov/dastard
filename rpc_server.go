@@ -27,7 +27,7 @@ type SourceControl struct {
 	triangle       *TriangleSource
 	lancero        *LanceroSource
 	roach          *RoachSource
-	abaco          *AbacoSource
+	resonator      *ResonatorSource
 	erroring       *ErroringSource
 	ActiveSource   DataSource
 	isSourceActive bool
@@ -58,14 +58,14 @@ func NewSourceControl() *SourceControl {
 	lan, _ := NewLanceroSource()
 	sc.lancero = lan
 	sc.roach, _ = NewRoachSource()
-	sc.abaco, _ = NewAbacoSource()
+	sc.resonator, _ = NewResonatorSource()
 
 	sc.simPulses.heartbeats = sc.heartbeats
 	sc.triangle.heartbeats = sc.heartbeats
 	sc.erroring.heartbeats = sc.heartbeats
 	sc.lancero.heartbeats = sc.heartbeats
 	sc.roach.heartbeats = sc.heartbeats
-	sc.abaco.heartbeats = sc.heartbeats
+	sc.resonator.heartbeats = sc.heartbeats
 
 	sc.status.ChanGroups = make([]GroupIndex, 0)
 	return sc
@@ -178,17 +178,17 @@ func (s *SourceControl) ConfigureLanceroSource(args *LanceroSourceConfig, reply 
 	return err
 }
 
-// ConfigureAbacoSource configures the Abaco cards.
-func (s *SourceControl) ConfigureAbacoSource(args *AbacoSourceConfig, reply *bool) error {
-	UpdateLogger.Printf("ConfigureAbacoSource: \n")
-	err := s.abaco.Configure(args)
-	s.clientUpdates <- ClientUpdate{"ABACO", args}
+// ConfigureResonatorSource configures the Resonator cards.
+func (s *SourceControl) ConfigureResonatorSource(args *ResonatorSourceConfig, reply *bool) error {
+	UpdateLogger.Printf("ConfigureResonatorSource: \n")
+	err := s.resonator.Configure(args)
+	s.clientUpdates <- ClientUpdate{"RESONATOR", args}
 	*reply = (err == nil)
 	UpdateLogger.Printf("Result is okay=%t\n", *reply)
 	return err
 }
 
-// ConfigureRoachSource configures the abaco cards.
+// ConfigureRoachSource configures the resonator cards.
 func (s *SourceControl) ConfigureRoachSource(args *RoachSourceConfig, reply *bool) error {
 	UpdateLogger.Printf("ConfigureRoachSource: \n")
 	err := s.roach.Configure(args)
@@ -357,9 +357,9 @@ func (s *SourceControl) Start(sourceName *string, reply *bool) error {
 		s.ActiveSource = DataSource(s.roach)
 		s.status.SourceName = "Roach"
 
-	case "ABACOSOURCE":
-		s.ActiveSource = DataSource(s.abaco)
-		s.status.SourceName = "Abaco"
+	case "RESONATORSOURCE":
+		s.ActiveSource = DataSource(s.resonator)
+		s.status.SourceName = "Resonator"
 
 	case "ERRORINGSOURCE":
 		s.ActiveSource = DataSource(s.erroring)
@@ -800,14 +800,14 @@ func RunRPCServer(portrpc int, block bool) {
 		// Don't panic on config errors: they are expected on any system w/o Lancero cards.
 		// That is, we are intentionally NOT checking any error returned by ConfigureLanceroSource.
 	}
-	var asc AbacoSourceConfig
+	var asc ResonatorSourceConfig
 	// Set reasonable defaults when not in the config file.
-	asc.AbacoUnwrapOptions.Unwrap = true
-	asc.AbacoUnwrapOptions.ResetAfter = 20000
-	err = GlobalKoanf.Unmarshal("ABACO", &asc)
+	asc.ResonatorUnwrapOptions.Unwrap = true
+	asc.ResonatorUnwrapOptions.ResetAfter = 20000
+	err = GlobalKoanf.Unmarshal("RESONATOR", &asc)
 	if err == nil {
-		_ = sourceControl.ConfigureAbacoSource(&asc, &okay)
-		// intentionally not checking for configure errors since it might fail on non abaco systems
+		_ = sourceControl.ConfigureResonatorSource(&asc, &okay)
+		// intentionally not checking for configure errors since it might fail on non resonator systems
 	}
 
 	var rsc RoachSourceConfig
