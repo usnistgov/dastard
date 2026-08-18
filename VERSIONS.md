@@ -1,6 +1,6 @@
 ## DASTARD Versions
 
-**0.3.10** July 17, 2026-
+**0.3.10** August 18, 2026
 * Minimum go version 1.25 (released August 2025).
 * Replace `spf13/viper` with `knadh/koanf`.
 * Generalize the "Abaco" data source to work with all resonator readouts (issue 403).
