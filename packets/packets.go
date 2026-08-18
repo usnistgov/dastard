@@ -44,7 +44,7 @@ const maxPACKETLENGTH int = 8192
 
 // TLV types
 const (
-	tlvNULL          = byte(0)
+	// tlvNULL         = byte(0)
 	tlvTAG           = byte(0x09)
 	tlvTIMESTAMP     = byte(0x11)
 	tlvCOUNTER       = byte(0x12)
