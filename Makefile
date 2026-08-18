@@ -33,7 +33,7 @@ $(FARMER): Makefile *.go cmd/farmer/farmer.go */*.go internal/*/*.go
 	$(GOBUILD) $(GOLINKFLAGS) $(TAGS) -o $(FARMER) cmd/farmer/farmer.go
 
 test:
-	$(GOFMT)
+	$(GOFMT) ./...
 	$(GOTEST) $(NETGO) -v ./...
 
 clean:

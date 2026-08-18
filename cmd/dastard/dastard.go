@@ -10,11 +10,13 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/usnistgov/dastard"
+	"github.com/usnistgov/dastard/internal/dastarddb"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -62,6 +64,7 @@ func setupKoanf() error {
 	// First, load default values
 	err := dastard.GlobalKoanf.Load(confmap.Provider(map[string]interface{}{
 		"Verbose":       false,
+		"Database":      true,
 		"DataDirectory": "/data",
 	}, "."), nil)
 	if err != nil {
@@ -106,6 +109,28 @@ func startLogger(pfname string) *log.Logger {
 		Compress:   true, // whether to gzip the backups
 	})
 	return probLogger
+}
+
+func launchDB(datadirectory *string) (*dastarddb.DastardDBConnection, error) {
+	dbPath := filepath.Join(*datadirectory, "dastard.db")
+	db, err := dastarddb.NewDastardDBConnection(dbPath)
+	if err != nil {
+		panic(err)
+	}
+	msg := &dastarddb.DastardActivityMessage{
+		Hostname:  dastard.Build.Host,
+		Githash:   dastard.Build.Githash,
+		Builddate: dastard.Build.Date,
+		Version:   dastard.Build.Version,
+		GoVersion: runtime.Version(),
+		CPUs:      runtime.NumCPU(),
+		Start:     time.Now(),
+	}
+	err = db.LogDastardActivity(msg)
+	if err != nil {
+		log.Printf("problem: db.LogDastardActivity returned %v", err)
+	}
+	return db, err
 }
 
 func main() {
@@ -182,20 +207,39 @@ func main() {
 
 	dastard.UpdateLogger.Printf("\n\n\n\n%s", banner)
 
+	// Set up the SQLite database for Dastard metadata
+	var usedb bool
+	var db *dastarddb.DastardDBConnection
+	if err := dastard.GlobalKoanf.Unmarshal("Database", &usedb); err != nil {
+		panic(err)
+	} else if usedb {
+		db, err = launchDB(datadirectory)
+		if err == nil {
+			defer db.Close()
+		}
+	}
+
+	// Run the main goroutines. The RPC server is blocking.
 	abort := make(chan struct{})
 	go dastard.RunClientUpdater(dastard.Ports.Status, abort)
-	dastard.RunRPCServer(dastard.Ports.RPC, true)
-	close(abort)
+	dastard.RunRPCServer(dastard.Ports.RPC, true, db)
 
-	if *memprofile != "" {
-		f, err := os.Create(*memprofile)
-		if err != nil {
-			log.Fatal("could not create memory profile: ", err)
-		}
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			log.Fatal("could not write memory profile: ", err)
-		}
+	// Clean up: stop the ClientUpdater and write mem profile (if any)
+	close(abort)
+	writeMemoryProfile(memprofile)
+}
+
+func writeMemoryProfile(memprofile *string) {
+	if *memprofile == "" {
+		return
+	}
+	f, err := os.Create(*memprofile)
+	if err != nil {
+		log.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+	runtime.GC()    // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Fatal("could not write memory profile: ", err)
 	}
 }

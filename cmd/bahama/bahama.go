@@ -23,7 +23,7 @@ type BahamaControl struct {
 	Chan0      int // channel number of first channel
 	chanGaps   int // how many channel numbers to skip between groups
 	port       int
-	host	   string
+	host       string
 	sinusoid   bool
 	sawtooth   bool
 	pulses     bool
