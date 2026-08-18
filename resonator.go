@@ -607,25 +607,25 @@ func NewResonatorSource() (*ResonatorSource, error) {
 }
 
 // Delete terminates any input data producers.
-func (as *ResonatorSource) Delete() {
-	as.closeDevices()
+func (rs *ResonatorSource) Delete() {
+	rs.closeDevices()
 }
 
 // VoltsPerArb returns a per-channel value scaling raw into volts.
 // For Resonators, the scale is 1 Phi0 per 65536 arbs, but in the case of µMUX
 // readout, left shift 65536 by the number of µMUXBitsToDrop
-func (as *ResonatorSource) VoltsPerArb() []float32 {
-	if as.voltsPerArb == nil || len(as.voltsPerArb) != as.nchan {
-		as.voltsPerArb = make([]float32, as.nchan)
+func (rs *ResonatorSource) VoltsPerArb() []float32 {
+	if rs.voltsPerArb == nil || len(rs.voltsPerArb) != rs.nchan {
+		rs.voltsPerArb = make([]float32, rs.nchan)
 		vpa := float32(1.0 / 65536.0) // default if not rescaling raw data
-		if as.unwrapOpts.RescaleRaw {
+		if rs.unwrapOpts.RescaleRaw {
 			vpa = float32(1. / (65536 >> µMUXBitsToDrop))
 		}
-		for i := 0; i < as.nchan; i++ {
-			as.voltsPerArb[i] = vpa
+		for i := 0; i < rs.nchan; i++ {
+			rs.voltsPerArb[i] = vpa
 		}
 	}
-	return as.voltsPerArb
+	return rs.voltsPerArb
 }
 
 // ResonatorSourceConfig holds the arguments needed to call ResonatorSource.Configure by RPC.
@@ -639,7 +639,7 @@ type ResonatorSourceConfig struct {
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
-func (as *ResonatorSource) Configure(config *ResonatorSourceConfig) (err error) {
+func (rs *ResonatorSource) Configure(config *ResonatorSourceConfig) (err error) {
 	if err := config.ResonatorUnwrapOptions.isvalid(); err != nil {
 		return err
 	}
@@ -657,55 +657,55 @@ func (as *ResonatorSource) Configure(config *ResonatorSourceConfig) (err error) 
 	config.HostPortUDP = config.HostPortUDP[:i]
 	sort.Strings(config.HostPortUDP)
 
-	as.sourceStateLock.Lock()
-	defer as.sourceStateLock.Unlock()
+	rs.sourceStateLock.Lock()
+	defer rs.sourceStateLock.Unlock()
 
-	as.unwrapOpts = config.ResonatorUnwrapOptions
+	rs.unwrapOpts = config.ResonatorUnwrapOptions
 
 	// Bind servers at each host:port pair in the list of requested UDP receivers
-	as.producers = make([]PacketProducer, 0)
-	as.udpReceivers = make([]*ResonatorUDPReceiver, 0)
+	rs.producers = make([]PacketProducer, 0)
+	rs.udpReceivers = make([]*ResonatorUDPReceiver, 0)
 	for _, hostport := range config.HostPortUDP {
 		device, err := NewResonatorUDPReceiver(hostport)
 		if err != nil {
 			fmt.Printf("Could not bind server at udp://%s/, %v\n", hostport, err)
 			return err
 		}
-		as.udpReceivers = append(as.udpReceivers, device)
-		as.producers = append(as.producers, device)
+		rs.udpReceivers = append(rs.udpReceivers, device)
+		rs.producers = append(rs.producers, device)
 	}
 	return nil
 }
 
 // distributePackets sorts a slice of packets into the data queues according to the GroupIndex.
-func (as *ResonatorSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
+func (rs *ResonatorSource) distributePackets(allpackets []*packets.Packet, now time.Time) {
 	frameTimeUpdated := false
 	for _, p := range allpackets {
 		if p.IsExternalTrigger() {
-			as.eTrigPackets = append(as.eTrigPackets, p)
+			rs.eTrigPackets = append(rs.eTrigPackets, p)
 			continue
 		}
 
 		cidx := gIndex(p)
-		grp := as.groups[cidx]
+		grp := rs.groups[cidx]
 		grp.enqueuePacket(p, now)
 		if !frameTimeUpdated {
-			grp.updateFrameTiming(p, as.nextFrameNum)
+			grp.updateFrameTiming(p, rs.nextFrameNum)
 			frameTimeUpdated = true
 		}
 	}
 }
 
 // Sample determines key data facts by sampling some initial data.
-func (as *ResonatorSource) Sample() error {
-	if len(as.producers) <= 0 {
+func (rs *ResonatorSource) Sample() error {
+	if len(rs.producers) <= 0 {
 		return fmt.Errorf("no ResonatorSource data producers (UDP receivers) are active")
 	}
 
 	// Panic if there are UDP receivers, and the UDP receive buffer isn't somewhat larger than the 200 kB default.
 	// This is to stop people who ignore the README info about sysctl, and then complain that "Dastard doesn't work".
-	if len(as.udpReceivers) > 0 {
-		if err := verifyLargeUDPBuffer(as.minUDPBufferSize); err != nil {
+	if len(rs.udpReceivers) > 0 {
+		if err := verifyLargeUDPBuffer(rs.minUDPBufferSize); err != nil {
 			msg := fmt.Sprintf("Could not verify large UDP receive buffer.\n%v", err)
 			panic(msg)
 		}
@@ -718,7 +718,7 @@ func (as *ResonatorSource) Sample() error {
 	}
 	sampleResults := make(chan SampleResult)
 	timeout := 2000 * time.Millisecond
-	for _, pp := range as.producers {
+	for _, pp := range rs.producers {
 		go func(pp PacketProducer) {
 			if err := pp.start(); err != nil {
 				var nopackets []*packets.Packet
@@ -731,10 +731,10 @@ func (as *ResonatorSource) Sample() error {
 	}
 
 	// Now sort the packets received into the right ResonatorGroups
-	as.nchan = 0
-	as.groups = make(map[GroupIndex]*ResonatorGroup)
+	rs.nchan = 0
+	rs.groups = make(map[GroupIndex]*ResonatorGroup)
 	allRates := []float64{}
-	for range as.producers {
+	for range rs.producers {
 		results := <-sampleResults
 		now := time.Now()
 		if results.err != nil {
@@ -746,13 +746,13 @@ func (as *ResonatorSource) Sample() error {
 				continue
 			}
 			cidx := gIndex(p)
-			if _, ok := as.groups[cidx]; !ok {
-				as.groups[cidx] = NewResonatorGroup(cidx, as.unwrapOpts)
-				as.nchan += cidx.Nchan
-				allRates = append(allRates, as.groups[cidx].sampleRate)
+			if _, ok := rs.groups[cidx]; !ok {
+				rs.groups[cidx] = NewResonatorGroup(cidx, rs.unwrapOpts)
+				rs.nchan += cidx.Nchan
+				allRates = append(allRates, rs.groups[cidx].sampleRate)
 			}
 		}
-		as.distributePackets(results.allpackets, now)
+		rs.distributePackets(results.allpackets, now)
 	}
 
 	// Verify that no two groups have unequal sample rates
@@ -767,7 +767,7 @@ func (as *ResonatorSource) Sample() error {
 
 	// Verify that no channel # appears in 2 groups.
 	known := make(map[int]bool)
-	for _, g := range as.groups {
+	for _, g := range rs.groups {
 		cinit := g.index.Firstchan
 		cend := cinit + g.index.Nchan
 		for cnum := cinit; cnum < cend; cnum++ {
@@ -778,59 +778,59 @@ func (as *ResonatorSource) Sample() error {
 		}
 	}
 
-	// Compute a fixed ordering for iteration over the map as.groups
+	// Compute a fixed ordering for iteration over the map rs.groups
 	var keys []GroupIndex
-	for k := range as.groups {
+	for k := range rs.groups {
 		keys = append(keys, k)
 	}
 	sort.Sort(ByGroup(keys))
-	as.groupKeysSorted = keys
+	rs.groupKeysSorted = keys
 
 	// Each ResonatorGroup should process its sampled packets.
-	for _, group := range as.groups {
+	for _, group := range rs.groups {
 		group.samplePackets()
 	}
 
-	as.sampleRate = 0
-	for _, group := range as.groups {
-		if as.sampleRate == 0 {
-			as.sampleRate = group.sampleRate
+	rs.sampleRate = 0
+	for _, group := range rs.groups {
+		if rs.sampleRate == 0 {
+			rs.sampleRate = group.sampleRate
 		}
 		// For now (Aug 2021), let's declare 2 groups to have approximately equal
 		// sample rates if they agree to 1 part per billion. This means we don't test
 		// floating point numbers for exact equality.
-		diff := math.Abs(as.sampleRate - group.sampleRate)
-		if diff/as.sampleRate > 1e-6 {
-			fmt.Printf("Oh crap! Two groups have different sample rates: %f, %f, |diff|=%f", as.sampleRate, group.sampleRate, diff)
+		diff := math.Abs(rs.sampleRate - group.sampleRate)
+		if diff/rs.sampleRate > 1e-6 {
+			fmt.Printf("Oh crap! Two groups have different sample rates: %f, %f, |diff|=%f", rs.sampleRate, group.sampleRate, diff)
 			panic("Oh crap! Two groups have different sample rates.")
 			// TODO: what if multiple groups have truly unequal rates??
 		}
 	}
-	as.samplePeriod = time.Duration(roundint(1e9 / as.sampleRate))
+	rs.samplePeriod = time.Duration(roundint(1e9 / rs.sampleRate))
 
 	return nil
 }
 
 // PrepareChannels configures a ResonatorSource by initializing all data structures that
 // have to do with channels and their naming/numbering.
-func (as *ResonatorSource) PrepareChannels() error {
-	as.channelsPerPixel = 1
+func (rs *ResonatorSource) PrepareChannels() error {
+	rs.channelsPerPixel = 1
 
 	// Fill the channel names and numbers slices
 	// For rowColCodes, treat each channel group as a "column" and number chan within it
 	// as rows 0...g.nchan-1.
-	as.chanNames = make([]string, 0, as.nchan)
-	as.chanNumbers = make([]int, 0, as.nchan)
-	as.subframeOffsets = make([]int, as.nchan) // all zeros for ResonatorSource
-	as.rowColCodes = make([]RowColCode, 0, as.nchan)
-	ncol := len(as.groups)
-	for col, g := range as.groupKeysSorted {
+	rs.chanNames = make([]string, 0, rs.nchan)
+	rs.chanNumbers = make([]int, 0, rs.nchan)
+	rs.subframeOffsets = make([]int, rs.nchan) // all zeros for ResonatorSource
+	rs.rowColCodes = make([]RowColCode, 0, rs.nchan)
+	ncol := len(rs.groups)
+	for col, g := range rs.groupKeysSorted {
 		for row := 0; row < g.Nchan; row++ {
 			cnum := row + g.Firstchan
 			name := fmt.Sprintf("chan%d", cnum)
-			as.chanNames = append(as.chanNames, name)
-			as.chanNumbers = append(as.chanNumbers, cnum)
-			as.rowColCodes = append(as.rowColCodes, rcCode(row, col, g.Nchan, ncol))
+			rs.chanNames = append(rs.chanNames, name)
+			rs.chanNumbers = append(rs.chanNumbers, cnum)
+			rs.rowColCodes = append(rs.rowColCodes, rcCode(row, col, g.Nchan, ncol))
 		}
 	}
 	return nil
@@ -838,13 +838,13 @@ func (as *ResonatorSource) PrepareChannels() error {
 
 // StartRun tells the hardware to switch into data streaming mode.
 // Discard existing data, then launch a goroutine to consume data.
-func (as *ResonatorSource) StartRun() error {
-	for _, pp := range as.producers {
+func (rs *ResonatorSource) StartRun() error {
+	for _, pp := range rs.producers {
 		pp.discardStale()
 	}
-	as.buffersChan = make(chan ResonatorBuffersType, 100)
-	as.readPeriod = 50 * time.Millisecond
-	go as.readerMainLoop()
+	rs.buffersChan = make(chan ResonatorBuffersType, 100)
+	rs.readPeriod = 50 * time.Millisecond
+	go rs.readerMainLoop()
 	return nil
 }
 
@@ -859,19 +859,19 @@ type ResonatorBuffersType struct {
 	droppedFrames  int
 }
 
-func (as *ResonatorSource) readerMainLoop() {
-	defer close(as.buffersChan)
+func (rs *ResonatorSource) readerMainLoop() {
+	defer close(rs.buffersChan)
 	const timeoutPeriod = 5 * time.Second
 	timeout := time.NewTimer(timeoutPeriod)
 	defer timeout.Stop()
-	ticker := time.NewTicker(as.readPeriod)
+	ticker := time.NewTicker(rs.readPeriod)
 	defer ticker.Stop()
-	as.lastread = time.Now()
+	rs.lastread = time.Now()
 
 awaitmoredata:
 	for {
 		select {
-		case <-as.abortSelf:
+		case <-rs.abortSelf:
 			log.Printf("Resonator read was aborted")
 			return
 
@@ -885,14 +885,14 @@ awaitmoredata:
 			var lastSampleTime time.Time
 			var droppedFrames int
 			var droppedBytes int
-			for _, pp := range as.producers {
+			for _, pp := range rs.producers {
 				allPackets, err := pp.ReadAllPackets()
 				lastSampleTime = time.Now()
 				if err != nil {
 					fmt.Printf("PacketProducer.ReadAllPackets failed with error: %v\n", err)
 					panic("PacketProducer.ReadAllPackets failed")
 				}
-				as.distributePackets(allPackets, lastSampleTime)
+				rs.distributePackets(allPackets, lastSampleTime)
 			}
 
 			// var t1, t2 time.Time
@@ -903,7 +903,7 @@ awaitmoredata:
 			// in each group and trimming leading packets if any precede the others.
 			// Fill in for any missing packets first, so a missing first packet isn't a problem.
 			firstSn := uint32(0)
-			for idx, group := range as.groups {
+			for idx, group := range rs.groups {
 				bytesAdded, packetsAdded, framesAdded := group.fillMissingPackets()
 				droppedFrames += framesAdded
 				droppedBytes += bytesAdded
@@ -926,7 +926,7 @@ awaitmoredata:
 
 			// For any queue that starts before maxsn0, trim the leading packets. Learn the # of samples.
 			framesToDeMUX := math.MaxInt64
-			for _, group := range as.groups {
+			for _, group := range rs.groups {
 				group.trimPacketsBefore(firstSn)
 				nsamp := group.countSamplesInQueue()
 				if nsamp < framesToDeMUX {
@@ -940,14 +940,14 @@ awaitmoredata:
 			// fmt.Printf("Time required to trimPacketsBefore: %v\n", t2.Sub(t1))
 
 			// Demux data into this slice of slices of RawType
-			datacopies := make([][]RawType, as.nchan)
-			for i := 0; i < as.nchan; i++ {
+			datacopies := make([][]RawType, rs.nchan)
+			for i := 0; i < rs.nchan; i++ {
 				datacopies[i] = make([]RawType, framesToDeMUX)
 			}
 			chanProcessed := 0
 			bytesProcessed := 0
-			for _, k := range as.groupKeysSorted {
-				group := as.groups[k]
+			for _, k := range rs.groupKeysSorted {
+				group := rs.groups[k]
 				dc := datacopies[chanProcessed : chanProcessed+group.nchan]
 				bytesProcessed += group.demuxData(dc, framesToDeMUX)
 				chanProcessed += group.nchan
@@ -955,18 +955,18 @@ awaitmoredata:
 			// t1, t2 = t2, time.Now()
 			// fmt.Printf("Time required to demuxData: %v\n", t2.Sub(t1))
 
-			timeDiff := lastSampleTime.Sub(as.lastread)
-			if timeDiff > 2*as.readPeriod {
+			timeDiff := lastSampleTime.Sub(rs.lastread)
+			if timeDiff > 2*rs.readPeriod {
 				fmt.Println("timeDiff in ResonatorSource reader", timeDiff)
 			}
-			as.lastread = lastSampleTime
+			rs.lastread = lastSampleTime
 
-			if len(as.buffersChan) == cap(as.buffersChan) {
-				msg := fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(as.buffersChan), cap(as.buffersChan))
+			if len(rs.buffersChan) == cap(rs.buffersChan) {
+				msg := fmt.Sprintf("internal buffersChan full, len %v, capacity %v", len(rs.buffersChan), cap(rs.buffersChan))
 				log.Printf("Resonator read failed: %s\n", msg)
 				return
 			}
-			as.buffersChan <- ResonatorBuffersType{
+			rs.buffersChan <- ResonatorBuffersType{
 				datacopies:     datacopies,
 				lastSampleTime: lastSampleTime,
 				timeDiff:       timeDiff,
@@ -983,56 +983,56 @@ awaitmoredata:
 
 // getNextBlock returns the channel on which data sources send data and any errors.
 // Waiting on this channel = waiting on the source to produce a data block.
-// This goroutine will end by putting a valid or error-ish dataBlock onto as.nextBlock.
-// If the block has a non-nil error, this goroutine will also close as.nextBlock.
+// This goroutine will end by putting a valid or error-ish dataBlock onto rs.nextBlock.
+// If the block has a non-nil error, this goroutine will also close rs.nextBlock.
 // The ResonatorSource version also has to monitor the timeout channel and wait for
 // the buffersChan to yield real, valid Resonator data.
 // TODO: if there are any configuations that can change mid-run (analogous to Mix
 // for Lancero), we'll also want to handle those changes in this loop.
-func (as *ResonatorSource) getNextBlock() chan *dataBlock {
-	panicTime := time.Duration(cap(as.buffersChan)) * as.readPeriod
+func (rs *ResonatorSource) getNextBlock() chan *dataBlock {
+	panicTime := time.Duration(cap(rs.buffersChan)) * rs.readPeriod
 	go func() {
 		for {
 			select {
 			case <-time.After(panicTime):
-				panic(fmt.Sprintf("timeout, no data from ResonatorSource after %v / readPeriod is %v", panicTime, as.readPeriod))
+				panic(fmt.Sprintf("timeout, no data from ResonatorSource after %v / readPeriod is %v", panicTime, rs.readPeriod))
 
-			case buffersMsg, ok := <-as.buffersChan:
+			case buffersMsg, ok := <-rs.buffersChan:
 				//  Check is buffersChan closed? Recognize that by receiving zero values and/or being drained.
 				if buffersMsg.datacopies == nil || !ok {
-					if err := as.closeDevices(); err != nil {
+					if err := rs.closeDevices(); err != nil {
 						block := new(dataBlock)
 						block.err = err
-						as.nextBlock <- block
+						rs.nextBlock <- block
 					}
-					close(as.nextBlock)
+					close(rs.nextBlock)
 					return
 				}
 
-				// as.buffersChan contained valid data, so act on it.
-				block := as.distributeData(buffersMsg)
-				as.nextBlock <- block
+				// rs.buffersChan contained valid data, so act on it.
+				block := rs.distributeData(buffersMsg)
+				rs.nextBlock <- block
 				if block.err != nil {
-					close(as.nextBlock)
+					close(rs.nextBlock)
 				}
 				return
 			}
 		}
 	}()
-	return as.nextBlock
+	return rs.nextBlock
 }
 
-func (as *ResonatorSource) extractExternalTriggers() []int64 {
+func (rs *ResonatorSource) extractExternalTriggers() []int64 {
 	externalTriggers := make([]int64, 0)
-	for _, p := range as.eTrigPackets {
+	for _, p := range rs.eTrigPackets {
 		// These packets have form (u32, u32, u64) repeating, but we don't care about the first 2.
 		// So it's simplest to treat AS IF they were (u64, 64) repeating.
 		// fmt.Printf("\nExternal trigger packet found:\n")
 		// spew.Dump(*p)
 		// fmt.Printf("Packet sequence: %d   Num frames: %d\n", p.SequenceNumber(), p.Frames())
 
-		key0 := as.groupKeysSorted[0]
-		grp0 := as.groups[key0]
+		key0 := rs.groupKeysSorted[0]
+		grp0 := rs.groups[key0]
 		outlength := p.Frames()
 		switch d := p.Data.(type) {
 		case []byte:
@@ -1052,25 +1052,25 @@ func (as *ResonatorSource) extractExternalTriggers() []int64 {
 		}
 	}
 	// Remove all queued eTrigPackets
-	as.eTrigPackets = as.eTrigPackets[:0]
+	rs.eTrigPackets = rs.eTrigPackets[:0]
 	return externalTriggers
 }
 
-func (as *ResonatorSource) distributeData(buffersMsg ResonatorBuffersType) *dataBlock {
+func (rs *ResonatorSource) distributeData(buffersMsg ResonatorBuffersType) *dataBlock {
 	datacopies := buffersMsg.datacopies
 	lastSampleTime := buffersMsg.lastSampleTime
 	timeDiff := buffersMsg.timeDiff
 	framesUsed := len(datacopies[0])
 
 	// Backtrack to find the time associated with the first sample.
-	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / as.sampleRate))
+	segDuration := time.Duration(roundint((1e9 * float64(framesUsed-1)) / rs.sampleRate))
 	firstTime := lastSampleTime.Add(-segDuration)
 	block := new(dataBlock)
 	nchan := len(datacopies)
 	block.segments = make([]DataSegment, nchan)
 
 	// Here we find external triggers from the queue of relevant packets
-	externalTriggers := as.extractExternalTriggers()
+	externalTriggers := rs.extractExternalTriggers()
 
 	// TODO: we should loop over devices here, matching devices to channels.
 	var wg sync.WaitGroup
@@ -1082,8 +1082,8 @@ func (as *ResonatorSource) distributeData(buffersMsg ResonatorBuffersType) *data
 			seg := DataSegment{
 				rawData:         data,
 				framesPerSample: 1, // This will be changed later if decimating
-				framePeriod:     as.samplePeriod,
-				firstFrameIndex: as.nextFrameNum,
+				framePeriod:     rs.samplePeriod,
+				firstFrameIndex: rs.nextFrameNum,
 				firstTime:       firstTime,
 				signed:          false,
 				droppedFrames:   buffersMsg.droppedFrames,
@@ -1093,17 +1093,17 @@ func (as *ResonatorSource) distributeData(buffersMsg ResonatorBuffersType) *data
 		}(channelIndex)
 	}
 	wg.Wait()
-	as.nextFrameNum += FrameIndex(framesUsed)
-	if as.heartbeats != nil {
+	rs.nextFrameNum += FrameIndex(framesUsed)
+	if rs.heartbeats != nil {
 		pmb := float64(buffersMsg.totalBytes) / 1e6
 		hwmb := float64(buffersMsg.totalBytes-buffersMsg.droppedBytes) / 1e6
-		as.heartbeats <- Heartbeat{Running: true, HWactualMB: hwmb, DataMB: pmb,
+		rs.heartbeats <- Heartbeat{Running: true, HWactualMB: hwmb, DataMB: pmb,
 			Time: timeDiff.Seconds()}
 	}
 	now := time.Now()
 	delay := now.Sub(lastSampleTime)
 	if delay > 100*time.Millisecond {
-		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(as.buffersChan), cap(as.buffersChan), now.Sub(firstTime))
+		log.Printf("Buffer %v/%v, now-firstTime %v\n", len(rs.buffersChan), cap(rs.buffersChan), now.Sub(firstTime))
 	}
 	block.externalTriggerRowcounts = externalTriggers
 
@@ -1111,10 +1111,10 @@ func (as *ResonatorSource) distributeData(buffersMsg ResonatorBuffersType) *data
 }
 
 // closeDevices stops and closes all UDP servers.
-func (as *ResonatorSource) closeDevices() error {
-	for _, pp := range as.producers {
+func (rs *ResonatorSource) closeDevices() error {
+	for _, pp := range rs.producers {
 		pp.stop()
 	}
-	as.producers = as.producers[:0]
+	rs.producers = rs.producers[:0]
 	return nil
 }
