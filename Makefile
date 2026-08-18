@@ -5,6 +5,7 @@ GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 BINARY_NAME=dastard
+FARMER=farmer
 STATIC_NAME=dastard_static
 
 # The following uses the pure-Go "net" package netgo, instead of the usual link against C libraries.
@@ -21,11 +22,15 @@ GITDATE := $(shell git log -1 --pretty=format:"%ad" --date=format:"%a, %e %b %Y 
 
 GLOBALVARIABLES=-X 'main.buildDate=$(BUILDDATE)' -X main.githash=$(GITHASH) -X 'main.gitdate=$(GITDATE)'
 GOLINKFLAGS=-ldflags "$(GLOBALVARIABLES)"
-build: $(BINARY_NAME)
+
+build: $(BINARY_NAME) $(FARMER)
 all: test build install
 
 $(BINARY_NAME): Makefile *.go cmd/dastard/dastard.go */*.go internal/*/*.go
 	$(GOBUILD) $(GOLINKFLAGS) $(TAGS) -o $(BINARY_NAME) cmd/dastard/dastard.go
+
+$(FARMER): Makefile *.go cmd/farmer/farmer.go */*.go internal/*/*.go
+	$(GOBUILD) $(GOLINKFLAGS) $(TAGS) -o $(FARMER) cmd/farmer/farmer.go
 
 test:
 	$(GOFMT)
@@ -33,7 +38,7 @@ test:
 
 clean:
 	$(GOCLEAN)
-	rm -f $(BINARY_NAME)
+	rm -f $(BINARY_NAME) $(FARMER)
 
 run: build
 	./$(BINARY_NAME)
@@ -42,7 +47,7 @@ deps:
 	$(GOGET) -v -t ./...
 
 install: build
-	cp -p $(BINARY_NAME) `go env GOPATH`/bin/
+	cp -p $(BINARY_NAME) $(FARMER) `go env GOPATH`/bin/
 
 # EXPERIMENTAL: build a statically linked dastard binary with "make static".
 # make static will _always_ rebuild the binary, and always with static linking
