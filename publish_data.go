@@ -13,14 +13,15 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
-// DataPublisher contains many optional methods for publishing data; any methods that are non-nil
-// will be used in each call to PublishData.
+// DataPublisher contains many optional methods for publishing data; any Writers that are non-nil
+// will be used in each call to PublishData. One instance of this object exists for each data channel.
 type DataPublisher struct {
 	PubRecordsChan   chan []*DataRecord
 	PubSummariesChan chan []*DataRecord
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
+	UniPub           *UnifiedPublisher
 	WritingPaused    bool
 	numberWritten    int // integrates up the total number written; reset any time writing starts or stops
 }
@@ -223,6 +224,10 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.WritingPaused {
 		return nil
 	}
+	if dp.UniPub != nil {
+		dp.UniPub.RecordsChan <- records
+	}
+
 	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
 		return nil
 	}
@@ -425,4 +430,68 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 		}
 	}()
 	return pubchan, nil
+}
+
+// UnifiedPublisher represents the object that collects pulse records from all channels to
+// publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
+type UnifiedPublisher struct {
+	RecordsChan chan []*DataRecord
+	abort       chan struct{}
+}
+
+func NewUniPub(nchan int) *UnifiedPublisher {
+	mp := new(UnifiedPublisher)
+	mp.RecordsChan = make(chan []*DataRecord, 2*nchan)
+	mp.abort = make(chan struct{})
+	return mp
+}
+
+// LastChannelComplete signals to the publisher that there are no more channels to wait for,
+// and it's time to publish the collected data.
+func (mp *UnifiedPublisher) LastChannelComplete() {
+	mp.RecordsChan <- nil
+}
+
+// PublishLoop is the UnifiedPublisher's long-running goroutine.
+// It collects records from all channels into a single slice of *DataRecord,
+// and publishes them together when a nil slice arrives (caused by the DataSource calling
+// mp.LastChannelComplete() to indicate all channels have been checked).
+// When data writing is stopped, the abort channel will be closed, and this routine will exit.
+func (mp *UnifiedPublisher) PublishLoop() {
+	queuedRecords := make([]*DataRecord, 0, 100)
+	for {
+		select {
+		case <-mp.abort:
+			return
+		case records := <-mp.RecordsChan:
+			if records == nil {
+				mp.publishData(queuedRecords)
+				queuedRecords = queuedRecords[:0]
+			} else {
+				queuedRecords = append(queuedRecords, records...)
+			}
+		}
+	}
+}
+
+// Publish the slice of data collected from all channels.
+// For now, this writes them to the ClickHouse DB.
+// Eventually, it might write them to a single Apache Arrow file instead, or in addition.
+func (mp *UnifiedPublisher) publishData(records []*DataRecord) {
+	// AUGUST 18, 2026: Here is where writing to an Arrow file happens.
+	// Want to collect records for 5 seconds, then dump one bunch.
+	// After 5 minutes or a max (estimated) file size, start a new file.
+
+	// n := len(records)
+	// channelIDs := make([]string, n)
+	// timestamps := make([]time.Time, n)
+	// subframecounts := make([]uint64, n)
+	// pulses := make([][]uint16, n)
+	// for i, record := range records {
+	// 	channelIDs[i] = record.channelID
+	// 	timestamps[i] = record.trigTime
+	// 	subframecounts[i] = uint64(record.trigFrame)
+	// 	pulses[i] = rawTypeToUint16(record.data)
+	// }
+	// DB.RecordPulses(channelIDs, timestamps, subframecounts, pulses)
 }

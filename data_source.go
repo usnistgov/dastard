@@ -314,6 +314,7 @@ type AnySource struct {
 	nextBlock    chan *dataBlock      // Signal from the core loop that a block is ready to process
 	archiveBlock archiveableDataBlock // Used to store a section of raw data to file
 	broker       *TriggerBroker
+	unipub       *UnifiedPublisher
 	configError  error // Any error that arose when configuring the source (before Start)
 	db           *dastarddb.DastardDBConnection
 
@@ -471,6 +472,11 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 			}
 		}
 		wg.Wait()
+	}
+
+	// Signal to the UnifiedPublisher that all channels' data have been sent; it's time to publish.
+	if ds.unipub != nil {
+		ds.unipub.LastChannelComplete()
 	}
 
 	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
@@ -690,6 +696,14 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
+
+		if ds.unipub != nil {
+			for _, dsp := range ds.processors {
+				dsp.DataPublisher.UniPub = nil
+			}
+			close(ds.unipub.abort)
+			ds.unipub = nil
+		}
 		err := ds.writingState.Stop()
 		if ds.db != nil {
 			if err := ds.db.EndDatarun(time.Now()); err != nil {
@@ -710,8 +724,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 // writeControlStart handles the most complex case of WriteControl: starting to write.
 func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
-	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
-		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
+	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3 || config.WriteArrows) {
+		return fmt.Errorf("all of (WriteLJH22, WriteOFF, WriteLJH3, WriteArrows) are false")
 	}
 
 	for _, dsp := range ds.processors {
@@ -721,6 +735,15 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
 	}
+
+	if config.WriteArrows {
+		ds.unipub = NewUniPub(ds.Nchan())
+		go ds.unipub.PublishLoop()
+		for _, dsp := range ds.processors {
+			dsp.DataPublisher.UniPub = ds.unipub
+		}
+	}
+
 	if config.WriteOFF {
 		// throw an error if no channels have projectors set
 		// only channels with projectors set will have OFF files enabled
