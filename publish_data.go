@@ -3,8 +3,14 @@ package dastard
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/usnistgov/dastard/internal/getbytes"
 	"github.com/usnistgov/dastard/internal/ljh"
 	"github.com/usnistgov/dastard/internal/off"
@@ -432,24 +438,111 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	return pubchan, nil
 }
 
+type ArrowWriter struct {
+	FilenamePattern string
+	LastFilename    string
+	NextFileNumber  int
+	NSamples        int
+	openFile        *os.File
+	builder         *array.RecordBuilder
+	writer          *ipc.Writer
+}
+
+func (aw *ArrowWriter) OpenFile() error {
+	// 1. Define the data schema
+	// This type means an array[uint16] of fixed size aw.NSamples
+	pulse_type := arrow.FixedSizeListOf(int32(aw.NSamples), arrow.PrimitiveTypes.Uint16)
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "pulse", Type: pulse_type, Nullable: false},
+		{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_us, Nullable: false},
+		{Name: "subframecount", Type: arrow.PrimitiveTypes.Uint64, Nullable: false},
+		{Name: "channel_number", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
+	}, nil)
+
+	// 2. Set up the memory allocator and Record Builder
+	alloc := memory.NewGoAllocator()
+	aw.builder = array.NewRecordBuilder(alloc, schema)
+
+	aw.LastFilename = fmt.Sprintf(aw.FilenamePattern, encodeFileNumber(aw.NextFileNumber), "arrows_WAL")
+	fp, err := os.Create(aw.LastFilename)
+	aw.openFile = fp
+	aw.writer = ipc.NewWriter(fp, ipc.WithSchema(schema))
+	return err
+}
+
+func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
+	// Field 0: The parent FixedSizeList builder
+	pulseListBldr := aw.builder.Field(0).(*array.FixedSizeListBuilder)
+	// Field 0's Child: The underlying Uint16 value builder
+	pulseValBldr := pulseListBldr.ValueBuilder().(*array.Uint16Builder)
+
+	// Fields 1 and 2: Standard scalar builders
+	tsBldr := aw.builder.Field(1).(*array.TimestampBuilder)
+	sfcBldr := aw.builder.Field(2).(*array.Uint64Builder)
+	cnumBldr := aw.builder.Field(3).(*array.Int64Builder)
+
+	for _, rec := range records {
+		pulseListBldr.Append(true) // i.e., this pulse won't be null
+		data := rawTypeToUint16(rec.data)
+		pulseValBldr.AppendValues(data, nil)
+		tsBldr.Append(arrow.Timestamp(rec.trigTime.UnixMicro()))
+		sfcBldr.Append(uint64(rec.trigFrame) * 64)
+		cnumBldr.Append(int64(rec.channelNumber))
+	}
+	rec := aw.builder.NewRecordBatch()
+	defer rec.Release()
+	if err := aw.writer.Write(rec); err != nil {
+		fmt.Printf("Writing with error %v\n", err)
+		return 0
+	}
+	return len(records)
+}
+
+func (aw *ArrowWriter) CloseFile() {
+	if aw.writer != nil {
+		aw.writer.Close()
+		aw.writer = nil
+	}
+	if aw.builder != nil {
+		aw.builder.Release()
+		aw.builder = nil
+	}
+	if aw.openFile != nil {
+		aw.openFile.Close()
+		aw.openFile = nil
+	}
+
+	// rename file, stripping final _WAL
+	newname := strings.ReplaceAll(aw.LastFilename, "_WAL", "")
+	os.Rename(aw.LastFilename, newname)
+	aw.NextFileNumber++
+}
+
 // UnifiedPublisher represents the object that collects pulse records from all channels to
 // publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
 type UnifiedPublisher struct {
 	RecordsChan chan []*DataRecord
 	abort       chan struct{}
+	ArrowWriter
 }
 
-func NewUniPub(nchan int) *UnifiedPublisher {
+func NewUniPub(nchan int, pattern string, nsamples int) *UnifiedPublisher {
 	mp := new(UnifiedPublisher)
 	mp.RecordsChan = make(chan []*DataRecord, 2*nchan)
 	mp.abort = make(chan struct{})
+	mp.FilenamePattern = pattern
+	mp.NSamples = nsamples
 	return mp
 }
 
 // LastChannelComplete signals to the publisher that there are no more channels to wait for,
 // and it's time to publish the collected data.
-func (mp *UnifiedPublisher) LastChannelComplete() {
-	mp.RecordsChan <- nil
+func (upub *UnifiedPublisher) LastChannelComplete() {
+	upub.RecordsChan <- nil
+}
+
+func encodeFileNumber(n int) string {
+	return fmt.Sprintf("all_pulses_%3.3d", n)
 }
 
 // PublishLoop is the UnifiedPublisher's long-running goroutine.
@@ -457,15 +550,18 @@ func (mp *UnifiedPublisher) LastChannelComplete() {
 // and publishes them together when a nil slice arrives (caused by the DataSource calling
 // mp.LastChannelComplete() to indicate all channels have been checked).
 // When data writing is stopped, the abort channel will be closed, and this routine will exit.
-func (mp *UnifiedPublisher) PublishLoop() {
+func (upub *UnifiedPublisher) PublishLoop() {
+	upub.OpenFile()
+	defer upub.CloseFile()
+
 	queuedRecords := make([]*DataRecord, 0, 100)
 	for {
 		select {
-		case <-mp.abort:
+		case <-upub.abort:
 			return
-		case records := <-mp.RecordsChan:
+		case records := <-upub.RecordsChan:
 			if records == nil {
-				mp.publishData(queuedRecords)
+				upub.publishData(queuedRecords)
 				queuedRecords = queuedRecords[:0]
 			} else {
 				queuedRecords = append(queuedRecords, records...)
@@ -477,21 +573,12 @@ func (mp *UnifiedPublisher) PublishLoop() {
 // Publish the slice of data collected from all channels.
 // For now, this writes them to the ClickHouse DB.
 // Eventually, it might write them to a single Apache Arrow file instead, or in addition.
-func (mp *UnifiedPublisher) publishData(records []*DataRecord) {
+func (upub *UnifiedPublisher) publishData(records []*DataRecord) {
 	// AUGUST 18, 2026: Here is where writing to an Arrow file happens.
 	// Want to collect records for 5 seconds, then dump one bunch.
 	// After 5 minutes or a max (estimated) file size, start a new file.
+	fmt.Printf("UnifiedPublisher.publishData has %d records\n", len(records))
 
-	// n := len(records)
-	// channelIDs := make([]string, n)
-	// timestamps := make([]time.Time, n)
-	// subframecounts := make([]uint64, n)
-	// pulses := make([][]uint16, n)
-	// for i, record := range records {
-	// 	channelIDs[i] = record.channelID
-	// 	timestamps[i] = record.trigTime
-	// 	subframecounts[i] = uint64(record.trigFrame)
-	// 	pulses[i] = rawTypeToUint16(record.data)
-	// }
-	// DB.RecordPulses(channelIDs, timestamps, subframecounts, pulses)
+	// TODO queue up data for a certain time!
+	upub.WriteRecords(records)
 }

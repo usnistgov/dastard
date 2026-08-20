@@ -770,11 +770,11 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	}
 
 	// Collect information and store new entry in the `dataruns` table in the database.
+	NPresamples, NSamples, _ := ds.getPulseLengths()
 	if ds.db != nil {
 		directory := path.Dir(filenamePattern)
 		runcode := fmt.Sprintf("%4.4d", runnumber)
 		dateruncode := path.Join(datecode, runcode)
-		NPresamples, NSamples, _ := ds.getPulseLengths()
 
 		drecmsg := dastarddb.DatarunMessage{
 			NumChan:    ds.Nchan(),
@@ -844,7 +844,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	writeMetadata(metadataFilename, ds, datecode, runnumber, config)
 
 	if config.WriteArrows {
-		ds.unipub = NewUniPub(ds.Nchan())
+		ds.unipub = NewUniPub(ds.Nchan(), filenamePattern, NSamples)
 		go ds.unipub.PublishLoop()
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.UniPub = ds.unipub
