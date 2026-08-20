@@ -1331,14 +1331,15 @@ func (stream *DataStream) TrimKeepingN(N int) int {
 
 // DataRecord contains a single triggered pulse record.
 type DataRecord struct {
-	data         []RawType
-	trigFrame    FrameIndex
-	trigTime     time.Time
-	signed       bool // do we interpret the data as signed values?
-	channelIndex int
-	presamples   int
-	voltsPerArb  float32 // "volts" or other physical unit per raw unit
-	sampPeriod   float32
+	data          []RawType
+	trigFrame     FrameIndex
+	trigTime      time.Time
+	signed        bool // do we interpret the data as signed values?
+	channelIndex  int
+	channelNumber int
+	presamples    int
+	voltsPerArb   float32 // "volts" or other physical unit per raw unit
+	sampPeriod    float32
 
 	// trigger type?
 

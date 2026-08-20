@@ -306,7 +306,7 @@ func messageSummaries(rec *DataRecord) [][]byte {
 	const headerVersion = uint16(0)
 
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelNumber)))
 	header.Write(getbytes.FromUint16(headerVersion))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
 	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
@@ -346,7 +346,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelNumber)))
 	header.Write(getbytes.FromUint8(headerVersion))
 	header.Write(getbytes.FromUint8(dataType))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
