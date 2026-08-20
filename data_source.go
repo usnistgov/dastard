@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/sbinet/npyio/npz"
 	"gonum.org/v1/gonum/mat"
 )
@@ -639,27 +641,28 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 // makeDirectory creates directory of the form basepath/20060102/0000 where
 // the 4-digit subdirectory counts separate file-writing occasions.
 // It also returns the formatting code for use in an Sprintf call
-// (e.g., basepath/20060102/0000/20060102_run0000_%s.%s) and an error, if any.
-func makeDirectory(basepath string) (string, error) {
+// (e.g., basepath/20060102/0000/20060102_run0000_%s.%s), the 8-char date
+// code, the run number, and an error, if any.
+func makeDirectory(basepath string) (string, string, int, error) {
 	if len(basepath) == 0 {
-		return "", fmt.Errorf("BasePath is the empty string")
+		return "", "", 0, fmt.Errorf("BasePath is the empty string")
 	}
 	today := time.Now().Format("20060102")
 	todayDir := filepath.Join(basepath, today)
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
-		return "", err
+		return "", "", 0, err
 	}
 	for i := range 10000 {
 		thisDir := filepath.Join(todayDir, fmt.Sprintf("%4.4d", i))
 		_, err := os.Stat(thisDir)
 		if os.IsNotExist(err) {
 			if err2 := os.MkdirAll(thisDir, 0755); err2 != nil {
-				return "", err
+				return "", "", 0, err
 			}
-			return filepath.Join(thisDir, fmt.Sprintf("%s_run%4.4d_%%s.%%s", today, i)), nil
+			return filepath.Join(thisDir, fmt.Sprintf("%s_run%4.4d_%%s.%%s", today, i)), today, i, nil
 		}
 	}
-	return "", fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)
+	return "", "", 0, fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)
 }
 
 // WriteControl changes the data writing start/stop/pause/unpause state
@@ -736,14 +739,6 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		}
 	}
 
-	if config.WriteArrows {
-		ds.unipub = NewUniPub(ds.Nchan())
-		go ds.unipub.PublishLoop()
-		for _, dsp := range ds.processors {
-			dsp.DataPublisher.UniPub = ds.unipub
-		}
-	}
-
 	if config.WriteOFF {
 		// throw an error if no channels have projectors set
 		// only channels with projectors set will have OFF files enabled
@@ -769,7 +764,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		basepath = config.Path
 	}
 	var err error
-	filenamePattern, err := makeDirectory(basepath)
+	filenamePattern, datecode, runnumber, err := makeDirectory(basepath)
 	if err != nil {
 		return fmt.Errorf("could not make directory: %s", err.Error())
 	}
@@ -777,9 +772,8 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 	// Collect information and store new entry in the `dataruns` table in the database.
 	if ds.db != nil {
 		directory := path.Dir(filenamePattern)
-		d2, runnum := path.Split(directory)
-		_, datecode := path.Split(path.Clean(d2))
-		dateruncode := path.Join(datecode, runnum)
+		runcode := fmt.Sprintf("%4.4d", runnumber)
+		dateruncode := path.Join(datecode, runcode)
 		NPresamples, NSamples, _ := ds.getPulseLengths()
 
 		drecmsg := dastarddb.DatarunMessage{
@@ -844,7 +838,76 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			dsp.DataPublisher.LJH3.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 	}
+
+	// Write the metadata file. Needed for Arrows format, but why not just always write it?
+	metadataFilename := fmt.Sprintf(filenamePattern, "configuration", "toml")
+	writeMetadata(metadataFilename, ds, datecode, runnumber, config)
+
+	if config.WriteArrows {
+		ds.unipub = NewUniPub(ds.Nchan())
+		go ds.unipub.PublishLoop()
+		for _, dsp := range ds.processors {
+			dsp.DataPublisher.UniPub = ds.unipub
+		}
+	}
+
 	return ds.writingState.Start(filenamePattern, basepath, config)
+}
+
+func writeMetadata(path string, ds *AnySource, datecode string, runnumber int, config *WriteControlConfig) {
+	// Open metadata TOML file
+	file, err := os.Create(path)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	file.WriteString("# ===============================================================\n")
+	file.WriteString("# DASTARD configuration\n")
+	file.WriteString("# the Data Acquisition System for Triggering And Recording Data\n")
+	file.WriteString("# ===============================================================\n\n")
+
+	// Configuration data to store
+	type ConfigInformation struct {
+		Datecode   string  `toml:"Datecode"`
+		Runnumber  string  `toml:"Runnumber"`
+		Timebase   float64 `toml:"Timebase"`
+		NSamples   int     `toml:"Nsamples"`
+		NPreamples int     `toml:"Npresamples"`
+		SubFrames  int     `toml:"SubFrameDivisions"`
+		Channels   []int   `toml:"Channels"`
+		Hostname   string  `toml:"Hostname"`
+		GoVersion  string  `toml:"GoVersion"`
+		CPUs       int     `toml:"CPUs"`
+		Start      string  `toml:"StartTime"`
+
+		Build  *BuildInfo          `toml:"BuildInfo"`
+		Port   *Portnumbers        `toml:"Portnumbers"`
+		Config *WriteControlConfig `toml:"WriteConfig"`
+	}
+	NPresamples, NSamples, _ := ds.getPulseLengths()
+	hostname, _ := os.Hostname()
+	cfg := ConfigInformation{
+		Datecode:   datecode,
+		Runnumber:  fmt.Sprintf("%4.4d", runnumber),
+		Timebase:   ds.samplePeriod.Seconds(),
+		NSamples:   NSamples,
+		NPreamples: NPresamples,
+		SubFrames:  ds.subframeDivisions,
+		Channels:   ds.chanNumbers,
+		Hostname:   hostname,
+		GoVersion:  runtime.Version(),
+		CPUs:       runtime.NumCPU(),
+		Start:      time.Now().Format(time.RFC1123),
+		Build:      &Build,
+		Port:       &Ports,
+		Config:     config,
+	}
+
+	// Store info
+	encoder := toml.NewEncoder(file)
+	if err := encoder.Encode(cfg); err != nil {
+		panic(err)
+	}
 }
 
 // ComputeWritingState returns a partial copy of the writingState

@@ -14,6 +14,7 @@ require (
 	github.com/lorenzosaino/go-sysctl v0.3.1
 	github.com/marcboeker/go-duckdb/v2 v2.4.3
 	github.com/pebbe/zmq4 v1.4.0
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/sbinet/npyio v0.9.0
 	github.com/stretchr/testify v1.11.1
 	gonum.org/v1/gonum v0.17.0
