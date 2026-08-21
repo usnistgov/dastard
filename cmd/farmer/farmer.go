@@ -103,12 +103,17 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 		// last check: is this entire directory completely done already (no *.arrows_timeorder
 		// or *.arrows_WAL files)? If so, quit.
 		// Otherwise, begin to watch for file events and sort or shuffle as needed.
-		pattern := filepath.Join(directory, "*.arrows_timeorder|*.arrows_WAL")
-		matches, err := filepath.Glob(pattern)
+		pattern := filepath.Join(directory, "*.arrows_timeorder")
+		matches1, err := filepath.Glob(pattern)
 		if err != nil {
 			log.Fatal(err)
 		}
-		if len(matches) == 0 {
+		pattern = filepath.Join(directory, "*.arrows_WAL")
+		matches2, err := filepath.Glob(pattern)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if len(matches1) == 0 && len(matches2) == 0 {
 			log.Printf("✅ Found no files that need FARMER. Quitting")
 			os.Exit(0)
 		}
