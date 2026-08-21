@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -536,6 +537,13 @@ func (aw *ArrowWriter) CloseFile() {
 	aw.NextFileNumber++
 }
 
+func (aw *ArrowWriter) completeDirectory() {
+	dir := path.Dir(aw.FilenamePattern)
+	indicatorPath := path.Join(dir, "COMPLETE")
+	// Idiomatic way to create a file without leaving it open is os.WriteFile
+	os.WriteFile(indicatorPath, []byte{}, 0666)
+}
+
 // UnifiedPublisher represents the object that collects pulse records from all channels to
 // publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
 type UnifiedPublisher struct {
@@ -570,6 +578,7 @@ func encodeFileNumber(n int) string {
 // When data writing is stopped, the abort channel will be closed, and this routine will exit.
 func (upub *UnifiedPublisher) PublishLoop() {
 	upub.OpenFile()
+	defer upub.completeDirectory()
 	defer upub.CloseFile()
 
 	queuedRecords := make([]*DataRecord, 0, 100)
