@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -98,8 +99,19 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 			log.Printf("✅ Processed %d pre-existing *.arrows_timeorder files\n", len(matches))
 		}
 
-		// If we get here, the existing files are sorted, and COMPLETE doesn't exist, so begin to
-		// watch for file events and sort or shuffle as needed.
+		// If we get here, the existing files are sorted, and COMPLETE doesn't exist, so there's one
+		// last check: is this entire directory completely done already? If so, quit.
+		// Otherwise, begin to watch for file events and sort or shuffle as needed.
+		pattern := filepath.Join(directory, "*.arrows_timeorder|*.arrows_WAL")
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if len(matches) == 0 {
+			log.Printf("✅ Found no files that need FARMER. Quitting")
+			os.Exit(0)
+		}
+
 		log.Printf("No more existing files to organize. Watching for new files.")
 		for {
 			select {
@@ -184,15 +196,17 @@ func sortIPCFile(streamFile string) {
 // ChannelUnshuffler manages N open Feather writers, one for each channel
 type ChannelUnshuffler struct {
 	outputDir   string
+	prefix      string
 	pool        memory.Allocator
 	schema      *arrow.Schema
 	writers     map[int64]*ipc.FileWriter
 	fileHandles map[int64]*os.File
 }
 
-func NewChannelUnshuffler(outputDir string) *ChannelUnshuffler {
+func NewChannelUnshuffler(outputDir, prefix string) *ChannelUnshuffler {
 	return &ChannelUnshuffler{
 		outputDir:   outputDir,
+		prefix:      prefix,
 		pool:        memory.NewGoAllocator(),
 		writers:     make(map[int64]*ipc.FileWriter),
 		fileHandles: make(map[int64]*os.File),
@@ -212,7 +226,7 @@ func (u *ChannelUnshuffler) GetWriter(channelID int64) (*ipc.FileWriter, error) 
 	}
 
 	// Open destination Feather file
-	filePath := filepath.Join(u.outputDir, fmt.Sprintf("pulses_chan%d.arrow", channelID))
+	filePath := filepath.Join(u.outputDir, fmt.Sprintf("%spulses_chan%d.arrow", u.prefix, channelID))
 	f, err := os.Create(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file for channel %d: %w", channelID, err)
@@ -317,11 +331,17 @@ func shuffleDirectory(dir string) {
 	if err != nil || len(files) == 0 {
 		log.Fatalf("No input stream files found matching pattern: %s", inputPattern)
 	}
-	sort.Strings(files) // Ensures raw_data_0001, raw_data_0002, etc. run in order
+	sort.Strings(files) // Ensures prefix_all_pulses_0001, prefix_all_pulses_0002, etc. run in order
+	f := files[0]
+	_, firstarrow := path.Split(f)
+	prefix, _, found := strings.Cut(firstarrow, "all_pulses_")
+	if !found {
+		prefix = ""
+	}
 
-	log.Printf("Found %d stream files to process.", len(files))
+	log.Printf("Found %d stream files to process; prefix='%s'.", len(files), prefix)
 
-	unshuffler := NewChannelUnshuffler(outputDir)
+	unshuffler := NewChannelUnshuffler(outputDir, prefix)
 	defer unshuffler.Close() // Ensures all Feather footers are written when main exits!
 
 	pool := memory.NewGoAllocator()
@@ -358,6 +378,7 @@ func shuffleDirectory(dir string) {
 
 	// 3. If this point is reached successfully, it is safe to delete the input files
 	log.Printf("✅ Unshuffling %s complete! All channels saved as zero-copy Feather files.\n", dir)
+	os.Remove(path.Join(dir, "COMPLETE"))
 	for _, file := range files {
 		err = os.Remove(file)
 		if err != nil {
