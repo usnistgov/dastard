@@ -17,9 +17,9 @@ Date: March 2022
 
 DASTARD handles many responsibilities in the acquisition and analysis of microcalorimeter timestream data.
 
-1. DASTARD reads data from a data source such as an Abaco card for μMUX systems (see other examples in [Data
+1. DASTARD reads data from a data source such as a Resonator readout for μMUX systems (see other examples in [Data
 sources](#data-sources-for-dastard)). In some advanced cases that we haven’t really tested, it might even read
-more than one source of the same type, such as multiple Abaco cards.
+more than one source of the same type, such as multiple Resonator cards.
 
 2. DASTARD appropriately handles unwanted
 gaps in the data.
@@ -81,7 +81,7 @@ control/monitoring clients learn the state of DASTARD by ZMQ-subscribing to this
 ### The JSON-RPC server
 
 Within `RunRPCServer` a new `SourceControl` object is created. It's in charge of configuring and running the
-various supported data sources (e.g., an Abaco). It contains one each of a `LanceroSource`, `AbacoSource`,
+various supported data sources (e.g., a Resonator). It contains one each of a `LanceroSource`, `ResonatorSource`,
 `RoachSource`, `SimPulseSource`, and `TriangleSource`. These 5 specific types match the `DataSource` interface
 and therefore offer a ton of identically named methods like `Sample()`, `PrepareRun()`, `StartRun()`, and `Stop()`.
 Each of these 5 sources also has configuration/control options specific to that type of data source. Each has
@@ -117,7 +117,7 @@ phase in the data handling cycle, to prevent race conditions. The following can 
 
 The following can be handled immediately, but only if the corresponding source is not running:
 - `ConfigureLanceroSource()`
-- `ConfigureAbacoSource()`
+- `ConfigureResonatorSource()`
 - `ConfigureRoachSource()`
 - `ConfigureTriangleSource()`
 - `ConfigureSimPulseSource()`
@@ -141,7 +141,7 @@ writing.
 
 ## Data sources for DASTARD
 
-All concrete data sources in DASTARD (such as `AbacoSource`) implement the `DataSource` interface, partly by
+All concrete data sources in DASTARD (such as `ResonatorSource`) implement the `DataSource` interface, partly by
 composing their source-specific data and methods with an `AnySource` object. That object implements the parts
 of the interface that are not source-specific. The life-cycle of a data acquisition period looks like this.
 
@@ -155,7 +155,7 @@ key facts such as the number of channels available and the data sampling rate.
 1. `ds.PrepareChannels()`: now
 that the number of channels and channel names and numbers are known/knowable, store the info in the
 `AnySource`. There is an `AnySource.PrepareChannels`, but it's overridden by source-specific
-`AbacoSource.PrepareChannels` or `LanceroSource.PrepareChannels`, because these two sources have more
+`ResonatorSource.PrepareChannels` or `LanceroSource.PrepareChannels`, because these two sources have more
 complicated channel numbering possibilities.
 1. `ds.PrepareRun()`: initialize run-related features, including
 channel `ds.abortSelf` for knowing when to stop; channel `ds.nextBlock` for passing data chunks from the
@@ -239,27 +239,27 @@ which also adds the frame period, the first sample's frame serial number and sam
 housekeeping items. The collection of all such segments from all channels is called a `dataBlock`. The block
 includes external trigger information, which is extracted here.
 
-### Abaco data source
+### Resonator data source
 
-An `AbacoSource` (`abaco.go`) reads out one or more Abaco devices. The devices can produce UDP packets for DASTARD
+An `ResonatorSource` (`resonator.go`) reads out one or more Resonator devices. The devices can produce UDP packets for DASTARD
 in a packet format (defined and processed in `packets/packets.go`).
 
-The `AbacoSource` owns slices of type: `[]AbacoUDPReceiver`, which implements the
+The `ResonatorSource` owns slices of type: `[]ResonatorUDPReceiver`, which implements the
 `PacketProducer` interface. The UDP receivers
-are not created until the source is configured in `AbacoSource.Configure()`, because the user has to choose
+are not created until the source is configured in `ResonatorSource.Configure()`, because the user has to choose
 them from among the near-infinite space of host:port choices. After the configure call, the source maintains a
 slice `producers` that can potentially have one or more sources of one or both types.
 
 The `Sample()` method loops through each producer and launches `PacketProducer.samplePackets()` in a goroutine
 on each, returning the results together on a single channel. For each packet received, the channels it
-contains is checked. For each unique range of channels found in the sample stage, an `AbacoGroup` is created.
+contains is checked. For each unique range of channels found in the sample stage, an `ResonatorGroup` is created.
 This is an object representing a consecutively numbered channels--packets always cover a single range of
 consecutive channel numbers. Groups can be sorted according to the first number in each group (we'll verify
-soon that no channel number appears in more than one group). In `NewAbacoGroup`, DASTARD creates a queue (a
+soon that no channel number appears in more than one group). In `NewResonatorGroup`, DASTARD creates a queue (a
 slice to hold unprocessed packets) and a slice of `PhaseUnwrapper` objects (one per channel in the group).
-After one result (one slice of packets) is received from each producer, the `as.groups` values are sorted and
+After one result (one slice of packets) is received from each producer, the `rs.groups` values are sorted and
 checked to make sure no channel number is in multiple groups (returning an error from `Sample` if there are
-overlaps). Finally, each group's data are checked in `AbacoGroup.samplePackets()` and the sample rate
+overlaps). Finally, each group's data are checked in `ResonatorGroup.samplePackets()` and the sample rate
 computed. There we compare the rates to ensure all sources agree (returning error if not). The data queues are
 emptied.
 
@@ -267,36 +267,36 @@ The `PrepareChannels` method computes channel names from the numbers in the one 
 slice of all numbers.
 
 The `StartRun()` method tells each producer to dump its existing stored data and launches
-`AbacoSource.readerMainLoop` in a goroutine. This, in turn, starts a 50 ms ticker and a 5 s timer (the latter so we can
+`ResonatorSource.readerMainLoop` in a goroutine. This, in turn, starts a 50 ms ticker and a 5 s timer (the latter so we can
 recognize packet timeouts). In an infinite loop it selects on the abort channel (exiting normally when that closes);
 the timeout timer (exiting with an error if that fires); and the ticker. If the ticker ticks, all available packets are
-read from all producers and handed to `AbacoSource.distributePackets()`. That simply checks each packet and
+read from all producers and handed to `ResonatorSource.distributePackets()`. That simply checks each packet and
 enqueues it on the appropriate group's data queue. Then each queue is checked to be sure there are no missing
 packets (filling in null data if there are) and then that no queue's first packet has a global sequence number
 earlier than any other (if it does, its "excess data" are dropped). If any group is found to have produced no
 data here, DASTARD returns to the select to await more data. We find the number of data samples available on
-the shortest group's queue and deMUX that data for each group with `AbacoGroup.demuxData()` into a new slice
-of data slices, `datacopies`. Finally, an `AbacoBuffersType` is made containing all the deMUXed data and
-housekeeping info about the timestamp and amount of data. That buffer is sent on the `as.buffersChan` channel,
+the shortest group's queue and deMUX that data for each group with `ResonatorGroup.demuxData()` into a new slice
+of data slices, `datacopies`. Finally, an `ResonatorBuffersType` is made containing all the deMUXed data and
+housekeeping info about the timestamp and amount of data. That buffer is sent on the `rs.buffersChan` channel,
 the 5 second timeout is reset, and loop ends (returning to the select).
 
 The `getNextBlock()` is similar to that of Lancero sources, but simpler because there are (as yet) no
-configurations that can change while the Abaco source is running (akin to the mix settings of Lancero). The
+configurations that can change while the Resonator source is running (akin to the mix settings of Lancero). The
 method simply launches a goroutine that selects between a timeout that panics (after 100 of the 50 ms
-data-read ticks have happened) and the expected arrival of a message on the `as.buffersChan` channel. That
+data-read ticks have happened) and the expected arrival of a message on the `rs.buffersChan` channel. That
 method checks for the channel being closed, errors, or empty data payloads and in any of these cases closes
-the `as.NextBlock` channel and returns. Otherwise, it creates a data block from the message in
-`as.distributeData()` and puts that block on `as.NextBlock` (again closing `as.NextBlock` on error). That
+the `rs.NextBlock` channel and returns. Otherwise, it creates a data block from the message in
+`rs.distributeData()` and puts that block on `rs.NextBlock` (again closing `rs.NextBlock` on error). That
 channel is, of course, what `getNextBlock()` returns after launching the goroutine.
 
 ### ROACH2 data source
 
 A `RoachSource` (`roach.go`) reads out one or more ROACH-2 software-defined radio systems. Each device is
 monitored by a `RoachDevice` and sends its data as UDP packets. The packets are in a completely different form
-from the Abaco packets, defined here in `type packetHeader` and parsed by `parsePacket(packet []byte)`. The
+from the Resonator packets, defined here in `type packetHeader` and parsed by `parsePacket(packet []byte)`. The
 source has its devices bundle 100 ms of data and processes that amount in a bunch.
 
-The `Sample()` method creates a device for each host:port pair that the user specifies. Unlike Abaco data, the
+The `Sample()` method creates a device for each host:port pair that the user specifies. Unlike Resonator data, the
 ROACH data does not include the information needed to determine the data sample rate, so the user also has to
 specify that. Only the number of channels is learned by sampling the data packets. A slice of `PhaseUnwrapper`
 objects is created (one per channel in the device).
@@ -309,13 +309,13 @@ an occasional heartbeat and then the block is forwarded to `rs.nextBlock` for ha
 source.
 
 We won't describe the processing in any more detail because it's rather similar in concept to the
-`AbacoSource`, and because the Lancero and Abaco sources are much more widely used in current (2022)
+`ResonatorSource`, and because the Lancero and Resonator sources are much more widely used in current (2022)
 environment.
 
 ### Test data sources
 
 TODO: Explain the `TriangleSource` and the `SimPulseSource`. They both allow DASTARD to generate fake data for
-testing and exploration purposes, even when no Lancero, Abaco, or ROACH2 hardware is available.
+testing and exploration purposes, even when no Lancero, Resonator, or ROACH2 hardware is available.
 
 ## Data flow in DASTARD
 

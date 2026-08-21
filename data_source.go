@@ -274,7 +274,7 @@ func rcCode(row, col, rows, cols int) RowColCode {
 
 // dataBlock contains a block of data (one segment per data stream)
 // This implies that dataBlock has synchronized data across all parts of a source (all Lancero
-// cards, all Abaco UDP sources and channel groups, etc.).
+// cards, all Resonator UDP sources and channel groups, etc.).
 type dataBlock struct {
 	segments                 []DataSegment
 	externalTriggerRowcounts []int64

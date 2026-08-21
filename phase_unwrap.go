@@ -24,12 +24,9 @@ type PhaseUnwrapper struct {
 func NewPhaseUnwrapper(fractionBits, lowBitsToDrop uint, enable bool, biasLevel, resetAfter, pulseSign int,
 	invertData bool) *PhaseUnwrapper {
 
-	// Subtle point here: if no bits are to be dropped, then it makes no sense to perform
-	// phase unwrapping. When lowBitsToDrop==0, we cannot allow enable==true (because where would you
-	// put the bits set in the unwrapping process when there are no dropped bits?)
-	if lowBitsToDrop == 0 && enable {
-		panic("NewPhaseUnwrapper is enabled but with lowBitsToDrop=0, must be >0.")
-	}
+	// If no bits are to be dropped, then it makes no sense to perform
+	// phase unwrapping. We proceed anyway, because this object is in charge of inverting
+	// raw data, when needed.
 
 	u := new(PhaseUnwrapper)
 	// data bytes representing a 2s complement integer

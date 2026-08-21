@@ -146,7 +146,7 @@ func TestRoachSource(t *testing.T) {
 	config := RoachSourceConfig{
 		HostPort: []string{host},
 		Rates:    []float64{40000.0, 50000.0}, // 2 Rates will be an error
-		AbacoUnwrapOptions: AbacoUnwrapOptions{
+		ResonatorUnwrapOptions: ResonatorUnwrapOptions{
 			PulseSign: +1,
 			Unwrap:    false,
 		},

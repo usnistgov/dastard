@@ -17,7 +17,7 @@ type RoachDevice struct {
 	nchan      int
 	conn       *net.UDPConn // active UDP connection
 	nextS      FrameIndex
-	unwrapOpts AbacoUnwrapOptions
+	unwrapOpts ResonatorUnwrapOptions
 	unwrap     []*PhaseUnwrapper
 }
 
@@ -322,7 +322,7 @@ func (rs *RoachSource) StartRun() error {
 type RoachSourceConfig struct {
 	HostPort []string
 	Rates    []float64
-	AbacoUnwrapOptions
+	ResonatorUnwrapOptions
 }
 
 // Configure sets up the internal buffers with given size, speed, and min/max.
@@ -333,7 +333,7 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 		return fmt.Errorf("cannot Configure a RoachSource if it's not Inactive")
 	}
 
-	if err := config.AbacoUnwrapOptions.isvalid(); err != nil {
+	if err := config.ResonatorUnwrapOptions.isvalid(); err != nil {
 		return err
 	}
 
@@ -350,7 +350,7 @@ func (rs *RoachSource) Configure(config *RoachSourceConfig) (err error) {
 		if err != nil {
 			return err
 		}
-		dev.unwrapOpts = config.AbacoUnwrapOptions
+		dev.unwrapOpts = config.ResonatorUnwrapOptions
 		rs.active = append(rs.active, dev)
 	}
 	for i, dev := range rs.active {

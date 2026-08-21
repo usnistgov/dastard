@@ -44,7 +44,7 @@ func parseOptions() error {
 	return nil
 }
 
-func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
+func acquire(resonator *dastard.ResonatorDevice) (bytesRead int, err error) {
 
 	// Store output?
 	var fd *os.File
@@ -71,7 +71,7 @@ func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 
 	var bufReader *bufio.Reader
 	if opt.useBuffer {
-		bufReader = bufio.NewReaderSize(abaco.File, bufsize)
+		bufReader = bufio.NewReaderSize(resonator.File, bufsize)
 	}
 
 	for {
@@ -104,7 +104,7 @@ func acquire(abaco *dastard.AbacoDevice) (bytesRead int, err error) {
 				}
 			} else {
 				for bytesConsumed := 0; bytesConsumed < bufsize; {
-					nbytes, err = abaco.File.Read(buffer[bytesConsumed:])
+					nbytes, err = resonator.File.Read(buffer[bytesConsumed:])
 					bytesConsumed += nbytes
 					nreads++
 					time.Sleep(1 * time.Millisecond)
@@ -162,13 +162,13 @@ func main() {
 		return
 	}
 
-	abaco, err := dastard.NewAbacoDevice(opt.devnum)
+	resonator, err := dastard.NewResonatorDevice(opt.devnum)
 	if err != nil {
 		log.Println("ERROR: ", err)
 		return
 	}
-	// defer abaco.Delete()
+	// defer resonator.Delete()
 
-	bytesRead, _ := acquire(abaco)
+	bytesRead, _ := acquire(resonator)
 	log.Printf("Read %d bytes.\n", bytesRead)
 }
