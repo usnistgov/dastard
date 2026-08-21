@@ -438,17 +438,27 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 	return pubchan, nil
 }
 
+const ARROWBUNCHTIME = time.Second * 5
+const ARROWFILETIME = time.Minute * 10
+const ARROWMAXFILESIZE = 500_000_000
+
 type ArrowWriter struct {
 	FilenamePattern string
 	LastFilename    string
 	NextFileNumber  int
 	NSamples        int
+	firstFrameTime  *time.Time
+	allowedRowsLeft int
 	openFile        *os.File
 	builder         *array.RecordBuilder
 	writer          *ipc.Writer
 }
 
 func (aw *ArrowWriter) OpenFile() error {
+	aw.firstFrameTime = nil
+	rawRowSizeEstimate := 20 + aw.NSamples*2
+	aw.allowedRowsLeft = ARROWMAXFILESIZE / rawRowSizeEstimate
+
 	// 1. Define the data schema
 	// This type means an array[uint16] of fixed size aw.NSamples
 	pulse_type := arrow.FixedSizeListOf(int32(aw.NSamples), arrow.PrimitiveTypes.Uint16)
@@ -471,6 +481,14 @@ func (aw *ArrowWriter) OpenFile() error {
 }
 
 func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
+	if len(records) == 0 {
+		return 0
+	}
+	if aw.firstFrameTime == nil {
+		t := records[0].trigTime
+		aw.firstFrameTime = &t
+	}
+
 	// Field 0: The parent FixedSizeList builder
 	pulseListBldr := aw.builder.Field(0).(*array.FixedSizeListBuilder)
 	// Field 0's Child: The underlying Uint16 value builder
@@ -495,6 +513,7 @@ func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
 		fmt.Printf("Writing with error %v\n", err)
 		return 0
 	}
+	aw.allowedRowsLeft -= len(records)
 	return len(records)
 }
 
@@ -560,25 +579,38 @@ func (upub *UnifiedPublisher) PublishLoop() {
 		case <-upub.abort:
 			return
 		case records := <-upub.RecordsChan:
+			// records will be nil once after all channels have been checked. However, we can ignore that.
 			if records == nil {
+				continue
+			}
+			queuedRecords = append(queuedRecords, records...)
+			nq := len(queuedRecords)
+			if nq > 0 && queuedRecords[nq-1].trigTime.Sub(queuedRecords[0].trigTime) > ARROWBUNCHTIME {
 				upub.publishData(queuedRecords)
 				queuedRecords = queuedRecords[:0]
-			} else {
-				queuedRecords = append(queuedRecords, records...)
 			}
 		}
 	}
 }
 
 // Publish the slice of data collected from all channels.
-// For now, this writes them to the ClickHouse DB.
-// Eventually, it might write them to a single Apache Arrow file instead, or in addition.
+// Write them to a single Apache Arrow file.
 func (upub *UnifiedPublisher) publishData(records []*DataRecord) {
 	// AUGUST 18, 2026: Here is where writing to an Arrow file happens.
 	// Want to collect records for 5 seconds, then dump one bunch.
 	// After 5 minutes or a max (estimated) file size, start a new file.
 	fmt.Printf("UnifiedPublisher.publishData has %d records\n", len(records))
 
-	// TODO queue up data for a certain time!
+	// Rotate to the next file whenever:
+	// a) The file would exceed the max allowed size, or
+	// b) The next record to be written occurs too long after the first one in the file.
+	if upub.allowedRowsLeft < len(records) || (upub.firstFrameTime != nil && records[0].trigTime.Sub(*upub.firstFrameTime) > ARROWFILETIME) {
+		upub.RotateFile()
+	}
 	upub.WriteRecords(records)
+}
+
+func (upub *UnifiedPublisher) RotateFile() {
+	upub.CloseFile()
+	upub.OpenFile()
 }

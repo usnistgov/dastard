@@ -307,7 +307,7 @@ func getChannelValue(col arrow.Array, idx int64) int64 {
 }
 
 func shuffleDirectory(dir string) {
-	inputPattern := fmt.Sprintf("%s/all_pulses_*.arrows", dir)
+	inputPattern := fmt.Sprintf("%s/*all_pulses_*.arrows", dir)
 	outputDir := dir
 	log.Printf("Directory %s is marked COMPLETE\n", dir)
 	log.Printf("Starting to unshuffle all files %s\n", inputPattern)
