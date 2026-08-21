@@ -468,10 +468,6 @@ func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) er
 
 	config.MapInternalOnly = s.mapServer.Map
 
-	// TODO make this not ALWAYS TRUE
-	config.WriteArrows = true
-	// TODO make this not ALWAYS TRUE
-
 	f := func() {
 		err := s.ActiveSource.WriteControl(config)
 		if err == nil {
