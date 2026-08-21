@@ -129,14 +129,15 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 				if event.Has(fsnotify.Create) {
 
 					// Ignore most files, except "COMPLETE" or "*.arrows_timeorder" files
-					if event.Name == "COMPLETE" {
+					_, filename := filepath.Split(event.Name)
+					if filename == "COMPLETE" {
 						// TODO: check that all the timeorder files have been processed and removed.
 						// If not, perhaps set a Timer for 30 seconds and process `event` when it fires?
 						// Might require a local slice of unhandled events.
 						shuffleDirectory(directory)
 						return
 					}
-					if strings.HasSuffix(event.Name, ".arrows_timeorder") {
+					if strings.HasSuffix(filename, ".arrows_timeorder") {
 						log.Printf("Detected new ready file: %s", event.Name)
 						go sortIPCFile(event.Name) // Handle the file without blocking the watcher
 					}
@@ -384,7 +385,7 @@ func shuffleDirectory(dir string) {
 
 	// 3. If this point is reached successfully, it is safe to delete the input files
 	log.Printf("✅ Unshuffling %s complete! All channels saved as zero-copy Feather files.\n", dir)
-	os.Remove(path.Join(dir, "COMPLETE"))
+	os.Remove(filepath.Join(dir, "COMPLETE"))
 	for _, file := range files {
 		err = os.Remove(file)
 		if err != nil {
