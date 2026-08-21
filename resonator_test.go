@@ -71,41 +71,41 @@ func TestGeneratePackets(t *testing.T) {
 	}
 }
 
-func TestAbacoUDP(t *testing.T) {
-	if _, err := NewAbacoUDPReceiver("nonexistenthost.remote.internet:4999"); err == nil {
-		t.Errorf("NewAbacoUDPReceiver(\"nonexistenthost.remote.internet:4999\") succeeded, want failure")
+func TestResonatorUDP(t *testing.T) {
+	if _, err := NewResonatorUDPReceiver("nonexistenthost.remote.internet:4999"); err == nil {
+		t.Errorf("NewResonatorUDPReceiver(\"nonexistenthost.remote.internet:4999\") succeeded, want failure")
 	}
-	device, err := NewAbacoUDPReceiver("localhost:4999")
+	device, err := NewResonatorUDPReceiver("localhost:4999")
 	if err != nil {
-		t.Errorf("NewAbacoUDPReceiver(\"localhost:4999\") failed: %v", err)
+		t.Errorf("NewResonatorUDPReceiver(\"localhost:4999\") failed: %v", err)
 	}
 	err = device.start()
 	if err != nil {
-		t.Errorf("AbacoUDP.start() failed: %v", err)
+		t.Errorf("ResonatorUDP.start() failed: %v", err)
 	}
 	err = device.discardStale()
 	if err != nil {
-		t.Errorf("AbacoUDP.discardStale() failed: %v", err)
+		t.Errorf("ResonatorUDP.discardStale() failed: %v", err)
 	}
 	go func() { <-device.data }()
 	err = device.stop()
 	if err != nil {
-		t.Errorf("AbacoUDP.stop() failed: %v", err)
+		t.Errorf("ResonatorUDP.stop() failed: %v", err)
 	}
 }
 
-func TestAbacoSource(t *testing.T) {
-	source, err := NewAbacoSource()
+func TestResonatorSource(t *testing.T) {
+	source, err := NewResonatorSource()
 	source.minUDPBufferSize = 256 * 1024 // for CI testing, reduce the minimum
 	if err != nil {
-		t.Errorf("NewAbacoSource() fails: %s", err)
+		t.Errorf("NewResonatorSource() fails: %s", err)
 	}
 
-	var config AbacoSourceConfig
+	var config ResonatorSourceConfig
 
 	config.HostPortUDP = []string{}
 	if err = source.Configure(&config); err != nil {
-		t.Errorf("AbacoSource.Configure(%v) fails: %s", config, err)
+		t.Errorf("ResonatorSource.Configure(%v) fails: %s", config, err)
 	}
 
 	// Check that HostPortUDP slices are unique-ified when source.Configure(&config) called.
@@ -197,7 +197,7 @@ func TestAbacoSource(t *testing.T) {
 	// Start a 2nd time
 	err = source.Configure(&config)
 	if err != nil {
-		t.Fatalf("AbacoSource.Configure(%v) fails: %s", config, err)
+		t.Fatalf("ResonatorSource.Configure(%v) fails: %s", config, err)
 	}
 	if err := Start(source, queuedRequests, Npresamp, Nsamples); err != nil {
 		fmt.Printf("Result of Start(source,...): %s\n", err)
@@ -226,20 +226,20 @@ func TestAbacoSource(t *testing.T) {
 		diderror := (err != nil)
 		if diderror != test.shouldError {
 			if test.shouldError {
-				t.Fatalf("AbacoSource.Configure(%v) does not fail with invalid AbacoUnwrapOptions", config)
+				t.Fatalf("ResonatorSource.Configure(%v) does not fail with invalid ResonatorUnwrapOptions", config)
 			} else {
-				t.Fatalf("AbacoSource.Configure(%v) fails with valid AbacoUnwrapOptions: %s", config, err)
+				t.Fatalf("ResonatorSource.Configure(%v) fails with valid ResonatorUnwrapOptions: %s", config, err)
 			}
 		}
 	}
 }
 
-func prepareDemux(nframes int) (*AbacoGroup, []*packets.Packet, [][]RawType) {
+func prepareDemux(nframes int) (*ResonatorGroup, []*packets.Packet, [][]RawType) {
 	const offset = 1
 	const nchan = 16
-	unwrapOpts := AbacoUnwrapOptions{Unwrap: true, RescaleRaw: true, ResetAfter: 20000, PulseSign: 1}
+	unwrapOpts := ResonatorUnwrapOptions{Unwrap: true, RescaleRaw: true, ResetAfter: 20000, PulseSign: 1}
 
-	group := NewAbacoGroup(GroupIndex{Firstchan: offset, Nchan: nchan}, unwrapOpts)
+	group := NewResonatorGroup(GroupIndex{Firstchan: offset, Nchan: nchan}, unwrapOpts)
 	group.unwrap = group.unwrap[:0] // get rid of phase unwrapping
 
 	copies := make([][]RawType, nchan)

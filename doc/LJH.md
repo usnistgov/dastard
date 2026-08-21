@@ -32,7 +32,7 @@ Software Git Hash: 85ab821
 Data source: Lancero
 ```
 
-These lines uniquely identify the exact format, so the interpreting program can adapt. While the first line should be sufficient for this purpose, the second and third lines take in the possibility that a particular program may have a bug. The interpreting program may be aware of this bug and compensate. The Data source is meant for later human reference: values include Abaco, Lancero, and Roach.
+These lines uniquely identify the exact format, so the interpreting program can adapt. While the first line should be sufficient for this purpose, the second and third lines take in the possibility that a particular program may have a bug. The interpreting program may be aware of this bug and compensate. The Data source is meant for later human reference: values include Resonator, Abaco, Lancero, and Roach. (Resonator replaces the old name Abaco. Both refer to firmware-based readout of resonators, whether or not through the Abaco hardware.)
 
 ```
 Number of rows: 32
