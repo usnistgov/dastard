@@ -447,7 +447,7 @@ type ArrowWriter struct {
 	LastFilename    string
 	NextFileNumber  int
 	NSamples        int
-	firstFrameTime  *time.Time
+	firstFrameTime  time.Time
 	allowedRowsLeft int
 	openFile        *os.File
 	builder         *array.RecordBuilder
@@ -455,7 +455,7 @@ type ArrowWriter struct {
 }
 
 func (aw *ArrowWriter) OpenFile() error {
-	aw.firstFrameTime = nil
+	aw.firstFrameTime = time.Time{} // set to the zero-value time.
 	rawRowSizeEstimate := 20 + aw.NSamples*2
 	aw.allowedRowsLeft = ARROWMAXFILESIZE / rawRowSizeEstimate
 
@@ -484,9 +484,8 @@ func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
 	if len(records) == 0 {
 		return 0
 	}
-	if aw.firstFrameTime == nil {
-		t := records[0].trigTime
-		aw.firstFrameTime = &t
+	if aw.firstFrameTime.IsZero() {
+		aw.firstFrameTime = records[0].trigTime
 	}
 
 	// Field 0: The parent FixedSizeList builder
@@ -602,9 +601,9 @@ func (upub *UnifiedPublisher) publishData(records []*DataRecord) {
 	fmt.Printf("UnifiedPublisher.publishData has %d records\n", len(records))
 
 	// Rotate to the next file whenever:
-	// a) The file would exceed the max allowed size, or
+	// a) The file would exceed the max allowed size (estimated by counting records), or
 	// b) The next record to be written occurs too long after the first one in the file.
-	if upub.allowedRowsLeft < len(records) || (upub.firstFrameTime != nil && records[0].trigTime.Sub(*upub.firstFrameTime) > ARROWFILETIME) {
+	if upub.allowedRowsLeft < len(records) || (!upub.firstFrameTime.IsZero() && records[0].trigTime.Sub(upub.firstFrameTime) > ARROWFILETIME) {
 		upub.RotateFile()
 	}
 	upub.WriteRecords(records)
