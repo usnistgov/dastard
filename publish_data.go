@@ -456,7 +456,7 @@ func (aw *ArrowWriter) OpenFile() error {
 		{Name: "pulse", Type: pulse_type, Nullable: false},
 		{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_us, Nullable: false},
 		{Name: "subframecount", Type: arrow.PrimitiveTypes.Uint64, Nullable: false},
-		{Name: "channel_number", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
+		{Name: "channel_number", Type: arrow.PrimitiveTypes.Int32, Nullable: false},
 	}, nil)
 
 	// 2. Set up the memory allocator and Record Builder
@@ -479,7 +479,7 @@ func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
 	// Fields 1 and 2: Standard scalar builders
 	tsBldr := aw.builder.Field(1).(*array.TimestampBuilder)
 	sfcBldr := aw.builder.Field(2).(*array.Uint64Builder)
-	cnumBldr := aw.builder.Field(3).(*array.Int64Builder)
+	cnumBldr := aw.builder.Field(3).(*array.Int32Builder)
 
 	for _, rec := range records {
 		pulseListBldr.Append(true) // i.e., this pulse won't be null
@@ -487,7 +487,7 @@ func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
 		pulseValBldr.AppendValues(data, nil)
 		tsBldr.Append(arrow.Timestamp(rec.trigTime.UnixMicro()))
 		sfcBldr.Append(uint64(rec.trigFrame) * 64)
-		cnumBldr.Append(int64(rec.channelNumber))
+		cnumBldr.Append(int32(rec.channelNumber))
 	}
 	rec := aw.builder.NewRecordBatch()
 	defer rec.Release()
@@ -512,8 +512,8 @@ func (aw *ArrowWriter) CloseFile() {
 		aw.openFile = nil
 	}
 
-	// rename file, stripping final _WAL
-	newname := strings.ReplaceAll(aw.LastFilename, "_WAL", "")
+	// rename file, replacing final _WAL with _timeorder
+	newname := strings.ReplaceAll(aw.LastFilename, "_WAL", "_timeorder")
 	os.Rename(aw.LastFilename, newname)
 	aw.NextFileNumber++
 }
