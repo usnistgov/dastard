@@ -592,6 +592,10 @@ func (upub *UnifiedPublisher) PublishLoop() {
 				continue
 			}
 			queuedRecords = append(queuedRecords, records...)
+
+			// Want to collect records for ARROWBUNCHTIME (5 seconds), then dump one bunch.
+			// This bunch time is a compromise: don't write to disk too frequently and keep bunches from
+			// being small an inefficient, but also don't put many minutes of data at risk of loss.
 			nq := len(queuedRecords)
 			if nq > 0 && queuedRecords[nq-1].trigTime.Sub(queuedRecords[0].trigTime) > ARROWBUNCHTIME {
 				upub.publishData(queuedRecords)
@@ -604,10 +608,6 @@ func (upub *UnifiedPublisher) PublishLoop() {
 // Publish the slice of data collected from all channels.
 // Write them to a single Apache Arrow file.
 func (upub *UnifiedPublisher) publishData(records []*DataRecord) {
-	// AUGUST 18, 2026: Here is where writing to an Arrow file happens.
-	// Want to collect records for 5 seconds, then dump one bunch.
-	// After 5 minutes or a max (estimated) file size, start a new file.
-	fmt.Printf("UnifiedPublisher.publishData has %d records\n", len(records))
 
 	// Rotate to the next file whenever:
 	// a) The file would exceed the max allowed size (estimated by counting records), or

@@ -100,7 +100,8 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 		}
 
 		// If we get here, the existing files are sorted, and COMPLETE doesn't exist, so there's one
-		// last check: is this entire directory completely done already? If so, quit.
+		// last check: is this entire directory completely done already (no *.arrows_timeorder
+		// or *.arrows_WAL files)? If so, quit.
 		// Otherwise, begin to watch for file events and sort or shuffle as needed.
 		pattern := filepath.Join(directory, "*.arrows_timeorder|*.arrows_WAL")
 		matches, err := filepath.Glob(pattern)
@@ -125,8 +126,8 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 					// Ignore most files, except "COMPLETE" or "*.arrows_timeorder" files
 					if event.Name == "COMPLETE" {
 						// TODO: check that all the timeorder files have been processed and removed.
-						// If not, perhaps sleep 30 seconds and place `event` back on the channel
-						// so we revisit it later?
+						// If not, perhaps set a Timer for 30 seconds and process `event` when it fires?
+						// Might require a local slice of unhandled events.
 						shuffleDirectory(directory)
 						return
 					}
