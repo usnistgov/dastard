@@ -538,9 +538,9 @@ func (aw *ArrowWriter) CloseFile() {
 }
 
 func (aw *ArrowWriter) completeDirectory() {
+	// Idiomatic way to create a file without leaving it open is os.WriteFile()
 	dir := path.Dir(aw.FilenamePattern)
 	indicatorPath := path.Join(dir, "COMPLETE")
-	// Idiomatic way to create a file without leaving it open is os.WriteFile
 	os.WriteFile(indicatorPath, []byte{}, 0666)
 }
 
@@ -585,6 +585,7 @@ func (upub *UnifiedPublisher) PublishLoop() {
 	for {
 		select {
 		case <-upub.abort:
+			upub.publishData(queuedRecords)
 			return
 		case records := <-upub.RecordsChan:
 			// records will be nil once after all channels have been checked. However, we can ignore that.
@@ -595,7 +596,7 @@ func (upub *UnifiedPublisher) PublishLoop() {
 
 			// Want to collect records for ARROWBUNCHTIME (5 seconds), then dump one bunch.
 			// This bunch time is a compromise: don't write to disk too frequently and keep bunches from
-			// being small an inefficient, but also don't put many minutes of data at risk of loss.
+			// being small and inefficient, but also don't put many minutes of data at risk of loss.
 			nq := len(queuedRecords)
 			if nq > 0 && queuedRecords[nq-1].trigTime.Sub(queuedRecords[0].trigTime) > ARROWBUNCHTIME {
 				upub.publishData(queuedRecords)
