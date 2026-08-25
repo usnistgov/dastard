@@ -851,11 +851,29 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.UniPub = ds.unipub
 		}
+		// After this function ends, launch farmer as a separate process
 		defer func() {
 			directory := path.Dir(filenamePattern)
 			cmd := exec.Command("farmer", directory)
 			cmd.SysProcAttr = &syscall.SysProcAttr{
 				Setpgid: true,
+			}
+			// Route farmer's logs somewhere!
+			// If you don't do this, farmer's output will completely vanish into the void.
+			logpath := filepath.Join(directory, "farmer.log")
+			logFile, err := os.OpenFile(logpath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			if err != nil {
+				log.Fatal("Failed to open log file:", err)
+			}
+			defer logFile.Close() // Safe to close in A after B starts
+
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+
+			// 4. Launch the process asynchronously
+			err = cmd.Start()
+			if err != nil {
+				log.Fatalf("DASTARD: Failed to start FARMER: %v", err)
 			}
 		}()
 	}
