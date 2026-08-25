@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/usnistgov/dastard/internal/dastarddb"
@@ -849,6 +851,13 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		for _, dsp := range ds.processors {
 			dsp.DataPublisher.UniPub = ds.unipub
 		}
+		defer func() {
+			directory := path.Dir(filenamePattern)
+			cmd := exec.Command("farmer", directory)
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Setpgid: true,
+			}
+		}()
 	}
 
 	return ds.writingState.Start(filenamePattern, basepath, config)
