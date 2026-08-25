@@ -130,16 +130,25 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 
 					// Ignore most files, except "COMPLETE" or "*.arrows_timeorder" files
 					_, filename := filepath.Split(event.Name)
-					if filename == "COMPLETE" {
-						// TODO: check that all the timeorder files have been processed and removed.
-						// If not, perhaps set a Timer for 30 seconds and process `event` when it fires?
-						// Might require a local slice of unhandled events.
-						shuffleDirectory(directory)
-						return
-					}
 					if strings.HasSuffix(filename, ".arrows_timeorder") {
 						log.Printf("Detected new ready file: %s", event.Name)
-						go sortIPCFile(event.Name) // Handle the file without blocking the watcher
+						sortIPCFile(event.Name)
+
+					} else if filename == "COMPLETE" {
+						// First, stop the watcher, to conserve OS resources. We know its work is done.
+						watcher.Remove(directory)
+
+						// Next, ensure that all the timeorder files have been processed and removed.
+						inputPattern := fmt.Sprintf("%s/*all_pulses_*.arrows_timeorder", directory)
+						files, _ := filepath.Glob(inputPattern)
+						for _, file := range files {
+							log.Printf("Detected new ready file: %s", file)
+							sortIPCFile(file)
+						}
+
+						// Directory is ready for shuffling now.
+						shuffleDirectory(directory)
+						return
 					}
 				}
 			case err, ok := <-watcher.Errors:
@@ -270,7 +279,7 @@ func (u *ChannelUnshuffler) ProcessBatch(rec arrow.RecordBatch) error {
 	}
 
 	start := int64(0)
-	for i := int64(0); i < numRows; i++ {
+	for i := range numRows {
 		currentCh := getChannelValue(chCol, i)
 
 		// Find where the channel block ends (either channel changes or end of batch)
@@ -338,7 +347,7 @@ func shuffleDirectory(dir string) {
 	if err != nil || len(files) == 0 {
 		log.Fatalf("No input stream files found matching pattern: %s", inputPattern)
 	}
-	sort.Strings(files) // Ensures prefix_all_pulses_0001, prefix_all_pulses_0002, etc. run in order
+	sort.Strings(files) // Ensures {prefix}_all_pulses_0001, {prefix}_all_pulses_0002, etc. run in order
 	f := files[0]
 	_, firstarrow := path.Split(f)
 	prefix, _, found := strings.Cut(firstarrow, "all_pulses_")

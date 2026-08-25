@@ -160,7 +160,7 @@ func (ws *WritingState) setExperimentStateLabel(timestamp time.Time, stateLabel 
 	}
 	ws.ExperimentStateLabel = stateLabel
 	ws.ExperimentStateLabelUnixNano = timestamp.UnixNano()
-	_, err := ws.experimentStateFile.WriteString(fmt.Sprintf("%v, %v\n", ws.ExperimentStateLabelUnixNano, stateLabel))
+	_, err := fmt.Fprintf(ws.experimentStateFile, "%v, %v\n", ws.ExperimentStateLabelUnixNano, stateLabel)
 	if err != nil {
 		return err
 	}
