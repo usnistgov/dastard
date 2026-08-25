@@ -5,6 +5,7 @@
   Files rotate every 10 minutes, or when they reach ~500 MB, whichever comes first.
 * Add command `farmer`, the Fast Arrow Routing and Multichannel Event Reorganizer to sort data for archiving.
   It both sorts the all-channel files by channel number, then later replaces them with single-channel files.
+* Minimum go version 1.26 (released February 2026); 1.25 is now end-of-life.
 
 **0.3.10** August 18, 2026
 * Minimum go version 1.25 (released August 2025).
