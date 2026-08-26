@@ -26,8 +26,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/fsnotify/fsnotify"
-	_ "github.com/marcboeker/go-duckdb/v2"
 )
 
 func main() {
