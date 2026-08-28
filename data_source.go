@@ -739,6 +739,7 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				"writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
+		dsp.DataPublisher.numberWritten = 0
 	}
 
 	if config.WriteOFF {

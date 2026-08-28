@@ -231,6 +231,9 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.WritingPaused {
 		return nil
 	}
+
+	dp.numberWritten += len(records)
+
 	if dp.UniPub != nil {
 		dp.UniPub.RecordsChan <- records
 	}
@@ -289,7 +292,6 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			}
 		}
 	}
-	dp.numberWritten += len(records)
 	return nil
 }
 
