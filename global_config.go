@@ -15,6 +15,7 @@ type Portnumbers struct {
 	Trigs          int
 	SecondaryTrigs int
 	Summaries      int
+	Arrow          int
 }
 
 // Ports globally holds all TCP port numbers used by Dastard.
@@ -28,6 +29,7 @@ func setPortnumbers(base int) {
 	Ports.Trigs = base + 2
 	Ports.SecondaryTrigs = base + 3
 	Ports.Summaries = base + 4
+	Ports.Arrow = base + 5
 }
 
 // BuildInfo can contain compile-time information about the build

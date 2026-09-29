@@ -15,6 +15,7 @@ DASTARD command-line, but for now it's a constant.  The TCP ports are:
 * **5502** (base+2): **Pulses**. ZMQ PUB port where DASTARD puts all pulse records. Subscribe by 4-byte channel number. These are for Microscope to use, so it can plot data.
 * **5503** (base+3): **Secondary records**. ZMQ PUB port, same as BASE+2, except that here we put only the secondary triggered records (i.e from a group trigger).
 * **5504** (base+4): **Pulse summaries**. ZMQ PUB port. Just has summary info and model fit coefficients.
+* **5505** (base+5): **Pulse data in Arrow IPC form**. ZMQ PUB port. The same Apache Arrows data batch that is saved as live data.
 
 ### JSON-RPC commands (BASE+0)
 

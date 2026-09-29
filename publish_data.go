@@ -455,6 +455,26 @@ type ArrowWriter struct {
 	openFile        *os.File
 	builder         *array.RecordBuilder
 	writer          *ipc.Writer
+	socket          *zmq4.Socket
+}
+
+func (aw *ArrowWriter) StartSocket() error {
+	// Not totally sure how to choose this, but it should probably be
+	// at least as large as number of channels.
+	const publishChannelDepth = 500
+
+	//  Socket to talk to clients
+	hostname := fmt.Sprintf("tcp://*:%d", Ports.Arrow)
+	pubSocket, err := zmq4.NewSocket(zmq4.PUB)
+	if err != nil {
+		return err
+	}
+	pubSocket.SetSndhwm(100)
+	if err = pubSocket.Bind(hostname); err != nil {
+		return err
+	}
+	aw.socket = pubSocket
+	return nil
 }
 
 func (aw *ArrowWriter) OpenFile() error {
@@ -515,6 +535,10 @@ func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
 		fmt.Printf("Writing with error %v\n", err)
 		return 0
 	}
+	if _, err := aw.socket.SendMessage(rec); err != nil {
+		ProblemLogger.Println("zmq send error publishing an arrows batch of records:", err)
+	}
+
 	aw.allowedRowsLeft -= len(records)
 	return len(records)
 }
@@ -560,6 +584,7 @@ func NewUniPub(nchan int, pattern string, nsamples int) *UnifiedPublisher {
 	mp.abort = make(chan struct{})
 	mp.FilenamePattern = pattern
 	mp.NSamples = nsamples
+	mp.StartSocket()
 	return mp
 }
 
