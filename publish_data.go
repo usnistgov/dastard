@@ -232,8 +232,6 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 		return nil
 	}
 
-	dp.numberWritten += len(records)
-
 	if dp.UniPub != nil {
 		dp.UniPub.RecordsChan <- records
 	}
@@ -245,6 +243,8 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	// If we get here, there is one or more output active.
 	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
 	// is already opened and has a header written.
+	dp.numberWritten += len(records)
+
 	if dp.HasLJH22() {
 		if !dp.LJH22.HeaderWritten {
 			err := dp.LJH22.CreateFile()
@@ -535,9 +535,12 @@ func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
 		fmt.Printf("Writing with error %v\n", err)
 		return 0
 	}
-	if _, err := aw.socket.SendMessage(rec); err != nil {
-		ProblemLogger.Println("zmq send error publishing an arrows batch of records:", err)
-	}
+
+	// We prevent writing all Arrows IPC packet data to a ZMQ socket. See futher comment
+	// below at mp.StartSocket().
+	// if _, err := aw.socket.SendMessage(rec); err != nil {
+	// 	ProblemLogger.Println("zmq send error publishing an arrows batch of records:", err)
+	// }
 
 	aw.allowedRowsLeft -= len(records)
 	return len(records)
@@ -584,7 +587,10 @@ func NewUniPub(nchan int, pattern string, nsamples int) *UnifiedPublisher {
 	mp.abort = make(chan struct{})
 	mp.FilenamePattern = pattern
 	mp.NSamples = nsamples
-	mp.StartSocket()
+	// By commenting out the mp.StartSocket(), we prevent writing all Arrows IPC packet data
+	// on port Ports.Arrows (=base+5). As of Oct 11, 2026, we think this feature is inefficient,
+	// confusing, and useless. Still, we'll leave the structure in place in case of future need.
+	// mp.StartSocket()
 	return mp
 }
 
