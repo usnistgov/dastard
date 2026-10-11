@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -139,7 +140,7 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 						watcher.Remove(directory)
 
 						// Next, ensure that all the timeorder files have been processed and removed.
-						inputPattern := fmt.Sprintf("%s/*all_pulses_*.arrows_timeorder", directory)
+						inputPattern := fmt.Sprintf("%s/*.arrows_timeorder", directory)
 						files, _ := filepath.Glob(inputPattern)
 						for _, file := range files {
 							log.Printf("Detected new ready file: %s", file)
@@ -165,6 +166,7 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 }
 
 func sortIPCFile(streamFile string) {
+	// Convert file.suffix_timeorder to file.suffix (trim off the sub-suffix)
 	outputFile := strings.TrimSuffix(streamFile, "_timeorder")
 
 	// 1. Initialize an in-memory DuckDB engine
@@ -337,7 +339,7 @@ func getChannelValue(col arrow.Array, idx int64) int64 {
 }
 
 func shuffleDirectory(dir string) {
-	inputPattern := fmt.Sprintf("%s/*all_pulses_*.arrows", dir)
+	inputPattern := fmt.Sprintf("%s/*_????.arrows", dir)
 	outputDir := dir
 	log.Printf("Directory %s is marked COMPLETE\n", dir)
 	log.Printf("Starting to unshuffle all files %s\n", inputPattern)
@@ -347,12 +349,13 @@ func shuffleDirectory(dir string) {
 	if err != nil || len(files) == 0 {
 		log.Fatalf("No input stream files found matching pattern: %s", inputPattern)
 	}
-	sort.Strings(files) // Ensures {prefix}_all_pulses_0001, {prefix}_all_pulses_0002, etc. run in order
+	sort.Strings(files) // Ensures {prefix}_0000,  {prefix}_0001, {prefix}__0002, etc. run in order
 	f := files[0]
-	_, firstarrow := path.Split(f)
-	prefix, _, found := strings.Cut(firstarrow, "all_pulses_")
-	if !found {
-		prefix = ""
+	firstarrow := path.Base(f)
+	filePattern := regexp.MustCompile(`_\d{4}\.[^.]+$`)
+	prefix := ""
+	if locate := filePattern.FindStringIndex(firstarrow); locate != nil {
+		prefix = firstarrow[:locate[0]]
 	}
 
 	log.Printf("Found %d stream files to process; prefix='%s'.", len(files), prefix)
