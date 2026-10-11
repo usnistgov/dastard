@@ -219,6 +219,9 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 		return nil
 	}
 
+	// Track whether the records have been written to disk by any publisher
+	wrote := false
+
 	// Publish the records to the ZMQ ports for full records and/or record summaries.
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
@@ -232,19 +235,14 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 		return nil
 	}
 
+	// Send data to the all-channel unified publisher, if any, for Arrows file writing.
 	if dp.UniPub != nil {
+		wrote = true
 		dp.UniPub.RecordsChan <- records
 	}
 
-	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
-		return nil
-	}
-
-	// If we get here, there is one or more output active.
-	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
+	// LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
 	// is already opened and has a header written.
-	dp.numberWritten += len(records)
-
 	if dp.HasLJH22() {
 		if !dp.LJH22.HeaderWritten {
 			err := dp.LJH22.CreateFile()
@@ -258,6 +256,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		wrote = true
 	}
 	if dp.HasLJH3() {
 		if !dp.LJH3.HeaderWritten {
@@ -271,6 +270,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		wrote = true
 	}
 	if dp.HasOFF() {
 		if !dp.OFF.HeaderWritten() {
@@ -291,6 +291,12 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 				return err
 			}
 		}
+		wrote = true
+	}
+
+	// By using the wrote boolean, we avoid double-counting number of records written.
+	if wrote {
+		dp.numberWritten += len(records)
 	}
 	return nil
 }
