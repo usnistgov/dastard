@@ -32,7 +32,7 @@ func rewritePacket(p *packets.Packet) {
 		panic("couldn't cast p.Data to []byte")
 	}
 
-	const bitshift = 4
+	const bitshift = 0
 	newdata := make([]int16, 2*Nframe*Nchan)
 	for i := range Nframe * Nchan {
 		offset := i*16 + 8
