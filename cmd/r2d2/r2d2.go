@@ -2,10 +2,11 @@
 //
 // Purpose: to translate RFSoC or Abaco packets from "monitor" form to the "pktdata" form that DASTARD requires.
 //
-// usage: r2d2 10.0.15.100:4001 localhost:4001
+// usage: r2d2 10.0.15.100:4001
 //
 // Leave that running, and have Dastard connect to a resonator data source at localhost:4001, rather than at
-// the actual firmware IP address (10.0.15.100 in this example)
+// the actual firmware IP address (10.0.15.100 in this example).
+// TODO: Let the translated source appear on localhost at a different port number than the original port.
 
 package main
 
@@ -15,6 +16,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"runtime"
 
 	"github.com/usnistgov/dastard/packets"
@@ -51,19 +53,29 @@ func main() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	// Enforce exactly one command-line argument (plus the program name itself)
+	if len(os.Args) != 2 {
+		log.Fatalf("Usage: %s <remote-ip:port>\nExample: %s 10.0.15.100:4001", os.Args[0], os.Args[0])
+	}
+
 	// 1. Set up the listener
-	remotehost := "10.0.15.100"
-	port := 4001
-	sourceaddress := fmt.Sprintf("%s:%d", remotehost, port)
+	sourceaddress := os.Args[1]
 	listenAddr, err := net.ResolveUDPAddr("udp", sourceaddress)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// Extract the port to mirror it for localhost
+	_, portString, err := net.SplitHostPort(sourceaddress)
+	if err != nil {
+		log.Fatalf("Invalid address format. Expected host:port. Error: %v", err)
 	}
 	conn, err := net.ListenUDP("udp", listenAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer conn.Close()
+
 	// Set buffers to 8MB (or higher, depending on your OS limits)
 	conn.SetReadBuffer(8 * 1024 * 1024)
 	conn.SetWriteBuffer(8 * 1024 * 1024)
@@ -72,7 +84,7 @@ func main() {
 	packconn := ipv4.NewPacketConn(conn)
 
 	// 2. Set up the target destination
-	target := fmt.Sprintf("localhost:%d", port)
+	target := fmt.Sprintf("localhost:%s", portString)
 	targetAddr, err := net.ResolveUDPAddr("udp", target)
 	if err != nil {
 		log.Fatal(err)
