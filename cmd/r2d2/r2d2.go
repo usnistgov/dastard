@@ -18,10 +18,14 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 
 	"github.com/usnistgov/dastard/packets"
 	"golang.org/x/net/ipv4"
 )
+
+// Global variable (boo!): how many low-order bits to remove from the 32-bit monitor values
+var bitshift int
 
 func rewritePacket(p *packets.Packet) {
 
@@ -32,7 +36,6 @@ func rewritePacket(p *packets.Packet) {
 		panic("couldn't cast p.Data to []byte")
 	}
 
-	const bitshift = 0
 	newdata := make([]int16, 2*Nframe*Nchan)
 	for i := range Nframe * Nchan {
 		offset := i*16 + 8
@@ -53,9 +56,9 @@ func main() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	// Enforce exactly one command-line argument (plus the program name itself)
-	if len(os.Args) != 2 {
-		log.Fatalf("Usage: %s <remote-ip:port>\nExample: %s 10.0.15.100:4001", os.Args[0], os.Args[0])
+	// Enforce at least one command-line argument (plus the program name itself)
+	if len(os.Args) < 2 {
+		log.Fatalf("Usage: %s <remote-ip:port> [nbits-to-drop]\nExample: %s 10.0.15.100:4001 4", os.Args[0], os.Args[0])
 	}
 
 	// Set up the listener
@@ -63,6 +66,15 @@ func main() {
 	listenAddr, err := net.ResolveUDPAddr("udp", sourceaddress)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// Parse optional 2nd argument (number of low-order bits to drop); if absent, assume zero bits to drop (use lowest 16)
+	if len(os.Args) == 3 {
+		if dropbits, ok := strconv.Atoi(os.Args[2]); ok == nil {
+			bitshift = dropbits
+		} else {
+			log.Fatalf("could not convert arg[2] %v to integer", os.Args[2])
+		}
 	}
 
 	// Extract the port to mirror it for localhost
@@ -90,6 +102,12 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("R2-D2 is listening on %s, forwarding to %s", sourceaddress, target)
+	mask := int32(0xffff) << bitshift
+	if bitshift > 0 {
+		log.Printf("R2-D2 is dropping lowest %d bits (mask 0x%8.8x)", bitshift, mask)
+	} else {
+		log.Printf("R2-D2 is dropping top 16 bits (mask 0x%8.8x)", mask)
+	}
 	translate(packconn, targetAddr)
 }
 
