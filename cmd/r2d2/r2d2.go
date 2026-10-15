@@ -33,7 +33,7 @@ func rewritePacket(p *packets.Packet) {
 	}
 
 	const bitshift = 4
-	newdata := make([]int16, Nframe*Nchan*2)
+	newdata := make([]int16, 2*Nframe*Nchan)
 	for i := range Nframe * Nchan {
 		offset := i*16 + 8
 		val1 := binary.LittleEndian.Uint32(data[offset : offset+4])
@@ -43,7 +43,7 @@ func rewritePacket(p *packets.Packet) {
 		newdata[i*2] = atan0
 		newdata[i*2+1] = rot
 	}
-	dims := []int16{int16(Nchan)}
+	dims := []int16{int16(2 * Nchan)}
 	p.NewData(newdata, dims)
 
 }
@@ -58,7 +58,7 @@ func main() {
 		log.Fatalf("Usage: %s <remote-ip:port>\nExample: %s 10.0.15.100:4001", os.Args[0], os.Args[0])
 	}
 
-	// 1. Set up the listener
+	// Set up the listener
 	sourceaddress := os.Args[1]
 	listenAddr, err := net.ResolveUDPAddr("udp", sourceaddress)
 	if err != nil {
@@ -83,7 +83,7 @@ func main() {
 	// Upgrade to an IPv4 packet connection
 	packconn := ipv4.NewPacketConn(conn)
 
-	// 2. Set up the target destination
+	// Set up the target destination
 	target := fmt.Sprintf("localhost:%s", portString)
 	targetAddr, err := net.ResolveUDPAddr("udp", target)
 	if err != nil {
@@ -95,20 +95,20 @@ func main() {
 
 func translate(packconn *ipv4.PacketConn, targetAddr *net.UDPAddr) {
 
-	// 3. Pre-allocate multiple read and write buffers (typically 1500 bytes to fit standard MTU)
 	const batchSize = 32
 	readMsgs := make([]ipv4.Message, batchSize)
 	writeMsgs := make([]ipv4.Message, batchSize)
 
+	// Pre-allocate multiple read and write buffers
 	for i := range readMsgs {
 		// Crucial: Each message MUST have its own independent backing array
-		readMsgs[i].Buffers = [][]byte{make([]byte, 1500)}
-		writeMsgs[i].Buffers = [][]byte{make([]byte, 1500)}
+		readMsgs[i].Buffers = [][]byte{make([]byte, 8192)}
+		writeMsgs[i].Buffers = [][]byte{make([]byte, 8192)}
 	}
 
 	var payloadReader bytes.Reader
 	for {
-		// Read incoming packet
+		// Read batch of incoming packets
 		n, err := packconn.ReadBatch(readMsgs, 0)
 		if err != nil {
 			log.Println("Read error:", err)
@@ -126,7 +126,7 @@ func translate(packconn *ipv4.PacketConn, targetAddr *net.UDPAddr) {
 				log.Println("Packet generation error:", err)
 			}
 
-			// fmt.Println(packet, packet.Data)
+			// fmt.Println(packet)
 
 			rewritePacket(packet)
 			newLen := packet.Length()
