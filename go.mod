@@ -17,6 +17,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/sbinet/npyio v0.9.0
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/net v0.58.0
 	gonum.org/v1/gonum v0.17.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	modernc.org/sqlite v1.57.0
