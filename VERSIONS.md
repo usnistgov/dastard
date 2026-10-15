@@ -1,5 +1,8 @@
 ## DASTARD Versions
 
+**0.3.11** October 2026-
+* Add program `r2d2` to convert monitor packets from RFSoC/Abaco -> µMUX-style "DASTARD" packets (issue 407).
+
 **0.3.10** August 18, 2026
 * Minimum go version 1.25 (released August 2025).
 * Replace `spf13/viper` with `knadh/koanf`.
