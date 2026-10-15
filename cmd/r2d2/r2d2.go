@@ -11,6 +11,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
@@ -20,12 +21,37 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+func rewritePacket(p *packets.Packet) {
+
+	Nframe := p.Frames()
+	Nchan, _ := p.ChannelInfo()
+	data, ok := p.Data.([]byte)
+	if !ok {
+		panic("couldn't cast p.Data to []byte")
+	}
+
+	const bitshift = 4
+	newdata := make([]int16, Nframe*Nchan*2)
+	for i := range Nframe * Nchan {
+		offset := i*16 + 8
+		val1 := binary.LittleEndian.Uint32(data[offset : offset+4])
+		val2 := binary.LittleEndian.Uint32(data[offset+4 : offset+8])
+		atan0 := int16(int32(val1) >> bitshift)
+		rot := int16(int32(val2) >> bitshift)
+		newdata[i*2] = atan0
+		newdata[i*2+1] = rot
+	}
+	dims := []int16{int16(Nchan)}
+	p.NewData(newdata, dims)
+
+}
+
 func main() {
 	// Lock this goroutine to the current OS thread
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	// 1. Setup the listener
+	// 1. Set up the listener
 	remotehost := "10.0.15.100"
 	port := 4001
 	sourceaddress := fmt.Sprintf("%s:%d", remotehost, port)
@@ -43,14 +69,19 @@ func main() {
 	conn.SetWriteBuffer(8 * 1024 * 1024)
 
 	// Upgrade to an IPv4 packet connection
-	pc := ipv4.NewPacketConn(conn)
+	packconn := ipv4.NewPacketConn(conn)
 
-	// 2. Setup the target destination
+	// 2. Set up the target destination
 	target := fmt.Sprintf("localhost:%d", port)
-	// targetAddr, err := net.ResolveUDPAddr("udp", target)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	targetAddr, err := net.ResolveUDPAddr("udp", target)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("R2-D2 is listening on %s, forwarding to %s", sourceaddress, target)
+	translate(packconn, targetAddr)
+}
+
+func translate(packconn *ipv4.PacketConn, targetAddr *net.UDPAddr) {
 
 	// 3. Pre-allocate multiple read and write buffers (typically 1500 bytes to fit standard MTU)
 	const batchSize = 32
@@ -62,23 +93,17 @@ func main() {
 		readMsgs[i].Buffers = [][]byte{make([]byte, 1500)}
 		writeMsgs[i].Buffers = [][]byte{make([]byte, 1500)}
 	}
-	log.Printf("R2-D2 is listening on %s, forwarding to %s", sourceaddress, target)
 
 	var payloadReader bytes.Reader
 	for {
 		// Read incoming packet
-		n, err := pc.ReadBatch(readMsgs, 0)
+		n, err := packconn.ReadBatch(readMsgs, 0)
 		if err != nil {
 			log.Println("Read error:", err)
 			continue
 		}
 
-		// Read fraction of payload (e.g., first 12 bytes)
-		// header := buffer[:12]
-
-		// Your translation package should write directly into writeBuf
-		// rather than returning a new []byte.
-		for i := 0; i < n; i++ {
+		for i := range n {
 			// Extract the payload using the N field (bytes read)
 			payloadLen := readMsgs[i].N
 			incomingData := readMsgs[i].Buffers[0][:payloadLen]
@@ -89,22 +114,22 @@ func main() {
 				log.Println("Packet generation error:", err)
 			}
 
-			fmt.Println(packet)
+			// fmt.Println(packet, packet.Data)
 
-			// Run your translation. Assuming it returns the new length
-			// written directly into the corresponding write buffer.
-			// newLen := mypackage.Translate(incomingData, writeMsgs[i].Buffers[0])
+			rewritePacket(packet)
+			newLen := packet.Length()
 
 			// Prepare the write message
-			// writeMsgs[i].N = newLen
-			// writeMsgs[i].Addr = targetAddr
+			writeMsgs[i].N = newLen
+			writeMsgs[i].Addr = targetAddr
+			writeMsgs[i].Buffers[0] = packet.Bytes()
 		}
 
 		// Write all processed packets in a single system call
 		// We slice writeMsgs[:n] to only send the packets we just translated
-		// _, err = pc.WriteBatch(writeMsgs[:n], 0)
-		// if err != nil {
-		// 	log.Println("Write error:", err)
-		// }
+		_, err = packconn.WriteBatch(writeMsgs[:n], 0)
+		if err != nil {
+			log.Println("Write error:", err)
+		}
 	}
 }
