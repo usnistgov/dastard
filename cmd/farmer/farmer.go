@@ -384,7 +384,7 @@ func shuffleDirectory(dir string) {
 	for _, file := range files {
 		// Run each iteration as an anonymous function, to simplify
 		// deferred closing of opened file and release of ipc.NewReader
-		err := func(filename string) error {
+		err := func() error {
 			log.Printf("Unshuffling %s...", file)
 
 			f, err := os.Open(file)
@@ -408,7 +408,7 @@ func shuffleDirectory(dir string) {
 				}
 			}
 			return nil
-		}(file)
+		}()
 
 		// If any one file fails, abort the whole directory
 		if err != nil {
