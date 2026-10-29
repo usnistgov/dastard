@@ -40,145 +40,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 1. Initialize a WaitGroup to keep the main program alive
-	// while the goroutines do their work.
-	var wg sync.WaitGroup
-
-	log.Printf("Starting %d workers for the directories...\n", len(args))
-
-	// 2. Loop through each CLI argument
-	for _, arg := range args {
-		// Increment the WaitGroup counter for each goroutine we spawn
-		wg.Add(1)
-
-		// 3. Spawn the goroutine, passing the argument and a POINTER to the WaitGroup
-		go organizeDirectory(arg, &wg)
-	}
-
-	// 4. Block the main thread until the WaitGroup counter reaches exactly 0
-	wg.Wait()
-
-	log.Println("✅ All workers completed successfully.")
-}
-
-// organizeDirectory is the function that runs concurrently for each input directory, reorganizing the
-// live data into a channel-major order, which is far more convenient for later analysis.
-func organizeDirectory(directory string, wg *sync.WaitGroup) {
-
-	log.Printf("[START] Processing: %s\n", directory)
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Print(err)
-		return
-	}
-	watcher.Add(directory)
-
-	go func() {
-		defer wg.Done()
-		defer watcher.Close()
-
-		// Before we start watching for files being touched, catch up with existing files
-		for {
-			pattern := filepath.Join(directory, "*.arrows_timeorder")
-			matches, err := filepath.Glob(pattern)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-			for _, path := range matches {
-				sortIPCFile(path)
-			}
-			// Once there are no files to sort, check whether the run is complete and needs to be shuffled
-			if len(matches) == 0 {
-				complete := filepath.Join(directory, "COMPLETE")
-				if _, err := os.Stat(complete); err == nil {
-					// file COMPLETE exists and is accessible. Shuffle it, and we're done
-					log.Println("Found a COMPLETE file. Shuffling the directory")
-					shuffleDirectory(directory)
-					log.Printf("✅ Finished organizing directory %s\n", directory)
-					return
-				}
-				break
-			}
-			log.Printf("✅ Processed %d pre-existing *.arrows_timeorder files\n", len(matches))
-		}
-
-		// If we get here, the existing files are sorted, and COMPLETE doesn't exist, so there's one
-		// last check: is this entire directory completely done already (no *.arrows_timeorder
-		// or *.arrows_WAL files)? If so, quit.
-		// Otherwise, begin to watch for file events and sort or shuffle as needed.
-		pattern := filepath.Join(directory, "*.arrows_timeorder")
-		matches1, err := filepath.Glob(pattern)
-		if err != nil {
-			log.Print(err)
-			return
-		}
-		pattern = filepath.Join(directory, "*.arrows_WAL")
-		matches2, err := filepath.Glob(pattern)
-		if err != nil {
-			log.Print(err)
-			return
-		}
-		if len(matches1) == 0 && len(matches2) == 0 {
-			log.Printf("✅ Found no files that need FARMER. Quitting")
-			return
-		}
-
-		log.Printf("No more existing files to organize. Watching for new files.")
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				// We only care about file creations
-				if event.Has(fsnotify.Create) {
-
-					// Ignore most files, except "COMPLETE" or "*.arrows_timeorder" files
-					_, filename := filepath.Split(event.Name)
-					if strings.HasSuffix(filename, ".arrows_timeorder") {
-						// Careful! It's possible that a file like this was caught by the watcher, THEN
-						// found at the start of this goroutine by the filepath.Glob() call and handled at that point.
-						// Thus, it's possible that it no longer exists. It's gone, ignore it gracefully.
-						if _, err := os.Stat(event.Name); err == nil {
-							log.Printf("Detected new ready file: %s", event.Name)
-							sortIPCFile(event.Name)
-						}
-
-					} else if filename == "COMPLETE" {
-						// First, stop the watcher, to conserve OS resources. We know its work is done.
-						watcher.Remove(directory)
-
-						// Next, ensure that all the timeorder files have been processed and removed.
-						inputPattern := fmt.Sprintf("%s/*.arrows_timeorder", directory)
-						files, _ := filepath.Glob(inputPattern)
-						for _, file := range files {
-							log.Printf("Detected new ready file: %s", file)
-							sortIPCFile(file)
-						}
-
-						// Directory is ready for shuffling now.
-						shuffleDirectory(directory)
-						return
-					}
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Printf("Watcher error: %v", err)
-			}
-		}
-	}()
-
-	log.Printf("Launched processing: %s\n", directory)
-}
-
-func sortIPCFile(streamFile string) {
-	// Convert file.suffix_timeorder to file.suffix (trim off the sub-suffix)
-	outputFile := strings.TrimSuffix(streamFile, "_timeorder")
-
 	// 1. Initialize an in-memory DuckDB engine
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
@@ -194,9 +55,141 @@ func sortIPCFile(streamFile string) {
 		LOAD nanoarrow;
 	`)
 	if err != nil {
-		log.Print("Failed to load the nanoarrow extension: ", err)
+		log.Fatal("Failed to load the nanoarrow extension: ", err)
 		return
 	}
+
+	// Use a WaitGroup to keep the main program alive while the goroutines do their work.
+	var wg sync.WaitGroup
+	log.Printf("Starting %d workers for the directories...\n", len(args))
+
+	// 3. Loop through each CLI argument
+	for _, arg := range args {
+		// Increment the WaitGroup counter for each goroutine we spawn
+		wg.Add(1)
+
+		// 3. Spawn the goroutine, passing the argument and a POINTER to the WaitGroup
+		go organizeDirectory(arg, &wg, db)
+	}
+
+	// 4. Block the main thread until the WaitGroup counter reaches exactly 0
+	wg.Wait()
+
+	log.Println("✅ All workers completed successfully.")
+}
+
+// organizeDirectory is the function that runs concurrently for each input directory, reorganizing the
+// live data into a channel-major order, which is far more convenient for later analysis.
+func organizeDirectory(directory string, wg *sync.WaitGroup, db *sql.DB) {
+
+	defer wg.Done()
+	log.Printf("[START] Processing: %s\n", directory)
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	defer watcher.Close()
+	watcher.Add(directory)
+
+	// Before we start watching for files being touched, catch up with existing files
+	for {
+		pattern := filepath.Join(directory, "*.arrows_timeorder")
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			log.Print(err)
+			return
+		}
+		for _, path := range matches {
+			sortIPCFile(path, db)
+		}
+		// Once there are no files to sort, check whether the run is complete and needs to be shuffled
+		if len(matches) == 0 {
+			complete := filepath.Join(directory, "COMPLETE")
+			if _, err := os.Stat(complete); err == nil {
+				// file COMPLETE exists and is accessible. Shuffle it, and we're done
+				log.Println("Found a COMPLETE file. Shuffling the directory")
+				shuffleDirectory(directory)
+				log.Printf("✅ Finished organizing directory %s\n", directory)
+				return
+			}
+			break
+		}
+		log.Printf("✅ Processed %d pre-existing *.arrows_timeorder files\n", len(matches))
+	}
+
+	// If we get here, the existing files are sorted, and COMPLETE doesn't exist, so there's one
+	// last check: is this entire directory completely done already (no *.arrows_timeorder
+	// or *.arrows_WAL files)? If so, quit.
+	// Otherwise, begin to watch for file events and sort or shuffle as needed.
+	pattern := filepath.Join(directory, "*.arrows_timeorder")
+	matches1, err := filepath.Glob(pattern)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	pattern = filepath.Join(directory, "*.arrows_WAL")
+	matches2, err := filepath.Glob(pattern)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	if len(matches1) == 0 && len(matches2) == 0 {
+		log.Printf("✅ Found no files that need FARMER. Quitting")
+		return
+	}
+
+	log.Printf("No more existing files to organize. Watching for new files.")
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			// We only care about file creations
+			if event.Has(fsnotify.Create) {
+
+				// Ignore most files, except "COMPLETE" or "*.arrows_timeorder" files
+				_, filename := filepath.Split(event.Name)
+				if strings.HasSuffix(filename, ".arrows_timeorder") {
+					// Careful! It's possible that a file like this was caught by the watcher, THEN
+					// found at the start of this goroutine by the filepath.Glob() call and handled at that point.
+					// Thus, it's possible that it no longer exists. It's gone, ignore it gracefully.
+					if _, err := os.Stat(event.Name); err == nil {
+						log.Printf("Detected new ready file: %s", event.Name)
+						sortIPCFile(event.Name, db)
+					}
+
+				} else if filename == "COMPLETE" {
+					// First, stop the watcher, to conserve OS resources. We know its work is done.
+					watcher.Remove(directory)
+
+					// Next, ensure that all the timeorder files have been processed and removed.
+					inputPattern := fmt.Sprintf("%s/*.arrows_timeorder", directory)
+					files, _ := filepath.Glob(inputPattern)
+					for _, file := range files {
+						log.Printf("Detected new ready file: %s", file)
+						sortIPCFile(file, db)
+					}
+
+					// Directory is ready for shuffling now.
+					shuffleDirectory(directory)
+					return
+				}
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Printf("Watcher error: %v", err)
+		}
+	}
+}
+
+func sortIPCFile(streamFile string, db *sql.DB) {
+	// Convert file.suffix_timeorder to file.suffix (trim off the sub-suffix)
+	outputFile := strings.TrimSuffix(streamFile, "_timeorder")
 
 	// 3. Execute the Zero-Copy Sort and Export
 	// read_arrow() parses the un-footered stream.
@@ -214,9 +207,9 @@ func sortIPCFile(streamFile string) {
 		) TO '%s' (FORMAT ARROWS);
 	`, escapeSQLString(streamFile), escapeSQLString(outputFile))
 
-	_, err = db.Exec(query)
+	_, err := db.Exec(query)
 	if err != nil {
-		log.Printf("Failed to process query: ", err)
+		log.Println("Failed to process query: ", err)
 		return
 	}
 
