@@ -355,6 +355,11 @@ func getChannelValue(col arrow.Array, idx int64) int64 {
 	}
 }
 
+// Declare the regex globally so it need not be compiled multiple times.
+// This lets us strip a trailing _1234.suffix from a filename, where "1234" is any
+// four digits, and "suffix" is any string containing no periods.
+var patternForNumberedFiles = regexp.MustCompile(`_\d{4}\.[^.]+$`)
+
 func shuffleDirectory(dir string) {
 	inputPattern := fmt.Sprintf("%s/*_????.arrows", dir)
 	outputDir := dir
@@ -370,9 +375,8 @@ func shuffleDirectory(dir string) {
 	sort.Strings(files) // Ensures {prefix}_0000,  {prefix}_0001, {prefix}__0002, etc. run in order
 	f := files[0]
 	firstarrow := path.Base(f)
-	filePattern := regexp.MustCompile(`_\d{4}\.[^.]+$`)
 	prefix := ""
-	if locate := filePattern.FindStringIndex(firstarrow); locate != nil {
+	if locate := patternForNumberedFiles.FindStringIndex(firstarrow); locate != nil {
 		prefix = firstarrow[:locate[0]]
 	}
 
