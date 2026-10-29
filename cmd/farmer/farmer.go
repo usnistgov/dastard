@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -119,27 +120,10 @@ func organizeDirectory(directory string, wg *sync.WaitGroup, db *sql.DB) {
 		log.Printf("✅ Processed %d pre-existing *.arrows_timeorder files\n", len(matches))
 	}
 
-	// If we get here, the existing files are sorted, and COMPLETE doesn't exist, so there's one
-	// last check: is this entire directory completely done already (no *.arrows_timeorder
-	// or *.arrows_WAL files)? If so, quit.
-	// Otherwise, begin to watch for file events and sort or shuffle as needed.
-	pattern := filepath.Join(directory, "*.arrows_timeorder")
-	matches1, err := filepath.Glob(pattern)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-	pattern = filepath.Join(directory, "*.arrows_WAL")
-	matches2, err := filepath.Glob(pattern)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-	if len(matches1) == 0 && len(matches2) == 0 {
-		log.Printf("✅ Found no files that need FARMER. Quitting")
-		return
-	}
-
+	// If we get here, the existing files are sorted, and COMPLETE doesn't exist, so either this
+	// directory is being actively written still, or DASTARD crashed.
+	// Begin to watch for file events and sort or shuffle as needed. Use a 15-minute timeout to
+	// catch the case of a crash.
 	log.Printf("No more existing files to organize. Watching for new files.")
 	for {
 		select {
@@ -183,6 +167,10 @@ func organizeDirectory(directory string, wg *sync.WaitGroup, db *sql.DB) {
 				return
 			}
 			log.Printf("Watcher error: %v", err)
+
+		case <-time.After(15 * time.Minute):
+			log.Printf("⏳ No new files created in %s for 15 minutes. Assuming inactive and quitting.", directory)
+			return
 		}
 	}
 }
