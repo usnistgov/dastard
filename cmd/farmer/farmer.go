@@ -384,20 +384,18 @@ func shuffleDirectory(dir string) {
 	for _, file := range files {
 		// Run each iteration as an anonymous function, to simplify
 		// deferred closing of opened file and release of ipc.NewReader
-		func(filename string) {
+		err := func(filename string) error {
 			log.Printf("Unshuffling %s...", file)
 
 			f, err := os.Open(file)
 			if err != nil {
-				log.Printf("❌ Failed to open %s: %v", file, err)
-				return
+				return fmt.Errorf("❌ Failed to open %s: %v", file, err)
 			}
 			defer f.Close()
 
 			rdr, err := ipc.NewReader(f, ipc.WithAllocator(pool))
 			if err != nil {
-				log.Printf("❌ Failed to create IPC reader for %s: %v", file, err)
-				return
+				return fmt.Errorf("❌ Failed to create IPC reader for %s: %v", file, err)
 			}
 			defer rdr.Release()
 
@@ -406,11 +404,17 @@ func shuffleDirectory(dir string) {
 				rec := rdr.RecordBatch()
 
 				if err := unshuffler.ProcessBatch(rec); err != nil {
-					log.Printf("❌ Failed to unshuffle batch: %v", err)
-					return
+					return fmt.Errorf("❌ Failed to unshuffle batch: %v", err)
 				}
 			}
+			return nil
 		}(file)
+
+		// If any one file fails, abort the whole directory
+		if err != nil {
+			log.Printf("%v", err)
+			return
+		}
 	}
 
 	// 3. If this point is reached successfully, it is safe to delete the input files
