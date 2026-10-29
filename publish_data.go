@@ -620,6 +620,7 @@ func (upub *UnifiedPublisher) PublishLoop() {
 	defer upub.completeDirectory()
 	defer upub.CloseFile()
 
+	// Make an empty slice of capacity 100
 	queuedRecords := make([]*DataRecord, 0, 100)
 	for {
 		select {

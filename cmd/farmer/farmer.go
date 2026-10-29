@@ -69,8 +69,11 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
+	watcher.Add(directory)
+
 	go func() {
 		defer wg.Done()
 		defer watcher.Close()
@@ -80,7 +83,8 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 			pattern := filepath.Join(directory, "*.arrows_timeorder")
 			matches, err := filepath.Glob(pattern)
 			if err != nil {
-				log.Fatal(err)
+				log.Print(err)
+				return
 			}
 			for _, path := range matches {
 				sortIPCFile(path)
@@ -88,8 +92,8 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 			// Once there are no files to sort, check whether the run is complete and needs to be shuffled
 			if len(matches) == 0 {
 				complete := filepath.Join(directory, "COMPLETE")
-				_, err := os.Stat(complete)
-				if err == nil { // file COMPLETE exists. Shuffle it, and we're done
+				if _, err := os.Stat(complete); err == nil {
+					// file COMPLETE exists and is accessible. Shuffle it, and we're done
 					log.Println("Found a COMPLETE file. Shuffling the directory")
 					shuffleDirectory(directory)
 					log.Printf("✅ Finished organizing directory %s\n", directory)
@@ -107,16 +111,18 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 		pattern := filepath.Join(directory, "*.arrows_timeorder")
 		matches1, err := filepath.Glob(pattern)
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			return
 		}
 		pattern = filepath.Join(directory, "*.arrows_WAL")
 		matches2, err := filepath.Glob(pattern)
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			return
 		}
 		if len(matches1) == 0 && len(matches2) == 0 {
 			log.Printf("✅ Found no files that need FARMER. Quitting")
-			os.Exit(0)
+			return
 		}
 
 		log.Printf("No more existing files to organize. Watching for new files.")
@@ -132,8 +138,13 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 					// Ignore most files, except "COMPLETE" or "*.arrows_timeorder" files
 					_, filename := filepath.Split(event.Name)
 					if strings.HasSuffix(filename, ".arrows_timeorder") {
-						log.Printf("Detected new ready file: %s", event.Name)
-						sortIPCFile(event.Name)
+						// Careful! It's possible that a file like this was caught by the watcher, THEN
+						// found at the start of this goroutine by the filepath.Glob() call and handled at that point.
+						// Thus, it's possible that it no longer exists. It's gone, ignore it gracefully.
+						if _, err := os.Stat(event.Name); err == nil {
+							log.Printf("Detected new ready file: %s", event.Name)
+							sortIPCFile(event.Name)
+						}
 
 					} else if filename == "COMPLETE" {
 						// First, stop the watcher, to conserve OS resources. We know its work is done.
@@ -161,7 +172,6 @@ func organizeDirectory(directory string, wg *sync.WaitGroup) {
 		}
 	}()
 
-	watcher.Add(directory)
 	log.Printf("Launched processing: %s\n", directory)
 }
 
@@ -172,7 +182,8 @@ func sortIPCFile(streamFile string) {
 	// 1. Initialize an in-memory DuckDB engine
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
-		log.Fatal("Could not open DuckDB: ", err)
+		log.Print("Could not open DuckDB: ", err)
+		return
 	}
 	defer db.Close()
 
@@ -183,24 +194,30 @@ func sortIPCFile(streamFile string) {
 		LOAD nanoarrow;
 	`)
 	if err != nil {
-		log.Fatal("Failed to load the nanoarrow extension: ", err)
+		log.Print("Failed to load the nanoarrow extension: ", err)
+		return
 	}
 
 	// 3. Execute the Zero-Copy Sort and Export
 	// read_arrow() parses the un-footered stream.
 	// DuckDB sorts it out-of-core (using your SSD if it exceeds RAM).
 	// COPY ... TO exports the result natively.
+
+	escapeSQLString := func(s string) string {
+		return strings.ReplaceAll(s, "'", "''")
+	}
 	query := fmt.Sprintf(`
 		COPY (
 			SELECT * 
 			FROM read_arrow('%s')
 			ORDER BY channel_number ASC, subframecount ASC
 		) TO '%s' (FORMAT ARROWS);
-	`, streamFile, outputFile)
+	`, escapeSQLString(streamFile), escapeSQLString(outputFile))
 
 	_, err = db.Exec(query)
 	if err != nil {
-		log.Fatal("Failed to process query: ", err)
+		log.Printf("Failed to process query: ", err)
+		return
 	}
 
 	err = os.Remove(streamFile)
@@ -347,7 +364,8 @@ func shuffleDirectory(dir string) {
 	// 1. Find and chronologically sort all input stream files
 	files, err := filepath.Glob(inputPattern)
 	if err != nil || len(files) == 0 {
-		log.Fatalf("No input stream files found matching pattern: %s", inputPattern)
+		log.Printf("No input stream files found matching pattern: %s", inputPattern)
+		return
 	}
 	sort.Strings(files) // Ensures {prefix}_0000,  {prefix}_0001, {prefix}__0002, etc. run in order
 	f := files[0]
@@ -367,32 +385,35 @@ func shuffleDirectory(dir string) {
 
 	// 2. Loop through each mixed-channel, time-limited .arrows stream file
 	for _, file := range files {
-		log.Printf("Unshuffling %s...", file)
+		// Run each iteration as an anonymous function, to simplify
+		// deferred closing of opened file and release of ipc.NewReader
+		func(filename string) {
+			log.Printf("Unshuffling %s...", file)
 
-		f, err := os.Open(file)
-		if err != nil {
-			log.Fatalf("❌ Failed to open %s: %v", file, err)
-		}
-
-		rdr, err := ipc.NewReader(f, ipc.WithAllocator(pool))
-		if err != nil {
-			f.Close()
-			log.Fatalf("❌ Failed to create IPC reader for %s: %v", file, err)
-		}
-
-		// 3. Read stream batches sequentially
-		for rdr.Next() {
-			rec := rdr.RecordBatch()
-
-			if err := unshuffler.ProcessBatch(rec); err != nil {
-				rdr.Release()
-				f.Close()
-				log.Fatalf("❌ Failed to unshuffle batch: %v", err)
+			f, err := os.Open(file)
+			if err != nil {
+				log.Printf("❌ Failed to open %s: %v", file, err)
+				return
 			}
-		}
+			defer f.Close()
 
-		rdr.Release()
-		f.Close()
+			rdr, err := ipc.NewReader(f, ipc.WithAllocator(pool))
+			if err != nil {
+				log.Printf("❌ Failed to create IPC reader for %s: %v", file, err)
+				return
+			}
+			defer rdr.Release()
+
+			// 3. Read stream batches sequentially
+			for rdr.Next() {
+				rec := rdr.RecordBatch()
+
+				if err := unshuffler.ProcessBatch(rec); err != nil {
+					log.Printf("❌ Failed to unshuffle batch: %v", err)
+					return
+				}
+			}
+		}(file)
 	}
 
 	// 3. If this point is reached successfully, it is safe to delete the input files
