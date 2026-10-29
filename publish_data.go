@@ -3,8 +3,15 @@ package dastard
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/usnistgov/dastard/internal/getbytes"
 	"github.com/usnistgov/dastard/internal/ljh"
 	"github.com/usnistgov/dastard/internal/off"
@@ -13,14 +20,15 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
-// DataPublisher contains many optional methods for publishing data; any methods that are non-nil
-// will be used in each call to PublishData.
+// DataPublisher contains many optional methods for publishing data; any Writers that are non-nil
+// will be used in each call to PublishData. One instance of this object exists for each data channel.
 type DataPublisher struct {
 	PubRecordsChan   chan []*DataRecord
 	PubSummariesChan chan []*DataRecord
 	LJH22            *ljh.Writer
 	LJH3             *ljh.Writer3
 	OFF              *off.Writer
+	UniPub           *UnifiedPublisher
 	WritingPaused    bool
 	numberWritten    int // integrates up the total number written; reset any time writing starts or stops
 }
@@ -211,6 +219,9 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 		return nil
 	}
 
+	// Track whether the records have been written to disk by any publisher
+	wrote := false
+
 	// Publish the records to the ZMQ ports for full records and/or record summaries.
 	if dp.HasPubRecords() {
 		dp.PubRecordsChan <- records
@@ -223,12 +234,14 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 	if dp.WritingPaused {
 		return nil
 	}
-	if !(dp.HasLJH22() || dp.HasLJH3() || dp.HasOFF()) {
-		return nil
+
+	// Send data to the all-channel unified publisher, if any, for Arrows file writing.
+	if dp.UniPub != nil {
+		wrote = true
+		dp.UniPub.RecordsChan <- records
 	}
 
-	// If we get here, there is one or more output active.
-	// The LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
+	// LJH and OFF files are _not_ created until they are needed, so each type first checks if the file
 	// is already opened and has a header written.
 	if dp.HasLJH22() {
 		if !dp.LJH22.HeaderWritten {
@@ -243,6 +256,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH22.WriteRecord(int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		wrote = true
 	}
 	if dp.HasLJH3() {
 		if !dp.LJH3.HeaderWritten {
@@ -256,6 +270,7 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 			nano := record.trigTime.UnixNano()
 			dp.LJH3.WriteRecord(int32(record.presamples+1), int64(record.trigFrame), int64(nano)/1000, rawTypeToUint16(record.data))
 		}
+		wrote = true
 	}
 	if dp.HasOFF() {
 		if !dp.OFF.HeaderWritten() {
@@ -276,8 +291,13 @@ func (dp *DataPublisher) PublishData(records []*DataRecord) error {
 				return err
 			}
 		}
+		wrote = true
 	}
-	dp.numberWritten += len(records)
+
+	// By using the wrote boolean, we avoid double-counting number of records written.
+	if wrote {
+		dp.numberWritten += len(records)
+	}
 	return nil
 }
 
@@ -301,7 +321,7 @@ func messageSummaries(rec *DataRecord) [][]byte {
 	const headerVersion = uint16(0)
 
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelNumber)))
 	header.Write(getbytes.FromUint16(headerVersion))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
 	header.Write(getbytes.FromUint32(uint32(len(rec.data))))
@@ -341,7 +361,7 @@ func messageRecords(rec *DataRecord) [][]byte {
 		dataType = uint8(2)
 	}
 	header := new(bytes.Buffer)
-	header.Write(getbytes.FromUint16(uint16(rec.channelIndex)))
+	header.Write(getbytes.FromUint16(uint16(rec.channelNumber)))
 	header.Write(getbytes.FromUint8(headerVersion))
 	header.Write(getbytes.FromUint8(dataType))
 	header.Write(getbytes.FromUint32(uint32(rec.presamples)))
@@ -425,4 +445,221 @@ func startSocket(port int, converter func(*DataRecord) [][]byte) (chan []*DataRe
 		}
 	}()
 	return pubchan, nil
+}
+
+const ARROWBUNCHTIME = time.Second * 5
+const ARROWFILETIME = time.Minute * 10
+const ARROWMAXFILESIZE = 500_000_000
+
+type ArrowWriter struct {
+	FilenamePattern string
+	LastFilename    string
+	NextFileNumber  int
+	NSamples        int
+	firstFrameTime  time.Time
+	allowedRowsLeft int
+	openFile        *os.File
+	builder         *array.RecordBuilder
+	writer          *ipc.Writer
+	socket          *zmq4.Socket
+}
+
+func (aw *ArrowWriter) StartSocket() error {
+	// Not totally sure how to choose this, but it should probably be
+	// at least as large as number of channels.
+	const publishChannelDepth = 500
+
+	//  Socket to talk to clients
+	hostname := fmt.Sprintf("tcp://*:%d", Ports.Arrow)
+	pubSocket, err := zmq4.NewSocket(zmq4.PUB)
+	if err != nil {
+		return err
+	}
+	pubSocket.SetSndhwm(100)
+	if err = pubSocket.Bind(hostname); err != nil {
+		return err
+	}
+	aw.socket = pubSocket
+	return nil
+}
+
+func (aw *ArrowWriter) OpenFile() error {
+	aw.firstFrameTime = time.Time{} // set to the zero-value time.
+	rawRowSizeEstimate := 20 + aw.NSamples*2
+	aw.allowedRowsLeft = ARROWMAXFILESIZE / rawRowSizeEstimate
+
+	// 1. Define the data schema
+	// This type means an array[uint16] of fixed size aw.NSamples
+	pulse_type := arrow.FixedSizeListOf(int32(aw.NSamples), arrow.PrimitiveTypes.Uint16)
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "pulse", Type: pulse_type, Nullable: false},
+		{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_us, Nullable: false},
+		{Name: "subframecount", Type: arrow.PrimitiveTypes.Uint64, Nullable: false},
+		{Name: "channel_number", Type: arrow.PrimitiveTypes.Int32, Nullable: false},
+	}, nil)
+
+	// 2. Set up the memory allocator and Record Builder
+	alloc := memory.NewGoAllocator()
+	aw.builder = array.NewRecordBuilder(alloc, schema)
+
+	aw.LastFilename = fmt.Sprintf(aw.FilenamePattern, encodeFileNumber(aw.NextFileNumber), "arrows_WAL")
+	fp, err := os.Create(aw.LastFilename)
+	aw.openFile = fp
+	aw.writer = ipc.NewWriter(fp, ipc.WithSchema(schema))
+	return err
+}
+
+func (aw *ArrowWriter) WriteRecords(records []*DataRecord) int {
+	if len(records) == 0 {
+		return 0
+	}
+	if aw.firstFrameTime.IsZero() {
+		aw.firstFrameTime = records[0].trigTime
+	}
+
+	// Field 0: The parent FixedSizeList builder
+	pulseListBldr := aw.builder.Field(0).(*array.FixedSizeListBuilder)
+	// Field 0's Child: The underlying Uint16 value builder
+	pulseValBldr := pulseListBldr.ValueBuilder().(*array.Uint16Builder)
+
+	// Fields 1 and 2: Standard scalar builders
+	tsBldr := aw.builder.Field(1).(*array.TimestampBuilder)
+	sfcBldr := aw.builder.Field(2).(*array.Uint64Builder)
+	cnumBldr := aw.builder.Field(3).(*array.Int32Builder)
+
+	for _, rec := range records {
+		pulseListBldr.Append(true) // i.e., this pulse won't be null
+		data := rawTypeToUint16(rec.data)
+		pulseValBldr.AppendValues(data, nil)
+		tsBldr.Append(arrow.Timestamp(rec.trigTime.UnixMicro()))
+		sfcBldr.Append(uint64(rec.trigFrame) * 64)
+		cnumBldr.Append(int32(rec.channelNumber))
+	}
+	rec := aw.builder.NewRecordBatch()
+	defer rec.Release()
+	if err := aw.writer.Write(rec); err != nil {
+		fmt.Printf("Writing with error %v\n", err)
+		return 0
+	}
+
+	// We prevent writing all Arrows IPC packet data to a ZMQ socket. See futher comment
+	// below at mp.StartSocket().
+	// if _, err := aw.socket.SendMessage(rec); err != nil {
+	// 	ProblemLogger.Println("zmq send error publishing an arrows batch of records:", err)
+	// }
+
+	aw.allowedRowsLeft -= len(records)
+	return len(records)
+}
+
+func (aw *ArrowWriter) CloseFile() {
+	if aw.writer != nil {
+		aw.writer.Close()
+		aw.writer = nil
+	}
+	if aw.builder != nil {
+		aw.builder.Release()
+		aw.builder = nil
+	}
+	if aw.openFile != nil {
+		aw.openFile.Close()
+		aw.openFile = nil
+	}
+
+	// rename file, replacing final _WAL with _timeorder
+	newname := strings.ReplaceAll(aw.LastFilename, "_WAL", "_timeorder")
+	os.Rename(aw.LastFilename, newname)
+	aw.NextFileNumber++
+}
+
+func (aw *ArrowWriter) completeDirectory() {
+	// Idiomatic way to create a file without leaving it open is os.WriteFile()
+	dir := path.Dir(aw.FilenamePattern)
+	indicatorPath := path.Join(dir, "COMPLETE")
+	os.WriteFile(indicatorPath, []byte{}, 0666)
+}
+
+// UnifiedPublisher represents the object that collects pulse records from all channels to
+// publish them in ways that merge all channels, such as a database or an all-channel Arrow file.
+type UnifiedPublisher struct {
+	RecordsChan chan []*DataRecord
+	abort       chan struct{}
+	ArrowWriter
+}
+
+func NewUniPub(nchan int, pattern string, nsamples int) *UnifiedPublisher {
+	mp := new(UnifiedPublisher)
+	mp.RecordsChan = make(chan []*DataRecord, 2*nchan)
+	mp.abort = make(chan struct{})
+	mp.FilenamePattern = pattern
+	mp.NSamples = nsamples
+	// By commenting out the mp.StartSocket(), we prevent writing all Arrows IPC packet data
+	// on port Ports.Arrows (=base+5). As of Oct 11, 2026, we think this feature is inefficient,
+	// confusing, and useless. Still, we'll leave the structure in place in case of future need.
+	// mp.StartSocket()
+	return mp
+}
+
+// LastChannelComplete signals to the publisher that there are no more channels to wait for,
+// and it's time to publish the collected data.
+func (upub *UnifiedPublisher) LastChannelComplete() {
+	upub.RecordsChan <- nil
+}
+
+func encodeFileNumber(n int) string {
+	return fmt.Sprintf("all_pulses_%3.3d", n)
+}
+
+// PublishLoop is the UnifiedPublisher's long-running goroutine.
+// It collects records from all channels into a single slice of *DataRecord,
+// and publishes them together when a nil slice arrives (caused by the DataSource calling
+// mp.LastChannelComplete() to indicate all channels have been checked).
+// When data writing is stopped, the abort channel will be closed, and this routine will exit.
+func (upub *UnifiedPublisher) PublishLoop() {
+	upub.OpenFile()
+	defer upub.completeDirectory()
+	defer upub.CloseFile()
+
+	// Make an empty slice of capacity 100
+	queuedRecords := make([]*DataRecord, 0, 100)
+	for {
+		select {
+		case <-upub.abort:
+			upub.publishData(queuedRecords)
+			return
+		case records := <-upub.RecordsChan:
+			// records will be nil once after all channels have been checked. However, we can ignore that.
+			if records == nil {
+				continue
+			}
+			queuedRecords = append(queuedRecords, records...)
+
+			// Want to collect records for ARROWBUNCHTIME (5 seconds), then dump one bunch.
+			// This bunch time is a compromise: don't write to disk too frequently and keep bunches from
+			// being small and inefficient, but also don't put many minutes of data at risk of loss.
+			nq := len(queuedRecords)
+			if nq > 0 && queuedRecords[nq-1].trigTime.Sub(queuedRecords[0].trigTime) > ARROWBUNCHTIME {
+				upub.publishData(queuedRecords)
+				queuedRecords = queuedRecords[:0]
+			}
+		}
+	}
+}
+
+// Publish the slice of data collected from all channels.
+// Write them to a single Apache Arrow file.
+func (upub *UnifiedPublisher) publishData(records []*DataRecord) {
+
+	// Rotate to the next file whenever:
+	// a) The file would exceed the max allowed size (estimated by counting records), or
+	// b) The next record to be written occurs too long after the first one in the file.
+	if upub.allowedRowsLeft < len(records) || (!upub.firstFrameTime.IsZero() && records[0].trigTime.Sub(upub.firstFrameTime) > ARROWFILETIME) {
+		upub.RotateFile()
+	}
+	upub.WriteRecords(records)
+}
+
+func (upub *UnifiedPublisher) RotateFile() {
+	upub.CloseFile()
+	upub.OpenFile()
 }

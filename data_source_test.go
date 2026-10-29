@@ -102,13 +102,13 @@ func TestWritingFiles(t *testing.T) {
 	}
 	defer os.RemoveAll(tmp)
 
-	dir, err2 := makeDirectory(tmp)
+	dir, _, _, err2 := makeDirectory(tmp)
 	if err2 != nil {
 		t.Error(err2)
 	} else if !strings.HasPrefix(dir, tmp) {
 		t.Errorf("Writing in path %s, which should be a prefix of %s", tmp, dir)
 	}
-	dir2, err2 := makeDirectory(tmp)
+	dir2, _, _, err2 := makeDirectory(tmp)
 	if err2 != nil {
 		t.Error(err2)
 	} else if !strings.HasPrefix(dir2, tmp) {
@@ -117,7 +117,7 @@ func TestWritingFiles(t *testing.T) {
 		t.Errorf("makeDirectory produces %s, of which %q should be a suffix", dir2, "run0001_%s.%s")
 	}
 
-	if _, err := makeDirectory("/notallowed"); err == nil {
+	if _, _, _, err := makeDirectory("/notallowed"); err == nil {
 		t.Errorf("makeDirectory(%s) should have failed", "/notallowed")
 	}
 
