@@ -94,7 +94,7 @@ func (p *Packet) Length() int {
 
 // Frames returns the number of data frames in the packet
 func (p *Packet) Frames() int {
-	if p.shape == nil {
+	if p.shape == nil || p.format == nil {
 		return 0
 	}
 	nchan := 1
@@ -104,7 +104,11 @@ func (p *Packet) Frames() int {
 		}
 	}
 
-	return int(p.payloadLength) / (p.format.wordlen * nchan)
+	frameLength := p.format.wordlen * nchan
+	if frameLength <= 0 {
+		return 0
+	}
+	return int(p.payloadLength) / frameLength
 }
 
 // SequenceNumber returns the packet's internal sequenceNumber
@@ -325,9 +329,11 @@ func (p *Packet) Bytes() []byte {
 // ChannelInfo returns the number of channels in this packet, and the first one
 func (p *Packet) ChannelInfo() (nchan, offset int) {
 	nchan = 1
-	for _, s := range p.shape.Sizes {
-		if s > 0 {
-			nchan *= int(s)
+	if p.shape != nil {
+		for _, s := range p.shape.Sizes {
+			if s > 0 {
+				nchan *= int(s)
+			}
 		}
 	}
 	return nchan, int(p.offset)
