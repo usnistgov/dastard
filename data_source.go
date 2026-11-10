@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/usnistgov/dastard/internal/dastarddb"
 	"github.com/usnistgov/dastard/internal/getbytes"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/sbinet/npyio/npz"
 	"gonum.org/v1/gonum/mat"
 )
@@ -314,6 +318,7 @@ type AnySource struct {
 	nextBlock    chan *dataBlock      // Signal from the core loop that a block is ready to process
 	archiveBlock archiveableDataBlock // Used to store a section of raw data to file
 	broker       *TriggerBroker
+	unipub       *UnifiedPublisher
 	configError  error // Any error that arose when configuring the source (before Start)
 	db           *dastarddb.DastardDBConnection
 
@@ -471,6 +476,11 @@ func (ds *AnySource) ProcessSegments(block *dataBlock) error {
 			}
 		}
 		wg.Wait()
+	}
+
+	// Signal to the UnifiedPublisher that all channels' data have been sent; it's time to publish.
+	if ds.unipub != nil {
+		ds.unipub.LastChannelComplete()
 	}
 
 	// Clean up: mark the data segments as processed, trim the streams of data we no longer need,
@@ -633,27 +643,28 @@ func (ds *AnySource) HandleExternalTriggers(externalTriggerRowcounts []int64) er
 // makeDirectory creates directory of the form basepath/20060102/0000 where
 // the 4-digit subdirectory counts separate file-writing occasions.
 // It also returns the formatting code for use in an Sprintf call
-// (e.g., basepath/20060102/0000/20060102_run0000_%s.%s) and an error, if any.
-func makeDirectory(basepath string) (string, error) {
+// (e.g., basepath/20060102/0000/20060102_run0000_%s.%s), the 8-char date
+// code, the run number, and an error, if any.
+func makeDirectory(basepath string) (string, string, int, error) {
 	if len(basepath) == 0 {
-		return "", fmt.Errorf("BasePath is the empty string")
+		return "", "", 0, fmt.Errorf("BasePath is the empty string")
 	}
 	today := time.Now().Format("20060102")
 	todayDir := filepath.Join(basepath, today)
 	if err := os.MkdirAll(todayDir, 0755); err != nil {
-		return "", err
+		return "", "", 0, err
 	}
 	for i := range 10000 {
 		thisDir := filepath.Join(todayDir, fmt.Sprintf("%4.4d", i))
 		_, err := os.Stat(thisDir)
 		if os.IsNotExist(err) {
 			if err2 := os.MkdirAll(thisDir, 0755); err2 != nil {
-				return "", err
+				return "", "", 0, err
 			}
-			return filepath.Join(thisDir, fmt.Sprintf("%s_run%4.4d_%%s.%%s", today, i)), nil
+			return filepath.Join(thisDir, fmt.Sprintf("%s_run%4.4d_%%s.%%s", today, i)), today, i, nil
 		}
 	}
-	return "", fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)
+	return "", "", 0, fmt.Errorf("out of 4-digit ID numbers for today in %s", todayDir)
 }
 
 // WriteControl changes the data writing start/stop/pause/unpause state
@@ -690,6 +701,14 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 			dsp.DataPublisher.RemoveOFF()
 			dsp.DataPublisher.RemoveLJH3()
 		}
+
+		if ds.unipub != nil {
+			for _, dsp := range ds.processors {
+				dsp.DataPublisher.UniPub = nil
+			}
+			close(ds.unipub.abort)
+			ds.unipub = nil
+		}
 		err := ds.writingState.Stop()
 		if ds.db != nil {
 			if err := ds.db.EndDatarun(time.Now()); err != nil {
@@ -710,8 +729,8 @@ func (ds *AnySource) WriteControl(config *WriteControlConfig) error {
 
 // writeControlStart handles the most complex case of WriteControl: starting to write.
 func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
-	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3) {
-		return fmt.Errorf("WriteLJH22 and WriteOFF and WriteLJH3 all false")
+	if !(config.WriteLJH22 || config.WriteOFF || config.WriteLJH3 || config.WriteArrows) {
+		return fmt.Errorf("all of (WriteLJH22, WriteOFF, WriteLJH3, WriteArrows) are false")
 	}
 
 	for _, dsp := range ds.processors {
@@ -720,7 +739,9 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 				"writing already in progress, stop writing before starting again. Currently: LJH22 %v, OFF %v, LJH3 %v",
 				dsp.DataPublisher.HasLJH22(), dsp.DataPublisher.HasOFF(), dsp.DataPublisher.HasLJH3())
 		}
+		dsp.DataPublisher.numberWritten = 0
 	}
+
 	if config.WriteOFF {
 		// throw an error if no channels have projectors set
 		// only channels with projectors set will have OFF files enabled
@@ -746,18 +767,17 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 		basepath = config.Path
 	}
 	var err error
-	filenamePattern, err := makeDirectory(basepath)
+	filenamePattern, datecode, runnumber, err := makeDirectory(basepath)
 	if err != nil {
 		return fmt.Errorf("could not make directory: %s", err.Error())
 	}
 
 	// Collect information and store new entry in the `dataruns` table in the database.
+	NPresamples, NSamples, _ := ds.getPulseLengths()
 	if ds.db != nil {
 		directory := path.Dir(filenamePattern)
-		d2, runnum := path.Split(directory)
-		_, datecode := path.Split(path.Clean(d2))
-		dateruncode := path.Join(datecode, runnum)
-		NPresamples, NSamples, _ := ds.getPulseLengths()
+		runcode := fmt.Sprintf("%4.4d", runnumber)
+		dateruncode := path.Join(datecode, runcode)
 
 		drecmsg := dastarddb.DatarunMessage{
 			NumChan:    ds.Nchan(),
@@ -821,7 +841,101 @@ func (ds *AnySource) writeControlStart(config *WriteControlConfig) error {
 			dsp.DataPublisher.LJH3.SetFlushAlsoSyncs(config.FlushAlsoSyncs)
 		}
 	}
+
+	// Write the metadata file. Needed for Arrows format, but why not just always write it?
+	metadataFilename := fmt.Sprintf(filenamePattern, "configuration", "toml")
+	writeMetadata(metadataFilename, ds, datecode, runnumber, config)
+
+	if config.WriteArrows {
+		ds.unipub = NewUniPub(ds.Nchan(), filenamePattern, NSamples)
+		go ds.unipub.PublishLoop()
+		for _, dsp := range ds.processors {
+			dsp.DataPublisher.UniPub = ds.unipub
+		}
+		// After this function ends, launch farmer as a separate process
+		defer func() {
+			directory := path.Dir(filenamePattern)
+			cmd := exec.Command("farmer", directory)
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Setpgid: true,
+			}
+			// Route farmer's logs somewhere!
+			// If you don't do this, farmer's output will completely vanish into the void.
+			logpath := filepath.Join(directory, "farmer.log")
+			logFile, err := os.OpenFile(logpath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			if err != nil {
+				log.Fatal("Failed to open log file:", err)
+			}
+			defer logFile.Close() // Safe to close in A after B starts
+
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+
+			// 4. Launch the process asynchronously
+			err = cmd.Start()
+			if err != nil {
+				log.Fatalf("DASTARD: Failed to start FARMER: %v", err)
+			}
+		}()
+	}
+
 	return ds.writingState.Start(filenamePattern, basepath, config)
+}
+
+func writeMetadata(path string, ds *AnySource, datecode string, runnumber int, config *WriteControlConfig) {
+	// Open metadata TOML file
+	file, err := os.Create(path)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	file.WriteString("# ===============================================================\n")
+	file.WriteString("# DASTARD configuration\n")
+	file.WriteString("# the Data Acquisition System for Triggering And Recording Data\n")
+	file.WriteString("# ===============================================================\n\n")
+
+	// Configuration data to store
+	type ConfigInformation struct {
+		Datecode   string  `toml:"Datecode"`
+		Runnumber  string  `toml:"Runnumber"`
+		Timebase   float64 `toml:"Timebase"`
+		NSamples   int     `toml:"Nsamples"`
+		NPreamples int     `toml:"Npresamples"`
+		SubFrames  int     `toml:"SubFrameDivisions"`
+		Channels   []int   `toml:"Channels"`
+		Hostname   string  `toml:"Hostname"`
+		GoVersion  string  `toml:"GoVersion"`
+		CPUs       int     `toml:"CPUs"`
+		Start      string  `toml:"StartTime"`
+
+		Build  *BuildInfo          `toml:"BuildInfo"`
+		Port   *Portnumbers        `toml:"Portnumbers"`
+		Config *WriteControlConfig `toml:"WriteConfig"`
+	}
+	NPresamples, NSamples, _ := ds.getPulseLengths()
+	hostname, _ := os.Hostname()
+	cfg := ConfigInformation{
+		Datecode:   datecode,
+		Runnumber:  fmt.Sprintf("%4.4d", runnumber),
+		Timebase:   ds.samplePeriod.Seconds(),
+		NSamples:   NSamples,
+		NPreamples: NPresamples,
+		SubFrames:  ds.subframeDivisions,
+		Channels:   ds.chanNumbers,
+		Hostname:   hostname,
+		GoVersion:  runtime.Version(),
+		CPUs:       runtime.NumCPU(),
+		Start:      time.Now().Format(time.RFC1123),
+		Build:      &Build,
+		Port:       &Ports,
+		Config:     config,
+	}
+
+	// Store info
+	encoder := toml.NewEncoder(file)
+	if err := encoder.Encode(cfg); err != nil {
+		panic(err)
+	}
 }
 
 // ComputeWritingState returns a partial copy of the writingState
@@ -1245,14 +1359,15 @@ func (stream *DataStream) TrimKeepingN(N int) int {
 
 // DataRecord contains a single triggered pulse record.
 type DataRecord struct {
-	data         []RawType
-	trigFrame    FrameIndex
-	trigTime     time.Time
-	signed       bool // do we interpret the data as signed values?
-	channelIndex int
-	presamples   int
-	voltsPerArb  float32 // "volts" or other physical unit per raw unit
-	sampPeriod   float32
+	data          []RawType
+	trigFrame     FrameIndex
+	trigTime      time.Time
+	signed        bool // do we interpret the data as signed values?
+	channelIndex  int
+	channelNumber int
+	presamples    int
+	voltsPerArb   float32 // "volts" or other physical unit per raw unit
+	sampPeriod    float32
 
 	// trigger type?
 

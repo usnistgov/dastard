@@ -445,6 +445,7 @@ type WriteControlConfig struct {
 	WriteLJH22      bool   // turn on one or more file formats
 	WriteOFF        bool
 	WriteLJH3       bool
+	WriteArrows     bool
 	FlushAlsoSyncs  bool
 	Intention       string // such as "testing", "noise", "pulses"
 	Users           string
@@ -466,6 +467,7 @@ func (m mapError) Error() string {
 func (s *SourceControl) WriteControl(config *WriteControlConfig, reply *bool) error {
 
 	config.MapInternalOnly = s.mapServer.Map
+
 	f := func() {
 		err := s.ActiveSource.WriteControl(config)
 		if err == nil {

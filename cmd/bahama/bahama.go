@@ -190,9 +190,9 @@ func generateData(Nchan, firstchanOffset int, packetchan chan []byte, cancel cha
 			if control.crosstalk && i%2 == 1 {
 				amplitude *= 0.02
 			}
-			scale := amplitude * 2.116
+			scale := amplitude * 2.116 * 16
 			for j := range Nsamp / 4 {
-				pulsevalue := int16(scale * (math.Exp(-float64(j)/1200.0) - math.Exp(-float64(j)/300.0)))
+				pulsevalue := int16(scale * (math.Exp(-float64(j)/800.0) - math.Exp(-float64(j)/200.0)))
 				// Same pulse repeats 4x
 				for k := range 4 {
 					d[i+Nchan*(j+k*(Nsamp/4))] += pulsevalue
